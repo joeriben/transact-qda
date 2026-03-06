@@ -1,29 +1,29 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { findPatterns, logInteraction } from '$lib/server/ai/index.js';
-import { getElementsByProject } from '$lib/server/db/queries/elements.js';
+import { getNamingsByProject } from '$lib/server/db/queries/namings.js';
 
 export const POST: RequestHandler = async ({ params, request }) => {
-	const { elementIds } = await request.json();
+	const { namingIds } = await request.json();
 
 	try {
 		let items: any[];
-		if (elementIds?.length) {
-			const allElements = await getElementsByProject(params.projectId);
-			items = allElements.filter((e: any) => elementIds.includes(e.id));
+		const allNamings = await getNamingsByProject(params.projectId);
+		if (namingIds?.length) {
+			items = allNamings.filter((n: any) => namingIds.includes(n.id));
 		} else {
-			items = await getElementsByProject(params.projectId);
+			items = allNamings;
 		}
 
 		const result = await findPatterns(
-			items.map((i: any) => ({ label: i.label, kind: i.kind, properties: i.properties }))
+			items.map((i: any) => ({ label: i.inscription, kind: 'naming', properties: {} }))
 		);
 
 		await logInteraction(
 			params.projectId,
 			'patterns',
 			result.model,
-			{ elementCount: items.length },
+			{ namingCount: items.length },
 			{ analysis: result.analysis },
 			result.tokensUsed
 		);

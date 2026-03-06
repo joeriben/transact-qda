@@ -1,5 +1,6 @@
 import type { PageServerLoad } from './$types.js';
-import { queryOne, query } from '$lib/server/db/index.js';
+import { queryOne } from '$lib/server/db/index.js';
+import { getAnnotationsByDocument } from '$lib/server/db/queries/codes.js';
 import { error } from '@sveltejs/kit';
 
 export const load: PageServerLoad = async ({ params }) => {
@@ -10,28 +11,20 @@ export const load: PageServerLoad = async ({ params }) => {
 		mime_type: string;
 		file_size: number;
 	}>(
-		`SELECT e.id, e.label, dc.full_text, dc.mime_type, dc.file_size
-		 FROM elements e
-		 JOIN document_content dc ON dc.element_id = e.id
-		 WHERE e.id = $1 AND e.project_id = $2 AND e.kind = 'document' AND e.deleted_at IS NULL`,
+		`SELECT n.id, n.inscription as label, dc.full_text, dc.mime_type, dc.file_size
+		 FROM namings n
+		 JOIN document_content dc ON dc.naming_id = n.id
+		 WHERE n.id = $1 AND n.project_id = $2 AND n.deleted_at IS NULL`,
 		[params.docId, params.projectId]
 	);
 
 	if (!doc) error(404, 'Document not found');
 
-	const annotations = await query(
-		`SELECT a.id, a.code_id, a.anchor_type, a.anchor, a.comment,
-		        c.label as code_label, c.properties as code_properties
-		 FROM annotations a
-		 JOIN elements c ON c.id = a.code_id
-		 WHERE a.document_id = $1 AND a.project_id = $2
-		 ORDER BY a.created_at`,
-		[params.docId, params.projectId]
-	);
+	const annotations = await getAnnotationsByDocument(params.projectId, params.docId);
 
 	return {
 		document: doc,
-		annotations: annotations.rows,
+		annotations,
 		projectId: params.projectId
 	};
 };

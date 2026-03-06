@@ -17,15 +17,22 @@ export const projectSchema = z.object({
 	description: z.string().max(2000).optional()
 });
 
-export const elementSchema = z.object({
-	kind: z.enum(['entity', 'relation', 'code', 'category', 'memo', 'map', 'document']),
-	label: z.string().min(1).max(500),
-	sourceId: z.string().uuid().optional(),
-	targetId: z.string().uuid().optional(),
+export const namingSchema = z.object({
+	inscription: z.string().min(1).max(2000),
+	participantIds: z.array(z.string().uuid()).optional()
+});
+
+export const appearanceSchema = z.object({
+	perspectiveId: z.string().uuid(),
+	mode: z.enum(['entity', 'relation', 'constellation', 'process', 'silence', 'perspective']),
+	directedFrom: z.string().uuid().optional(),
+	directedTo: z.string().uuid().optional(),
+	valence: z.string().max(100).optional(),
 	properties: z.record(z.unknown()).optional()
 });
 
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type ProjectInput = z.infer<typeof projectSchema>;
-export type ElementInput = z.infer<typeof elementSchema>;
+export type NamingInput = z.infer<typeof namingSchema>;
+export type AppearanceInput = z.infer<typeof appearanceSchema>;

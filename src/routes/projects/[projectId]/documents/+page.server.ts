@@ -3,11 +3,11 @@ import { query } from '$lib/server/db/index.js';
 
 export const load: PageServerLoad = async ({ params }) => {
 	const result = await query(
-		`SELECT e.id, e.label, e.created_at, dc.mime_type, dc.file_size
-		 FROM elements e
-		 JOIN document_content dc ON dc.element_id = e.id
-		 WHERE e.project_id = $1 AND e.kind = 'document' AND e.deleted_at IS NULL
-		 ORDER BY e.created_at DESC`,
+		`SELECT n.id, n.inscription as label, n.created_at, dc.mime_type, dc.file_size
+		 FROM namings n
+		 JOIN document_content dc ON dc.naming_id = n.id
+		 WHERE n.project_id = $1 AND n.deleted_at IS NULL
+		 ORDER BY n.created_at DESC`,
 		[params.projectId]
 	);
 

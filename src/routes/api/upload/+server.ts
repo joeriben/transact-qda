@@ -22,26 +22,22 @@ export const POST: RequestHandler = async ({ request, locals, url }) => {
 	const fullText = await extractText(buffer, mimeType);
 
 	const doc = await transaction(async (client) => {
-		const eventRes = await client.query(
-			`INSERT INTO events (project_id, type, created_by, data)
-			 VALUES ($1, 'element.create', $2, $3) RETURNING id`,
-			[projectId, locals.user!.id, JSON.stringify({ kind: 'document', label: file.name })]
+		// The document is a naming
+		const namingRes = await client.query(
+			`INSERT INTO namings (project_id, inscription, created_by)
+			 VALUES ($1, $2, $3) RETURNING id, inscription as label, created_at`,
+			[projectId, file.name, locals.user!.id]
 		);
+		const namingId = namingRes.rows[0].id;
 
-		const elemRes = await client.query(
-			`INSERT INTO elements (project_id, kind, label, constituted_by)
-			 VALUES ($1, 'document', $2, $3) RETURNING id, label, created_at`,
-			[projectId, file.name, eventRes.rows[0].id]
-		);
-		const elementId = elemRes.rows[0].id;
-
+		// Store content
 		await client.query(
-			`INSERT INTO document_content (element_id, full_text, file_path, mime_type, file_size)
+			`INSERT INTO document_content (naming_id, full_text, file_path, mime_type, file_size)
 			 VALUES ($1, $2, $3, $4, $5)`,
-			[elementId, fullText, filePath, mimeType, buffer.length]
+			[namingId, fullText, filePath, mimeType, buffer.length]
 		);
 
-		return { id: elementId, label: elemRes.rows[0].label, mimeType, size: buffer.length };
+		return { id: namingId, label: namingRes.rows[0].label, mimeType, size: buffer.length };
 	});
 
 	return json(doc, { status: 201 });

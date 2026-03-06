@@ -1,20 +1,7 @@
-export type ElementKind = 'entity' | 'relation' | 'code' | 'category' | 'memo' | 'map' | 'document';
+// Collapse modes: how a naming appears from a perspective
+export type CollapseMode = 'entity' | 'relation' | 'constellation' | 'process' | 'silence' | 'perspective';
 
 export type MapType = 'situational' | 'social-worlds' | 'positional' | 'network';
-
-export type EventType =
-	| 'element.create'
-	| 'element.update'
-	| 'element.delete'
-	| 'element.relate'
-	| 'aspect.set'
-	| 'code.create'
-	| 'code.apply'
-	| 'memo.create'
-	| 'map.create'
-	| 'ai.suggest'
-	| 'ai.accept'
-	| 'ai.reject';
 
 export interface User {
 	id: string;
@@ -32,47 +19,37 @@ export interface Project {
 	createdAt: string;
 }
 
-export interface Element {
+// The virtual object: pure potentiality.
+// Neither entity nor relation intrinsically.
+export interface Naming {
 	id: string;
 	projectId: string;
-	kind: ElementKind;
-	label: string;
-	constitutedBy: string | null;
-	sourceId: string | null;
-	targetId: string | null;
-	properties: Record<string, unknown>;
-	deletedAt: string | null;
-	createdAt: string;
-	updatedAt: string;
-}
-
-export interface TEvent {
-	id: string;
-	projectId: string;
-	type: EventType;
+	inscription: string;
 	createdBy: string;
 	createdAt: string;
-	contextId: string | null;
-	data: Record<string, unknown>;
+	deletedAt: string | null;
 	seq: number;
 }
 
-export interface ElementAspect {
+// Undirected bond: co-constitution between namings.
+// A participation IS a naming (its id is in the namings table).
+export interface Participation {
 	id: string;
-	elementId: string;
-	contextId: string;
+	namingId: string;
+	participantId: string;
+	createdAt: string;
+}
+
+// How a naming appears from a perspective.
+// This is where entity/relation/constellation EMERGES.
+export interface Appearance {
+	namingId: string;
+	perspectiveId: string;
+	mode: CollapseMode;
+	directedFrom: string | null;
+	directedTo: string | null;
+	valence: string | null;
 	properties: Record<string, unknown>;
 	createdAt: string;
 	updatedAt: string;
-}
-
-export interface Annotation {
-	id: string;
-	projectId: string;
-	codeId: string;
-	documentId: string;
-	constitutedBy: string | null;
-	anchorType: 'text' | 'image_region';
-	anchor: Record<string, unknown>;
-	comment: string | null;
 }

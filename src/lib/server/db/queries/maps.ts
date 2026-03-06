@@ -1,6 +1,9 @@
 import { query, queryOne, transaction } from '../index.js';
 import type { MapType } from '$lib/shared/types/index.js';
 
+// A map IS a naming that serves as a perspective.
+// Everything "on the map" has an appearance from this perspective.
+
 export async function createMap(
 	projectId: string,
 	userId: string,
@@ -9,28 +12,35 @@ export async function createMap(
 	properties?: Record<string, unknown>
 ) {
 	return transaction(async (client) => {
-		const eventRes = await client.query(
-			`INSERT INTO events (project_id, type, created_by, data)
-			 VALUES ($1, 'map.create', $2, $3) RETURNING id`,
-			[projectId, userId, JSON.stringify({ label, mapType })]
+		// The map is a naming
+		const mapRes = await client.query(
+			`INSERT INTO namings (project_id, inscription, created_by)
+			 VALUES ($1, $2, $3) RETURNING *`,
+			[projectId, label, userId]
+		);
+		const map = mapRes.rows[0];
+
+		// It appears as a perspective FROM ITSELF (self-referential)
+		await client.query(
+			`INSERT INTO appearances (naming_id, perspective_id, mode, properties)
+			 VALUES ($1, $1, 'perspective', $2)`,
+			[map.id, JSON.stringify({ mapType, ...properties })]
 		);
 
-		const props = { mapType, ...properties };
-		const elemRes = await client.query(
-			`INSERT INTO elements (project_id, kind, label, constituted_by, properties)
-			 VALUES ($1, 'map', $2, $3, $4) RETURNING *`,
-			[projectId, label, eventRes.rows[0].id, JSON.stringify(props)]
-		);
-		return elemRes.rows[0];
+		return { ...map, properties: { mapType, ...properties } };
 	});
 }
 
 export async function getMapsByProject(projectId: string) {
 	return (
 		await query(
-			`SELECT * FROM elements
-			 WHERE project_id = $1 AND kind = 'map' AND deleted_at IS NULL
-			 ORDER BY created_at DESC`,
+			`SELECT n.id, n.inscription as label, n.created_at, a.properties
+			 FROM namings n
+			 JOIN appearances a ON a.naming_id = n.id AND a.perspective_id = n.id
+			 WHERE n.project_id = $1 AND n.deleted_at IS NULL
+			   AND a.mode = 'perspective'
+			   AND a.properties ? 'mapType'
+			 ORDER BY n.created_at DESC`,
 			[projectId]
 		)
 	).rows;
@@ -38,36 +48,27 @@ export async function getMapsByProject(projectId: string) {
 
 export async function getMap(mapId: string, projectId: string) {
 	return queryOne(
-		`SELECT * FROM elements WHERE id = $1 AND project_id = $2 AND kind = 'map' AND deleted_at IS NULL`,
+		`SELECT n.id, n.inscription as label, n.created_at, a.properties
+		 FROM namings n
+		 JOIN appearances a ON a.naming_id = n.id AND a.perspective_id = n.id
+		 WHERE n.id = $1 AND n.project_id = $2 AND n.deleted_at IS NULL
+		   AND a.mode = 'perspective'`,
 		[mapId, projectId]
 	);
 }
 
-export async function getMapElements(mapId: string, projectId: string) {
-	// Get all elements that have aspects on this map (i.e. placed on map)
+export async function getMapAppearances(mapId: string, projectId: string) {
+	// Everything that appears from this map-as-perspective
 	return (
 		await query(
-			`SELECT e.*, ea.properties as aspect_properties
-			 FROM element_aspects ea
-			 JOIN elements e ON e.id = ea.element_id
-			 WHERE ea.context_id = $1 AND e.project_id = $2 AND e.deleted_at IS NULL
-			 ORDER BY e.created_at`,
-			[mapId, projectId]
-		)
-	).rows;
-}
-
-export async function getMapRelations(mapId: string, projectId: string) {
-	// Get relations whose source and target are both placed on this map
-	return (
-		await query(
-			`SELECT r.*, ea.properties as aspect_properties,
-			        s_asp.properties as source_aspect, t_asp.properties as target_aspect
-			 FROM elements r
-			 JOIN element_aspects ea ON ea.element_id = r.id AND ea.context_id = $1
-			 LEFT JOIN element_aspects s_asp ON s_asp.element_id = r.source_id AND s_asp.context_id = $1
-			 LEFT JOIN element_aspects t_asp ON t_asp.element_id = r.target_id AND t_asp.context_id = $1
-			 WHERE r.project_id = $2 AND r.kind = 'relation' AND r.deleted_at IS NULL`,
+			`SELECT a.*, n.inscription, n.created_at as naming_created_at
+			 FROM appearances a
+			 JOIN namings n ON n.id = a.naming_id
+			 WHERE a.perspective_id = $1
+			   AND a.naming_id != $1
+			   AND n.project_id = $2
+			   AND n.deleted_at IS NULL
+			 ORDER BY n.seq`,
 			[mapId, projectId]
 		)
 	).rows;

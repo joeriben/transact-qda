@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { getMemo, updateMemoContent, addMemoLink, removeMemoLink } from '$lib/server/db/queries/memos.js';
+import { getMemo, updateMemoContent } from '$lib/server/db/queries/memos.js';
 
 export const GET: RequestHandler = async ({ params }) => {
 	const memo = await getMemo(params.memoId, params.projectId);

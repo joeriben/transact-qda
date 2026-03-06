@@ -13,26 +13,34 @@
 
 	const mapType = $derived(data.map.properties?.mapType || 'situational');
 
-	// Reactive map data
-	let elements = $state(data.mapElements.map((e: any) => ({
-		id: e.id,
-		label: e.label,
-		kind: e.kind,
-		x: e.aspect_properties?.x ?? Math.random() * 600,
-		y: e.aspect_properties?.y ?? Math.random() * 400,
-		color: e.properties?.color || e.aspect_properties?.color || '#8b9cf7',
-		rx: e.aspect_properties?.rx,
-		ry: e.aspect_properties?.ry
-	})));
+	// Derive elements and relations from appearances on this map-as-perspective
+	let elements = $state(
+		data.appearances
+			.filter((a: any) => a.mode === 'entity' || a.mode === 'constellation')
+			.map((a: any) => ({
+				id: a.naming_id,
+				label: a.inscription,
+				mode: a.mode,
+				x: a.properties?.x ?? Math.random() * 600,
+				y: a.properties?.y ?? Math.random() * 400,
+				color: a.properties?.color || '#8b9cf7',
+				rx: a.properties?.rx,
+				ry: a.properties?.ry
+			}))
+	);
 
-	let relations = $state(data.mapRelations.map((r: any) => ({
-		id: r.id,
-		label: r.label,
-		sourceId: r.source_id,
-		targetId: r.target_id,
-		color: r.properties?.color || '#4b5563',
-		isMeta: r.aspect_properties?.isMeta || false
-	})));
+	let relations = $state(
+		data.appearances
+			.filter((a: any) => a.mode === 'relation')
+			.map((a: any) => ({
+				id: a.naming_id,
+				label: a.inscription,
+				sourceId: a.directed_from,
+				targetId: a.directed_to,
+				color: a.properties?.color || '#4b5563',
+				isMeta: a.properties?.isMeta || false
+			}))
+	);
 
 	// Mode for situational maps
 	let mode = $state<'messy' | 'ordered'>('messy');
@@ -46,18 +54,17 @@
 	}
 
 	async function onDragEnd(id: string, x: number, y: number) {
-		// Update local state
 		const el = elements.find(e => e.id === id);
 		if (el) {
 			el.x = x;
 			el.y = y;
 		}
 
-		// Persist aspect (position on this map)
+		// Persist appearance (position under this map-as-perspective)
 		await fetch(`/api/projects/${data.projectId}/elements/${id}/aspects`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ contextId: data.map.id, properties: { x, y } })
+			body: JSON.stringify({ perspectiveId: data.map.id, mode: 'entity', properties: { x, y } })
 		});
 	}
 
@@ -82,57 +89,60 @@
 	async function addEntity() {
 		if (!newEntityLabel.trim()) return;
 
-		// Create entity element
+		// Create naming + appearance on this map in one call
+		const x = 100 + Math.random() * 400;
+		const y = 100 + Math.random() * 300;
 		const res = await fetch(`/api/projects/${data.projectId}/elements`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ kind: 'entity', label: newEntityLabel.trim() })
+			body: JSON.stringify({
+				inscription: newEntityLabel.trim(),
+				appearance: {
+					perspectiveId: data.map.id,
+					mode: 'entity',
+					properties: { x, y }
+				}
+			})
 		});
 		if (!res.ok) return;
-		const entity = await res.json();
+		const naming = await res.json();
 
-		// Place it on the map with random position
-		const x = 100 + Math.random() * 400;
-		const y = 100 + Math.random() * 300;
-		await fetch(`/api/projects/${data.projectId}/elements/${entity.id}/aspects`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ contextId: data.map.id, properties: { x, y } })
-		});
-
-		elements = [...elements, { id: entity.id, label: entity.label, kind: 'entity', x, y, color: '#8b9cf7' }];
+		elements = [...elements, { id: naming.id, label: naming.inscription, mode: 'entity', x, y, color: '#8b9cf7' }];
 		newEntityLabel = '';
 	}
 
-	async function placeExistingEntity(entityId: string, label: string) {
+	async function placeExistingNaming(namingId: string, inscription: string) {
 		const x = 100 + Math.random() * 400;
 		const y = 100 + Math.random() * 300;
-		await fetch(`/api/projects/${data.projectId}/elements/${entityId}/aspects`, {
+		await fetch(`/api/projects/${data.projectId}/elements/${namingId}/aspects`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ contextId: data.map.id, properties: { x, y } })
+			body: JSON.stringify({ perspectiveId: data.map.id, mode: 'entity', properties: { x, y } })
 		});
-		elements = [...elements, { id: entityId, label, kind: 'entity', x, y, color: '#8b9cf7' }];
+		elements = [...elements, { id: namingId, label: inscription, mode: 'entity', x, y, color: '#8b9cf7' }];
 	}
 
 	async function createRelation(sourceId: string, targetId: string) {
-		const label = prompt('Relation label:') || 'relates to';
+		const inscription = prompt('Relation inscription:') || 'relates to';
+
+		// Create a naming that appears as relation on this map
 		const res = await fetch(`/api/projects/${data.projectId}/elements`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ kind: 'relation', label, sourceId, targetId })
+			body: JSON.stringify({
+				inscription,
+				appearance: {
+					perspectiveId: data.map.id,
+					mode: 'relation',
+					directedFrom: sourceId,
+					directedTo: targetId
+				}
+			})
 		});
 		if (!res.ok) return;
-		const rel = await res.json();
+		const naming = await res.json();
 
-		// Place relation on map
-		await fetch(`/api/projects/${data.projectId}/elements/${rel.id}/aspects`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ contextId: data.map.id, properties: {} })
-		});
-
-		relations = [...relations, { id: rel.id, label, sourceId, targetId, color: '#4b5563', isMeta: false }];
+		relations = [...relations, { id: naming.id, label: inscription, sourceId, targetId, color: '#4b5563', isMeta: false }];
 	}
 </script>
 
@@ -182,7 +192,7 @@
 						y={el.y}
 						label={el.label}
 						color={el.color}
-						kind={el.kind}
+						kind={el.mode}
 						selected={selection.isSelected(el.id)}
 						ondragend={onDragEnd}
 						onclick={onElementClick}
@@ -199,17 +209,17 @@
 					<button type="submit" class="btn-sm">Add</button>
 				</form>
 
-				{#if data.allEntities.length > 0}
-					<h4>Existing entities</h4>
+				{#if data.allNamings.length > 0}
+					<h4>Existing namings</h4>
 					<div class="entity-list">
-						{#each data.allEntities as entity}
-							{@const onMap = elements.some(e => e.id === entity.id)}
+						{#each data.allNamings as naming}
+							{@const onMap = elements.some(e => e.id === naming.id)}
 							<button
 								class="entity-item"
 								disabled={onMap}
-								onclick={() => placeExistingEntity(entity.id, entity.label)}
+								onclick={() => placeExistingNaming(naming.id, naming.inscription)}
 							>
-								{entity.label}
+								{naming.inscription}
 								{#if onMap}<span class="on-map">on map</span>{/if}
 							</button>
 						{/each}

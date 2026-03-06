@@ -1,5 +1,5 @@
 import type { LayoutServerLoad } from './$types.js';
-import { queryOne, query } from '$lib/server/db/index.js';
+import { queryOne } from '$lib/server/db/index.js';
 import { error } from '@sveltejs/kit';
 
 export const load: LayoutServerLoad = async ({ params, locals }) => {
@@ -15,14 +15,32 @@ export const load: LayoutServerLoad = async ({ params, locals }) => {
 		error(404, 'Project not found');
 	}
 
+	// Count documents (namings with document_content)
+	// Count codes (namings appearing as entity in code-system perspective)
+	// Count maps (namings appearing as perspective with mapType)
+	// Count memos (namings with memo_content)
 	const counts = await queryOne<{ documents: string; codes: string; maps: string; memos: string }>(
 		`SELECT
-			COUNT(*) FILTER (WHERE kind = 'document') as documents,
-			COUNT(*) FILTER (WHERE kind = 'code' OR kind = 'category') as codes,
-			COUNT(*) FILTER (WHERE kind = 'map') as maps,
-			COUNT(*) FILTER (WHERE kind = 'memo') as memos
-		 FROM elements
-		 WHERE project_id = $1 AND deleted_at IS NULL`,
+			(SELECT COUNT(*) FROM document_content dc
+			 JOIN namings n ON n.id = dc.naming_id
+			 WHERE n.project_id = $1 AND n.deleted_at IS NULL) as documents,
+			(SELECT COUNT(*) FROM appearances a
+			 JOIN namings n ON n.id = a.naming_id
+			 WHERE n.project_id = $1 AND n.deleted_at IS NULL
+			   AND a.mode = 'entity'
+			   AND a.perspective_id IN (
+			     SELECT n2.id FROM namings n2
+			     JOIN appearances a2 ON a2.naming_id = n2.id AND a2.perspective_id = n2.id
+			     WHERE n2.project_id = $1 AND a2.properties->>'role' = 'code-system'
+			   )) as codes,
+			(SELECT COUNT(*) FROM appearances a
+			 JOIN namings n ON n.id = a.naming_id
+			 WHERE n.project_id = $1 AND n.deleted_at IS NULL
+			   AND a.naming_id = a.perspective_id
+			   AND a.mode = 'perspective' AND a.properties ? 'mapType') as maps,
+			(SELECT COUNT(*) FROM memo_content mc
+			 JOIN namings n ON n.id = mc.naming_id
+			 WHERE n.project_id = $1 AND n.deleted_at IS NULL) as memos`,
 		[params.projectId]
 	);
 
