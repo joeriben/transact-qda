@@ -1,0 +1,55 @@
+export function createViewport() {
+	let x = $state(0);
+	let y = $state(0);
+	let zoom = $state(1);
+
+	const MIN_ZOOM = 0.1;
+	const MAX_ZOOM = 5;
+
+	function pan(dx: number, dy: number) {
+		x += dx / zoom;
+		y += dy / zoom;
+	}
+
+	function zoomAt(factor: number, cx: number, cy: number) {
+		const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom * factor));
+		const scale = newZoom / zoom;
+		x = cx - (cx - x) * scale;
+		y = cy - (cy - y) * scale;
+		zoom = newZoom;
+	}
+
+	function screenToCanvas(sx: number, sy: number): { x: number; y: number } {
+		return {
+			x: (sx / zoom) - x,
+			y: (sy / zoom) - y
+		};
+	}
+
+	function canvasToScreen(cx: number, cy: number): { x: number; y: number } {
+		return {
+			x: (cx + x) * zoom,
+			y: (cy + y) * zoom
+		};
+	}
+
+	function reset() {
+		x = 0;
+		y = 0;
+		zoom = 1;
+	}
+
+	return {
+		get x() { return x; },
+		get y() { return y; },
+		get zoom() { return zoom; },
+		set x(v: number) { x = v; },
+		set y(v: number) { y = v; },
+		set zoom(v: number) { zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, v)); },
+		pan,
+		zoomAt,
+		screenToCanvas,
+		canvasToScreen,
+		reset
+	};
+}

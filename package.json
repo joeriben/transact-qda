@@ -1,0 +1,32 @@
+{
+	"name": "transact-qda",
+	"private": true,
+	"version": "0.0.1",
+	"type": "module",
+	"scripts": {
+		"dev": "vite dev",
+		"build": "vite build",
+		"preview": "vite preview",
+		"prepare": "svelte-kit sync || echo ''",
+		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+		"migrate": "node scripts/migrate.js"
+	},
+	"devDependencies": {
+		"@sveltejs/adapter-node": "^5.0.0",
+		"@sveltejs/kit": "^2.50.2",
+		"@sveltejs/vite-plugin-svelte": "^6.2.4",
+		"svelte": "^5.51.0",
+		"svelte-check": "^4.4.2",
+		"typescript": "^5.9.3",
+		"vite": "^7.3.1"
+	},
+	"dependencies": {
+		"@anthropic-ai/sdk": "^0.78.0",
+		"argon2": "^0.41.0",
+		"mammoth": "^1.11.0",
+		"pdf-parse": "^2.4.5",
+		"pg": "^8.13.0",
+		"zod": "^3.24.0"
+	}
+}

@@ -1,0 +1,65 @@
+import * as argon2 from 'argon2';
+import crypto from 'node:crypto';
+import { query, queryOne } from '../db/index.js';
+
+const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+export async function hashPassword(password: string): Promise<string> {
+	return argon2.hash(password, { type: argon2.argon2id });
+}
+
+export async function verifyPassword(hash: string, password: string): Promise<boolean> {
+	return argon2.verify(hash, password);
+}
+
+export async function createSession(userId: string): Promise<{ token: string; expiresAt: Date }> {
+	const token = crypto.randomBytes(32).toString('hex');
+	const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
+
+	await query(
+		'INSERT INTO sessions (user_id, token, expires_at) VALUES ($1, $2, $3)',
+		[userId, token, expiresAt]
+	);
+
+	return { token, expiresAt };
+}
+
+export async function validateSession(token: string) {
+	const session = await queryOne<{
+		id: string;
+		user_id: string;
+		expires_at: Date;
+		username: string;
+		email: string;
+		display_name: string | null;
+		role: string;
+	}>(
+		`SELECT s.id, s.user_id, s.expires_at,
+		        u.username, u.email, u.display_name, u.role
+		 FROM sessions s
+		 JOIN users u ON u.id = s.user_id
+		 WHERE s.token = $1 AND s.expires_at > now()`,
+		[token]
+	);
+
+	if (!session) return null;
+
+	return {
+		sessionId: session.id,
+		user: {
+			id: session.user_id,
+			username: session.username,
+			email: session.email,
+			displayName: session.display_name,
+			role: session.role
+		}
+	};
+}
+
+export async function deleteSession(token: string): Promise<void> {
+	await query('DELETE FROM sessions WHERE token = $1', [token]);
+}
+
+export async function deleteExpiredSessions(): Promise<void> {
+	await query('DELETE FROM sessions WHERE expires_at < now()');
+}
