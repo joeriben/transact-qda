@@ -1,148 +1,97 @@
 <script lang="ts">
-	import InfiniteCanvas from '$lib/canvas/InfiniteCanvas.svelte';
-	import CanvasElement from '$lib/canvas/CanvasElement.svelte';
-	import CanvasConnection from '$lib/canvas/CanvasConnection.svelte';
-	import CanvasRegion from '$lib/canvas/CanvasRegion.svelte';
-	import { createViewport } from '$lib/canvas/viewport.svelte.js';
-	import { createSelection } from '$lib/canvas/selection.svelte.js';
-
 	let { data } = $props();
 
-	const viewport = createViewport();
-	const selection = createSelection();
+	let newInscription = $state('');
+	let adding = $state(false);
+	let relatingFrom = $state<string | null>(null);
+	let newPhaseLabel = $state('');
+	let showPhaseForm = $state(false);
+	let assigningToPhase = $state<string | null>(null);
 
 	const mapType = $derived(data.map.properties?.mapType || 'situational');
 
-	// Derive elements and relations from appearances on this map-as-perspective
-	let elements = $state(
-		data.appearances
-			.filter((a: any) => a.mode === 'entity' || a.mode === 'constellation')
-			.map((a: any) => ({
-				id: a.naming_id,
-				label: a.inscription,
-				mode: a.mode,
-				x: a.properties?.x ?? Math.random() * 600,
-				y: a.properties?.y ?? Math.random() * 400,
-				color: a.properties?.color || '#8b9cf7',
-				rx: a.properties?.rx,
-				ry: a.properties?.ry
-			}))
-	);
-
-	let relations = $state(
-		data.appearances
-			.filter((a: any) => a.mode === 'relation')
-			.map((a: any) => ({
-				id: a.naming_id,
-				label: a.inscription,
-				sourceId: a.directed_from,
-				targetId: a.directed_to,
-				color: a.properties?.color || '#4b5563',
-				isMeta: a.properties?.isMeta || false
-			}))
-	);
-
-	// Mode for situational maps
-	let mode = $state<'messy' | 'ordered'>('messy');
-	let connectingFrom = $state<string | null>(null);
-	let newEntityLabel = $state('');
-	let showPalette = $state(true);
-
-	function getElementPos(id: string) {
-		const el = elements.find(e => e.id === id);
-		return el ? { x: el.x + 50, y: el.y + 25 } : { x: 0, y: 0 };
-	}
-
-	async function onDragEnd(id: string, x: number, y: number) {
-		const el = elements.find(e => e.id === id);
-		if (el) {
-			el.x = x;
-			el.y = y;
-		}
-
-		// Persist appearance (position under this map-as-perspective)
-		await fetch(`/api/projects/${data.projectId}/elements/${id}/aspects`, {
+	// API helper
+	async function mapAction(action: string, body: Record<string, unknown> = {}) {
+		const res = await fetch(`/api/projects/${data.projectId}/maps/${data.map.id}`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ perspectiveId: data.map.id, mode: 'entity', properties: { x, y } })
+			body: JSON.stringify({ action, ...body })
 		});
+		if (!res.ok) return null;
+		return res.json();
 	}
 
-	function onElementClick(id: string, e: MouseEvent) {
-		if (mode === 'ordered' && connectingFrom) {
-			if (connectingFrom !== id) {
-				createRelation(connectingFrom, id);
-			}
-			connectingFrom = null;
-		} else if (mode === 'ordered' && e.shiftKey) {
-			connectingFrom = id;
-		} else {
-			selection.select(id, e.ctrlKey || e.metaKey);
-		}
-	}
-
-	async function onCanvasClick(x: number, y: number) {
-		selection.clear();
-		connectingFrom = null;
-	}
-
-	async function addEntity() {
-		if (!newEntityLabel.trim()) return;
-
-		// Create naming + appearance on this map in one call
-		const x = 100 + Math.random() * 400;
-		const y = 100 + Math.random() * 300;
-		const res = await fetch(`/api/projects/${data.projectId}/elements`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				inscription: newEntityLabel.trim(),
-				appearance: {
-					perspectiveId: data.map.id,
-					mode: 'entity',
-					properties: { x, y }
-				}
-			})
-		});
+	async function reload() {
+		const res = await fetch(`/api/projects/${data.projectId}/maps/${data.map.id}`);
 		if (!res.ok) return;
-		const naming = await res.json();
-
-		elements = [...elements, { id: naming.id, label: naming.inscription, mode: 'entity', x, y, color: '#8b9cf7' }];
-		newEntityLabel = '';
+		const fresh = await res.json();
+		data.elements = fresh.elements;
+		data.relations = fresh.relations;
+		data.silences = fresh.silences;
+		data.processes = fresh.processes;
+		data.constellations = fresh.constellations;
+		data.phases = fresh.phases;
+		data.designationProfile = fresh.designationProfile;
 	}
 
-	async function placeExistingNaming(namingId: string, inscription: string) {
-		const x = 100 + Math.random() * 400;
-		const y = 100 + Math.random() * 300;
-		await fetch(`/api/projects/${data.projectId}/elements/${namingId}/aspects`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ perspectiveId: data.map.id, mode: 'entity', properties: { x, y } })
-		});
-		elements = [...elements, { id: namingId, label: inscription, mode: 'entity', x, y, color: '#8b9cf7' }];
+	async function addElement() {
+		if (!newInscription.trim()) return;
+		adding = true;
+		await mapAction('addElement', { inscription: newInscription.trim() });
+		newInscription = '';
+		adding = false;
+		await reload();
 	}
 
-	async function createRelation(sourceId: string, targetId: string) {
-		const inscription = prompt('Relation inscription:') || 'relates to';
+	async function relate(sourceId: string, targetId: string) {
+		const valence = prompt('Valence (e.g. enables, constrains, constitutes):') || undefined;
+		const inscription = prompt('Inscription for this relation:') || '';
+		await mapAction('relate', { sourceId, targetId, inscription, valence });
+		relatingFrom = null;
+		await reload();
+	}
 
-		// Create a naming that appears as relation on this map
-		const res = await fetch(`/api/projects/${data.projectId}/elements`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				inscription,
-				appearance: {
-					perspectiveId: data.map.id,
-					mode: 'relation',
-					directedFrom: sourceId,
-					directedTo: targetId
-				}
-			})
-		});
-		if (!res.ok) return;
-		const naming = await res.json();
+	async function addPhase() {
+		if (!newPhaseLabel.trim()) return;
+		await mapAction('createPhase', { inscription: newPhaseLabel.trim() });
+		newPhaseLabel = '';
+		showPhaseForm = false;
+		await reload();
+	}
 
-		relations = [...relations, { id: naming.id, label: inscription, sourceId, targetId, color: '#4b5563', isMeta: false }];
+	async function assignElement(phaseId: string, namingId: string) {
+		await mapAction('assignToPhase', { phaseId, namingId });
+		assigningToPhase = null;
+		await reload();
+	}
+
+	async function removeElementFromPhase(phaseId: string, namingId: string) {
+		await mapAction('removeFromPhase', { phaseId, namingId });
+		await reload();
+	}
+
+	async function changeDesignation(namingId: string, designation: string) {
+		await mapAction('designate', { namingId, designation });
+		await reload();
+	}
+
+	function designationColor(d: string | undefined) {
+		if (d === 'specification') return '#10b981';
+		if (d === 'characterization') return '#f59e0b';
+		return '#6b7280'; // cue
+	}
+
+	function designationLabel(d: string | undefined) {
+		if (d === 'specification') return 'spec';
+		if (d === 'characterization') return 'char';
+		return 'cue';
+	}
+
+	// Find which phases an element belongs to
+	function phasesForElement(namingId: string): any[] {
+		// An element belongs to a phase if it has an appearance where perspective_id = phase.id
+		// We approximate this from the data we have — phases that contain this element
+		return []; // Will be populated when we have phase-element data
 	}
 </script>
 
@@ -152,91 +101,174 @@
 		<h2>{data.map.label}</h2>
 		<span class="map-type-badge">{mapType}</span>
 
-		{#if mapType === 'situational'}
-			<div class="mode-switch">
-				<button class:active={mode === 'messy'} onclick={() => mode = 'messy'}>Messy</button>
-				<button class:active={mode === 'ordered'} onclick={() => mode = 'ordered'}>Ordered</button>
+		{#if data.designationProfile}
+			<div class="designation-profile">
+				{#each data.designationProfile as dp}
+					<span class="dp-item" style="color: {designationColor(dp.designation)}">
+						{dp.count} {designationLabel(dp.designation)}
+					</span>
+				{/each}
 			</div>
 		{/if}
-
-		{#if connectingFrom}
-			<span class="connecting-hint">Click target element to connect (Esc to cancel)</span>
-		{/if}
-
-		<button class="toggle-palette" onclick={() => showPalette = !showPalette}>
-			{showPalette ? 'Hide palette' : 'Show palette'}
-		</button>
 	</div>
 
 	<div class="map-workspace">
-		<div class="canvas-area">
-			<InfiniteCanvas {viewport} oncanvasclick={onCanvasClick}>
-				{#each relations as rel}
-					{@const s = getElementPos(rel.sourceId)}
-					{@const t = getElementPos(rel.targetId)}
-					<CanvasConnection
-						x1={s.x} y1={s.y}
-						x2={t.x} y2={t.y}
-						label={rel.label}
-						color={rel.color}
-						isMeta={rel.isMeta}
-						selected={selection.isSelected(rel.id)}
-						onclick={() => selection.select(rel.id)}
-					/>
-				{/each}
+		<div class="main-area">
+			<!-- Add element -->
+			<form class="add-form" onsubmit={e => { e.preventDefault(); addElement(); }}>
+				<input
+					type="text"
+					placeholder="Name something in the situation..."
+					bind:value={newInscription}
+					disabled={adding}
+				/>
+				<button type="submit" class="btn-primary" disabled={adding || !newInscription.trim()}>
+					Add
+				</button>
+			</form>
 
-				{#each elements as el}
-					<CanvasElement
-						id={el.id}
-						x={el.x}
-						y={el.y}
-						label={el.label}
-						color={el.color}
-						kind={el.mode}
-						selected={selection.isSelected(el.id)}
-						ondragend={onDragEnd}
-						onclick={onElementClick}
-					/>
-				{/each}
-			</InfiniteCanvas>
+			<!-- Connecting hint -->
+			{#if relatingFrom}
+				<div class="action-bar">
+					Relating from: <strong>{data.elements.find((e: any) => e.naming_id === relatingFrom)?.inscription}</strong>
+					— click another element to connect, or
+					<button class="btn-link" onclick={() => relatingFrom = null}>cancel</button>
+				</div>
+			{/if}
+
+			<!-- Elements -->
+			{#if data.elements.length === 0 && data.relations.length === 0}
+				<p class="empty">Name what is in the situation. Everything is a cue at first.</p>
+			{:else}
+				<div class="element-list">
+					{#each data.elements as el}
+						<div class="element-card">
+							<div class="el-main">
+								<span class="designation-dot" style="background: {designationColor(el.designation)}"
+									title={designationLabel(el.designation)}></span>
+								<span class="el-inscription">{el.inscription}</span>
+							</div>
+							<div class="el-actions">
+								<select
+									value={el.designation || 'cue'}
+									onchange={e => changeDesignation(el.naming_id, (e.target as HTMLSelectElement).value)}
+								>
+									<option value="cue">cue</option>
+									<option value="characterization">characterization</option>
+									<option value="specification">specification</option>
+								</select>
+								{#if relatingFrom && relatingFrom !== el.naming_id}
+									<button class="btn-sm btn-relate" onclick={() => relate(relatingFrom!, el.naming_id)}>
+										connect
+									</button>
+								{:else}
+									<button class="btn-sm" onclick={() => relatingFrom = el.naming_id}>
+										relate
+									</button>
+								{/if}
+								{#if assigningToPhase}
+									<button class="btn-sm btn-phase" onclick={() => assignElement(assigningToPhase!, el.naming_id)}>
+										+ phase
+									</button>
+								{/if}
+							</div>
+						</div>
+					{/each}
+				</div>
+			{/if}
+
+			<!-- Relations -->
+			{#if data.relations.length > 0}
+				<h3 class="section-header">Relations</h3>
+				<div class="element-list">
+					{#each data.relations as rel}
+						<div class="element-card relation-card">
+							<div class="el-main">
+								<span class="designation-dot" style="background: {designationColor(rel.designation)}"></span>
+								<span class="rel-source">
+									{data.elements.find((e: any) => e.naming_id === rel.directed_from)?.inscription || '?'}
+								</span>
+								<span class="rel-arrow">
+									{#if rel.valence}
+										—{rel.valence}→
+									{:else}
+										→
+									{/if}
+								</span>
+								<span class="rel-target">
+									{data.elements.find((e: any) => e.naming_id === rel.directed_to)?.inscription || '?'}
+								</span>
+								{#if rel.inscription}
+									<span class="rel-inscription">{rel.inscription}</span>
+								{/if}
+							</div>
+							<div class="el-actions">
+								<select
+									value={rel.designation || 'cue'}
+									onchange={e => changeDesignation(rel.naming_id, (e.target as HTMLSelectElement).value)}
+								>
+									<option value="cue">cue</option>
+									<option value="characterization">characterization</option>
+									<option value="specification">specification</option>
+								</select>
+							</div>
+						</div>
+					{/each}
+				</div>
+			{/if}
+
+			<!-- Silences -->
+			{#if data.silences.length > 0}
+				<h3 class="section-header">Silences</h3>
+				<div class="element-list">
+					{#each data.silences as s}
+						<div class="element-card silence-card">
+							<span class="el-inscription">{s.inscription}</span>
+						</div>
+					{/each}
+				</div>
+			{/if}
 		</div>
 
-		{#if showPalette}
-			<div class="palette">
-				<h3>Add element</h3>
-				<form onsubmit={e => { e.preventDefault(); addEntity(); }}>
-					<input type="text" placeholder="New entity..." bind:value={newEntityLabel} />
-					<button type="submit" class="btn-sm">Add</button>
-				</form>
-
-				{#if data.allNamings.length > 0}
-					<h4>Existing namings</h4>
-					<div class="entity-list">
-						{#each data.allNamings as naming}
-							{@const onMap = elements.some(e => e.id === naming.id)}
-							<button
-								class="entity-item"
-								disabled={onMap}
-								onclick={() => placeExistingNaming(naming.id, naming.inscription)}
-							>
-								{naming.inscription}
-								{#if onMap}<span class="on-map">on map</span>{/if}
-							</button>
-						{/each}
-					</div>
-				{/if}
-
-				{#if mode === 'ordered'}
-					<div class="hint">
-						Shift+click an element, then click another to create a relation.
-					</div>
-				{/if}
+		<!-- Phases sidebar -->
+		<div class="phases-panel">
+			<div class="phases-header">
+				<h3>Phases</h3>
+				<button class="btn-sm" onclick={() => showPhaseForm = !showPhaseForm}>
+					{showPhaseForm ? '×' : '+'}
+				</button>
 			</div>
-		{/if}
+
+			{#if showPhaseForm}
+				<form class="phase-form" onsubmit={e => { e.preventDefault(); addPhase(); }}>
+					<input type="text" placeholder="Phase label..." bind:value={newPhaseLabel} />
+					<button type="submit" class="btn-sm">Create</button>
+				</form>
+			{/if}
+
+			{#if data.phases.length === 0}
+				<p class="empty-small">No phases yet. Create one to cluster elements.</p>
+			{:else}
+				{#each data.phases as phase}
+					<div class="phase-card" class:assigning={assigningToPhase === phase.id}>
+						<div class="phase-header">
+							<span class="phase-label">{phase.label}</span>
+							<span class="phase-count">{phase.element_count}</span>
+						</div>
+						<button
+							class="btn-xs"
+							onclick={() => assigningToPhase = assigningToPhase === phase.id ? null : phase.id}
+						>
+							{assigningToPhase === phase.id ? 'done' : 'assign elements'}
+						</button>
+					</div>
+				{/each}
+			{/if}
+		</div>
 	</div>
 </div>
 
-<svelte:window onkeydown={e => { if (e.key === 'Escape') { connectingFrom = null; selection.clear(); } }} />
+<svelte:window onkeydown={e => { if (e.key === 'Escape') { relatingFrom = null; assigningToPhase = null; } }} />
 
 <style>
 	.map-page {
@@ -263,60 +295,132 @@
 		background: rgba(139, 156, 247, 0.1); padding: 0.15rem 0.5rem; border-radius: 4px;
 	}
 
-	.mode-switch {
-		display: flex; border: 1px solid #2a2d3a; border-radius: 5px; overflow: hidden; margin-left: auto;
+	.designation-profile {
+		display: flex; gap: 0.75rem; margin-left: auto; font-size: 0.8rem;
 	}
-	.mode-switch button {
-		background: transparent; border: none; color: #8b8fa3;
-		padding: 0.3rem 0.75rem; font-size: 0.8rem; cursor: pointer;
-	}
-	.mode-switch button.active { background: #1e2030; color: #e1e4e8; }
-
-	.connecting-hint { font-size: 0.8rem; color: #f59e0b; margin-left: 0.5rem; }
-
-	.toggle-palette {
-		margin-left: auto; background: none; border: 1px solid #2a2d3a; color: #8b8fa3;
-		padding: 0.3rem 0.6rem; border-radius: 4px; font-size: 0.75rem; cursor: pointer;
-	}
+	.dp-item { font-weight: 500; }
 
 	.map-workspace { display: flex; flex: 1; min-height: 0; }
 
-	.canvas-area { flex: 1; position: relative; }
+	.main-area {
+		flex: 1;
+		padding: 1.25rem;
+		overflow-y: auto;
+	}
 
-	.palette {
-		width: 240px;
+	.add-form {
+		display: flex; gap: 0.5rem; margin-bottom: 1.25rem;
+	}
+	.add-form input {
+		flex: 1; background: #161822; border: 1px solid #2a2d3a; border-radius: 6px;
+		padding: 0.6rem 0.75rem; color: #e1e4e8; font-size: 0.9rem;
+	}
+	.add-form input:focus { outline: none; border-color: #8b9cf7; }
+
+	.btn-primary {
+		background: #8b9cf7; color: #0f1117; border: none; border-radius: 6px;
+		padding: 0.5rem 1rem; font-size: 0.85rem; font-weight: 600; cursor: pointer;
+	}
+	.btn-primary:disabled { opacity: 0.5; }
+
+	.action-bar {
+		background: #1e2030; border: 1px solid #2a2d3a; border-radius: 6px;
+		padding: 0.6rem 0.75rem; margin-bottom: 1rem; font-size: 0.85rem; color: #c9cdd5;
+	}
+	.btn-link {
+		background: none; border: none; color: #8b9cf7; cursor: pointer;
+		font-size: 0.85rem; text-decoration: underline;
+	}
+
+	.empty { color: #6b7280; font-size: 0.9rem; padding: 2rem 0; text-align: center; }
+
+	.section-header {
+		font-size: 0.75rem; color: #6b7280; text-transform: uppercase;
+		letter-spacing: 0.05em; margin: 1.5rem 0 0.5rem;
+	}
+
+	.element-list { display: flex; flex-direction: column; gap: 0.35rem; }
+
+	.element-card {
+		display: flex; align-items: center; justify-content: space-between;
+		background: #161822; border: 1px solid #2a2d3a; border-radius: 6px;
+		padding: 0.5rem 0.75rem;
+	}
+	.element-card:hover { border-color: #3a3d4a; }
+
+	.relation-card { background: #141620; }
+	.silence-card { border-style: dashed; opacity: 0.7; }
+
+	.el-main { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
+
+	.designation-dot {
+		width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+	}
+
+	.el-inscription { font-size: 0.9rem; color: #e1e4e8; }
+
+	.rel-source, .rel-target { font-size: 0.85rem; color: #c9cdd5; }
+	.rel-arrow { font-size: 0.8rem; color: #6b7280; margin: 0 0.25rem; }
+	.rel-inscription { font-size: 0.75rem; color: #8b8fa3; margin-left: 0.5rem; font-style: italic; }
+
+	.el-actions { display: flex; align-items: center; gap: 0.4rem; flex-shrink: 0; }
+
+	.el-actions select {
+		background: #0f1117; border: 1px solid #2a2d3a; border-radius: 4px;
+		color: #8b8fa3; font-size: 0.7rem; padding: 0.2rem 0.3rem; cursor: pointer;
+	}
+
+	.btn-sm {
+		background: #1e2030; border: 1px solid #2a2d3a; border-radius: 4px;
+		color: #c9cdd5; font-size: 0.75rem; padding: 0.25rem 0.5rem; cursor: pointer;
+	}
+	.btn-sm:hover { border-color: #8b9cf7; color: #e1e4e8; }
+
+	.btn-relate { border-color: #f59e0b; color: #f59e0b; }
+	.btn-phase { border-color: #10b981; color: #10b981; }
+
+	.btn-xs {
+		background: none; border: 1px solid #2a2d3a; border-radius: 4px;
+		color: #8b8fa3; font-size: 0.7rem; padding: 0.15rem 0.4rem; cursor: pointer;
+	}
+	.btn-xs:hover { border-color: #8b9cf7; }
+
+	/* Phases panel */
+	.phases-panel {
+		width: 220px;
 		background: #13151e;
 		border-left: 1px solid #2a2d3a;
 		padding: 1rem;
 		overflow-y: auto;
 	}
-	.palette h3 { font-size: 0.85rem; color: #8b8fa3; margin-bottom: 0.5rem; }
-	.palette h4 { font-size: 0.75rem; color: #6b7280; margin: 1rem 0 0.5rem; text-transform: uppercase; }
 
-	.palette form { display: flex; gap: 0.4rem; }
-	.palette input {
-		flex: 1; background: #0f1117; border: 1px solid #2a2d3a; border-radius: 5px;
-		padding: 0.4rem 0.5rem; color: #e1e4e8; font-size: 0.8rem;
+	.phases-header {
+		display: flex; align-items: center; justify-content: space-between;
+		margin-bottom: 0.75rem;
 	}
-	.palette input:focus { outline: none; border-color: #8b9cf7; }
+	.phases-header h3 { font-size: 0.85rem; color: #8b8fa3; }
 
-	.btn-sm {
-		background: #8b9cf7; color: #0f1117; border: none; border-radius: 5px;
-		padding: 0.4rem 0.6rem; font-size: 0.8rem; font-weight: 600; cursor: pointer;
+	.phase-form {
+		display: flex; gap: 0.4rem; margin-bottom: 0.75rem;
 	}
-
-	.entity-list { display: flex; flex-direction: column; gap: 0.2rem; }
-	.entity-item {
-		background: #161822; border: 1px solid #2a2d3a; border-radius: 5px;
-		padding: 0.4rem 0.6rem; color: #c9cdd5; font-size: 0.8rem; text-align: left; cursor: pointer;
+	.phase-form input {
+		flex: 1; background: #0f1117; border: 1px solid #2a2d3a; border-radius: 4px;
+		padding: 0.35rem 0.5rem; color: #e1e4e8; font-size: 0.8rem;
 	}
-	.entity-item:hover:not(:disabled) { border-color: #8b9cf7; }
-	.entity-item:disabled { opacity: 0.5; cursor: default; }
+	.phase-form input:focus { outline: none; border-color: #8b9cf7; }
 
-	.on-map { font-size: 0.65rem; color: #6b7280; margin-left: 0.25rem; }
+	.empty-small { color: #6b7280; font-size: 0.8rem; }
 
-	.hint {
-		margin-top: 1rem; font-size: 0.75rem; color: #6b7280;
-		padding: 0.5rem; background: #1e2030; border-radius: 5px;
+	.phase-card {
+		background: #161822; border: 1px solid #2a2d3a; border-radius: 6px;
+		padding: 0.5rem 0.6rem; margin-bottom: 0.35rem;
 	}
+	.phase-card.assigning { border-color: #10b981; }
+
+	.phase-header {
+		display: flex; justify-content: space-between; align-items: center;
+		margin-bottom: 0.25rem;
+	}
+	.phase-label { font-size: 0.85rem; color: #e1e4e8; font-weight: 500; }
+	.phase-count { font-size: 0.7rem; color: #6b7280; }
 </style>
