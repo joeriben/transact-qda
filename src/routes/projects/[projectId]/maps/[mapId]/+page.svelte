@@ -207,8 +207,8 @@
 
 	async function assignElement(phaseId: string, namingId: string) {
 		await mapAction('assignToPhase', { phaseId, namingId });
-		assigningToPhase = null;
 		await reload();
+		if (expandedPhase === phaseId) await loadPhaseContents(phaseId);
 	}
 
 	async function removeElementFromPhase(phaseId: string, namingId: string) {
