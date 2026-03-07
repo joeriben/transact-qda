@@ -292,7 +292,17 @@
 	async function showHistory(namingId: string) {
 		if (historyId === namingId) { historyId = null; historyData = null; return; }
 		historyId = namingId;
-		historyData = await mapAction('getHistory', { namingId });
+		historyData = await mapAction('getStack', { namingId });
+	}
+
+	async function pinToLayer(namingId: string, seq: number) {
+		await mapAction('setCollapse', { namingId, collapseAt: seq });
+		await reload();
+	}
+
+	async function unpinLayer(namingId: string) {
+		await mapAction('setCollapse', { namingId, collapseAt: null });
+		await reload();
 	}
 
 	function designationColor(d: string | undefined) {
@@ -421,6 +431,7 @@
 					{#each elements as el}
 						<div class="element-card" class:ai-suggested={el.properties?.aiSuggested === true} title={el.properties?.aiReasoning || ''}>
 							<div class="el-main">
+								{#if el.is_collapsed}<span class="collapsed-indicator" title="Pinned to specific layer">&#x1F4CC;</span>{/if}
 								<span class="designation-dot" style="background: {designationColor(el.designation)}"
 									title={designationLabel(el.designation)}></span>
 								{#if editingId === el.naming_id}
@@ -435,6 +446,9 @@
 									<span class="el-inscription editable" ondblclick={() => startRename(el.naming_id, el.inscription)}>
 										{el.inscription}
 									</span>
+									{#if el.is_collapsed && el.current_inscription && el.current_inscription !== el.inscription}
+										<span class="collapsed-current">currently: {el.current_inscription}</span>
+									{/if}
 								{/if}
 							</div>
 							<div class="el-actions">
@@ -446,8 +460,8 @@
 									<option value="characterization">characterization</option>
 									<option value="specification">specification</option>
 								</select>
-								<button class="btn-xs" title="history" onclick={() => showHistory(el.naming_id)}>
-									hist
+								<button class="btn-xs" title="naming stack" onclick={() => showHistory(el.naming_id)}>
+									stack
 								</button>
 								{#if relatingFrom && !relatingTo && relatingFrom !== el.naming_id}
 									<button class="btn-sm btn-relate" onclick={() => startRelation(relatingFrom!, el.naming_id)}>
@@ -468,14 +482,22 @@
 
 						{#if historyId === el.naming_id && historyData}
 							<div class="history-panel">
+								{#if el.is_collapsed}
+									<button class="btn-xs btn-unpin" onclick={() => unpinLayer(el.naming_id)}>
+										unpin (show latest)
+									</button>
+								{/if}
 								{#if historyData.inscriptions.length > 1}
 									<div class="history-section">
 										<span class="history-label">Inscriptions</span>
 										{#each historyData.inscriptions as hi}
-											<div class="history-entry">
+											<div class="history-entry" class:pinned-layer={el.is_collapsed && el.properties?.collapseAt === hi.seq}>
 												<span class="he-value">{hi.inscription}</span>
 												<span class="he-by">{hi.by_inscription}</span>
 												<span class="he-date">{new Date(hi.created_at).toLocaleString()}</span>
+												<button class="btn-xs btn-pin" title="Pin to this layer" onclick={() => pinToLayer(el.naming_id, hi.seq)}>
+													pin
+												</button>
 											</div>
 										{/each}
 									</div>
@@ -558,6 +580,7 @@
 						{@const tgtId = rel.directed_to || rel.part_target_id}
 						<div class="element-card relation-card" class:ai-suggested={rel.properties?.aiSuggested === true} title={rel.properties?.aiReasoning || ''}>
 							<div class="el-main">
+								{#if rel.is_collapsed}<span class="collapsed-indicator" title="Pinned to specific layer">&#x1F4CC;</span>{/if}
 								<span class="designation-dot" style="background: {designationColor(rel.designation)}"></span>
 								<span class="rel-source">
 									{findInscription(srcId)}
@@ -591,6 +614,9 @@
 										(name...)
 									</span>
 								{/if}
+								{#if rel.is_collapsed && rel.current_inscription && rel.current_inscription !== rel.inscription}
+									<span class="collapsed-current">currently: {rel.current_inscription}</span>
+								{/if}
 							</div>
 							<div class="el-actions">
 								<select
@@ -601,8 +627,8 @@
 									<option value="characterization">characterization</option>
 									<option value="specification">specification</option>
 								</select>
-								<button class="btn-xs" title="history" onclick={() => showHistory(rel.naming_id)}>
-									hist
+								<button class="btn-xs" title="naming stack" onclick={() => showHistory(rel.naming_id)}>
+									stack
 								</button>
 								{#if relatingFrom && !relatingTo && relatingFrom !== rel.naming_id}
 									<button class="btn-sm btn-relate" onclick={() => startRelation(relatingFrom!, rel.naming_id)}>
@@ -623,14 +649,22 @@
 
 						{#if historyId === rel.naming_id && historyData}
 							<div class="history-panel">
+								{#if rel.is_collapsed}
+									<button class="btn-xs btn-unpin" onclick={() => unpinLayer(rel.naming_id)}>
+										unpin (show latest)
+									</button>
+								{/if}
 								{#if historyData.inscriptions.length > 1}
 									<div class="history-section">
 										<span class="history-label">Inscriptions</span>
 										{#each historyData.inscriptions as hi}
-											<div class="history-entry">
+											<div class="history-entry" class:pinned-layer={rel.is_collapsed && rel.properties?.collapseAt === hi.seq}>
 												<span class="he-value">{hi.inscription}</span>
 												<span class="he-by">{hi.by_inscription}</span>
 												<span class="he-date">{new Date(hi.created_at).toLocaleString()}</span>
+												<button class="btn-xs btn-pin" title="Pin to this layer" onclick={() => pinToLayer(rel.naming_id, hi.seq)}>
+													pin
+												</button>
 											</div>
 										{/each}
 									</div>
@@ -952,6 +986,36 @@
 	.he-date { color: #4b5563; margin-left: auto; font-size: 0.7rem; }
 	.designation-dot-sm {
 		width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+	}
+
+	/* Collapsed / pinned layer */
+	.collapsed-indicator {
+		font-size: 0.6rem;
+		color: #f59e0b;
+		margin-right: 0.2rem;
+	}
+	.collapsed-current {
+		font-size: 0.7rem;
+		color: #6b7280;
+		font-style: italic;
+		margin-left: 0.5rem;
+	}
+	.btn-pin {
+		margin-left: auto;
+		border-color: #f59e0b;
+		color: #f59e0b;
+	}
+	.btn-pin:hover { background: rgba(245, 158, 11, 0.1); }
+	.btn-unpin {
+		border-color: #f59e0b;
+		color: #f59e0b;
+		margin-bottom: 0.4rem;
+	}
+	.btn-unpin:hover { background: rgba(245, 158, 11, 0.1); }
+	.pinned-layer {
+		background: rgba(245, 158, 11, 0.1);
+		border-radius: 3px;
+		padding: 0.1rem 0.3rem;
 	}
 
 	/* AI controls */

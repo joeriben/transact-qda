@@ -7,7 +7,9 @@ import {
 	relateElements,
 	createPhase,
 	assignToPhase,
-	removeFromPhase
+	removeFromPhase,
+	setCollapse,
+	getNamingStack
 } from '$lib/server/db/queries/maps.js';
 import {
 	designate,
@@ -133,6 +135,20 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 				getDesignationHistory(namingId)
 			]);
 			return json({ inscriptions, designations });
+		}
+
+		case 'getStack': {
+			const { namingId } = body;
+			if (!namingId) return json({ error: 'namingId required' }, { status: 400 });
+			const stack = await getNamingStack(namingId);
+			return json(stack);
+		}
+
+		case 'setCollapse': {
+			const { namingId, collapseAt } = body;
+			if (!namingId) return json({ error: 'namingId required' }, { status: 400 });
+			const result = await setCollapse(namingId, mapId, collapseAt ?? null);
+			return json(result || { ok: true });
 		}
 
 		case 'toggleAi': {

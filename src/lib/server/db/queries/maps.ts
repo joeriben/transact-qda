@@ -277,16 +277,92 @@ export async function removeFromPhase(phaseId: string, namingId: string) {
 	);
 }
 
+// Set the collapse point for a naming in a perspective.
+// collapseAt = global seq value → shows inscription + designation as of that seq.
+// Pass null to clear (return to showing latest).
+export async function setCollapse(
+	namingId: string,
+	perspectiveId: string,
+	collapseAt: number | null
+) {
+	if (collapseAt === null) {
+		// Remove collapseAt from properties
+		return queryOne(
+			`UPDATE appearances
+			 SET properties = properties - 'collapseAt', updated_at = now()
+			 WHERE naming_id = $1 AND perspective_id = $2
+			 RETURNING *`,
+			[namingId, perspectiveId]
+		);
+	}
+	return queryOne(
+		`UPDATE appearances
+		 SET properties = properties || $3::jsonb, updated_at = now()
+		 WHERE naming_id = $1 AND perspective_id = $2
+		 RETURNING *`,
+		[namingId, perspectiveId, JSON.stringify({ collapseAt })]
+	);
+}
+
+// Get the full stack of a naming: all inscription and designation layers.
+// This is not "history" — it IS the naming's constitution.
+export async function getNamingStack(namingId: string) {
+	const [inscriptions, designations] = await Promise.all([
+		query(
+			`SELECT ni.seq, ni.inscription, ni.created_at, n.inscription as by_inscription
+			 FROM naming_inscriptions ni
+			 JOIN namings n ON n.id = ni.by
+			 WHERE ni.naming_id = $1
+			 ORDER BY ni.seq ASC`,
+			[namingId]
+		),
+		query(
+			`SELECT nd.seq, nd.designation, nd.created_at, n.inscription as by_inscription
+			 FROM naming_designations nd
+			 JOIN namings n ON n.id = nd.by
+			 WHERE nd.naming_id = $1
+			 ORDER BY nd.seq ASC`,
+			[namingId]
+		)
+	]);
+	return {
+		inscriptions: inscriptions.rows,
+		designations: designations.rows
+	};
+}
+
 // ---- Queries ----
 
-// Get all appearances on the map, enriched with current designation
-// and participation endpoints (for relations — both directed and symmetric)
+// Get all appearances on the map, enriched with designation and inscription.
+// Supports perspectival collapse: if appearance.properties.collapseAt is set,
+// shows the inscription and designation as of that global seq — not the latest.
+// A naming IS its stack; the perspective chooses which layer to collapse to.
 export async function getMapAppearances(mapId: string, projectId: string) {
 	return (
 		await query(
-			`SELECT a.*, n.inscription, n.created_at as naming_created_at,
-			   (SELECT nd.designation FROM naming_designations nd
-			    WHERE nd.naming_id = a.naming_id ORDER BY nd.seq DESC LIMIT 1) as designation,
+			`SELECT a.*,
+			   -- Inscription: collapsed (at collapseAt seq) or current
+			   COALESCE(
+			     (SELECT ni.inscription FROM naming_inscriptions ni
+			      WHERE ni.naming_id = a.naming_id
+			        AND (a.properties->>'collapseAt' IS NULL
+			             OR ni.seq <= (a.properties->>'collapseAt')::bigint)
+			      ORDER BY ni.seq DESC LIMIT 1),
+			     n.inscription
+			   ) as inscription,
+			   n.inscription as current_inscription,
+			   n.created_at as naming_created_at,
+			   -- Designation: collapsed or current
+			   COALESCE(
+			     (SELECT nd.designation FROM naming_designations nd
+			      WHERE nd.naming_id = a.naming_id
+			        AND (a.properties->>'collapseAt' IS NULL
+			             OR nd.seq <= (a.properties->>'collapseAt')::bigint)
+			      ORDER BY nd.seq DESC LIMIT 1),
+			     'cue'
+			   ) as designation,
+			   -- Whether this appearance is collapsed (pinned) or showing latest
+			   (a.properties->>'collapseAt') IS NOT NULL as is_collapsed,
 			   p.naming_id as part_source_id,
 			   p.participant_id as part_target_id
 			 FROM appearances a
@@ -324,7 +400,7 @@ export async function getMapPhases(mapId: string, projectId: string) {
 }
 
 // Get the aggregate designation state of a map:
-// how many elements at each designation stage
+// how many elements at each designation stage (respects collapseAt)
 export async function getMapDesignationProfile(mapId: string, projectId: string) {
 	return (
 		await query(
@@ -332,7 +408,10 @@ export async function getMapDesignationProfile(mapId: string, projectId: string)
 			   SELECT
 			     COALESCE(
 			       (SELECT nd.designation FROM naming_designations nd
-			        WHERE nd.naming_id = a.naming_id ORDER BY nd.seq DESC LIMIT 1),
+			        WHERE nd.naming_id = a.naming_id
+			          AND (a.properties->>'collapseAt' IS NULL
+			               OR nd.seq <= (a.properties->>'collapseAt')::bigint)
+			        ORDER BY nd.seq DESC LIMIT 1),
 			       'cue'
 			     ) as designation,
 			     count(*) as count
