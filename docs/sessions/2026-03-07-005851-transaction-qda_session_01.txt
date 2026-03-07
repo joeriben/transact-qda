@@ -1,16 +1,16 @@
 
-╭─── Claude Code v2.1.70 ──────────────────────────────────────────────────────╮
-│                                                    │ Tips for getting        │
-│               Welcome back Benjamin!               │ started                 │
-│                                                    │ Run /init to create a … │
-│                       ▐▛███▜▌                      │ ─────────────────────── │
-│                      ▝▜█████▛▘                     │ Recent activity         │
-│                        ▘▘ ▝▝                       │ 1mo ago  Überprüfe: ❯ … │
-│                                                    │ /resume for more        │
-│      Opus 4.6 · Claude Max ·                       │                         │
-│      benjamin.joerissen@fau.de's Organization      │                         │
-│                 ~/ai/transact-qda                  │                         │
-╰──────────────────────────────────────────────────────────────────────────────╯
+╭─── Claude Code v2.1.70 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                    │ Tips for getting started                                                          │
+│               Welcome back Benjamin!               │ Run /init to create a CLAUDE.md file with instructions for Claude                 │
+│                                                    │ ───────────────────────────────────────────────────────────────────────────────── │
+│                                                    │ Recent activity                                                                   │
+│                       ▐▛███▜▌                      │ 1mo ago  Überprüfe: ❯ heartmula ist installiert, aber heartlib anscheinend nicht? │
+│                      ▝▜█████▛▘                     │ /resume for more                                                                  │
+│                        ▘▘ ▝▝                       │                                                                                   │
+│      Opus 4.6 · Claude Max ·                       │                                                                                   │
+│      benjamin.joerissen@fau.de's Organization      │                                                                                   │
+│                 ~/ai/transact-qda                  │                                                                                   │
+╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 
 ✻ Conversation compacted (ctrl+o for history)
 
@@ -28,8 +28,7 @@
 
 ❯ Tool loaded. 
 
-● Bash(git remote add origin https://github.com/joeriben/transact-qda.git && git
-       branch -M main && git push -u origin main)
+● Bash(git remote add origin https://github.com/joeriben/transact-qda.git && git branch -M main && git push -u origin main)
   ⎿  Error: Exit code 3
      error: remote origin already exists.
 
@@ -47,12 +46,9 @@
   ⎿  Error: Exit code 1
      To https://github.com/joeriben/transact-qda.git
       ! [rejected]        main -> main (non-fast-forward)
-     error: failed to push some refs to 
-     'https://github.com/joeriben/transact-qda.git'
-     hint: Updates were rejected because a pushed branch tip is behind its 
-     remote
-     hint: counterpart. If you want to integrate the remote changes, use 'git 
-     pull'
+     error: failed to push some refs to 'https://github.com/joeriben/transact-qda.git'
+     hint: Updates were rejected because a pushed branch tip is behind its remote
+     hint: counterpart. If you want to integrate the remote changes, use 'git pull'
      hint: before pushing again.
      hint: See the 'Note about fast-forwards' in 'git push --help' for details.
 
@@ -66,16 +62,12 @@
 
 ● Bash(git log --oneline origin/main..main)
   ⎿  36f5ac9 Add session export to docs/sessions
-     0b56997 Refactor to transactional ontology: namings, participations, a
-     ppearances
+     0b56997 Refactor to transactional ontology: namings, participations, appearances
      d2a8fa1 Initial scaffold: transact-qda
 
-● The remote has an "Initial commit" (likely a GitHub-generated one with
-  README/LICENSE), while local has 3 commits with all the actual work.
+● The remote has an "Initial commit" (likely a GitHub-generated one with README/LICENSE), while local has 3 commits with all the actual work.
 
-  Should I force push to replace the remote's initial commit with our full
-  history? This will overwrite that single remote commit (e787360 Initial 
-  commit).
+  Should I force push to replace the remote's initial commit with our full history? This will overwrite that single remote commit (e787360 Initial commit).
 
 ❯ yes 
 
@@ -83,173 +75,114 @@
   ⎿  To https://github.com/joeriben/transact-qda.git
       + e787360...36f5ac9 main -> main (forced update)
 
-● Pushed successfully. All 3 commits are now on
-  https://github.com/joeriben/transact-qda.
+● Pushed successfully. All 3 commits are now on https://github.com/joeriben/transact-qda.
 
 ❯ /model 
   ⎿  Kept model as Default (Opus 4.6 · Most capable for complex work)
 
-❯ Ok. Wir haben nun eine adäquate Grundlage. Wir bleiben auf der Ebene von  
-  Daten-Objekten und belasten und noch nicht mit Visualisierungsfragen.     
-  Ziel der Theoriebildung in einer relationalen Empirie ist weniger die     
-  Rekonstruktion von Sinn-Prozessen humaner Akteure. Es gibt sicherlich     
-  verschiedene Beschreibungen für das worum es geht, je nach gewähltem      
-  paradigmatischen Bezugsrahmen (dafür sollten wir offen bleiben).          
-  Bentley/Dewey zumindest im Ansatz; Barad; Haraway; Harrison C. White; ... 
+❯ Ok. Wir haben nun eine adäquate Grundlage. Wir bleiben auf der Ebene von Daten-Objekten und belasten und noch nicht mit Visualisierungsfragen. Ziel   
+  der Theoriebildung in einer relationalen Empirie ist weniger die Rekonstruktion von Sinn-Prozessen humaner Akteure. Es gibt sicherlich verschiedene   
+  Beschreibungen für das worum es geht, je nach gewähltem paradigmatischen Bezugsrahmen (dafür sollten wir offen bleiben). Bentley/Dewey zumindest im   
+  Ansatz; Barad; Haraway; Harrison C. White; ...                                                                                                        
 
-● Understood. The data model we have (namings, participations, appearances) is
-  already well-suited for this — it doesn't privilege human actors or
-  meaning-reconstruction. The ontology is flat: a naming can be a discourse, a
-  technology, a policy, a material arrangement — the distinction only emerges
+● Understood. The data model we have (namings, participations, appearances) is already well-suited for this — it doesn't privilege human actors or
+  meaning-reconstruction. The ontology is flat: a naming can be a discourse, a technology, a policy, a material arrangement — the distinction only emerges
   perspectivally through appearances.
 
   The theoretical openness you describe maps well onto the architecture:
-  - Dewey/Bentley: namings as trans-actions, not inter-actions between pre-given
-   entities
-  - Barad: intra-action — participations as mutual constitution, not external
-  relation
+  - Dewey/Bentley: namings as trans-actions, not inter-actions between pre-given entities
+  - Barad: intra-action — participations as mutual constitution, not external relation
   - Haraway: situated perspectives — appearances are always from somewhere
-  - White: network domains, identities emerging from relational positions —
-  participations + perspectival collapse
+  - White: network domains, identities emerging from relational positions — participations + perspectival collapse
 
-  The 3-table model doesn't commit to any single framework. The mode field in
-  appearances (entity, relation, constellation, process, silence, perspective)
+  The 3-table model doesn't commit to any single framework. The mode field in appearances (entity, relation, constellation, process, silence, perspective)
   is where paradigmatic choices become operational — and it's extensible.
 
   What's the next concrete step you'd like to take on the data object level?
 
-❯ ... Whitehead/Stengers, OOO, ggf. Postphänomenologie, ... -- Ich selbst   
-  bin in der rekonstruktiven qualitativen Forschungsidee verankert; daher   
-  bildet Rekonstruktion für mich ein Zentrum - ohne dass ich von einem      
-  ontologisch vorgängigen "Was" der Rekonstruktion ausgehe, aber auch ein   
-  Latentraum (Oevermann) lässt sich ja als perspektivische appearance       
-  lesen. Ich stelle mir hier in zwei Richtungen Fragen: 1) Was sind Ziele   
-  rekonstruktiv-qualitativer Forschung? Gegenstandsbasierte Theoriebildung, 
-   die transformierte Perspektiven ermöglichen, wobei das Transformative    
-  sich aus der Annahme des Wandels von "Selbst-Welt-Verhältnissen"          
-  (interaktionale metapher), aber auch von Weltverähltnissen per se, und    
-  Formen in denen Subjekte auftreten, bezieht.                              
+❯ ... Whitehead/Stengers, OOO, ggf. Postphänomenologie, ... -- Ich selbst bin in der rekonstruktiven qualitativen Forschungsidee verankert; daher       
+  bildet Rekonstruktion für mich ein Zentrum - ohne dass ich von einem ontologisch vorgängigen "Was" der Rekonstruktion ausgehe, aber auch ein          
+  Latentraum (Oevermann) lässt sich ja als perspektivische appearance lesen. Ich stelle mir hier in zwei Richtungen Fragen: 1) Was sind Ziele           
+  rekonstruktiv-qualitativer Forschung? Gegenstandsbasierte Theoriebildung, die transformierte Perspektiven ermöglichen, wobei das Transformative sich  
+  aus der Annahme des Wandels von "Selbst-Welt-Verhältnissen" (interaktionale metapher), aber auch von Weltverähltnissen per se, und Formen in denen    
+  Subjekte auftreten, bezieht.                                                                                                                          
   ⎿  Interrupted · What should Claude do instead?
 
-❯ In einer stark-relationstheoretischen Perspektive steht dabei notwendig   
-  die Frage des Werdens, oder allgemeiner stehen Strukturen der             
-  Prozessualität deutlich im Zentrum. Das haben wir (halb-) empirischen in  
-  einem Artikel versucht: " Sustainability and Cultural Resilience:         
-  Processes and Dynamics of Relational Becoming in Distributed Agencies     
-                                                                            
-              Analyzing Ligurian micro-agriculture, the article             
-  conceptualizes cultural resilience via relational entanglements of soil,  
-  knowledge, economy, and place. Employing neo-materialist approaches, it   
-  shows how sympoietic networks disrupt nature–culture divides, producing   
-  resilience through distributed agency rather than individual adaptation.  
-  Cultural resilience thus emerges as collective, sustainable               
-  post-anthropic becoming." 2) Zweite Fragerichtung: helfen uns die Namings 
-   von Bently-Dewey, Formen zu identifizieren für das Prozessieren unserer  
-  Objekte (oder ist das doch zu eng oder paradigmatisch zu alt). Da muss    
-  ich selbst noch einmal in ihren Versuch Namings zu listen hineinschauen,  
-  aber die Frage kann man schon festhalten.                                 
+❯ In einer stark-relationstheoretischen Perspektive steht dabei notwendig die Frage des Werdens, oder allgemeiner stehen Strukturen der Prozessualität  
+  deutlich im Zentrum. Das haben wir (halb-) empirischen in einem Artikel versucht: " Sustainability and Cultural Resilience: Processes and Dynamics of 
+   Relational Becoming in Distributed Agencies                                                                                                          
+                                                                                                                                                        
+              Analyzing Ligurian micro-agriculture, the article conceptualizes cultural resilience via relational entanglements of soil, knowledge,     
+  economy, and place. Employing neo-materialist approaches, it shows how sympoietic networks disrupt nature–culture divides, producing resilience       
+  through distributed agency rather than individual adaptation. Cultural resilience thus emerges as collective, sustainable post-anthropic becoming."   
+  2) Zweite Fragerichtung: helfen uns die Namings von Bently-Dewey, Formen zu identifizieren für das Prozessieren unserer Objekte (oder ist das doch zu 
+   eng oder paradigmatisch zu alt). Da muss ich selbst noch einmal in ihren Versuch Namings zu listen hineinschauen, aber die Frage kann man schon      
+  festhalten.                                                                                                                                           
 
 ● Sehr guter Punkt. Ich halte die beiden Fragerichtungen fest:
 
-  1) Prozessualität als Kernstruktur: Das relationale Werden — nicht Zustände,
-  sondern Transformationsdynamiken — muss sich im Datenmodell abbilden lassen.
-  Unser seq-Feld in namings ist bereits ein Ansatz (jedes Naming IS ein Ereignis
-   mit Zeitindex), aber die Frage ist, ob wir Prozessualität expliziter
-  modellieren: Wie werden Sequenzen, Übergänge, Emergenz-Muster (wie in eurem
-  Ligurien-Artikel: sympoietische Netzwerke, verteilte Agentialität) als solche
-  greifbar — nicht nur als nachträgliche Interpretation, sondern als
-  Daten-Objekte?
+  1) Prozessualität als Kernstruktur: Das relationale Werden — nicht Zustände, sondern Transformationsdynamiken — muss sich im Datenmodell abbilden lassen.
+  Unser seq-Feld in namings ist bereits ein Ansatz (jedes Naming IS ein Ereignis mit Zeitindex), aber die Frage ist, ob wir Prozessualität expliziter
+  modellieren: Wie werden Sequenzen, Übergänge, Emergenz-Muster (wie in eurem Ligurien-Artikel: sympoietische Netzwerke, verteilte Agentialität) als solche
+  greifbar — nicht nur als nachträgliche Interpretation, sondern als Daten-Objekte?
 
-  Der mode: 'process' in appearances ist ein Platzhalter dafür, aber noch nicht
-  ausgearbeitet.
+  Der mode: 'process' in appearances ist ein Platzhalter dafür, aber noch nicht ausgearbeitet.
 
-  2) Dewey/Bentleys Naming-Taxonomie als Prozessierungsformen: In Knowing and 
-  the Known unterscheiden sie bekanntlich:
+  2) Dewey/Bentleys Naming-Taxonomie als Prozessierungsformen: In Knowing and the Known unterscheiden sie bekanntlich:
   - Cue (Signal/Hinweis)
   - Characterization (vorläufige Bestimmung)
   - Specification (präzise trans-aktionale Bestimmung)
   - Definition (formale Fixierung)
   - Description, Designation, Symbol...
 
-  Die Frage ist: Liefert diese Taxonomie brauchbare operationale Kategorien für
-  das, was man mit Namings im Forschungsprozess tut? Oder ist sie zu eng an ein
-  szientifisches Ideal gebunden und verfehlt gerade das Rekonstruktive — den
-  Latentraum, das Noch-nicht-Bestimmte, die Emergenz?
+  Die Frage ist: Liefert diese Taxonomie brauchbare operationale Kategorien für das, was man mit Namings im Forschungsprozess tut? Oder ist sie zu eng an
+  ein szientifisches Ideal gebunden und verfehlt gerade das Rekonstruktive — den Latentraum, das Noch-nicht-Bestimmte, die Emergenz?
 
-  Das ist eine produktive Spannung: Dewey/Bentley systematisieren Naming-Formen,
-   aber aus einer pragmatistischen Wissenschaftstheorie heraus. Die
-  rekonstruktive Tradition (Oevermann, aber auch Bohnsack, Nohl) operiert mit
-  einer anderen Logik — Abduktion, Sequenzialität, Fallstruktur. Die Frage wäre,
-   ob sich beide Perspektiven in unserem Modell als verschiedene Perspektiven
-  (im technischen Sinn: verschiedene appearances desselben Namings) abbilden
+  Das ist eine produktive Spannung: Dewey/Bentley systematisieren Naming-Formen, aber aus einer pragmatistischen Wissenschaftstheorie heraus. Die
+  rekonstruktive Tradition (Oevermann, aber auch Bohnsack, Nohl) operiert mit einer anderen Logik — Abduktion, Sequenzialität, Fallstruktur. Die Frage wäre,
+   ob sich beide Perspektiven in unserem Modell als verschiedene Perspektiven (im technischen Sinn: verschiedene appearances desselben Namings) abbilden
   lassen, statt sich für eine zu entscheiden.
 
-  Möchtest du zunächst in die Dewey/Bentley-Liste hineinschauen, oder sollen wir
-   erst die Prozessualitäts-Frage auf Datenmodell-Ebene konkreter machen?
+  Möchtest du zunächst in die Dewey/Bentley-Liste hineinschauen, oder sollen wir erst die Prozessualitäts-Frage auf Datenmodell-Ebene konkreter machen?
 
-❯ D/W; das gibt uns ggf. Auskunft über die Prozessualität. Ich will aber zu 
-   letzterem vorwegnehmen: im Gegensatz zu den genannten rekonsturktiven    
-  Ansätzen (denke ich) sehe ich in Prozessperspektiven eine Symmetrie von   
-  dem, was aus Sicht europäischer Ontologien als asymmetrische Differenz    
-  von Existentem vs. nicht-Existentem erscheint. Besonders anregend finde   
-  ich z.B. bei Barad die optische Metapher der Wellenüberlagerung, und      
-  zwar: der x-Wert "0" bei einer solchen Überlagerung, also nichts, keine   
-  Information (im Vergleich zur Basislinie) ist durchaus vielfältig,        
-  nämlich konkreter Effekt nicht sichtbarer Überlagerungesdynamiken. D.h.   
-  empirisch interessiert mich auch als Frage der Sozialforschung die Frage  
-  des Nicht-Anwesenden, als konkret rekonstruierbares, mindestens so wie    
-  die des Sichtbaren/Anwesenden. Z.B: in der Videographie oder der          
-  Biographieanalyse geht es ausschließlich um Präsenzen. Oevermann hat ja   
-  einen deutlichen Sinn für den methodisch-heuristischen Wert des           
-  Nicht-faktischen. Ich denke das aber nicht heuristisch, sondern           
-  onto-epistemologisch. Prozessualität in diesem Sinne ist also nicht nur   
-  Werden und Entstehen von Anwesendem, sondern es sind Dynamiken in Gefügen 
-   von Beobachtungsmöglichkeiten und -weisen im SPannungsfeld des           
-  "Nichtsexistenten" vs. Sichtbaren. (Kann man naütrlich mit Spivak, mit    
-  Rancière und vielen anderen auch mit kritischem Leben füllen; ist aber    
-  zunächst eher formal gedacht).                                            
+❯ D/W; das gibt uns ggf. Auskunft über die Prozessualität. Ich will aber zu letzterem vorwegnehmen: im Gegensatz zu den genannten rekonsturktiven       
+  Ansätzen (denke ich) sehe ich in Prozessperspektiven eine Symmetrie von dem, was aus Sicht europäischer Ontologien als asymmetrische Differenz von    
+  Existentem vs. nicht-Existentem erscheint. Besonders anregend finde ich z.B. bei Barad die optische Metapher der Wellenüberlagerung, und zwar: der    
+  x-Wert "0" bei einer solchen Überlagerung, also nichts, keine Information (im Vergleich zur Basislinie) ist durchaus vielfältig, nämlich konkreter    
+  Effekt nicht sichtbarer Überlagerungesdynamiken. D.h. empirisch interessiert mich auch als Frage der Sozialforschung die Frage des Nicht-Anwesenden,  
+  als konkret rekonstruierbares, mindestens so wie die des Sichtbaren/Anwesenden. Z.B: in der Videographie oder der Biographieanalyse geht es           
+  ausschließlich um Präsenzen. Oevermann hat ja einen deutlichen Sinn für den methodisch-heuristischen Wert des Nicht-faktischen. Ich denke das aber    
+  nicht heuristisch, sondern onto-epistemologisch. Prozessualität in diesem Sinne ist also nicht nur Werden und Entstehen von Anwesendem, sondern es    
+  sind Dynamiken in Gefügen von Beobachtungsmöglichkeiten und -weisen im SPannungsfeld des "Nichtsexistenten" vs. Sichtbaren. (Kann man naütrlich mit   
+  Spivak, mit Rancière und vielen anderen auch mit kritischem Leben füllen; ist aber zunächst eher formal gedacht).                                     
 
-● Das ist ein entscheidender Punkt, und er ist im Datenmodell bereits angelegt —
-   der mode: 'silence' in appearances ist genau dafür da: das konkret
-  Nicht-Anwesende als positiven Befund zu registrieren, nicht als Leerstelle.
-  Aber deine Überlegung geht weiter.
+● Das ist ein entscheidender Punkt, und er ist im Datenmodell bereits angelegt — der mode: 'silence' in appearances ist genau dafür da: das konkret
+  Nicht-Anwesende als positiven Befund zu registrieren, nicht als Leerstelle. Aber deine Überlegung geht weiter.
 
-  Wenn ich das richtig verstehe: Die destruktive Interferenz (Barad) — der
-  Nullpunkt als Effekt konkreter Überlagerungsdynamiken — bedeutet, dass
-  Abwesenheit nicht einfach "nichts" ist, sondern ein bestimmtes Nichts, das aus
-   der spezifischen Konfiguration des Gefüges resultiert. Empirisch
-  rekonstruierbar, weil es Spuren hinterlässt — nicht als Präsenz, sondern als
-  Muster der Nicht-Präsenz.
+  Wenn ich das richtig verstehe: Die destruktive Interferenz (Barad) — der Nullpunkt als Effekt konkreter Überlagerungsdynamiken — bedeutet, dass
+  Abwesenheit nicht einfach "nichts" ist, sondern ein bestimmtes Nichts, das aus der spezifischen Konfiguration des Gefüges resultiert. Empirisch
+  rekonstruierbar, weil es Spuren hinterlässt — nicht als Präsenz, sondern als Muster der Nicht-Präsenz.
 
-  Das hat Konsequenzen für das Datenmodell: Ein silence-appearance müsste eigene
-   Partizipationen haben können — es ist ja nicht einfach die Abwesenheit von X,
-   sondern die Abwesenheit von X aufgrund bestimmter Überlagerungen. Das Gefüge,
-   das die Auslöschung produziert, ist selbst beschreibbar.
+  Das hat Konsequenzen für das Datenmodell: Ein silence-appearance müsste eigene Partizipationen haben können — es ist ja nicht einfach die Abwesenheit von
+  X, sondern die Abwesenheit von X aufgrund bestimmter Überlagerungen. Das Gefüge, das die Auslöschung produziert, ist selbst beschreibbar.
 
-  Unser Modell kann das bereits: Ein silence-Naming kann Partizipationen mit den
-   Namings haben, deren Überlagerung es produziert. Die Perspektive, aus der
-  etwas als silence erscheint, ist selbst ein Naming. So wird die "konkrete
-  Rekonstruierbarkeit" des Nicht-Anwesenden modellierbar.
+  Unser Modell kann das bereits: Ein silence-Naming kann Partizipationen mit den Namings haben, deren Überlagerung es produziert. Die Perspektive, aus der
+  etwas als silence erscheint, ist selbst ein Naming. So wird die "konkrete Rekonstruierbarkeit" des Nicht-Anwesenden modellierbar.
 
-  Aber schauen wir jetzt in Dewey/Bentley. Hast du Knowing and the Known als
-  Datei vorliegen, oder soll ich aus dem arbeiten, was ich kenne?
+  Aber schauen wir jetzt in Dewey/Bentley. Hast du Knowing and the Known als Datei vorliegen, oder soll ich aus dem arbeiten, was ich kenne?
 
-❯ "Empirisch                                                                
-    rekonstruierbar, weil es Spuren hinterlässt — nicht als Präsenz,        
-  sondern als Muster der Nicht-Präsenz." -> SEHR genau erkannt. D/B habe    
-  ich vorliegen, es ist frei verfügbar, z.B: hier als txt:                  
-  https://dn710700.ca.archive.org/0/items/in.ernet.dli.2015.188277/2015.188 
-  277.Knowing-And-The-Known_djvu.txt                                        
+❯ "Empirisch                                                                                                                                            
+    rekonstruierbar, weil es Spuren hinterlässt — nicht als Präsenz, sondern als Muster der Nicht-Präsenz." -> SEHR genau erkannt. D/B habe ich         
+  vorliegen, es ist frei verfügbar, z.B: hier als txt:                                                                                                  
+  https://dn710700.ca.archive.org/0/items/in.ernet.dli.2015.188277/2015.188277.Knowing-And-The-Known_djvu.txt                                           
 
 ❯ Tool loaded. 
 
-● Fetch(https://dn710700.ca.archive.org/0/items/in.ernet.dli.2015.188277/2015.18
-       8277.Knowing-And-The-Known_djvu.txt)
+● Fetch(https://dn710700.ca.archive.org/0/items/in.ernet.dli.2015.188277/2015.188277.Knowing-And-The-Known_djvu.txt)
   ⎿  Error: Request failed with status code 401
 
 ● Bash(curl -s -L -o /tmp/knowing_and_known.txt
-      "https://dn710700.ca.archive.org/0/items/in.ernet.dli.2015.188277/2015.188
-      277.Knowing-And-The-Known_djvu.txt" && wc -l…)
+      "https://dn710700.ca.archive.org/0/items/in.ernet.dli.2015.188277/2015.188277.Knowing-And-The-Known_djvu.txt" && wc -l…)
   ⎿  7 /tmp/knowing_and_known.txt
      <html>
      <head><title>401 Authorization Required</title></head>
@@ -257,16 +190,15 @@
 
 ● That URL requires auth. Let me try the main archive.org page for this text.
 
-● Bash(curl -s -L -o /tmp/knowing_and_known.txt "https://archive.org/download/in
-      .ernet.dli.2015.188277/2015.188277.Knowing-And-The-Known_djvu.txt" && wc
-      -c /tmp/knowin…)
+● Bash(curl -s -L -o /tmp/knowing_and_known.txt "https://archive.org/download/in.ernet.dli.2015.188277/2015.188277.Knowing-And-The-Known_djvu.txt" && wc -c
+      /tmp/knowin…)
   ⎿  Interrupted · What should Claude do instead?
 
 ❯ '/home/joerissen/Documents/2015.188277.Knowing-And-The-Known_djvu.txt' 
 
 ❯ Tool loaded. 
 
-● Read 1 file (ctrl+o to expand)
+● Read 2 files (ctrl+o to expand)
 
 ● Let me find the key chapters on naming taxonomy and the table of contents.
 
@@ -274,13 +206,11 @@
 
 ● Searched for 1 pattern, read 1 file (ctrl+o to expand)
 
-● Key chapters: V "Transactions as Known and Named", VI "Specification", VII
-  "The Case of Definition", XI "A Trial Group of Names". Let me read those.
+● Key chapters: V "Transactions as Known and Named", VI "Specification", VII "The Case of Definition", XI "A Trial Group of Names". Let me read those.
 
 ● Read 1 file (ctrl+o to expand)
 
-● Now let me also read Chapter V ("Transactions as Known and Named") for the
-  systematic framework.
+● Now let me also read Chapter V ("Transactions as Known and Named") for the systematic framework.
 
 ● Read 1 file (ctrl+o to expand)
 
@@ -290,65 +220,47 @@
 
   The Three Levels of Observation/Presentation
 
-  ┌──────────────┬─────────────────────────────────┬────────────────────────┐
-  │    Level     │           Description           │   Ontological Status   │
-  ├──────────────┼─────────────────────────────────┼────────────────────────┤
-  │              │ Things act under their own      │                        │
-  │ Self-Action  │ powers (soul, vital principle,  │ archaic, rejected      │
-  │              │ faculties)                      │                        │
-  ├──────────────┼─────────────────────────────────┼────────────────────────┤
-  │              │ Pre-given entities act upon     │ classical mechanics    │
-  │ Inter-Action │ each other; described prior to  │ model; legitimate      │
-  │              │ inquiry into connections        │ within limited scope   │
-  ├──────────────┼─────────────────────────────────┼────────────────────────┤
-  │              │ No constituent specifiable      │                        │
-  │ Trans-Action │ apart from specification of     │ the target level       │
-  │              │ others; knowing-known as one    │                        │
-  │              │ process                         │                        │
-  └──────────────┴─────────────────────────────────┴────────────────────────┘
+  ┌──────────────┬─────────────────────────────────────────────────────────────────────────────────┬────────────────────────────────────────────────────┐
+  │    Level     │                                   Description                                   │                 Ontological Status                 │
+  ├──────────────┼─────────────────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────────────┤
+  │ Self-Action  │ Things act under their own powers (soul, vital principle, faculties)            │ archaic, rejected                                  │
+  ├──────────────┼─────────────────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────────────┤
+  │ Inter-Action │ Pre-given entities act upon each other; described prior to inquiry into         │ classical mechanics model; legitimate within       │
+  │              │ connections                                                                     │ limited scope                                      │
+  ├──────────────┼─────────────────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────────────┤
+  │ Trans-Action │ No constituent specifiable apart from specification of others; knowing-known as │ the target level                                   │
+  │              │  one process                                                                    │                                                    │
+  └──────────────┴─────────────────────────────────────────────────────────────────────────────────┴────────────────────────────────────────────────────┘
 
   The Three Stages of Sign (evolutionary/functional)
 
-  ┌──────────────────┬─────────────────────────┬────────────────────────────┐
-  │      Stage       │          Level          │         Character          │
-  ├──────────────────┼─────────────────────────┼────────────────────────────┤
-  │                  │                         │ pre-linguistic;            │
-  │ Signal           │ perception-manipulation │ organism-environment       │
-  │                  │                         │ orientation                │
-  ├──────────────────┼─────────────────────────┼────────────────────────────┤
-  │ Name/Designation │ central range           │ knowing through naming;    │
-  │                  │                         │ the main subject           │
-  ├──────────────────┼─────────────────────────┼────────────────────────────┤
-  │                  │ mathematics, formal     │ post-naming; loses         │
-  │ Symbol           │ logic                   │ specific reference, gains  │
-  │                  │                         │ exactness                  │
-  └──────────────────┴─────────────────────────┴────────────────────────────┘
+  ┌──────────────────┬───────────────────────────┬────────────────────────────────────────────────────────┐
+  │      Stage       │           Level           │                       Character                        │
+  ├──────────────────┼───────────────────────────┼────────────────────────────────────────────────────────┤
+  │ Signal           │ perception-manipulation   │ pre-linguistic; organism-environment orientation       │
+  ├──────────────────┼───────────────────────────┼────────────────────────────────────────────────────────┤
+  │ Name/Designation │ central range             │ knowing through naming; the main subject               │
+  ├──────────────────┼───────────────────────────┼────────────────────────────────────────────────────────┤
+  │ Symbol           │ mathematics, formal logic │ post-naming; loses specific reference, gains exactness │
+  └──────────────────┴───────────────────────────┴────────────────────────────────────────────────────────┘
 
   The Three Stages of Designation (Naming)
 
   This is the core taxonomy for our purposes:
 
-  ┌──────────────────┬──────────────────────────────────────┬───────────────┐
-  │      Stage       │              Character               │    Quality    │
-  ├──────────────────┼──────────────────────────────────────┼───────────────┤
-  │                  │ earliest, most primitive             │               │
-  │ Cue              │ designation; signal-like hints       │ vague         │
-  │                  │ beginning to name                    │               │
-  ├──────────────────┼──────────────────────────────────────┼───────────────┤
-  │                  │ intermediate; everyday language;     │ loose but     │
-  │ Characterization │ "reasonably adequate for commoner    │ functional    │
-  │                  │ practical purposes"                  │               │
-  ├──────────────────┼──────────────────────────────────────┼───────────────┤
-  │                  │ most highly perfected naming; modern │ accurate (not │
-  │ Specification    │  science; ever-increasing accuracy,  │  exact)       │
-  │                  │ never final                          │               │
-  └──────────────────┴──────────────────────────────────────┴───────────────┘
+  ┌──────────────────┬────────────────────────────────────────────────────────────────────────────────────────┬──────────────────────┐
+  │      Stage       │                                       Character                                        │       Quality        │
+  ├──────────────────┼────────────────────────────────────────────────────────────────────────────────────────┼──────────────────────┤
+  │ Cue              │ earliest, most primitive designation; signal-like hints beginning to name              │ vague                │
+  ├──────────────────┼────────────────────────────────────────────────────────────────────────────────────────┼──────────────────────┤
+  │ Characterization │ intermediate; everyday language; "reasonably adequate for commoner practical purposes" │ loose but functional │
+  ├──────────────────┼────────────────────────────────────────────────────────────────────────────────────────┼──────────────────────┤
+  │ Specification    │ most highly perfected naming; modern science; ever-increasing accuracy, never final    │ accurate (not exact) │
+  └──────────────────┴────────────────────────────────────────────────────────────────────────────────────────┴──────────────────────┘
 
   Plus two boundary cases:
-  - Definition: demoted — too confused for terminological use; could belong to
-  symbolization rather than designation
-  - Symbolization: beyond naming; formal/mathematical; "exact" rather than
-  "accurate"; loses specific reference
+  - Definition: demoted — too confused for terminological use; could belong to symbolization rather than designation
+  - Symbolization: beyond naming; formal/mathematical; "exact" rather than "accurate"; loses specific reference
 
   The Named Side (correlative to Designation)
 
@@ -364,221 +276,767 @@
 
   Key for Our Project
 
-  The productive question you raised — whether D/B's naming forms help us
-  identify Prozessierungsformen for our data objects — I think the answer is:
+  The productive question you raised — whether D/B's naming forms help us identify Prozessierungsformen for our data objects — I think the answer is:
   partially yes, but with a crucial extension.
 
-  What D/B give us is a processual gradient of determination: Cue →
-  Characterization → Specification. This maps well onto a research process:
-  something first appears as a vague signal (cue), gets provisionally named
-  (characterization), and is progressively specified through inquiry. Every
-  naming in our system could carry a marker of where it sits on this gradient.
+  What D/B give us is a processual gradient of determination: Cue → Characterization → Specification. This maps well onto a research process: something
+  first appears as a vague signal (cue), gets provisionally named (characterization), and is progressively specified through inquiry. Every naming in our
+  system could carry a marker of where it sits on this gradient.
 
-  But — and this connects to your point about destructive interference — D/B's
-  gradient is monotonically toward more determination. It doesn't account for
-  the reverse movement: the deliberate de-specification, the moment when
-  something well-determined dissolves back into superposition, or when a silence
-   is registered. The Barad-point: that the zero of interference is itself a
-  positive finding.
+  But — and this connects to your point about destructive interference — D/B's gradient is monotonically toward more determination. It doesn't account for
+  the reverse movement: the deliberate de-specification, the moment when something well-determined dissolves back into superposition, or when a silence is
+  registered. The Barad-point: that the zero of interference is itself a positive finding.
 
-  So I'd propose: D/B's Cue → Characterization → Specification gives us one axis
-   of processuality. But we need a second axis that D/B don't provide —
-  something like resolution/dissolution or collapse/superposition — to capture
-  the symmetry you described between presence and absence, between the visible
+  So I'd propose: D/B's Cue → Characterization → Specification gives us one axis of processuality. But we need a second axis that D/B don't provide —
+  something like resolution/dissolution or collapse/superposition — to capture the symmetry you described between presence and absence, between the visible
   and the concretely-not-there.
 
-  Shall we sketch how this maps onto the data model concretely? For instance,
-  should appearances carry a field indicating their designational stage
+  Shall we sketch how this maps onto the data model concretely? For instance, should appearances carry a field indicating their designational stage
   (cue/characterization/specification)?
 
-✻ Cooked for 60s
+✻ Churned for 60s
 
-❯ Chapter XI 
+❯ Chapter XI        
 
-● I've already read Chapter XI in full (lines 14648–15656). Here's the complete
-  systematic structure from "A Trial Group of Names," organized by function
+● I've already read Chapter XI in full (lines 14648–15656). Here's the complete systematic structure from "A Trial Group of Names," organized by function
   rather than alphabetically as D/B present it:
+                                                                                                                                                            
+  Postulatory Core (the framework itself)                                                                                                                   
+                                                                                                                                                            
+  ┌─────────────┬────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐  
+  │    Name     │                                                             D/B Definition                                                             │
+  ├─────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Fact        │ "The cosmos in course of being known through naming by organisms, themselves among its phases." Knowings-knowns, durationally and      │
+  │             │ extensionally spread.                                                                                                                  │
+  ├─────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤  
+  │ Designation │ "The knowing-naming phase of fact." Always transactionally behavioral. Extends over three levels: cue, characterization,               │
+  │             │ specification.                                                                                                                         │  
+  ├─────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Existence   │ "The known-named phase of fact, transactionally inspected." Established through designation under ever-increasing accuracy.            │  
+  ├─────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤  
+  │ Transaction │ "The knowing-known taken as one process."                                                                                              │
+  └─────────────┴────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘  
+                                                            
+  The Designation Gradient (three levels of naming)                                                                                                         
+   
+  ┌──────────────────┬───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐  
+  │      Level       │                                                                D/B                                                                │
+  ├──────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Cue              │ "The earliest stage of designation in the evolutionary scale."                                                                    │
+  ├──────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Characterization │ "The intermediate stage of designation... includes the greater part of everyday use of words; reasonably adequate for the         │  
+  │                  │ commoner practical purposes."                                                                                                     │  
+  ├──────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤  
+  │ Specification    │ "The most highly perfected naming behavior. Best exhibited in modern science." Requires "accurate" (not "exact").                 │  
+  └──────────────────┴───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘  
+   
+  The Named Gradient (correlative)                                                                                                                          
+                                                            
+  ┌───────────┬───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐     
+  │   Level   │                                                                  D/B                                                                  │
+  ├───────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Situation │ "The more general, and less clearly specified, range of the named phase of fact."                                                     │
+  ├───────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Event     │ "Better specified than situation, but less well specified than object. Most commonly employed with respect to durational transition." │     
+  ├───────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤     
+  │ Object    │ "That which acquires firmest specification." Emerges as "definite constituent of a resolved situation."                               │     
+  └───────────┴───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘     
+                                                            
+  Beyond Designation                                                                                                                                        
+                                                            
+  ┌────────┬─────────────────────────────────────────────────────────────────────────────────────────────────────────────┐                                  
+  │  Name  │                                                     D/B                                                     │
+  ├────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────┤                                  
+  │ Signal │ "The perceptive-manipulative level and stage of sign." Border to naming "still imperfectly explored."       │
+  ├────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────┤                                  
+  │ Symbol │ "A non-naming component of symboling behavior." Advance beyond naming; disappearance of specific reference. │                                  
+  ├────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────┤                                  
+  │ Exact  │ Quality of symbolic procedure (vs. "accurate" for specification).                                           │                                  
+  └────────┴─────────────────────────────────────────────────────────────────────────────────────────────────────────────┘                                  
+                                                            
+  The Three Observation Modes                                                                                                                               
+                                                            
+  ┌──────────────┬───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐  
+  │     Mode     │                                                                  D/B                                                                  │
+  ├──────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤  
+  │ Self-Action  │ "Various primitive treatments of the known, prior to interactional and transactional." Rarely found today except in philosophy,       │
+  │              │ logic, epistemology.                                                                                                                  │
+  ├──────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤  
+  │ Inter-Action │ Objects enter "as if adequately named and known prior to the start of inquiry." Legitimate within limits; abusive when dogmatized.    │
+  ├──────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤  
+  │ Trans-Action │ "Inquiry which ranges under primary observation across all subjectmatters... and proceeds with freedom toward the re-determination    │
+  │              │ and re-naming of the objects comprised in the system."                                                                                │  
+  └──────────────┴───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+                                                                                                                                                            
+  Structural/Relational Terms                               
 
-  Postulatory Core (the framework itself)
+  ┌────────────┬───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+  │    Name    │                                                                  D/B                                                                  │
+  ├────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Aspect     │ "The components of a full transactional situation, being not independents, are aspects." Etymologically: "to look out."               │
+  ├────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Phase      │ "Aspect of fact in sufficiently developed statement to exhibit definite spatial and temporal localizations."                          │    
+  ├────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤    
+  │ Connection │ "To apply between objects under naming."                                                                                              │    
+  ├────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤    
+  │ Reference  │ "Behavioral application of naming to named."                                                                                          │
+  ├────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤    
+  │ Relation   │ "System among words, in correlation with reference and connection."                                                                   │
+  ├────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤    
+  │ Field      │ Should have important behavioral application, but "definite correspondence needed for behavioral application can not be established." │
+  ├────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤    
+  │ System     │ Usable "where transactional inquiry is under way." Distinguished from Organization which "would represent interaction."               │
+  └────────────┴───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘    
+                                                            
+  Terms Rejected or Demoted                                                                                                                                 
+                                                            
+  ┌───────────────┬─────────────────────────────────────────────────────────────────────────────────────────────────────┐
+  │     Name      │                                                 Why                                                 │
+  ├───────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Entity        │ "Assumed or implied... independence... a tricky word... should be rejected in all serious inquiry." │
+  ├───────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Substance     │ "No word of this type has place."                                                                   │                                   
+  ├───────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────┤                                   
+  │ Definition    │ Demoted — "so confused as to rate no higher than a crude characterization."                         │                                   
+  ├───────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────┤                                   
+  │ Meaning       │ "A word so confused that it is best never used at all."                                             │
+  ├───────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────┤                                   
+  │ Consciousness │ "No value whatever in it."                                                                          │
+  ├───────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────┤                                   
+  │ Mental        │ "Not used by us." Hypostatization from imperfect view of behavior.                                  │
+  ├───────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────┤                                   
+  │ Reality       │ "The most metaphysical of all words in the most obnoxious sense."                                   │
+  ├───────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────┤                                   
+  │ Individual    │ "Abandonment... seems essential wherever a positive general theory is undertaken."                  │
+  ├───────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────┤                                   
+  │ Actor         │ "Confused and confusing... should always be taken as Trans-actor."                                  │
+  └───────────────┴─────────────────────────────────────────────────────────────────────────────────────────────────────┘                                   
+                                                            
+  Other Notable Entries                                                                                                                                     
+                                                            
+  - Behavior: "Always transactionally: never as of the organism alone... but always of the organic-environmental situation, with organisms and environmental
+   objects taken as equally its aspects."
+  - Circularity: "Regarded as a radical defect by non-transactional epistemologies... Normal for inquiry into knowings and knowns in system."               
+  - Context: "Where it obscures the issues of naming and the named... more apt to do harm than good."                                                       
+  - Description: "Cues organizing characterizations; characterizations developing into specifications... A name is, in effect, a truncated description."    
+  - Observation: "Durationally and extensionally transactional, and thus neither separately in terms of the observing, nor separately of the observed."     
+  - Inquiry: "A strictly transactional name. Equivalent of knowing."                                                                                        
+  - Thing: "Most generally used for anything named. Its very generality gives it frequent advantage over Entity and Substance."                             
+                                                                                                                                                            
+  ---                                                                                                                                                       
+  What strikes me reading this systematically: D/B's vocabulary is almost entirely oriented toward the positive determination of the named — the gradient   
+  from vague to firm. There is no entry for silence, absence, withdrawal, or non-appearance. The closest is their insistence on openness and tentativeness —
+   that specification never reaches finality — but that's epistemological modesty, not an ontological account of productive absence.                        
+                                                                                                                                                            
+  Their Aspect and Phase are interesting for your purposes though: aspects are "not independents" (components of a transactional situation), and phases are
+  aspects with "definite spatial and temporal localizations." This maps directly onto our appearances model — an appearance IS a phase in D/B's sense.      
+   
+  And their distinction between System (transactional) vs. Organization (interactional) could be productive for differentiating map types or analytical     
+  perspectives.                                             
+                                                                                                                                                            
+  What do you want to draw from this for the data model?                                                                                                    
+   
+✻ Sautéed for 49s                                                                                                                                           
+                                                            
+❯ /export                                                                                                                                                   
+  ⎿  Conversation exported to: 2026-03-07-005851-transaction-qda_session_01.txt
+                                                                                                                                                            
+❯ /model                                                                                                                                                    
+  ⎿  Kept model as Default (Opus 4.6 · Most capable for complex work)                                                                                       
+                                                                                                                                                            
+❯ /model                                                                                                                                                    
+  ⎿  Set model to Default (Opus 4.6 · Most capable for complex work) with high effort                                                                       
+                                                                                                                                                            
+❯ "Existence   │ "The known-named phase of fact, transactionally inspected." Established through designation under ever-increasing accuracy." Ich will      
+  hier keine Schnellschüsse produzieren, aber impliziert das nicht eine "non known-named" phase of fact? (Adornos Nichtidentishces, Benjamin                
+  Konstellationen wären Namings die sich hervorbringen und dann zurücknehmen, bzw. von anderne Namings dekonstruiert werden; Derridas Différance ist        
+  ein Naming eines non-known/named, etc.                                                                                                                    
+                                                                                                                                                            
+● Ja, exakt. D/B implizieren es, ohne es auszusprechen. Ihre Architektur hat eine systematische Leerstelle:                                                 
+                                                                                                                                                            
+  Wenn Fact = knowings-knowns in system, und Existence = die known-named Phase davon — dann gibt es logisch eine Phase von Fact, die nicht known-named ist. 
+  D/B sagen das nicht, weil ihr Programm die Fixierung fester Namen ist. Aber ihr eigener Grundsatz — dass Specification nie Finalität erreicht, dass alles 
+  tentativ bleibt — zeigt auf genau diesen Rand.                                                                                                            
+                                                            
+  Deine Beispiele treffen verschiedene Aspekte davon:                                                                                                       
+   
+  - Adornos Nichtidentisches: Das, was im Naming nicht aufgeht. Das Naming greift, aber das Gegriffene ist mehr als das Greifen. In unserem Modell: Ein     
+  Naming erzeugt Appearances, aber das Naming ist nicht seine Appearances — die Differenz ist produktiv.
+  - Benjamins Konstellationen: Namings, die sich wechselseitig hervorbringen und zurücknehmen. Keine Specification, die akkumuliert, sondern ein            
+  Blitz-Muster, das aufleuchtet und verschwindet. Prozessual: Namings, die Participations eingehen und sich dadurch gegenseitig destabilisieren statt       
+  bestimmen.
+  - Derridas Différance: Ein Naming des Nicht-Nennbaren, das als Naming funktioniert gerade weil es die Unmöglichkeit seiner eigenen Specification benennt. 
+  Die Spur — weder anwesend noch abwesend.                                                                                                                  
+   
+  Im Datenmodell haben wir dafür tatsächlich bereits Ansätze:                                                                                               
+                                                            
+  1. Namings ohne Appearances — ein Naming, das existiert (als superposition), aber aus keiner Perspektive als etwas Bestimmtes erscheint. Das ist nicht    
+  Fehler, sondern Zustand: das Noch-nicht- oder Nicht-mehr-Bestimmte.
+  2. mode: 'silence' — eine Appearance, die explizit die Nicht-Erscheinung registriert. Aber das ist vielleicht zu positiv: es setzt eine Perspektive       
+  voraus, die das Schweigen sieht.                                                                                                                          
+  3. Was fehlt: Eine Art Spur — etwas zwischen Naming und Nicht-Naming. Vielleicht: Participations, die bestehen, obwohl eines der beteiligten Namings
+  gelöscht (deleted_at) ist. Die Relation bleibt als Abdruck, als trace, auch wenn das, worauf sie zeigt, sich zurückgenommen hat.                          
+                                                            
+  Aber ich will hier auch keine Schnellschüsse produzieren. Die Frage ist, ob das Datenmodell das schon kann (und es nur eine Frage der analytischen Praxis 
+  ist) oder ob es eine strukturelle Erweiterung braucht.    
+                                                                                                                                                            
+❯ Ein Objekt "trace" als Daten-Objekt wäre vielleicht eine Lösung, WENN es klar bleibt dass es nur ex negativo gedacht ist und nicht als Spur im            
+  forensischen Sinn (die sind ja selbst anwesend). wir müssten die Instrumentalisierung von unknown unknowns zu known unknowns mit dem Mittel eines        
+  Objekts "trace" vermeiden.                                                                                                                                
+                                                                                                                                                            
+● Genau das ist die Gefahr: ein trace-Objekt würde das Nicht-Identische sofort identifizieren — es zum known unknown machen, also domestizieren. Das wäre   
+  Verrat am Gedanken.                    
+                                                                                                                                                            
+  Vielleicht liegt die Lösung nicht in einem neuen Objekt, sondern in der Struktur, die schon da ist, anders gelesen:                                       
+                                                                                                                                                            
+  1. Participations ohne vollständige Appearances: Zwei Namings sind durch Participation verbunden. Eines davon erscheint aus keiner Perspektive — es hat   
+  keine Appearances. Die Participation selbst ist real (sie ist ja ein Naming), aber sie zeigt auf etwas, das sich der Bestimmung entzieht. Das ist die
+  Spur, ohne dass wir sie als Objekt reifizieren.                                                                                                           
+  2. deleted_at als Zurücknahme, nicht als Vernichtung: Ein soft-deleted Naming behält seine Participations. Es hat gewirkt, es hat Verbindungen
+  konstituiert, aber es hat sich zurückgenommen. Die Wirkung bleibt, die Quelle nicht. Das ist strukturell Benjamins Konstellation — das Aufblitzen und     
+  Vergehen, wobei das Vergangene die Konfiguration des Verbleibenden verändert hat.
+  3. Die Differenz zwischen Naming und Appearances als solche: Jedes Naming ist mehr als die Summe seiner Appearances. Das ist kein Bug, das ist Adornos    
+  Punkt. Wir müssen das nicht modellieren — es ist die konstitutive Differenz zwischen den Tabellen namings und appearances selbst.                         
+   
+  Das heißt: Kein trace-Objekt. Stattdessen die Abfrage-Ebene — die Queries — so bauen, dass sie diese Differenzen sichtbar machen können. Zum Beispiel:    
+  - "Zeige alle Participations, deren Partner keine Appearance in dieser Perspektive haben"
+  - "Zeige alle Namings, die nur durch Participations anderer Namings erreichbar sind, aber selbst nicht erscheinen"                                        
+  - "Zeige die Veränderung im Gefüge nach der Zurücknahme (soft delete) eines Namings"                              
+                                                                                                                                                            
+  Die onto-epistemologische Arbeit passiert dann nicht im Schema, sondern in der analytischen Praxis — in den Queries, den Maps, den Memos. Das Schema      
+  stellt die Möglichkeit bereit, ohne sie zu determinieren.                                                                                                 
+                                                                                                                                                            
+❯ deleted_at ist ein Verwandter der Hegelschen "Aufhebung", die ja auch für die Negative Dialektik maßgeblich ist. und participations ohen Appearance       
+  ist auch interessant. Spannende Frage innerhalb eines QDA: es wäre nicht nur semantisch, sondern auch informatisch nicht-komputational; bräuchte also    
+   eine besondere Behandlung als Daten-Objekt. 3.: Da kommt die Hierarchisierung bei B/D ungünstig ins Spiel. Im Sinne von "naming by organisms,            
+  themselves among its phases", was auch Einzeller mit einbezieht, aber auf jeden Fall, bzw. bewegen wir uns in einem Bereich wo die Apprearance selbst     
+   angenommen werden muss, aber kein Naming haben kann. (Oder so)                                                                                           
+                                                                                                                                                            
+● Ja — das ist ein fundamentaler Punkt. Lass mich versuchen, alle drei Stränge zusammenzudenken:                                                            
+                                         
+  Zu 3 zuerst, weil es das Grundlegendste ist: D/B sagen "naming by organisms, themselves among its phases" — aber sie meinen dabei sprachlich namendes     
+  Verhalten. Sie erkennen Signaling als vor-sprachliche Stufe an, aber ihr ganzes Programm ist auf Designation (sprachliches Naming) ausgerichtet. Wenn wir
+  aber transaktional ernst machen — und erst recht mit Barad — dann gibt es Erscheinungen (appearances), die nicht durch ein sprachliches oder überhaupt ein
+   Naming eines Organismus hervorgebracht werden. Die Welle kollabiert nicht erst wenn jemand hinschaut und benennt. Es gibt Erscheinungen, die sich 
+  ereignen — die keine benennende Instanz haben. Die Appearance ist da, aber die Perspektive, aus der sie erscheint, ist kein Naming im Sinn einer bewussten
+   oder sprachlichen Handlung. Sie geschieht.
 
-  ┌─────────────┬────────────────────────────────────────────────────────────┐
-  │    Name     │                       D/B Definition                       │
-  ├─────────────┼────────────────────────────────────────────────────────────┤
-  │             │ "The cosmos in course of being known through naming by     │
-  │ Fact        │ organisms, themselves among its phases." Knowings-knowns,  │
-  │             │ durationally and extensionally spread.                     │
-  ├─────────────┼────────────────────────────────────────────────────────────┤
-  │             │ "The knowing-naming phase of fact." Always transactionally │
-  │ Designation │  behavioral. Extends over three levels: cue,               │
-  │             │ characterization, specification.                           │
-  ├─────────────┼────────────────────────────────────────────────────────────┤
-  │             │ "The known-named phase of fact, transactionally            │
-  │ Existence   │ inspected." Established through designation under          │
-  │             │ ever-increasing accuracy.                                  │
-  ├─────────────┼────────────────────────────────────────────────────────────┤
-  │ Transaction │ "The knowing-known taken as one process."                  │
-  └─────────────┴────────────────────────────────────────────────────────────┘
+  Das stellt unser Modell vor ein Problem: Jede Appearance hat eine perspective_id, die auf ein Naming zeigt. Aber was, wenn die Perspektive nicht ein      
+  Naming ist, sondern selbst ein Geschehen ohne Benenner? Unser Modell kann das formal abbilden — ein Naming ohne created_by? Oder ein Naming, das sich
+  selbst als Perspektive setzt (das haben wir bei Maps), aber ohne dass ein Subjekt dahintersteht? Die Frage ist, ob created_by UUID NOT NULL REFERENCES    
+  users(id) hier die falsche Einschränkung ist.             
 
-  The Designation Gradient (three levels of naming)
+  Zu 2: Participations ohne Appearance — das ist informatisch tatsächlich besonders. In einer komputationalen Logik existiert etwas dadurch, dass es        
+  adressierbar ist. Eine Participation ohne Appearance ist adressierbar (sie hat eine ID, sie steht in der Datenbank), aber sie erscheint nicht — sie hat
+  keine Sichtbarkeit in irgendeiner Perspektive. Sie ist ein rein relationales Faktum ohne Phänomenalität. Für eine QDA-Software heißt das: Es muss einen   
+  analytischen Modus geben, der explizit nach dem Nicht-Erscheinenden fragt — der nicht Objekte durchsucht, sondern Strukturen der Nicht-Erscheinung. Das
+  ist kein normaler Query, das ist eine andere Art der Befragung der Daten.
 
-  ┌──────────────────┬───────────────────────────────────────────────────────┐
-  │      Level       │                          D/B                          │
-  ├──────────────────┼───────────────────────────────────────────────────────┤
-  │ Cue              │ "The earliest stage of designation in the             │
-  │                  │ evolutionary scale."                                  │
-  ├──────────────────┼───────────────────────────────────────────────────────┤
-  │                  │ "The intermediate stage of designation... includes    │
-  │ Characterization │ the greater part of everyday use of words; reasonably │
-  │                  │  adequate for the commoner practical purposes."       │
-  ├──────────────────┼───────────────────────────────────────────────────────┤
-  │                  │ "The most highly perfected naming behavior. Best      │
-  │ Specification    │ exhibited in modern science." Requires "accurate"     │
-  │                  │ (not "exact").                                        │
-  └──────────────────┴───────────────────────────────────────────────────────┘
+  Zu 1 / Aufhebung: deleted_at als Aufhebung funktioniert tatsächlich dreifach — negiert (das Naming ist nicht mehr aktiv), bewahrt (die Participations     
+  bleiben, die Wirkungsgeschichte bleibt), gehoben auf eine höhere Stufe (das Gelöschte verändert die Konfiguration des Verbleibenden, gerade weil es
+  fehlt).                                                                                                                                                   
+                                                            
+  Die drei Stränge konvergieren in einer Frage: Braucht das Schema einen Modus für Appearances ohne subjektives Naming? Nicht als neues Objekt, sondern als 
+  Lockerung der Constraint — created_by nullable, oder ein systemisches "Naming" das keinem User gehört, sondern dem Prozess selbst. Das wäre die minimale
+  Schema-Änderung, die den D/B-Anthropozentrismus öffnet, ohne die Struktur zu zerstören.                                                                   
+                                                            
+  Was denkst du?
 
-  The Named Gradient (correlative)
+❯ Genau, Signaling, das war es; ich hatte das verwechselt. -- Ja, das klingt erst einmal nach einer konsequenten Umsetzung. Wären Appearances ohne          
+  Naming also z.B. Signaling-Prozesse?                                                                                                                     
+                                                                                                                                                            
+● Ja — das würde passen, und es wäre konsistent mit D/B, gerade indem es über sie hinausgeht:                                                               
+                                                                                                                                                            
+  D/B unterscheiden drei Stufen von Sign: Signal → Name → Symbol. Signaling ist das vor-sprachliche: der Organismus orientiert sich, manipuliert, reagiert —
+   aber er benennt nicht. Trotzdem ist da etwas, das erscheint. Der Einzeller, der auf einen chemischen Gradienten reagiert — da ist eine Appearance (etwas
+  tritt hervor, etwas wird differenziert), aber kein Naming im Sinn von Designation.                                                                        
+                                                            
+  Übertragen auf empirische Sozialforschung: In Videographie-Daten etwa gibt es Momente, in denen etwas geschieht — eine Geste, ein Zögern, eine räumliche  
+  Konfiguration — das sich der Benennung entzieht, aber trotzdem als Differenz im Material erscheint. Das sind Signaling-Prozesse: Appearances, die ein
+  Forscher registriert, aber (noch) nicht benennen kann oder will. Auch Atmosphären, Stimmungen, embodied knowledge — all das, was in der Forschungspraxis  
+  oft als "da ist etwas" notiert wird, ohne dass klar ist, was.
 
-  ┌───────────┬──────────────────────────────────────────────────────────────┐
-  │   Level   │                             D/B                              │
-  ├───────────┼──────────────────────────────────────────────────────────────┤
-  │ Situation │ "The more general, and less clearly specified, range of the  │
-  │           │ named phase of fact."                                        │
-  ├───────────┼──────────────────────────────────────────────────────────────┤
-  │           │ "Better specified than situation, but less well specified    │
-  │ Event     │ than object. Most commonly employed with respect to          │
-  │           │ durational transition."                                      │
-  ├───────────┼──────────────────────────────────────────────────────────────┤
-  │ Object    │ "That which acquires firmest specification." Emerges as      │
-  │           │ "definite constituent of a resolved situation."              │
-  └───────────┴──────────────────────────────────────────────────────────────┘
+  Für das Datenmodell hieße das konkret:                                                                                                                    
+   
+  - Appearances können ohne ein zugehöriges Naming existieren — die naming_id in der appearances-Tabelle wäre dann nullable, oder es gibt ein spezielles    
+  System-Naming das "unnamed signal" repräsentiert          
+  - Aber — und das ist wichtig — sie brauchen trotzdem eine perspective_id. Denn auch ein Signal erscheint irgendwoher. Es gibt keine perspektivlose        
+  Appearance. Nur ist die Perspektive hier vielleicht nicht die eines benennenden Subjekts, sondern eines Forschungskontexts, einer Beobachtungssituation.  
+   
+  Allerdings: Sobald der Forscher dieses Signal in die QDA-Software einträgt, benennt er es ja — und sei es als "unnamed signal" oder "etwas am Zeitindex   
+  3:42". Das heißt, auf der Ebene der Software-Nutzung wird aus jedem Signaling unvermeidlich ein Naming. Die Frage ist, ob das System diesen Übergang — vom
+   Registrieren zum Benennen, von Cue zu Characterization — als Prozess abbilden kann, statt ihn in der Eingabemaske unsichtbar zu machen.                  
+                                                            
+  Vielleicht ist die richtige Lösung nicht "Appearances ohne Naming", sondern: Namings, die sich explizit als Cue markieren — als vorläufig, als            
+  Naming-das-weiß-dass-es-noch-kein-richtiges-Naming-ist. D/B's eigene Stufe. Dann wäre der D/B-Gradient (Cue → Characterization → Specification) nicht nur
+  eine analytische Kategorie, sondern ein operationales Feld im Datenmodell: jedes Naming hat eine designation_stage, die seinen Bestimmtheitsgrad anzeigt  
+  und die sich im Lauf der Forschung verändert.             
 
-  Beyond Designation
+  Das hätte den Vorteil, dass wir das Schema nicht aufbrechen müssen (naming_id NOT NULL bleibt), aber trotzdem die Prozessualität der Bestimmung — und     
+  deren Grenze zum Vor-Sprachlichen — abbilden.
+                                                                                                                                                            
+  Was passt besser zu deiner Forschungspraxis?                                                                                                              
+   
+❯ Ja, vor allem bewahrt es uns davor diese Hierarchie in Datensturkturen (z.B. Objekt "Signal") festzuschreiben. Namings wären also hier dynamisiert,       
+  und zwar - würde ich denken - in beide RIchtungen, nicht nur vom Signaling zum Naming, sondern ggf. auch umgekehrt.                                      
+                                                                                                                                                            
+● Genau — bidirektional. Ein Naming kann sich von Specification zurück zu Characterization bewegen, und von Characterization zurück zu Cue — wenn die       
+  Forschung zeigt, dass die Bestimmung nicht trägt, oder wenn ein neuer Kontext das vermeintlich Feste wieder verflüssigt. Das ist kein Fehler im           
+  Forschungsprozess, sondern der Forschungsprozess.                                                                                                         
+   
+  Und das wäre auch der entscheidende Unterschied zu D/B: Bei ihnen ist der Gradient implizit teleologisch — von vage zu fest, von Cue zu Specification.    
+  "Ever-increasing accuracy." Aber wenn wir Prozessualität symmetrisch denken — Bestimmung und Ent-Bestimmung — dann ist die Rückbewegung genauso produktiv.
+   Ein Naming, das von Specification zurück zu Cue fällt, hat nicht versagt. Es hat etwas freigelegt.                                                       
+                                                            
+  Und genau das verbindet sich mit der Aufhebungs-Frage: deleted_at wäre dann nur der Extremfall einer Ent-Bestimmung — die vollständige Zurücknahme. Davor 
+  gibt es Abstufungen: Specification → Characterization → Cue → ... → soft delete. Und umgekehrt kann ein soft-deleted Naming reaktiviert werden — Aufhebung
+   der Aufhebung.                                                                                                                                           
+                                                            
+  Für das Datenmodell schlage ich also vor:                                                                                                                 
+   
+  Ein Feld designation auf namings, das den aktuellen Stand auf dem D/B-Gradient anzeigt, plus die Möglichkeit, die Geschichte dieser Bewegung              
+  nachzuvollziehen — wofür wir das seq-Feld und die Tatsache nutzen können, dass jedes Naming bereits sein eigenes Ereignis ist. Bei jeder Änderung der
+  designation entsteht ein neues Naming (oder wir tracken es über ein Feld designation das sich ändert und dessen Historie über die updated_at-Timestamps   
+  rekonstruierbar ist).                                     
 
-  ┌────────┬─────────────────────────────────────────────────────────────────┐
-  │  Name  │                               D/B                               │
-  ├────────┼─────────────────────────────────────────────────────────────────┤
-  │ Signal │ "The perceptive-manipulative level and stage of sign." Border   │
-  │        │ to naming "still imperfectly explored."                         │
-  ├────────┼─────────────────────────────────────────────────────────────────┤
-  │ Symbol │ "A non-naming component of symboling behavior." Advance beyond  │
-  │        │ naming; disappearance of specific reference.                    │
-  ├────────┼─────────────────────────────────────────────────────────────────┤
-  │ Exact  │ Quality of symbolic procedure (vs. "accurate" for               │
-  │        │ specification).                                                 │
-  └────────┴─────────────────────────────────────────────────────────────────┘
+  Konkret wäre das minimal:                                                                                                                                 
+   
+  ALTER TABLE namings ADD COLUMN designation TEXT                                                                                                           
+    NOT NULL DEFAULT 'characterization'                     
+    CHECK (designation IN ('cue', 'characterization', 'specification'));                                                                                    
+   
+  Default characterization, weil das der Normalfall ist — jemand tippt einen Namen ein, das ist weder reine Andeutung noch wissenschaftliche Spezifikation. 
+  Und die Bewegung in beide Richtungen ist jederzeit möglich.
+                                                                                                                                                            
+  Soll ich das so umsetzen, oder willst du erst noch weiterdenken?                                                                                          
+   
+❯ Das wäre es, eine Geschichte der Bewegungen (wem würde dieses "dict" dann jeweils zugehören, technisch?)                                                  
+                                                                                                           
+● Gute Frage. Die Geschichte der Designation-Bewegungen eines Namings — wem gehört die?                                                                     
+                                                                                                                                                          
+  Technisch gibt es mehrere Optionen:                                                                                                                       
+   
+  1. Dem Naming selbst: Wir ändern designation direkt auf dem Naming. Dann geht die Geschichte verloren — wir sehen nur den aktuellen Stand.                
+  2. Den Appearances: Die Designation-Stufe ist perspektivisch. Dasselbe Naming könnte aus einer Perspektive als Specification gelten, aus einer anderen als
+   bloßer Cue. Das wäre ontologisch am konsequentesten — der Bestimmtheitsgrad ist nicht intrinsisch, sondern erscheint je nach Perspektive. Dann gehört    
+  designation auf die appearances-Tabelle.                  
+  3. Einem eigenen Verlaufsprotokoll: Jede Änderung der Designation wird als eigenes Naming erfasst — ein Naming über das Naming, eine Art Meta-Naming. Aber
+   das ist vermutlich Overengineering.                                                                                                                      
+   
+  Ich denke Option 2 ist die richtige: designation auf appearances, nicht auf namings. Denn:                                                                
+                                                            
+  - Ein Forscher A hat etwas als Specification in seiner Analyse. Forscher B kommt dazu und sagt: für mich ist das noch ein Cue. Beide haben recht — aus    
+  ihrer jeweiligen Perspektive.                             
+  - Ein und dasselbe Naming kann auf Map 1 als spezifiziert gelten und auf Map 2 als vorläufige Andeutung.                                                  
+  - Die Geschichte der Bewegung ist dann die Geschichte der Appearances dieses Namings über die Zeit — verschiedene Perspektiven, verschiedene              
+  Designation-Stufen, mit Timestamps.                                                                                                                       
+                                                                                                                                                            
+  Das passt auch zu D/B selbst: Designation ist die "knowing-naming phase of fact" — sie gehört zum Knowing, nicht zum Known. Und das Knowing ist immer     
+  perspektivisch.                                           
+                                                                                                                                                            
+  ALTER TABLE appearances ADD COLUMN designation TEXT       
+    NOT NULL DEFAULT 'characterization'
+    CHECK (designation IN ('cue', 'characterization', 'specification'));
+                                                                                                                                                            
+  Dann wäre die Prozessgeschichte eines Namings rekonstruierbar als: "In Perspektive X erschien es zunächst als Cue (März), wurde zur Characterization      
+  (April), zur Specification (Juni), und fiel in Perspektive Y wieder zum Cue zurück (September)."                                                          
+                                                                                                                                                            
+  Soll ich das so umsetzen?                                                                                                                                 
+   
+❯ Oder jedes Naming IST diese Geschichte als Datenobjekt, also seine eigenen Blockchain                                                                     
+                                                                                        
+● Das ist ein starker Gedanke. Jedes Naming ist seine Geschichte — nicht hat eine, sondern ist eine. Die Sequenz der Designation-Bewegungen wäre dann nicht 
+  Metadaten über das Naming, sondern das Naming selbst.
+                                                                                                                                                            
+  Und "seine eigene Blockchain" trifft es strukturell: eine geordnete, unveränderliche Kette von Zuständen, wobei jeder neue Zustand den vorherigen         
+  referenziert. Kein Überschreiben, kein Update — nur Anhängen.                                                                                             
+                                                                                                                                                            
+  Das passt zur transaktionalen Ontologie: Ein Naming ist kein Ding mit wechselnden Eigenschaften, sondern ein Prozess, der sich durch seine Geschichte     
+  konstituiert. Die inscription "Demokratie" mit der Designation-Geschichte [cue → characterization → specification → cue] ist ein anderes Naming als
+  "Demokratie" mit [specification], auch wenn die Inscription identisch ist.                                                                                
+                                                            
+  Technisch wäre das eine Tabelle:                                                                                                                          
+   
+  CREATE TABLE naming_designations (                                                                                                                        
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),          
+    naming_id UUID NOT NULL REFERENCES namings(id) ON DELETE CASCADE,                                                                                       
+    perspective_id UUID NOT NULL REFERENCES namings(id),
+    designation TEXT NOT NULL                                                                                                                               
+      CHECK (designation IN ('cue', 'characterization', 'specification')),
+    designated_by UUID REFERENCES users(id),                                                                                                                
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),          
+    seq BIGSERIAL                                                                                                                                           
+  );                                                                                                                                                        
+                                                                                                                                                            
+  Kein updated_at — nichts wird geändert. Jeder Eintrag ist ein Ereignis in der Geschichte des Namings. Die aktuelle Designation in einer Perspektive ist   
+  immer der letzte Eintrag (MAX(seq) für ein naming_id/perspective_id-Paar). Aber die ganze Kette bleibt lesbar.
+                                                                                                                                                            
+  designated_by ist nullable — für den Fall, dass die Designation nicht einem User zugehört, sondern z.B. einem algorithmischen Prozess oder einer          
+  AI-Suggestion.
+                                                                                                                                                            
+  Die Geschichte eines Namings wäre dann:                                                                                                                   
+   
+  SELECT designation, perspective_id, designated_by, created_at                                                                                             
+  FROM naming_designations                                                                                                                                  
+  WHERE naming_id = $1
+  ORDER BY seq;                                                                                                                                             
+                                                            
+  Und die Frage "Was war dieses Naming, bevor es spezifiziert wurde?" ist keine Rekonstruktion, sondern ein einfacher Query.                                
+   
+  Soll ich das so umsetzen? Oder willst du noch die Frage klären, ob perspective_id hier richtig ist — ob also die Designation-Geschichte immer             
+  perspektivisch ist, oder ob es auch eine "nackte" Designation-Bewegung gibt, die keiner Perspektive zugehört?
+                                                                                                                                                            
+❯ perspective_id könnte jeder Akteur/jedes Objekt sein. Es hat doch jedes Datenobjekt seine eigene Signatur, oder? Kann man die nicht nehmen -              
+  einsclhießlich der Namen der Bearbeitenden natürlich. Damit würde man auch die Ebenentrennung Forscher/User/Beherrschender vs.                           
+  Datenraum/Daten/Manopuliertes bereits ein Stück weit aufheben.                                                                                            
+                                                                                                                                                            
+● Ja — das ist konsequent. Wenn jedes Naming seine eigene id hat, dann ist die Perspektive, aus der eine Designation geschieht, einfach ein Naming. Und die 
+  Forschenden sind auch Namings. Kein separates users-System, das von außen auf die Daten schaut, sondern: der Forscher ist im Datenraum, als Naming unter  
+  Namings.                                                                                                                                                  
+   
+  Das heißt: designated_by und perspective_id kollabieren. Es gibt nur by UUID REFERENCES namings(id) — und das kann ein Forscher-Naming sein, ein          
+  Map-Naming, ein Code-System-Naming, ein anderes Naming das "zurückwirkt". Die Asymmetrie Subjekt/Objekt wird nicht im Schema reproduziert.
+                                                                                                                                                            
+  Das hat eine radikale Konsequenz für die User-Verwaltung: Jeder User wäre auch ein Naming im Projekt. Die users-Tabelle bleibt für Auth (Login, Session), 
+  aber im Forschungsdatenraum tritt der User als Naming auf — mit eigener Designation-Geschichte, eigenen Participations, eigenen Appearances.
+                                                                                                                                                            
+  CREATE TABLE naming_designations (                                                                                                                        
+    naming_id UUID NOT NULL REFERENCES namings(id) ON DELETE CASCADE,
+    designation TEXT NOT NULL                                                                                                                               
+      CHECK (designation IN ('cue', 'characterization', 'specification')),
+    by UUID NOT NULL REFERENCES namings(id),                                                                                                                
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),          
+    seq BIGSERIAL                                                                                                                                           
+  );                                                                                                                                                        
+   
+  Kein separates id — die Kette identifiziert sich durch naming_id + seq. Und by ist ein Naming: könnte der Forscher sein, könnte eine AI-Interaction sein, 
+  könnte ein anderes Naming sein, das durch Participation eine Rückwirkung ausübt.
+                                                                                                                                                            
+  Die Frage die sich dann stellt: Brauchen wir eine Migration, die für jeden existierenden User ein Naming im jeweiligen Projekt anlegt? Oder entsteht das  
+  Forscher-Naming beim ersten Akt im Projekt — beim ersten Naming das created_by erzeugt?
+                                                                                                                                                            
+❯ ich denke letzeres vielleicht?                                                                                                                            
+                                 
+● Ja — das ist auch ontologisch sauberer. Der Forscher tritt nicht als vorgefertigtes Subjekt in den Datenraum ein, sondern konstituiert sich durch seinen  
+  ersten Akt darin. Erst wenn er etwas benennt, wird er selbst zum Naming.
+                                                                                                                                                            
+  Praktisch: Wenn ein User sein erstes Naming in einem Projekt erstellt, wird automatisch ein Forscher-Naming für ihn angelegt. Das created_by auf namings  
+  verweist weiterhin auf users(id) für die Auth-Ebene, aber zusätzlich entsteht ein Naming, das den User im Datenraum repräsentiert. Und dieses             
+  Forscher-Naming ist dann das by in naming_designations.                                                                                                   
+                                                            
+  Lass mich das festhalten, aber noch nicht umsetzen — wir sind hier an mehreren Stellen gleichzeitig, und ich will nichts überstürzen. Was wir bisher      
+  haben:
+                                                                                                                                                            
+  1. Designation als Prozess: naming_designations-Tabelle als append-only Kette                                                                             
+  2. Bidirektional: Cue ↔ Characterization ↔ Specification, keine Teleologie
+  3. by als Naming: keine Subjekt/Objekt-Trennung im Datenraum                                                                                              
+  4. Forscher als Naming: entsteht beim ersten Akt im Projekt, nicht vorab                                                                                  
+  5. users-Tabelle bleibt: aber nur für Auth, nicht für den Forschungsdatenraum                                                                             
+                                                                                                                                                            
+  Was noch offen ist:                                                                                                                                       
+  - Wie genau das Forscher-Naming angelegt wird (automatisch beim ersten Akt, oder explizit?)                                                               
+  - Ob die appearances-Tabelle auch ein designation-Feld bekommt oder ob naming_designations das vollständig abdeckt                                        
+  - Ob wir das jetzt umsetzen oder erst die theoretische Klärung abschließen                                        
+                                                                                                                                                            
+  Wie willst du vorgehen?                                                                                                                                   
+                                                                                                                                                            
+❯ Kannst DU diese beiden Fragen noch selbst erörtern; sie überfordern mich aufgrund ihrer technischen Natur ("  - Wie genau das Forscher-Naming             
+  angelegt wird (automatisch beim ersten Akt, oder explizit?)                                                                                           
+    - Ob die appearances-Tabelle auch ein designation-Feld bekommt oder ob naming_designations das vollständig abdeckt   "9                                 
+                                                                                                                            
+● Forscher-Naming: automatisch beim ersten Akt.                                                                                                             
+                                                                                                                                                          
+  Explizit wäre falsch — es würde den User zwingen, sich selbst zu benennen, bevor er forschen darf. Das reproduziert genau die Subjekt-vor-Objekt-Logik,   
+  die wir auflösen wollen. Also: Wenn ein User sein erstes Naming in einem Projekt erstellt, prüft der Code, ob für diesen User bereits ein Forscher-Naming
+  im Projekt existiert. Falls nein, wird es im selben Transaktionsschritt erzeugt — mit der inscription des User-Displaynamens und einer initialen          
+  Designation characterization (der Forscher kennt sich selbst, aber nicht abschließend). Das passiert einmal, in createNaming(), transparent. Der User   
+  merkt nichts davon.
 
-  The Three Observation Modes
+  designation gehört ausschließlich in naming_designations, nicht zusätzlich auf appearances.                                                               
+   
+  Begründung: Wenn wir designation auf beide Tabellen legen, entsteht die Frage, welche autoritativ ist — und damit genau die Verdopplung, die              
+  Inkonsistenzen erzeugt. naming_designations ist die vollständige Geschichte. Wenn eine Appearance wissen muss, welche Designation das Naming aktuell aus 
+  ihrer Perspektive hat, ist das ein Query:                                                                                                                 
+                                                            
+  SELECT designation FROM naming_designations
+  WHERE naming_id = $1 AND by = $2
+  ORDER BY seq DESC LIMIT 1;
+                                                                                                                                                            
+  Die Appearance selbst bleibt schlank — sie sagt, dass und wie etwas erscheint (mode, valence, properties). Die naming_designations-Tabelle sagt, wie      
+  bestimmt es ist. Das sind zwei verschiedene Fragen, die in zwei verschiedene Tabellen gehören.                                                            
+                                                                                                                                                            
+  Außerdem: Eine Appearance kann existieren, ohne dass je eine Designation vergeben wurde — das wäre dann implizit ein Cue. Und eine Designation kann       
+  existieren, ohne dass das Naming in einer bestimmten Perspektive erscheint — jemand hat den Bestimmtheitsgrad eingeschätzt, ohne es auf eine Map zu
+  setzen. Beide Richtungen müssen möglich sein.                                                                                                             
+                                                            
+  Soll ich das jetzt in eine Migration umsetzen?                                                                                                            
+   
+❯ /model                                                                                                                                                    
+  ⎿  Set model to Default (Opus 4.6 · Most capable for complex work) with medium effort
+                                                                                                                                                            
+❯ Ja. Aber committe zunächst diesen Stand. Ich werde diese Session auch als Session 01 exportieren.                                                         
+                                                                                                                                                            
+● Bash(git status && git diff --stat && git log --oneline -5)                                                                                               
+  ⎿  interactive rebase in progress; onto e787360                                                                                                         
+     Last command done (1 command done):                                                                                                                    
+        pick d2a8fa1 # Initial scaffold: transact-qda                                                                                                       
+     … +41 lines (ctrl+o to expand)                                                                                                                         
+                                                                                                                                                            
+● There's an interactive rebase in progress with a merge conflict on .gitignore. This is from the earlier force-push attempt. Let me resolve this.          
+                                                                                                                                                            
+● Bash(git rebase --abort)                                                                                                                                  
+  ⎿  (No output)
+                                                                                                                                                            
+● Bash(git status && git log --oneline -5)                                                                                                                  
+  ⎿  On branch main                                                                                                                                         
+     Untracked files:                                                                                                                                       
+       (use "git add <file>..." to include in what will be committed)
+     … +7 lines (ctrl+o to expand)                                                                                                                          
+                                                                                                                                                            
+● Good — branch is clean again with all 3 commits intact. Now let me commit the session export and the current state.                                       
+                                                                                                                                                            
+● Read 1 file (ctrl+o to expand)                                                                                                                            
+                                                                                                                                                            
+● Bash(mv 2026-03-07-005851-transaction-qda_session_01.txt docs/sessions/ && git add docs/sessions/2026-03-07-005851-transaction-qda_session_01.txt && git  
+      commit -m "$…)                                                                                                                                        
+  ⎿  [main 96ff65a] Add session 01: D/B naming taxonomy, designation as process, researcher-as-naming                                                       
+      1 file changed, 584 insertions(+)                                                                                                                     
+      create mode 100644 docs/sessions/2026-03-07-005851-transaction-qda_session_01.txt                                                                     
+                                                                                                                                                            
+● Committed as 96ff65a. Now I'll implement the migration.                                                                                                   
+                                                                                                                                                      
+● Read 1 file (ctrl+o to expand)                                                                                                                            
+                                                                                                                                                          
+● Now I'll write the migration.                                                                                                                             
+                                                                                                                                                            
+❯ Tool loaded.                                                                                                                                              
+                                                                                                                                                            
+● Write(migrations/003_designation_process.sql)                                                                                                             
+  ⎿  Wrote 50 lines to migrations/003_designation_process.sql                                                                                               
+       1 -- Designation as process: the D/B gradient (cue → characterization → specification)                                                               
+       2 -- is bidirectional and historicized. Every naming carries its own append-only chain                                                               
+       3 -- of designation events. No overwriting, no updates — only appending.                                                                             
+       4 --                                                                                                                                                 
+       5 -- The "by" field references a naming, not a user: the researcher is a naming                                                                      
+       6 -- among namings in the data space. The subject/object asymmetry is not                                                                            
+       7 -- reproduced in the schema.                                                                                                                       
+       8 --                                                                                                                                                 
+       9 -- Dewey/Bentley, Knowing and the Known (1949), Ch. XI:                                                                                            
+      10 --   Cue: "The earliest stage of designation in the evolutionary scale."                                                                           
+     … +40 lines (ctrl+o to expand)                                                                                                                         
 
-  ┌──────────────┬───────────────────────────────────────────────────────────┐
-  │     Mode     │                            D/B                            │
-  ├──────────────┼───────────────────────────────────────────────────────────┤
-  │              │ "Various primitive treatments of the known, prior to      │
-  │ Self-Action  │ interactional and transactional." Rarely found today      │
-  │              │ except in philosophy, logic, epistemology.                │
-  ├──────────────┼───────────────────────────────────────────────────────────┤
-  │              │ Objects enter "as if adequately named and known prior to  │
-  │ Inter-Action │ the start of inquiry." Legitimate within limits; abusive  │
-  │              │ when dogmatized.                                          │
-  ├──────────────┼───────────────────────────────────────────────────────────┤
-  │              │ "Inquiry which ranges under primary observation across    │
-  │ Trans-Action │ all subjectmatters... and proceeds with freedom toward    │
-  │              │ the re-determination and re-naming of the objects         │
-  │              │ comprised in the system."                                 │
-  └──────────────┴───────────────────────────────────────────────────────────┘
+● Now let me update the core query layer to support researcher-namings and designation.
 
-  Structural/Relational Terms
+● Read 1 file (ctrl+o to expand)                                                                                                                            
+                                         
+❯ Tool loaded.                                                                                                                                              
+                                                            
+● Update(src/lib/server/db/queries/namings.ts)                                                                                                              
+  ⎿  Added 68 lines, removed 1 line                                                                                                                         
+       1  import { query, queryOne, transaction } from '../index.js';                                                                                       
+       2  import type { CollapseMode } from '$lib/shared/types/index.js';                                                                                   
+       3                                                                                                                                                    
+       4 +// ---- Researcher-naming: the user as naming in the data space ----                                                                       
+       5 +                                                                                                                                                  
+       6 +export async function getOrCreateResearcherNaming(                                                                                         
+       7 +  projectId: string,                                                                                                                       
+       8 +  userId: string                                                                                                                           
+       9 +): Promise<string> {                                                                                                                       
+      10 +  // Check if researcher-naming already exists                                                                                             
+      11 +  const existing = await queryOne<{ naming_id: string }>(                                                                                  
+      12 +    `SELECT naming_id FROM researcher_namings WHERE user_id = $1 AND project_id = $2`,                                                     
+      13 +    [userId, projectId]                                                                                                                    
+      14 +  );                                                                                                                                       
+      15 +  if (existing) return existing.naming_id;                                                                                                 
+      16 +                                                                                                                                           
+      17 +  // Create researcher-naming in a transaction                                                                                             
+      18 +  return transaction(async (client) => {                                                                                                   
+      19 +    // Get user display name for the inscription                                                                                           
+      20 +    const user = await client.query(                                                                                                       
+      21 +      `SELECT display_name, username FROM users WHERE id = $1`,                                                                            
+      22 +      [userId]                                                                                                                             
+      23 +    );                                                                                                                                     
+      24 +    const name = user.rows[0]?.display_name || user.rows[0]?.username || 'unknown';                                                        
+      25 +                                                                                                                                           
+      26 +    // Create the naming                                                                                                                   
+      27 +    const naming = await client.query(                                                                                                     
+      28 +      `INSERT INTO namings (project_id, inscription, created_by)                                                                           
+      29 +       VALUES ($1, $2, $3) RETURNING id`,                                                                                                  
+      30 +      [projectId, name, userId]                                                                                                            
+      31 +    );                                                                                                                                     
+      32 +    const namingId = naming.rows[0].id;                                                                                                    
+      33 +                                                                                                                                           
+      34 +    // Self-referential appearance: the researcher appears as perspective from itself                                                      
+      35 +    await client.query(                                                                                                                    
+      36 +      `INSERT INTO appearances (naming_id, perspective_id, mode, properties)                                                               
+      37 +       VALUES ($1, $1, 'perspective', '{"role": "researcher"}')`,                                                                          
+      38 +      [namingId]                                                                                                                           
+      39 +    );                                                                                                                                     
+      40 +                                                                                                                                           
+      41 +    // Register the link                                                                                                                   
+      42 +    await client.query(                                                                                                                    
+      43 +      `INSERT INTO researcher_namings (user_id, project_id, naming_id)                                                                     
+      44 +       VALUES ($1, $2, $3)`,                                                                                                               
+      45 +      [userId, projectId, namingId]                                                                                                        
+      46 +    );                                                                                                                                     
+      47 +                                                                                                                                           
+      48 +    // Initial designation: the researcher characterizes itself                                                                            
+      49 +    await client.query(                                                                                                                    
+      50 +      `INSERT INTO naming_designations (naming_id, designation, by)                                                                        
+      51 +       VALUES ($1, 'characterization', $1)`,                                                                                               
+      52 +      [namingId]                                                                                                                           
+      53 +    );                                                                                                                                     
+      54 +                                                                                                                                           
+      55 +    return namingId;                                                                                                                       
+      56 +  });                                                                                                                                      
+      57 +}                                                                                                                                          
+      58 +                                                                                                                                           
+      59  // ---- Core naming operations ----
+      60  
+      61  export async function createNaming(
+     ...
+      63    userId: string,
+      64    inscription: string
+      65  ) {
+      66 +  // Ensure researcher-naming exists (first act creates it)                                                                                
+      67 +  const researcherNamingId = await getOrCreateResearcherNaming(projectId, userId);                                                         
+      68 +                                                                                                                                           
+      69    const res = await queryOne<{ id: string; inscription: string; created_at: string; seq: string }>(
+      70      `INSERT INTO namings (project_id, inscription, created_by)
+      71       VALUES ($1, $2, $3) RETURNING *`,
+      72      [projectId, inscription, userId]
+      73    );
+      16 -  return res!;                                                                                                                             
+      74 +  const naming = res!;                                                                                                                     
+      75 +                                                                                                                                           
+      76 +  // Initial designation as characterization, by the researcher-naming                                                                     
+      77 +  await query(                                                                                                                             
+      78 +    `INSERT INTO naming_designations (naming_id, designation, by)                                                                          
+      79 +     VALUES ($1, 'characterization', $2)`,                                                                                                 
+      80 +    [naming.id, researcherNamingId]                                                                                                        
+      81 +  );                                                                                                                                       
+      82 +                                                                                                                                           
+      83 +  return naming;                                                                                                                           
+      84  }
+      85  
+      86  export async function updateInscription(namingId: string, projectId: string, inscription: string) {
 
-  ┌────────────┬─────────────────────────────────────────────────────────────┐
-  │    Name    │                             D/B                             │
-  ├────────────┼─────────────────────────────────────────────────────────────┤
-  │            │ "The components of a full transactional situation, being    │
-  │ Aspect     │ not independents, are aspects." Etymologically: "to look    │
-  │            │ out."                                                       │
-  ├────────────┼─────────────────────────────────────────────────────────────┤
-  │ Phase      │ "Aspect of fact in sufficiently developed statement to      │
-  │            │ exhibit definite spatial and temporal localizations."       │
-  ├────────────┼─────────────────────────────────────────────────────────────┤
-  │ Connection │ "To apply between objects under naming."                    │
-  ├────────────┼─────────────────────────────────────────────────────────────┤
-  │ Reference  │ "Behavioral application of naming to named."                │
-  ├────────────┼─────────────────────────────────────────────────────────────┤
-  │ Relation   │ "System among words, in correlation with reference and      │
-  │            │ connection."                                                │
-  ├────────────┼─────────────────────────────────────────────────────────────┤
-  │            │ Should have important behavioral application, but "definite │
-  │ Field      │  correspondence needed for behavioral application can not   │
-  │            │ be established."                                            │
-  ├────────────┼─────────────────────────────────────────────────────────────┤
-  │            │ Usable "where transactional inquiry is under way."          │
-  │ System     │ Distinguished from Organization which "would represent      │
-  │            │ interaction."                                               │
-  └────────────┴─────────────────────────────────────────────────────────────┘
+● Now add the designation query functions at the end of the file.
 
-  Terms Rejected or Demoted
+● Update(src/lib/server/db/queries/namings.ts)                                                                                                              
+  ⎿  Added 35 lines
+      293    });                                                                                                                                            
+      294  }                                                
+      295                                                                                                                                                   
+      296 +// ---- Designation operations (append-only) ----                                                                                         
+      297 +                                                                                                                                          
+      298 +export async function designate(                                                                                                          
+      299 +  namingId: string,                                                                                                                       
+      300 +  designation: 'cue' | 'characterization' | 'specification',                                                                              
+      301 +  byNamingId: string                                                                                                                      
+      302 +) {                                                                                                                                       
+      303 +  return queryOne(                                                                                                                        
+      304 +    `INSERT INTO naming_designations (naming_id, designation, by)                                                                         
+      305 +     VALUES ($1, $2, $3) RETURNING *`,                                                                                                    
+      306 +    [namingId, designation, byNamingId]                                                                                                   
+      307 +  );                                                                                                                                      
+      308 +}                                                                                                                                         
+      309 +                                                                                                                                          
+      310 +export async function getCurrentDesignation(namingId: string) {                                                                           
+      311 +  return queryOne<{ designation: string; by: string; created_at: string }>(                                                               
+      312 +    `SELECT designation, by, created_at FROM naming_designations                                                                          
+      313 +     WHERE naming_id = $1 ORDER BY seq DESC LIMIT 1`,                                                                                     
+      314 +    [namingId]                                                                                                                            
+      315 +  );                                                                                                                                      
+      316 +}                                                                                                                                         
+      317 +                                                                                                                                          
+      318 +export async function getDesignationHistory(namingId: string) {                                                                           
+      319 +  return (                                                                                                                                
+      320 +    await query(                                                                                                                          
+      321 +      `SELECT nd.*, n.inscription as by_inscription                                                                                       
+      322 +       FROM naming_designations nd                                                                                                        
+      323 +       JOIN namings n ON n.id = nd.by                                                                                                     
+      324 +       WHERE nd.naming_id = $1                                                                                                            
+      325 +       ORDER BY nd.seq ASC`,                                                                                                              
+      326 +      [namingId]                                                                                                                          
+      327 +    )                                                                                                                                     
+      328 +  ).rows;                                                                                                                                 
+      329 +}                                                                                                                                         
+      330 +                                                                                                                                          
+      331  // ---- History: namings ARE the event log ----
+      332  
+      333  export async function getHistory(projectId: string, opts?: { afterSeq?: number; limit?: number }) {
 
-  ┌───────────────┬──────────────────────────────────────────────────────────┐
-  │     Name      │                           Why                            │
-  ├───────────────┼──────────────────────────────────────────────────────────┤
-  │ Entity        │ "Assumed or implied... independence... a tricky word...  │
-  │               │ should be rejected in all serious inquiry."              │
-  ├───────────────┼──────────────────────────────────────────────────────────┤
-  │ Substance     │ "No word of this type has place."                        │
-  ├───────────────┼──────────────────────────────────────────────────────────┤
-  │ Definition    │ Demoted — "so confused as to rate no higher than a crude │
-  │               │  characterization."                                      │
-  ├───────────────┼──────────────────────────────────────────────────────────┤
-  │ Meaning       │ "A word so confused that it is best never used at all."  │
-  ├───────────────┼──────────────────────────────────────────────────────────┤
-  │ Consciousness │ "No value whatever in it."                               │
-  ├───────────────┼──────────────────────────────────────────────────────────┤
-  │ Mental        │ "Not used by us." Hypostatization from imperfect view of │
-  │               │  behavior.                                               │
-  ├───────────────┼──────────────────────────────────────────────────────────┤
-  │ Reality       │ "The most metaphysical of all words in the most          │
-  │               │ obnoxious sense."                                        │
-  ├───────────────┼──────────────────────────────────────────────────────────┤
-  │ Individual    │ "Abandonment... seems essential wherever a positive      │
-  │               │ general theory is undertaken."                           │
-  ├───────────────┼──────────────────────────────────────────────────────────┤
-  │ Actor         │ "Confused and confusing... should always be taken as     │
-  │               │ Trans-actor."                                            │
-  └───────────────┴──────────────────────────────────────────────────────────┘
+● Now update the types.                 
 
-  Other Notable Entries
+● Read 1 file (ctrl+o to expand)                                                                                                                            
+                                  
+● Update(src/lib/shared/types/index.ts)                                                                                                                     
+  ⎿  Added 20 lines                                         
+      53    createdAt: string;                                                                                                                              
+      54    updatedAt: string;                                                                                                                              
+      55  }                                                                                                                                                 
+      56 +                                                                                                                                                  
+      57 +// Dewey/Bentley designation gradient (bidirectional)                                                                                      
+      58 +export type DesignationStage = 'cue' | 'characterization' | 'specification';                                                               
+      59 +                                                                                                                                           
+      60 +// A single event in the designation history of a naming                                                                                   
+      61 +export interface NamingDesignation {                                                                                                       
+      62 +  namingId: string;                                                                                                                        
+      63 +  designation: DesignationStage;                                                                                                           
+      64 +  by: string;           // a naming id (researcher, AI, another naming)                                                                    
+      65 +  createdAt: string;                                                                                                                       
+      66 +  seq: number;                                                                                                                             
+      67 +}                                                                                                                                          
+      68 +                                                                                                                                           
+      69 +// The researcher as naming in the data space                                                                                              
+      70 +export interface ResearcherNaming {                                                                                                        
+      71 +  userId: string;                                                                                                                          
+      72 +  projectId: string;                                                                                                                       
+      73 +  namingId: string;                                                                                                                        
+      74 +  createdAt: string;                                                                                                                       
+      75 +}                                                                                                                                          
 
-  - Behavior: "Always transactionally: never as of the organism alone... but
-  always of the organic-environmental situation, with organisms and
-  environmental objects taken as equally its aspects."
-  - Circularity: "Regarded as a radical defect by non-transactional
-  epistemologies... Normal for inquiry into knowings and knowns in system."
-  - Context: "Where it obscures the issues of naming and the named... more apt
-  to do harm than good."
-  - Description: "Cues organizing characterizations; characterizations
-  developing into specifications... A name is, in effect, a truncated
-  description."
-  - Observation: "Durationally and extensionally transactional, and thus neither
-   separately in terms of the observing, nor separately of the observed."
-  - Inquiry: "A strictly transactional name. Equivalent of knowing."
-  - Thing: "Most generally used for anything named. Its very generality gives it
-   frequent advantage over Entity and Substance."
+● Now let me verify the build.          
 
-  ---
-  What strikes me reading this systematically: D/B's vocabulary is almost
-  entirely oriented toward the positive determination of the named — the
-  gradient from vague to firm. There is no entry for silence, absence,
-  withdrawal, or non-appearance. The closest is their insistence on openness and
-   tentativeness — that specification never reaches finality — but that's
-  epistemological modesty, not an ontological account of productive absence.
+● Bash(npx svelte-kit sync 2>&1 | head -5 && npx tsc --noEmit 2>&1 | head -20)                                                                              
+  ⎿  src/hooks.server.ts(11,4): error TS2322: Type '{ id: string; username: string; email: string; displayName: string | null; role: string; }' is not
+     assignable to type 'User'.                                                                                                                             
+       Types of property 'role' are incompatible.           
+     … +16 lines (ctrl+o to expand)                                                                                                                         
+                                                                                                                                                            
+● The pre-existing errors are all from before (missing @types/node, etc.) — no new errors from our changes. Let me check specifically for our new code.
+                                                                                                                                                            
+● Bash(npx tsc --noEmit 2>&1 | grep -i "naming")                                                                                                            
+  ⎿  No matches found
+                                                                                                                                                            
+● No errors in our new code. Let me also verify the migration runs.
+                                                                                                                                                            
+● Bash(node -e "                                                                                                                                            
+      const { Pool } = require('pg');…)
+  ⎿  Migration 003 applied successfully                                                                                                                     
+     New tables: [ 'naming_designations', 'researcher_namings' ]
+                                                                                                                                                            
+● Migration applied. Now commit.                            
+                                                                                                                                                            
+● Bash(git add migrations/003_designation_process.sql src/lib/server/db/queries/namings.ts src/lib/shared/types/index.ts && git commit -m "$(cat <<'EOF'    
+      Add designatio…)                                                                                                                                      
+  ⎿  [main b1f8386] Add designation process and researcher-as-naming                                                                                        
+      3 files changed, 173 insertions(+), 1 deletion(-)     
+      create mode 100644 migrations/003_designation_process.sql                                                                                             
+                                                            
+● Committed as b1f8386.                                                                                                                                     
+                                                                                                                                                    
+  Summary:                                                                                                                                                  
+  - Migration 003: naming_designations (append-only designation chain) + researcher_namings (user↔naming bridge)                                          
+  - Query layer: getOrCreateResearcherNaming() (auto-creates on first act), designate(), getCurrentDesignation(), getDesignationHistory()                   
+  - Types: DesignationStage, NamingDesignation, ResearcherNaming                                                                                            
+  - Every createNaming() call now ensures the researcher-naming exists and records an initial characterization designation                                  
+                                                                                                                                                            
+✻ Churned for 2m 16s                                                                                                                                        
+                                                                                                                                                            
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── ▪▪▪ ─
+❯                                                                                                                                                           
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ accept edits on (shift+tab to cycle)                                                                                                                   
 
-  Their Aspect and Phase are interesting for your purposes though: aspects are
-  "not independents" (components of a transactional situation), and phases are
-  aspects with "definite spatial and temporal localizations." This maps directly
-   onto our appearances model — an appearance IS a phase in D/B's sense.
-
-  And their distinction between System (transactional) vs. Organization
-  (interactional) could be productive for differentiating map types or
-  analytical perspectives.
-
-  What do you want to draw from this for the data model?
-
-✻ Cogitated for 49s
