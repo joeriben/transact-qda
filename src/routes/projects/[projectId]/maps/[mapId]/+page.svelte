@@ -1,13 +1,16 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
+
 	let { data } = $props();
 
-	let elements = $state(data.elements);
-	let relations = $state(data.relations);
-	let silences = $state(data.silences);
-	let processes = $state(data.processes);
-	let constellations = $state(data.constellations);
-	let phases = $state(data.phases);
-	let designationProfile = $state(data.designationProfile);
+	// untrack: intentionally capture initial value only; $effect below handles prop updates
+	let elements = $state(untrack(() => data.elements));
+	let relations = $state(untrack(() => data.relations));
+	let silences = $state(untrack(() => data.silences));
+	let processes = $state(untrack(() => data.processes));
+	let constellations = $state(untrack(() => data.constellations));
+	let phases = $state(untrack(() => data.phases));
+	let designationProfile = $state(untrack(() => data.designationProfile));
 
 	// Sync when SvelteKit re-runs the load function (navigation/invalidation)
 	$effect(() => {

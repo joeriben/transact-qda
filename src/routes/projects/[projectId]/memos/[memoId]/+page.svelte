@@ -1,6 +1,8 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
+
 	let { data } = $props();
-	let content = $state(data.memo.content || '');
+	let content = $state(untrack(() => data.memo.content || ''));
 	let saving = $state(false);
 	let lastSaved = $state<Date | null>(null);
 
