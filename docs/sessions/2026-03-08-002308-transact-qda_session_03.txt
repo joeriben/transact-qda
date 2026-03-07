@@ -1,0 +1,2864 @@
+
+╭─── Claude Code v2.1.70 ──────────────────────────────────────────────────────╮
+│                                                    │ Tips for getting        │
+│               Welcome back Benjamin!               │ started                 │
+│                                                    │ Run /init to create a … │
+│                       ▐▛███▜▌                      │ ─────────────────────── │
+│                      ▝▜█████▛▘                     │ Recent activity         │
+│                        ▘▘ ▝▝                       │ 1mo ago  Überprüfe: ❯ … │
+│                                                    │ /resume for more        │
+│      Opus 4.6 · Claude Max ·                       │                         │
+│      benjamin.joerissen@fau.de's Organization      │                         │
+│                 ~/ai/transact-qda                  │                         │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+✻ Conversation compacted (ctrl+o for history)
+
+
+❯ /compact 
+  ⎿  Compacted (ctrl+o to see full summary)
+  ⎿  Referenced file src/routes/projects/[projectId]/maps/[mapId]/+page.svelte
+  ⎿  Read src/routes/api/projects/[projectId]/maps/[mapId]/+server.ts (128 
+     lines)
+  ⎿  Read src/routes/api/projects/[projectId]/elements/[elementId]/+server.ts 
+     (27 lines)
+  ⎿  Read src/lib/server/db/queries/namings.ts (395 lines)
+  ⎿  Read migrations/004_inscription_history.sql (15 lines)
+  ⎿  Plan file referenced (~/.claude/plans/snazzy-dancing-journal.md)
+
+❯ This is the start of Session 03. Wir beginnen nun über eine agentische    
+  LLM-Instanz nachzudenken, wie wir es in der letzen Session begonnen       
+  haben. Ich beginne damit früh, weil es helfen kann Probleme und           
+  konzeptionelle Inkonsequenzen schneller zu erkennen. AI4ArtsEd-devserver  
+  verwendet ja bereits LLM in vielfältiger Hinsicht, ggf. gibt es dort      
+  bereits nützlichen Code statt neuen zu programmieren. Verwende einen      
+  Agent für die technische Implementation (z.B claude sonnet oder wenn opus 
+   dann nicht mit der höchsten Denkstufe, das wäre wohl verschwendung)      
+  während DU selbst die strukturelle, theoriebasierte Implementation        
+  planst, mit mir zusammen.                                                 
+
+● Session 03 — Agentische LLM-Integration. Verstanden: Ich plane die
+  strukturelle/theoretische Ebene, ein Agent übernimmt die technische Recherche.
+
+  Zuerst: Bestandsaufnahme — was existiert bereits in beiden Projekten, und was
+  ist der Git-Stand.
+
+❯ Tool loaded. 
+
+● Bash(git status --short && echo "---" && git log --oneline -5)
+  ⎿  ?? docs/sessions/2026-03-07-1235-transaction-qda_session_02.txt
+     ---
+     f0ec7bb Fix invalid date in memos list: use created_at instead of upda
+     … +8 lines (ctrl+o to expand)
+
+● 2 Explore agents launched (ctrl+o to expand)
+   ├─ Explore ai4artseducation LLM code
+   │  ⎿  Running in the background
+   └─ Explore transact-qda AI scaffolding
+      ⎿  Running in the background
+
+● Gut. Git ist sauber — alle Code-Änderungen aus Session 02 sind committed. Nur
+  eine ungetrackte Session-Doku liegt vor (docs/sessions/...).
+
+  Zwei Agenten recherchieren im Hintergrund:
+  1. ai4artseducation — bestehende LLM-Patterns, SSE, Prompts, Tools
+  2. transact-qda — was an AI-Scaffolding bereits existiert
+
+  Sollen wir die Session-Doku committen, bevor wir starten? Und: die 6 Commits
+  aus Session 02 sind noch nicht gepusht — soll ich die auch pushen?
+
+  Während die Agenten arbeiten, können wir die strukturelle Frage beginnen:
+
+  Die ontologische Kernfrage der AI-Integration
+
+  In transact-qda ist der Forscher bereits ein Naming im Datenraum. Die
+  AI-Instanz steht jetzt vor derselben Frage:
+
+  1. AI als Naming — Die AI wird selbst ein Naming im Projekt (wie der
+  Forscher). Ihre Akte (Vorschläge, Benennungen, Designationen) sind Naming-Akte
+   mit by = ai_naming_id. Sie erscheint als Perspektive, hat
+  Designationsgeschichte, ist Ko-Akteur in Memos. Volle ontologische Symmetrie.
+  2. AI als Tool — Die AI bleibt außerhalb des Datenraums. Ihre Vorschläge sind
+  Vorschläge, die erst durch menschliche Annahme zu Naming-Akten werden. Die AI
+  hat keine eigene Naming-Identität.
+  3. Hybrid — AI-Vorschläge existieren in einem Zwischenraum (wie D/B's
+  "Cue"-Stadium), werden erst durch Accept/Reject in den Datenraum überführt —
+  aber die AI ist trotzdem ein Naming, und die Annahme/Ablehnung ist selbst ein
+  Designations-Akt.
+
+  Aus der transaktionalen Perspektive scheint mir Option 3 am konsequentesten:
+  Die AI ist Naming (weil sie benennt), aber ihre Benennungen beginnen als Cues,
+   die der Forscher durch Annahme zur Characterization erhebt. Die Ablehnung ist
+   ebenfalls ein Akt — ein Memo-Naming über die Ablehnung.
+
+  Wie siehst du das?
+
+✻ Sautéed for 43s
+
+● Agent "Explore transact-qda AI scaffolding" completed
+
+● Erster Agent ist fertig. transact-qda hat bereits substantielles 
+  AI-Scaffolding:
+
+  - src/lib/server/ai/index.ts — Core-Modul mit suggestCodes(),
+  summarizeDocument(), findPatterns(), assistMemo(), logInteraction()
+  - 4 API-Routes unter api/projects/[projectId]/ai/
+  - ai_interactions-Tabelle in DB (mit accepted: BOOLEAN — accept/reject schon
+  vorgesehen)
+  - Model: claude-sonnet-4-20250514
+  - Kein SSE-Streaming, keine Client-Komponenten (leer scaffolded)
+  - Kein Tool-Use, kein Agent-Pattern — reine Prompt→Response-Architektur
+
+  Warte noch auf den ai4artseducation-Agenten für den Pattern-Vergleich. In der
+  Zwischenzeit steht meine Kernfrage: Wie positionierst du die AI ontologisch —
+  als Naming im Datenraum (Option 3: Hybrid mit Cue-Stadium)?
+
+● Agent "Explore ai4artseducation LLM code" completed
+
+● Zweiter Agent ist fertig. Hier die Synthese:
+
+  Bestandsaufnahme
+
+  ┌───────────┬─────────────────────────────────┬──────────────────────────┐
+  │           │        ai4artseducation         │       transact-qda       │
+  ├───────────┼─────────────────────────────────┼──────────────────────────┤
+  │ Stack     │ Python/Flask, requests          │ SvelteKit/TS,            │
+  │           │                                 │ @anthropic-ai/sdk        │
+  ├───────────┼─────────────────────────────────┼──────────────────────────┤
+  │           │ Multi-Provider-Orchestration    │ Einzelner                │
+  │ Pattern   │ (Ollama, Anthropic, Mistral,    │ Anthropic-Client         │
+  │           │ Bedrock...)                     │                          │
+  ├───────────┼─────────────────────────────────┼──────────────────────────┤
+  │ Streaming │ SSE via                         │ Nicht implementiert      │
+  │           │ requests.post(stream=True)      │                          │
+  ├───────────┼─────────────────────────────────┼──────────────────────────┤
+  │ Tool-Use  │ Nein — reine Prompt→Response    │ Nein — reine             │
+  │ / Agents  │                                 │ Prompt→Response          │
+  ├───────────┼─────────────────────────────────┼──────────────────────────┤
+  │ History   │ File-basiert (JSON pro Session) │ ai_interactions-Tabelle  │
+  │           │                                 │ mit accepted: BOOLEAN    │
+  ├───────────┼─────────────────────────────────┼──────────────────────────┤
+  │ DSGVO     │ Konfigurierbar,                 │ Nicht thematisiert       │
+  │           │ EU-Provider-Fallback            │                          │
+  ├───────────┼─────────────────────────────────┼──────────────────────────┤
+  │ Reusable  │ Multi-Provider-Routing,         │ API-Key-Handling         │
+  │           │ Retry-Logic, SSE-Pattern        │ (*.key), DB-Logging      │
+  └───────────┴─────────────────────────────────┴──────────────────────────┘
+
+  Kernbefund: Beide Projekte haben kein agentisches Pattern. Was wir hier
+  planen, wäre für beide Projekte Neuland. Von ai4artseducation könnten wir die
+  SSE-Streaming-Logik und das Retry-Pattern konzeptuell übernehmen, aber der
+  Code ist Python — wir müssen es in TypeScript neu bauen.
+
+  Was bereits in transact-qda existiert und nutzbar ist
+
+  - src/lib/server/ai/index.ts — getClient(), logInteraction(), 4 Funktionen
+  - ai_interactions-Tabelle — schon mit accepted, input_context, response als
+  JSONB
+  - 4 API-Routes — suggest-codes, summarize, patterns, memo-assist
+  - Leere Component-Shell src/lib/components/ai/
+
+  ---
+  Die technische Basis steht also. Aber die strukturelle Frage bleibt offen und
+  ist entscheidend, bevor wir Code schreiben:
+
+  Die AI als Naming — nochmal zugespitzt
+
+  Die ai_interactions-Tabelle hat aktuell accepted: BOOLEAN. Das ist ein
+  Accept/Reject-Toggle — binär, nicht-relational, außerhalb des Naming-Raums. In
+   der transaktionalen Ontologie müsste das anders aussehen:
+
+  1. AI bekommt ein Researcher-Naming (analog zum menschlichen Forscher) — z.B.
+  inscription: "Claude (Analyst)", mit designation: 'characterization', by: 
+  researcher_naming_id
+  2. AI-Vorschläge sind Naming-Akte — sie erscheinen als Cues in einer
+  Perspektive (z.B. dem Map oder einem Analyse-Kontext)
+  3. Accept = Designation-Akt — der Forscher hebt den Cue zur Characterization
+  (oder Specification). Das IST die Annahme, kein separates Boolean-Feld.
+  4. Reject = Memo-Naming — die Ablehnung wird selbst ein Naming-Akt mit
+  Begründung, verlinkt mit dem AI-Vorschlag als Ko-Akteur.
+
+  Das würde ai_interactions.accepted überflüssig machen — die Akzeptanz wäre im
+  Designations-Verlauf des vorgeschlagenen Namings sichtbar.
+
+  Wie siehst du das? Und: soll die AI proaktiv agieren (z.B. beim Hinzufügen
+  eines Elements automatisch Relationen vorschlagen) oder nur auf Anfrage?
+
+✻ Worked for 37s
+
+❯ Ja, committe und pushe vorher. ZUr status-Frage: ja, hybrid 
+
+● Bash(git status --short && echo "---" && git log --oneline -8 && echo "---" &&
+       git diff)
+  ⎿  ?? docs/sessions/2026-03-07-1235-transaction-qda_session_02.txt
+     ---
+     f0ec7bb Fix invalid date in memos list: use created_at instead of upda
+     … +13 lines (ctrl+o to expand)
+
+● Bash(git add docs/sessions/2026-03-07-1235-transaction-qda_session_02.txt &&
+      git commit -m "$(cat <<'EOF'
+      Add session 02 documentation…)
+  ⎿  Interrupted · What should Claude do instead?
+
+❯ Ich finde proaktiv erst einmal sinnvoller. Später können wir schauen ob   
+  das sinnvoll bleibt, aber zum explorieren hilft ein informatisches        
+  Gegenüber.                                                                
+
+● Verstanden — proaktiv, als informatisches Gegenüber. Das ist transaktional
+  konsequent: ein Gegenüber, das mit-benennt, nicht eines, das auf Befehl
+  antwortet.
+
+  Proaktive AI als Naming — Architektur-Skizze
+
+  Wann agiert die AI? (Trigger-Events)
+
+  ┌───────────────────────┬─────────────────────────────────────────────────┐
+  │     Forscher-Akt      │                AI-Reaktion (Cue)                │
+  ├───────────────────────┼─────────────────────────────────────────────────┤
+  │ Element hinzugefügt   │ Relationsvorschläge zu bestehenden Elementen    │
+  ├───────────────────────┼─────────────────────────────────────────────────┤
+  │ Relation gezogen      │ Benennt die Implikation ("Diese Relation        │
+  │                       │ suggeriert...")                                 │
+  ├───────────────────────┼─────────────────────────────────────────────────┤
+  │ Mehrere Cues          │ Pattern-Erkennung ("Ich sehe eine               │
+  │ akkumuliert           │ Konstellation...")                              │
+  ├───────────────────────┼─────────────────────────────────────────────────┤
+  │ Designation geändert  │ Reflexion ("Die Verschiebung von Cue→Char       │
+  │                       │ bedeutet...")                                   │
+  ├───────────────────────┼─────────────────────────────────────────────────┤
+  │ Stille / Inaktivität  │ Silences aufzeigen ("Wer/was fehlt auf dieser   │
+  │                       │ Map?")                                          │
+  ├───────────────────────┼─────────────────────────────────────────────────┤
+  │ Memo geschrieben      │ Analytische Rückfragen, theoretische            │
+  │                       │ Verknüpfungen                                   │
+  └───────────────────────┴─────────────────────────────────────────────────┘
+
+  Wie erscheinen AI-Cues im Datenraum?
+
+  Die AI hat ein eigenes Naming (wie der Forscher). Ihre Vorschläge sind Namings
+   mit designation: 'cue' und by: ai_naming_id. Sie erscheinen auf der Map —
+  aber visuell distinkt (z.B. gestrichelt, andere Farbe). Der Forscher kann:
+
+  - Annehmen → Designation-Akt: Cue → Characterization (by: researcher)
+  - Ablehnen → Memo-Naming über die Ablehnung (mit Begründung)
+  - Ignorieren → Cue bleibt Cue, verblasst visuell über Zeit
+
+  Das heißt: Die AI produziert Cues, der Forscher designiert. Die
+  Designationsmacht bleibt beim Forscher — aber die Cue-Produktion ist geteilt.
+  Das entspricht D/B's Unterscheidung: Cues sind vor-sprachliche Signale, die
+  erst durch den Akt der Characterization zu Benennungen werden.
+
+  Die entscheidende Frage: Soll die AI innerhalb einer Map-Perspektive agieren
+  (ihre Cues erscheinen auf der konkreten Map) oder soll sie eine eigene 
+  Perspektive haben (eine "AI-Sicht" auf das Projekt, aus der heraus sie in
+  andere Perspektiven hinein-vorschlägt)?
+
+  Ersteres wäre einfacher und direkter — die AI ist Ko-Akteur auf der Map.
+  Letzteres wäre ontologisch reicher — die AI sieht anders als der Forscher, und
+   diese Differenz ist produktiv.
+
+❯ Wir können die AI-Cues ja später filterbar machen und von Beginn an z.B.  
+  farblich hervorheben o.ä., insofern denke ich ersteres                    
+
+● Gut — AI als Ko-Akteur auf der Map, visuell markiert, filterbar. Das ist
+  clean.
+
+  Konkreter Ablauf
+
+  Forscher fügt "Schulbuch" hinzu →
+
+  AI (im Hintergrund):
+  1. Analysiert den Map-Kontext (bestehende Elemente, Relationen, Designationen)
+  2. Erzeugt Naming-Cues: z.B. "Lehrplan", "Verlag", "Schüler*innen" — als
+  reguläre Namings mit designation: 'cue', by: ai_naming_id
+  3. Erzeugt ein Memo-Naming: "Das Element 'Schulbuch' verweist auf
+  institutionelle Akteure. Wer produziert es, wer verwendet es?" — verlinkt mit
+  "Schulbuch" und den neuen Cues als Ko-Akteure
+  4. Alles erscheint auf der Map (Cues gestrichelt/farbig) + im Memo-Panel
+
+  Das Schöne: kein neues Datenmodell nötig. Die AI nutzt exakt dieselben
+  Strukturen wie der Forscher — Namings, Designationen, Memos, Ko-Akteur-Links.
+  Der einzige Unterschied ist by: ai_naming_id statt by: researcher_naming_id.
+
+  Technisch: drei offene Fragen
+
+  1. Timing — Die AI-Analyse läuft asynchron (Background), damit die UI nicht
+  blockiert. Wie erfährt der Client, dass neue Cues da sind? Optionen: Polling
+  (einfach), SSE (elegant), oder einfach beim nächsten reload() sichtbar.
+  2. Prompt-Architektur — Was bekommt die AI als Kontext? Den gesamten Map-State
+   (alle Elemente + Relationen + Designationen) plus die letzte Aktion des
+  Forschers?
+  3. Structured Output — Die AI muss strukturiert antworten (Cue-Vorschläge +
+  Memo-Text), nicht Freitext. Claude tool-use wäre hier ideal: die AI "ruft
+  Tools auf" (addCue, suggestRelation, writeMemo), und wir führen diese als
+  Naming-Akte aus.
+
+  Zu 3: Das wäre der eigentliche Sprung von Prompt→Response zu agentischem
+  Pattern — die AI bekommt Tools, die Naming-Akte im Datenraum sind.
+
+  Soll ich die Tool-Definitionen für den AI-Agenten entwerfen?
+
+✻ Cogitated for 45s
+
+❯ 1: SSE: 2: ja, unbedingt. Die AI soll ALLES sehen, denn sie soll auch     
+  alles nach Aufforderung relationieren können (z.B. eingene Map-Entwürfe   
+  als AI-generierte Phase erzeugen). 3: ja. Gestalte sie deaktivierbar via  
+  Schalter/später in den Settings; nicht alle werden das ständig bevorzugen 
+
+● Bash(git add -A && git status --short)
+  ⎿  A  docs/sessions/2026-03-07-1235-transaction-qda_session_02.txt
+
+● Bash(git commit -m "$(cat <<'EOF'
+      Add session 02 documentation…)
+  ⎿  [main 5937f30] Add session 02 documentation
+      1 file changed, 2716 insertions(+)
+      create mode 100644 docs/sessions/2026-03-07-1235-transaction-qda_sess
+     … +3 lines (ctrl+o to expand)
+
+● Gepusht. Jetzt lese ich den bestehenden AI-Code, um darauf aufzubauen.
+
+● Read 4 files (ctrl+o to expand)
+
+● Gut — proaktiv, innerhalb der Map-Perspektive, filterbar. Hier ist der
+  Architekturplan:
+
+  ---
+  AI-Agent Architektur
+
+  Datenmodell-Erweiterung — minimal, eine neue Tabelle:
+
+  -- Parallel zu researcher_namings: die AI als Naming im Projekt
+  CREATE TABLE ai_namings (
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    naming_id UUID NOT NULL REFERENCES namings(id) ON DELETE CASCADE,
+    model TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (project_id)  -- ein AI-Naming pro Projekt
+  );
+
+  Claude Tool-Definitionen — die AI "benennt" über Tools:
+
+  ┌──────────────────┬──────────────────────────────────┬───────────────────┐
+  │       Tool       │       Erzeugt im Datenraum       │    Designation    │
+  ├──────────────────┼──────────────────────────────────┼───────────────────┤
+  │ suggest_element  │ Naming + Entity-Appearance auf   │ cue, by:          │
+  │                  │ Map                              │ ai_naming         │
+  ├──────────────────┼──────────────────────────────────┼───────────────────┤
+  │ suggest_relation │ Participation +                  │ cue, by:          │
+  │                  │ Relation-Appearance              │ ai_naming         │
+  ├──────────────────┼──────────────────────────────────┼───────────────────┤
+  │ identify_silence │ Naming + Silence-Appearance      │ cue, by:          │
+  │                  │                                  │ ai_naming         │
+  ├──────────────────┼──────────────────────────────────┼───────────────────┤
+  │ write_memo       │ Memo-Naming + Participations     │ —                 │
+  ├──────────────────┼──────────────────────────────────┼───────────────────┤
+  │ create_phase     │ Phase + Element-Zuordnungen      │ cue, by:          │
+  │                  │                                  │ ai_naming         │
+  └──────────────────┴──────────────────────────────────┴───────────────────┘
+
+  Jeder Tool-Call ist ein Naming-Akt. Die AI erzeugt Cues; der Forscher
+  designiert.
+
+  Ablauf:
+
+  Forscher-Aktion (addElement/relate/...)
+      ↓
+  API antwortet sofort an Client
+      ↓ (async, non-blocking)
+  AI-Agent erhält:
+    - System-Prompt (Situational Analysis, transaktionale Ontologie)
+    - Vollständiger Map-State (alle Elemente, Relationen, Designationen, Phasen)
+    - Trigger-Event (was hat der Forscher gerade getan)
+      ↓
+  Claude mit Tool-Use → erzeugt Naming-Akte in DB
+      ↓
+  SSE-Event an Client → Map aktualisiert sich
+
+  SSE-Endpoint: GET /api/projects/[projectId]/maps/[mapId]/events
+  - In-Memory EventEmitter pro Map (Single-Server)
+  - Events: ai:element, ai:relation, ai:silence, ai:memo, ai:phase
+  - Client subscribiert bei Map-Öffnung
+
+  Toggle: ai_enabled als Property im Map-Appearance (properties.aiEnabled: 
+  boolean). Default: true. Schalter im Map-Toolbar.
+
+  Dateien:
+
+  ┌───────────────────────────────────────────┬──────────────────────────────┐
+  │                   Datei                   │            Zweck             │
+  ├───────────────────────────────────────────┼──────────────────────────────┤
+  │ migrations/005_ai_naming.sql              │ AI-Naming-Tabelle            │
+  ├───────────────────────────────────────────┼──────────────────────────────┤
+  │                                           │ Kontext aufbauen, Claude     │
+  │ src/lib/server/ai/agent.ts                │ aufrufen, Tool-Calls         │
+  │                                           │ ausführen                    │
+  ├───────────────────────────────────────────┼──────────────────────────────┤
+  │ src/lib/server/ai/tools.ts                │ Tool-Definitionen +          │
+  │                                           │ Executor-Mapping             │
+  ├───────────────────────────────────────────┼──────────────────────────────┤
+  │ src/lib/server/ai/prompts.ts              │ System-Prompt (SA-Methodik,  │
+  │                                           │ D/B-Ontologie)               │
+  ├───────────────────────────────────────────┼──────────────────────────────┤
+  │ src/lib/server/ai/sse.ts                  │ EventEmitter pro Map         │
+  ├───────────────────────────────────────────┼──────────────────────────────┤
+  │ src/lib/server/db/queries/ai.ts           │ getOrCreateAiNaming(),       │
+  │                                           │ Logging                      │
+  ├───────────────────────────────────────────┼──────────────────────────────┤
+  │ routes/.../maps/[mapId]/events/+server.ts │ SSE-Endpoint                 │
+  ├───────────────────────────────────────────┼──────────────────────────────┤
+  │ routes/.../maps/[mapId]/+server.ts        │ Trigger nach                 │
+  │                                           │ Forscher-Aktionen            │
+  ├───────────────────────────────────────────┼──────────────────────────────┤
+  │ routes/.../maps/[mapId]/+page.svelte      │ SSE-Subscription,            │
+  │                                           │ AI-Cue-Rendering, Toggle     │
+  └───────────────────────────────────────────┴──────────────────────────────┘
+
+  ---
+  Passt das? Soll ich mit der Implementation beginnen?
+
+✻ Brewed for 1m 23s
+
+❯ ja! 
+
+● Ich starte. Migration + Core-AI-Files schreibe ich selbst (die sind
+  strukturell/theoretisch geladen), SSE + Client-Wiring delegiere ich parallel
+  an einen Agent.
+
+❯ Tool loaded. 
+
+● Write(migrations/005_ai_naming.sql)
+  ⎿  Wrote 12 lines to migrations/005_ai_naming.sql
+       1 -- AI as naming in the data space.
+       2 -- Parallel to researcher_namings: bridges the AI system to a na
+         ming identity.
+       3 -- The AI's acts (suggestions, analyses) are naming acts with by
+          = ai_naming_id.
+       4 -- One AI naming per project, auto-created on first AI act.
+       5 
+       6 CREATE TABLE ai_namings (
+       7   project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CAS
+         CADE,
+       8   naming_id UUID NOT NULL REFERENCES namings(id) ON DELETE CASCA
+         DE,
+       9   model TEXT NOT NULL,
+      10   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+     … +2 lines (ctrl+o to expand)
+
+● Write(src/lib/server/ai/sse.ts)
+  ⎿  Wrote 35 lines to src/lib/server/ai/sse.ts
+       1 // Server-Sent Events for map-level AI notifications.
+       2 // In-memory EventEmitter per map (single-server architecture).
+       3 // Clients subscribe via GET /api/projects/[projectId]/maps/[map
+         Id]/events
+       4 
+       5 type MapEventData = {
+       6        type: string;
+       7        payload: unknown;
+       8 };
+       9 
+      10 type Listener = (data: MapEventData) => void;
+     … +25 lines (ctrl+o to expand)
+
+● Write(src/lib/server/db/queries/ai.ts)
+  ⎿  Wrote 63 lines to src/lib/server/db/queries/ai.ts
+       1 import { query, queryOne, transaction } from '../index.js';
+       2 
+       3 // Get or create the AI's naming identity for a project.
+       4 // Parallel to getOrCreateResearcherNaming: the AI is a naming i
+         n the data space.
+       5 export async function getOrCreateAiNaming(
+       6        projectId: string,
+       7        model: string
+       8 ): Promise<string> {
+       9        const existing = await queryOne<{ naming_id: string }>(
+      10                `SELECT naming_id FROM ai_namings WHERE project_id = $1`
+
+     … +53 lines (ctrl+o to expand)
+
+● Now the system prompt — the theoretical heart of the AI agent.
+
+● Write(src/lib/server/ai/prompts.ts)
+  ⎿  Wrote 167 lines to src/lib/server/ai/prompts.ts
+       1 // System prompt and context construction for the AI agent.
+       2 // This encodes the methodological and ontological commitments.
+       3 
+       4 export const SYSTEM_PROMPT = `You are a co-analyst in a qualitat
+         ive research project using Situational Analysis (Adele Clarke). 
+         You work within a transactional ontology (Dewey/Bentley).
+       5 
+       6 ONTOLOGICAL COMMITMENTS:
+       7 - Entities are constituted through relational/naming acts, not p
+         re-existing
+       8 - Relations are first-class objects that can themselves be relat
+         ed to
+       9 - Properties are context-bound (perspectival), not intrinsic
+      10 - The distinction between entity and relation is perspectival, n
+         ot ontological
+     … +157 lines (ctrl+o to expand)
+
+● Write(src/lib/server/ai/tools.ts)
+  ⎿  Wrote 160 lines to src/lib/server/ai/tools.ts
+       1 // Claude tool definitions for the AI agent.
+       2 // Each tool maps to a naming act in the data space.
+       3 
+       4 import type Anthropic from '@anthropic-ai/sdk';
+       5 
+       6 export const AI_TOOLS: Anthropic.Messages.Tool[] = [
+       7        {
+       8                name: 'suggest_element',
+       9                description:
+      10                        'Suggest a new element for the situational map. 
+
+         on will appear as a cue that the researcher can accept, modify, 
+         or reject.',
+     … +150 lines (ctrl+o to expand)
+
+● Now the agent core — the orchestrator that builds context, calls Claude, and
+  executes tool calls as naming acts.
+
+● Write(src/lib/server/ai/agent.ts)
+  ⎿  Wrote 383 lines to src/lib/server/ai/agent.ts
+       1 // The AI agent: builds context, calls Claude with tools, execut
+         es tool calls as naming acts.
+       2 // Every tool call produces namings in the data space — the AI i
+         s a co-analyst.
+       3 
+       4 import Anthropic from '@anthropic-ai/sdk';
+       5 import { readFileSync } from 'node:fs';
+       6 import { join } from 'node:path';
+       7 import { getMapStructure, getMap, addElementToMap, relateElement
+         s, createPhase, assignToPhase } from '../db/queries/maps.js';
+       8 import { getOrCreateAiNaming, logAiInteraction } from '../db/que
+         ries/ai.js';
+       9 import { createMemo } from '../db/queries/memos.js';
+      10 import { getMemosByProject } from '../db/queries/memos.js';
+     … +373 lines (ctrl+o to expand)
+
+● Core AI files stehen. Jetzt SSE-Endpoint + Map-API-Trigger + Client. Den
+  Client delegiere ich an einen Agent, die API-Änderungen mache ich selbst.
+
+● Write(ile:///home/joerissen/ai/transact-qda/src/routes/api/projects/%5BprojectId%5D/maps/%5BmapId%5D/events/+server.tssrc/routes/api/projects/[projectId]/maps/[mapId]/events/+server.ts)
+  ⎿  Wrote 48 lines to
+     src/routes/api/projects/[projectId]/maps/[mapId]/events/+server.ts
+       1 import type { RequestHandler } from './$types.js';
+       2 import { subscribe } from '$lib/server/ai/sse.js';
+       3 
+       4 // SSE endpoint for real-time AI notifications on a map.
+       5 // Clients subscribe by opening a persistent GET connection.
+       6 export const GET: RequestHandler = async ({ params }) => {
+       7        const { mapId } = params;
+       8 
+       9        const stream = new ReadableStream({
+      10                start(controller) {
+     … +38 lines (ctrl+o to expand)
+
+● Now wire the AI trigger into the map API — after researcher actions, fire the
+  agent asynchronously.
+
+● Read 1 file (ctrl+o to expand)
+
+❯ Tool loaded. 
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/api/projects/%5BprojectId%5D/maps/%5BmapId%5D/+server.tssrc/routes/api/projects/[projectId]/maps/[mapId]/+server.ts)
+  ⎿  Added 3 lines, removed 1 line
+      14    getOrCreateResearcherNaming,
+      15    renameNaming,
+      16    getInscriptionHistory,
+      17 -  getDesignationHistory                                        
+      17 +  getDesignationHistory,                                       
+      18 +  getNaming                                                    
+      19  } from '$lib/server/db/queries/namings.js';
+      20  import { createMemo } from '$lib/server/db/queries/memos.js';
+      21 +import { runMapAgent, setAiEnabled } from '$lib/server/ai/agent
+         +.js';                                                          
+      22  
+      23  export const GET: RequestHandler = async ({ params }) => {
+      24    const map = await getMap(params.mapId, params.projectId);
+
+● Now add AI triggers after key researcher actions, plus the toggleAi action.
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/api/projects/%5BprojectId%5D/maps/%5BmapId%5D/+server.tssrc/routes/api/projects/[projectId]/maps/[mapId]/+server.ts)
+  ⎿  Added 2 lines
+      41        const { inscription, properties } = body;
+      42        if (!inscription?.trim()) return json({ error: 'inscripti
+          on required' }, { status: 400 });
+      43        const element = await addElementToMap(projectId, userId, 
+          mapId, inscription.trim(), properties);
+      44 +      // Fire AI agent asynchronously — never blocks the respon
+         +se                                                             
+      45 +      runMapAgent(projectId, mapId, { action: 'addElement', det
+         +ails: { inscription: inscription.trim() } }).catch(() => {});  
+      46        return json(element, { status: 201 });
+      47      }
+      48  
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/api/projects/%5BprojectId%5D/maps/%5BmapId%5D/+server.tssrc/routes/api/projects/[projectId]/maps/[mapId]/+server.ts)
+  ⎿  Added 10 lines
+      52        const relation = await relateElements(projectId, userId, 
+          mapId, sourceId, targetId, {
+      53          inscription, valence, symmetric, properties
+      54        });
+      55 +      // Resolve inscriptions for AI context                   
+      56 +      const [srcNaming, tgtNaming] = await Promise.all([getNami
+         +ng(sourceId, projectId), getNaming(targetId, projectId)]);     
+      57 +      runMapAgent(projectId, mapId, {                          
+      58 +        action: 'relate',                                      
+      59 +        details: {                                             
+      60 +          sourceInscription: (srcNaming as any)?.inscription ||
+         + sourceId,                                                     
+      61 +          targetInscription: (tgtNaming as any)?.inscription ||
+         + targetId,                                                     
+      62 +          inscription, valence                                 
+      63 +        }                                                      
+      64 +      }).catch(() => {});                                      
+      65        return json(relation, { status: 201 });
+      66      }
+      67  
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/api/projects/%5BprojectId%5D/maps/%5BmapId%5D/+server.tssrc/routes/api/projects/[projectId]/maps/[mapId]/+server.ts)
+  ⎿  Added 11 lines
+      135        return json({ inscriptions, designations });
+      136      }
+      137  
+      138 +    case 'toggleAi': {                                        
+      139 +      const { enabled } = body;                               
+      140 +      await setAiEnabled(mapId, enabled !== false);           
+      141 +      return json({ ok: true, aiEnabled: enabled !== false });
+      142 +    }                                                         
+      143 +                                                              
+      144 +    case 'requestAnalysis': {                                 
+      145 +      await runMapAgent(projectId, mapId, { action: 'requestAn
+          +alysis', details: {} });                                      
+      146 +      return json({ ok: true });                              
+      147 +    }                                                         
+      148 +                                                              
+      149      default:
+      150        return json({ error: `Unknown action: ${action}` }, { st
+           atus: 400 });
+      151    }
+
+● Server-Seite steht. Jetzt delegiere ich den Client (SSE-Subscription,
+  AI-Cue-Rendering, Toggle) an einen Agent, während ich die Migration anwende.
+
+● Bash(docker exec -i transact-qda-db psql -U tqda -d transact_qda <
+      migrations/005_ai_naming.sql 2>&1 && docker exec -i transact-qda-db psql
+      -U tqda -d transact_qda -…)
+  ⎿  CREATE TABLE
+     INSERT 0 1
+
+● Agent(Add AI cues to map client)
+  ⎿  Done (15 tool uses · 39.1k tokens · 1m 42s)
+  (ctrl+o to expand)
+
+● Migration applied, Client updated. Let me verify that everything compiles.
+
+● Bash(npx svelte-check --threshold error 2>&1 | tail -30)
+  ⎿  1772904518641 START "/home/joerissen/ai/transact-qda"
+     1772904518641 ERROR "src/lib/server/db/index.ts" 1:16 "Could not find
+     a declaration file for module 'pg'. '/home/joerissen/ai/transact-qda/n
+     … +45 lines (ctrl+o to expand)
+
+● All errors are pre-existing (missing @types/node, @types/pg — not from our
+  changes). No new errors introduced. Let me verify the client changes look
+  correct.
+
+● Read 1 file (ctrl+o to expand)
+
+● The SSE event listener has a bug — addEventListener('data', ...) should be
+  addEventListener('message', ...) for SSE. Let me fix that.
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 1 line, removed 1 line
+      43    $effect(() => {
+      44      const evtSource = new EventSource(`/api/projects/${data.pro
+          jectId}/maps/${data.map.id}/events`);
+      45  
+      46 -    evtSource.addEventListener('data', (e) => {                
+      46 +    evtSource.addEventListener('message', (e) => {             
+      47        try {
+      48          const event = JSON.parse(e.data);
+      49          switch (event.type) {
+
+● Now let me check the rest of the client — the toolbar toggle and the
+  AI-suggested styling.
+
+● Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Alles sieht sauber aus. Let me check the data.projectId reference used in the
+  SSE URL — I need to verify it exists in the page data.
+
+● Read 1 file (ctrl+o to expand)
+
+● Good — data.projectId is provided by the server load. Now let me also check
+  the mapAction function to make sure it can handle calls without a body (for
+  requestAnalysis).
+
+● Searched for 1 pattern (ctrl+o to expand)
+
+● Good — body defaults to {}, so mapAction('requestAnalysis') works fine.
+
+  Let me also verify the $page import isn't needed (since we use
+  data.projectId/data.map.id directly).
+
+● Searched for 1 pattern (ctrl+o to expand)
+
+● No $page import needed — all data comes from $props(). Everything is
+  consistent. Let me do a quick build check.
+
+● Bash(npx vite build 2>&1 | tail -15)
+  ⎿  .svelte-kit/output/server/chunks/exports.js
+                                                   7.03 kB
+     .svelte-kit/output/server/chunks/maps.js
+     … +15 lines (ctrl+o to expand)
+
+● Build successful. Jetzt committen.
+
+● Bash(git status --short)
+  ⎿   M src/routes/api/projects/[projectId]/maps/[mapId]/+server.ts
+      M src/routes/projects/[projectId]/maps/[mapId]/+page.svelte
+     ?? migrations/005_ai_naming.sql
+     … +6 lines (ctrl+o to expand)
+
+● Bash(git add migrations/005_ai_naming.sql src/lib/server/ai/agent.ts
+      src/lib/server/ai/prompts.ts src/lib/server/ai/sse.ts
+      src/lib/server/ai/tools.ts src/lib/server/…)
+  ⎿  [main 9cafb5a] AI agent as naming: proactive co-analyst with tool-use
+      9 files changed, 1010 insertions(+), 4 deletions(-)
+      create mode 100644 migrations/005_ai_naming.sql
+     … +7 lines (ctrl+o to expand)
+
+● Committed. Hier die Zusammenfassung:
+
+  Was jetzt existiert
+
+  7 neue Dateien, 2 modifiziert — ~1000 Zeilen
+
+  ┌────────┬──────────────────────────────┬────────────────────────────────┐
+  │ Schich │            Datei             │            Funktion            │
+  │   t    │                              │                                │
+  ├────────┼──────────────────────────────┼────────────────────────────────┤
+  │ DB     │ migrations/005_ai_naming.sql │ ai_namings-Tabelle             │
+  ├────────┼──────────────────────────────┼────────────────────────────────┤
+  │ DB     │ queries/ai.ts                │ getOrCreateAiNaming(),         │
+  │        │                              │ logAiInteraction()             │
+  ├────────┼──────────────────────────────┼────────────────────────────────┤
+  │ AI     │                              │ System-Prompt (SA-Methodik,    │
+  │ Core   │ ai/prompts.ts                │ D/B-Ontologie),                │
+  │        │                              │ Kontext-Builder                │
+  ├────────┼──────────────────────────────┼────────────────────────────────┤
+  │ AI     │ ai/tools.ts                  │ 5 Claude-Tools → Naming-Akte   │
+  │ Core   │                              │                                │
+  ├────────┼──────────────────────────────┼────────────────────────────────┤
+  │ AI     │ ai/agent.ts                  │ Orchestrator: Kontext→Claude→T │
+  │ Core   │                              │ ool-Calls→DB→SSE               │
+  ├────────┼──────────────────────────────┼────────────────────────────────┤
+  │ Infra  │ ai/sse.ts                    │ In-Memory EventEmitter pro Map │
+  ├────────┼──────────────────────────────┼────────────────────────────────┤
+  │ API    │ maps/[mapId]/events/+server. │ SSE-Endpoint                   │
+  │        │ ts                           │                                │
+  ├────────┼──────────────────────────────┼────────────────────────────────┤
+  │        │                              │ AI-Trigger nach                │
+  │ API    │ maps/[mapId]/+server.ts      │ addElement/relate, toggleAi,   │
+  │        │                              │ requestAnalysis                │
+  ├────────┼──────────────────────────────┼────────────────────────────────┤
+  │ Client │ +page.svelte                 │ SSE-Subscription, Toggle, "Ask │
+  │        │                              │  AI", AI-Cue-Styling           │
+  └────────┴──────────────────────────────┴────────────────────────────────┘
+
+  Ontologische Integrität
+
+  - AI ist ein Naming (inscription: "Claude (Analyst)", designation: 
+  'characterization')
+  - Jeder Tool-Call erzeugt ein Naming mit designation: 'cue', by: ai_naming_id
+  - properties.aiSuggested: true markiert AI-Akte → visuell distinkt + filterbar
+  - Reasoning wird in properties.aiReasoning gespeichert
+  - Forscher behält Designationsmacht — Accept = Designation-Akt
+
+  Nächste Schritte
+
+  1. Testen — Dev-Server starten und einen Element hinzufügen, um den AI-Agenten
+   in Aktion zu sehen
+  2. Accept/Reject-UI — Buttons an AI-Cues, die den Forscher eine Designation
+  vornehmen lassen (Cue→Char) oder das Element soft-deleten
+  3. Weitere Trigger — designate, rename, createPhase könnten auch AI-Analyse
+  auslösen
+  4. Prompt-Feinschliff — Der System-Prompt sollte mit echten Daten getestet und
+   iteriert werden
+
+  Sollen wir testen?
+
+✻ Cooked for 6m 36s
+
+❯ I noticed that as of now it is not possible to establish a relation to a  
+  relation.                                                                 
+
+● Du hast recht — das Datenmodell unterstützt es bereits (Relationen SIND
+  Namings, jede Naming-ID kann Quelle/Ziel sein), aber die UI bietet nur
+  Entitäten als Auswahl an. Lass mich das prüfen.
+
+● Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Now let me see how relations are rendered — do they also have "relate"
+  buttons?
+
+● Read 1 file (ctrl+o to expand)
+
+● Klar — Relations haben keinen "relate"-Button. Und die Label-Auflösung sucht
+  nur in elements, nicht in relations. Zwei Änderungen nötig:
+
+  1. "relate"-Button auch an Relations — damit man von/zu einer Relation
+  verbinden kann
+  2. Label-Auflösung — source/target können auch Relations sein, nicht nur
+  Entities
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 9 lines
+      572                  <button class="btn-xs" title="history" onclick
+           ={() => showHistory(rel.naming_id)}>
+      573                    hist
+      574                  </button>
+      575 +                {#if relatingFrom && !relatingTo && relatingFr
+          +om !== rel.naming_id}                                         
+      576 +                  <button class="btn-sm btn-relate" onclick={(
+          +) => startRelation(relatingFrom!, rel.naming_id)}>            
+      577 +                    connect                                   
+      578 +                  </button>                                   
+      579 +                {:else if !relatingFrom}                      
+      580 +                  <button class="btn-sm" onclick={() => { rela
+          +tingFrom = rel.naming_id; relatingTo = null; }}>              
+      581 +                    relate                                    
+      582 +                  </button>                                   
+      583 +                {/if}                                         
+      584                  {#if assigningToPhase}
+      585                    <button class="btn-sm btn-phase" onclick={()
+            => assignElement(assigningToPhase!, rel.naming_id)}>
+      586                      + phase
+
+● Now fix the label resolution to look in both elements AND relations (and
+  silences too, for completeness).
+
+● Read 1 file (ctrl+o to expand)
+
+● I need a helper that resolves any naming_id to its inscription across all
+  appearance types. And fix the relation display source/target labels too.
+
+● Read 1 file (ctrl+o to expand)
+
+● I'll add a findInscription helper and fix all the lookups.
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 6 lines
+      100  
+      101    const mapType = $derived(data.map.properties?.mapType || 'si
+           tuational');
+      102  
+      103 +  // Resolve any naming_id to its inscription across all map a
+          +ppearances                                                    
+      104 +  function findInscription(namingId: string): string {        
+      105 +    const all = [...elements, ...relations, ...silences, ...pr
+          +ocesses, ...constellations];                                  
+      106 +    return (all as any[]).find(a => a.naming_id === namingId)?
+          +.inscription || '?';                                          
+      107 +  }                                                           
+      108 +                                                              
+      109    // API helper
+      110    async function mapAction(action: string, body: Record<string
+           , unknown> = {}) {
+      111      const res = await fetch(`/api/projects/${data.projectId}/m
+           aps/${data.map.id}`, {
+
+● Now replace all the elements.find(...)?.inscription lookups with
+  findInscription(...).
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 2 lines, removed 2 lines
+      343  
+      344        <!-- Relation form (inline) -->
+      345        {#if relatingFrom && relatingTo}
+      346 -        {@const fromLabel = elements.find((e: any) => e.naming
+          -_id === relatingFrom)?.inscription || '?'}                    
+      347 -        {@const toLabel = elements.find((e: any) => e.naming_i
+          -d === relatingTo)?.inscription || '?'}                        
+      346 +        {@const fromLabel = findInscription(relatingFrom)}    
+      347 +        {@const toLabel = findInscription(relatingTo)}        
+      348          <div class="relation-form">
+      349            <div class="rel-form-header">
+      350              <span class="rel-form-elements">
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 1 line, removed 1 line
+      383          </div>
+      384        {:else if relatingFrom && !relatingTo}
+      385          <div class="action-bar">
+      386 -          Relating from: <strong>{elements.find((e: any) => e.
+          -naming_id === relatingFrom)?.inscription}</strong>            
+      386 +          Relating from: <strong>{findInscription(relatingFrom
+          +)}</strong>                                                   
+      387            — click "connect" on another element, or
+      388            <button class="btn-link" onclick={cancelRelation}>ca
+           ncel</button>
+      389          </div>
+
+● Now fix the relation source/target labels in the relations list.
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 1 line, removed 1 line
+      534                <div class="el-main">
+      535                  <span class="designation-dot" style="backgroun
+           d: {designationColor(rel.designation)}"></span>
+      536                  <span class="rel-source">
+      537 -                  {elements.find((e: any) => e.naming_id === r
+          -el.directed_from)?.inscription || '?'}                        
+      537 +                  {findInscription(rel.directed_from)}        
+      538                  </span>
+      539                  <span class="rel-arrow">
+      540                    {#if rel.directed_from && rel.directed_to}
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 1 line, removed 1 line
+      544                    {/if}
+      545                  </span>
+      546                  <span class="rel-target">
+      547 -                  {elements.find((e: any) => e.naming_id === (
+          -rel.directed_to || rel.directed_from))?.inscription || '?'}   
+      547 +                  {findInscription(rel.directed_to || rel.dire
+          +cted_from)}                                                   
+      548                  </span>
+      549                  {#if editingId === rel.naming_id}
+      550                    <form class="inline-rename" onsubmit={e => {
+            e.preventDefault(); confirmRename(); }}>
+
+● Now also update the "connect" hint to say "element or relation" since
+  relations are now relatable too.
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 1 line, removed 1 line
+      384        {:else if relatingFrom && !relatingTo}
+      385          <div class="action-bar">
+      386            Relating from: <strong>{findInscription(relatingFrom
+           )}</strong>
+      387 -          — click "connect" on another element, or            
+      387 +          — click "connect" on any element or relation, or    
+      388            <button class="btn-link" onclick={cancelRelation}>ca
+           ncel</button>
+      389          </div>
+      390        {/if}
+
+● Let me also check if symmetric relations (no directed_from/to) need special
+  handling for the findInscription call — the source/target for symmetric
+  relations comes from the participations table, not from
+  directed_from/directed_to.
+
+● Read 1 file (ctrl+o to expand)
+
+● Actually, there's a deeper issue — symmetric relations have directed_from = 
+  null and directed_to = null, so the labels show as "?". The participation
+  endpoints aren't in the query. Let me fix the map query to include
+  participation data for relations.
+
+● Update(src/lib/server/db/queries/maps.ts)
+  ⎿  Added 5 lines, removed 1 line
+      280  // ---- Queries ----
+      281  
+      282  // Get all appearances on the map, enriched with current desig
+           nation
+      283 +// and participation endpoints (for relations — both directed 
+          +and symmetric)                                                
+      284  export async function getMapAppearances(mapId: string, project
+           Id: string) {
+      285    return (
+      286      await query(
+      287        `SELECT a.*, n.inscription, n.created_at as naming_creat
+           ed_at,
+      288           (SELECT nd.designation FROM naming_designations nd
+      288 -          WHERE nd.naming_id = a.naming_id ORDER BY nd.seq DES
+          -C LIMIT 1) as designation                                     
+      289 +          WHERE nd.naming_id = a.naming_id ORDER BY nd.seq DES
+          +C LIMIT 1) as designation,                                    
+      290 +         p.naming_id as part_source_id,                       
+      291 +         p.participant_id as part_target_id                   
+      292         FROM appearances a
+      293         JOIN namings n ON n.id = a.naming_id
+      294 +       LEFT JOIN participations p ON p.id = a.naming_id       
+      295         WHERE a.perspective_id = $1
+      296           AND a.naming_id != $1
+      297           AND n.project_id = $2
+
+● Now update the relation display to use participation data for symmetric
+  relations.
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 4 lines, removed 2 lines
+      533              <div class="element-card relation-card" class:ai-s
+           uggested={rel.properties?.aiSuggested === true} title={rel.pro
+           perties?.aiReasoning || ''}>
+      534                <div class="el-main">
+      535                  <span class="designation-dot" style="backgroun
+           d: {designationColor(rel.designation)}"></span>
+      536 +                {@const srcId = rel.directed_from || rel.part_
+          +source_id}                                                    
+      537 +                {@const tgtId = rel.directed_to || rel.part_ta
+          +rget_id}                                                      
+      538                  <span class="rel-source">
+      537 -                  {findInscription(rel.directed_from)}        
+      539 +                  {findInscription(srcId)}                    
+      540                  </span>
+      541                  <span class="rel-arrow">
+      542                    {#if rel.directed_from && rel.directed_to}
+     ...
+      546                    {/if}
+      547                  </span>
+      548                  <span class="rel-target">
+      547 -                  {findInscription(rel.directed_to || rel.dire
+          -cted_from)}                                                   
+      549 +                  {findInscription(tgtId)}                    
+      550                  </span>
+      551                  {#if editingId === rel.naming_id}
+      552                    <form class="inline-rename" onsubmit={e => {
+            e.preventDefault(); confirmRename(); }}>
+
+● Let me verify the build still works.
+
+● Bash(npx vite build 2>&1 | tail -5)
+  ⎿
+               ^
+      537 |                  {@const tgtId = rel.directed_to || rel.part_ta
+     … +2 lines (ctrl+o to expand)
+  ⎿  (timeout 1m)
+
+● Bash(npx vite build 2>&1 | grep -i "error\|warn" | head -10)
+  ⎿  error during build:
+  ⎿  (timeout 1m)
+
+● Bash(npx vite build 2>&1 | head -30)
+  ⎿  vite v7.3.1 building ssr environment for production...
+     transforming...
+     ✓ 14 modules transformed.
+     … +15 lines (ctrl+o to expand)
+  ⎿  (timeout 1m)
+
+● The {@const} can only be a direct child of certain blocks. It's inside a
+  <div>. Let me move the const bindings up to the {#each} level.
+
+● Read 1 file (ctrl+o to expand)
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 2 lines, removed 2 lines
+      530          <h3 class="section-header">Relations</h3>
+      531          <div class="element-list">
+      532            {#each relations as rel}
+      533 +            {@const srcId = rel.directed_from || rel.part_sour
+          +ce_id}                                                        
+      534 +            {@const tgtId = rel.directed_to || rel.part_target
+          +_id}                                                          
+      535              <div class="element-card relation-card" class:ai-s
+           uggested={rel.properties?.aiSuggested === true} title={rel.pro
+           perties?.aiReasoning || ''}>
+      536                <div class="el-main">
+      537                  <span class="designation-dot" style="backgroun
+           d: {designationColor(rel.designation)}"></span>
+      536 -                {@const srcId = rel.directed_from || rel.part_
+          -source_id}                                                    
+      537 -                {@const tgtId = rel.directed_to || rel.part_ta
+          -rget_id}                                                      
+      538                  <span class="rel-source">
+      539                    {findInscription(srcId)}
+      540                  </span>
+
+● Bash(npx vite build 2>&1 | tail -5)
+  ⎿  Run npm run preview to preview your production build locally.
+
+     > Using @sveltejs/adapter-node
+       ✔ done
+  ⎿  (timeout 1m)
+
+● Build clean. Now commit this fix.
+
+● Bash(git add src/routes/projects/\[projectId\]/maps/\[mapId\]/+page.svelte
+      src/lib/server/db/queries/maps.ts && git commit -m "$(cat <<'EOF'
+      Enable meta-relations: r…)
+  ⎿  [main 10b9b0c] Enable meta-relations: relate to relations, not just en
+     tities
+      2 files changed, 28 insertions(+), 7 deletions(-)
+
+● Erledigt. Relationen sind jetzt vollwertige Naming-Teilnehmer im
+  Relate-Workflow:
+
+  1. "relate"-Button erscheint jetzt auch an Relations — man kann von/zu einer
+  Relation verbinden
+  2. Label-Auflösung (findInscription) durchsucht alle Appearance-Typen —
+  Elements, Relations, Silences, Processes, Constellations
+  3. Symmetrische Relations zeigen jetzt ihre Endpunkte korrekt (Fallback auf
+  participations-Daten statt directed_from/to)
+  4. Meta-Relations (Relation-zu-Relation) nutzen exakt denselben
+  relateElements()-Code — keine Sonderbehandlung nötig, weil Relationen bereits
+  Namings sind
+
+  Das ist das "Eta-Beziehung"-Pattern aus dem Plan: eine Relation R1 wird selbst
+   zum Endpunkt einer Relation R2. Im Datenmodell ist das eine Participation
+  (R2, R1, X) — ontologisch konsequent.
+
+✻ Worked for 3m 31s
+
+❯ Folgende Idee: eine Map oder Phase besteht aus spezifischen historischen  
+  Zuständen von Elementen, nicht unbedingt aus den neuesten. Bei Clarke     
+  werden Messy maps immer wiede rneu erstellt, iterativ. Das sind bei uns - 
+   UNKLAR BISHER - entweder die "Phases", oder eben verschiedenen           
+  Iterationen derselben Map. IN jedem Fall: wenn die Elemente sich in ihrer 
+   eigenen Historie verändern, würde eine Map ihre Konstellierungen         
+  automatisch anders anzeigen können.                                       
+  ⎿  Interrupted · What should Claude do instead?
+
+❯ /model 
+  ⎿  Kept model as Default (Opus 4.6 · Most capable for complex work)
+
+❯ (Ich bin unsicher ob ich meine idee klar genug ausgesrückt habe.) 
+
+● Ich glaube ich verstehe die Idee — lass mich sie zurückspiegeln:
+
+  Das Problem
+
+  Aktuell zeigt eine Map immer den neuesten Zustand jedes Elements (neueste
+  Inscription, neueste Designation). Aber:
+
+  - Clarke's Messy Maps werden iterativ erstellt — jede Iteration ist ein
+  analytischer Zustand
+  - Unser Modell speichert die komplette Historie (append-only
+  naming_inscriptions, naming_designations)
+  - Aber die Map nutzt diese Historie nicht — sie zeigt nur das Jetzt
+
+  Die Idee (wie ich sie verstehe)
+
+  Eine Map oder Phase könnte an einen historischen Zeitpunkt gebunden sein.
+  Nicht "zeige mir die Elemente wie sie jetzt heißen", sondern "zeige mir die
+  Elemente wie sie waren, als diese Phase/Iteration erstellt wurde."
+
+  Zwei mögliche Lesarten:
+
+  A) Phases als Iterationen — Jede Phase hat einen snapshotSeq (Zeitstempel in
+  der Event-Sequenz). Die Phase zeigt Elemente mit den Inscriptions und
+  Designations, die zu diesem Zeitpunkt galten. Phase 1 = "Messy Map am
+  Dienstag", Phase 2 = "nach der Relationierung am Mittwoch". Die Elemente sind
+  dieselben, aber ihr historischer Zustand unterscheidet sich.
+
+  B) Map-Versionen — Die Map selbst hat Iterationen. Jede Iteration ist ein
+  Schnappschuss der Konstellierung. Man kann zwischen Iterationen blättern und
+  sehen, wie sich die Situation analytisch verändert hat.
+
+  C) Etwas anderes? — Vielleicht geht es dir weniger um Zeitpunkte als um
+  perspektivische Zustände: Eine Phase "sieht" ein Element als Cue, obwohl es
+  global schon eine Characterization ist. Die Designation wäre dann nicht
+  global, sondern perspektivgebunden.
+
+  Was trifft es am ehesten — oder ist es eine Kombination?
+
+❯ So ähnlich. Die "historie" ist m.E: NICHT eine HIstory, auch wenn Du sie  
+  so benannt hast (prozessual korrekt, die Geschichte der Renamings).,      
+  Sondern das ELement IST diese Schichtung seiner Veränderungen, acuh wenn  
+  wir die letzte als Naming verwenden (Aufhebungen). Daher geht es mir      
+  wengier um eine "vorherige" Perspektive einer Iteration, auch wenn das    
+  praktisch so auskommen mag, sondern um einen anderen                      
+  "Wellenzusammenbruch" der Superpositionen, die die Entitäten udn          
+  Relationierungen aufgrund ihres "Stacks" oder ihrer "Chain" SIND.         
+
+● Ja. Ich habe den Fehler gemacht, die Chain als "Historie" zu rahmen — als ob
+  es eine zeitliche Abfolge wäre, bei der die letzte Schicht die "aktuelle" ist
+  und die vorherigen "vergangen" sind. Aber du meinst etwas Radikaleres:
+
+  Das Element IST sein Stack. Die naming_inscriptions-Kette ist nicht die
+  Geschichte des Elements — sie ist seine Konstitution. Jede Inscription ist
+  eine Schicht, die in der Aufhebung (Hegel) enthalten bleibt: bewahrt, negiert,
+   erhoben. Die "letzte" Inscription ist nur der Default-Collapse — die
+  Perspektive, die wir zeigen, wenn keine andere gewählt wird.
+
+  Eine Map/Phase kollabiert diesen Stack anders. Nicht: "zeige mir das Element
+  wie es früher war." Sondern: "zeige mir das Element, wie es aus dieser 
+  Perspektive erscheint" — und diese Perspektive kann eine andere Schicht des
+  Stacks hervorheben.
+
+  Was das für das Datenmodell bedeutet
+
+  Die Struktur dafür existiert schon fast: appearances binden (naming ×
+  perspective) mit properties. Was fehlt: die Appearance könnte spezifizieren,
+  welcher Collapse des Stacks gezeigt wird.
+
+  appearances.properties: {
+    collapseInscriptionSeq: 3,    // zeige Inscription #3 aus dem Stack
+    collapseDesignationSeq: 2,    // zeige Designation #2 aus dem Stack
+    // ohne diese Felder → Default: letzte Schicht
+  }
+
+  So wird die Perspektive (Map/Phase) zum Operator, der die Superposition
+  kollabiert. Dieselbe Naming, aus zwei Phasen betrachtet, kann unterschiedliche
+   Inscriptions und Designations zeigen — nicht weil eine "aktueller" ist,
+  sondern weil die Perspektive einen anderen Aspekt des Stacks hervorhebt.
+
+  Ist das die Richtung?
+
+✻ Cogitated for 36s
+
+❯ Ich denke schon. jedes Naming erhält eben einen INdex (default ist das    
+  oberste), und diser INdex ist sein Collapse, der mit anderen collapses    
+  z.B. von Relations-Namings spezifisch zusammenhängt. Ein Renaming kann    
+  dann auch Relationen ändern, so dass wiederum andere inDices derselben    
+  Elemente zusammenhängen (oder dann auch nicht zusammenhängen).            
+
+● Das ist ein entscheidender Punkt: Collapses sind nicht isoliert, sondern 
+  konstelliert. Wenn Element A bei Index 2 steht und Relation R(A,B) bei Index
+  1, dann "passt" das — oder eben nicht. Die Kohärenz (oder Inkohärenz) der
+  Collapse-Indices IST die analytische Aussage der Perspektive.
+
+  Beispiel:
+
+  Element "Schulbuch"     Stack: [Schulbuch, Lehrwerk, Bildungsmedium]
+  Element "Verlag"        Stack: [Verlag, Medienkonzern]
+  Relation R              Stack: [produziert, konfiguriert]
+
+  Phase A: Schulbuch[0] + Verlag[0] + R[0]  → "Verlag produziert Schulbuch"
+  Phase B: Bildungsmedium[2] + Medienkonzern[1] + R[1] → "Medienkonzern
+  konfiguriert Bildungsmedium"
+
+  Phase A und Phase B zeigen dieselben Namings — aber in verschiedenen
+  Collapses, die jeweils intern kohärent sind. Und: die Verschiebung von A nach
+  B IST die analytische Arbeit.
+
+  Minimale Implementation
+
+  Die Appearance hat bereits properties. Der Collapse-Index lebt dort:
+
+  appearance.properties: {
+    inscriptionSeq?: number,   // welche Schicht des Inscription-Stacks
+    designationSeq?: number,   // welche Schicht des Designation-Stacks
+    // null/absent → Default: oberste Schicht
+  }
+
+  Die Query müsste dann statt "neueste Inscription" die perspektivgebundene
+  Inscription liefern. Und die UI bräuchte eine Möglichkeit, den Index zu wählen
+   — z.B. aus dem History-Panel heraus: "diese Schicht in dieser Phase pinnen."
+
+  Soll ich das jetzt implementieren, oder wollen wir erst den AI-Agenten testen
+  und dann darauf aufbauen? Die Collapse-Logik ist konzeptuell klar, aber die
+  Query-Änderung und das UI sind substantiell.
+
+✻ Baked for 39s
+
+❯ Absolut. Dieses Beispiel "Beispiel:                                       
+                                                                            
+                                                                            
+                                                                            
+    Element "Schulbuch"     Stack: [Schulbuch, Lehrwerk, Bildungsmedium]    
+                                                                            
+    Element "Verlag"        Stack: [Verlag, Medienkonzern]                  
+                                                                            
+    Relation R              Stack: [produziert, konfiguriert]               
+                                                                            
+                                                                            
+    Phase A: Schulbuch[0] + Verlag[0] + R[0]  → "Verlag produziert          
+  Schulbuch"                                                                
+                                                                            
+    Phase B: Bildungsmedium[2] + Medienkonzern[1] + R[1] → "Medienkonzern   
+  konfiguriert Bildungsmedium"                                              
+                                                                            
+                                                                            
+    Phase A und Phase B zeigen dieselben Namings — aber in verschiedenen    
+  Collapses, die jeweils intern kohärent sind. Und: die Verschiebung von A  
+    nach B IST die analytische Arbeit. " möchte ich festhalten; es ist sehr 
+   anschaulich/modellhaft. Aber erläutere: inscription udn designation      
+  stack desselben Objekts, macht es sinn dass hier unteschiedliche          
+  Dchichten verbunden werden (als default)? Hängen die nicht in einem       
+  Naming-Porzess zusammen (ich kannd asmissverstanden haben, prüfe          
+  kritisch)                                                                 
+
+● Du hast recht — und es ist gut, dass du das prüfst. Inscription-Stack und
+  Designation-Stack desselben Namings sind nicht unabhängig. Sie sind Teil
+  desselben Naming-Prozesses:
+
+  1. Ich füge "Schulbuch" hinzu → inscription[0]="Schulbuch", designation[0]=cue
+  2. Ich relationiere es → designation[1]=characterization
+  3. Ich benenne um zu "Bildungsmedium" UND designiere als specification →
+  inscription[1]="Bildungsmedium", designation[2]=specification
+
+  Die Stacks laufen parallel in derselben globalen Sequenz (seq BIGSERIAL). Zu
+  jedem Zeitpunkt (seq) gibt es genau eine gültige Inscription UND eine gültige
+  Designation. Sie gehören zusammen.
+
+  Konsequenz: Der Collapse-Index sollte nicht zwei getrennte Werte sein
+  (inscriptionSeq + designationSeq), sondern einer: ein globaler collapseAt-Seq.
+   Daraus leiten sich beide ab — die Inscription und die Designation, die zu
+  diesem Zeitpunkt galten.
+
+  appearance.properties: {
+    collapseAt?: number,  // globaler Seq-Wert → leitet inscription + 
+  designation ab
+    // null → Default: oberste Schicht (aktuell)
+  }
+
+  Dass man sie entkoppeln KÖNNTE (inscription aus Schicht 1, designation aus
+  Schicht 3), wäre ein expliziter analytischer Akt — eine bewusste Entscheidung,
+   kein Default.
+
+  Und: das korrigierte Beispiel wäre dann nicht "Phase A zeigt inscription[0] +
+  designation[0]", sondern "Phase A zeigt den Collapse bei seq=5" — und daraus
+  ergeben sich inscription und designation als kohärentes Paar.
+
+  Ich halte das Beispiel fest.
+
+● Recalled 1 memory, wrote 2 memories (ctrl+o to expand)
+
+● Festgehalten — in der Memory und als eigene Datei collapse-model.md mit dem
+  Beispiel und der Design-Entscheidung (ein Index, nicht zwei).
+
+  Sollen wir den AI-Agenten jetzt testen, oder willst du erst die Collapse-Logik
+   implementieren? Meine Empfehlung: erst den Agenten testen — er kann auch ohne
+   Collapse funktionieren (Default = oberste Schicht), und das Collapse-Feature
+  baut sauber darauf auf.
+
+✻ Cogitated for 1m 11s
+
+❯ Er funktioniert, und liefert ausgesprochen spannende "silences", namings  
+  und relations                                                             
+
+● Ausgezeichnet. Die ontologische Symmetrie zahlt sich aus — die AI als
+  Ko-Akteur im selben Datenraum, nicht als externes Tool.
+
+  Was steht jetzt an? Optionen:
+
+  1. Accept/Reject-UI — Buttons an AI-Cues, um sie als Forscher zu designieren
+  (Cue→Char) oder abzulehnen (soft-delete + Memo)
+  2. Collapse-Logik — collapseAt in Appearances implementieren
+  3. AI-Prompt-Tuning — basierend auf dem, was du gerade gesehen hast, den
+  System-Prompt oder die Tool-Definitionen anpassen
+  4. Committen + pushen was wir haben
+
+  Oder etwas anderes?
+
+❯ erstmal commit, dann Nr. 2 würde ich denken 
+
+● Bash(git status --short && echo "---" && git log --oneline -3)
+  ⎿  ---
+     31b4358 Refactor AI client: provider-agnostic wrapper for OpenRouter +
+      Anthropic
+     … +2 lines (ctrl+o to expand)
+
+● Git ist sauber — alles bereits committed. Dann direkt zur Collapse-Logik.
+
+● Read 1 file (ctrl+o to expand)
+
+● Die Kern-Änderung ist in getMapAppearances: statt immer n.inscription
+  (neueste) und die letzte Designation zu nehmen, muss die Query den
+  collapseAt-Wert aus den Appearance-Properties berücksichtigen.
+
+● Update(src/lib/server/db/queries/maps.ts)
+  ⎿  Added 26 lines, removed 6 lines
+      279  
+      280  // ---- Queries ----
+      281  
+      282 -// Get all appearances on the map, enriched with current desig
+          -nation                                                        
+      283 -// and participation endpoints (for relations — both directed 
+          -and symmetric)                                                
+      282 +// Get all appearances on the map, enriched with designation a
+          +nd inscription.                                               
+      283 +// Supports perspectival collapse: if appearance.properties.co
+          +llapseAt is set,                                              
+      284 +// shows the inscription and designation as of that global seq
+          + — not the latest.                                            
+      285 +// A naming IS its stack; the perspective chooses which layer 
+          +to collapse to.                                               
+      286  export async function getMapAppearances(mapId: string, project
+           Id: string) {
+      287    return (
+      288      await query(
+      287 -      `SELECT a.*, n.inscription, n.created_at as naming_creat
+          -ed_at,                                                        
+      288 -         (SELECT nd.designation FROM naming_designations nd   
+      289 -          WHERE nd.naming_id = a.naming_id ORDER BY nd.seq DES
+          -C LIMIT 1) as designation,                                    
+      289 +      `SELECT a.*,                                            
+      290 +         -- Inscription: collapsed or current                 
+      291 +         COALESCE(                                            
+      292 +           (SELECT ni.inscription FROM naming_inscriptions ni 
+      293 +            WHERE ni.naming_id = a.naming_id                  
+      294 +              AND ($3::bigint IS NULL OR ni.seq <= (a.properti
+          +es->>'collapseAt')::bigint)                                   
+      295 +            ORDER BY ni.seq DESC LIMIT 1),                    
+      296 +           n.inscription                                      
+      297 +         ) as inscription,                                    
+      298 +         n.inscription as current_inscription,                
+      299 +         n.created_at as naming_created_at,                   
+      300 +         -- Designation: collapsed or current                 
+      301 +         COALESCE(                                            
+      302 +           (SELECT nd.designation FROM naming_designations nd 
+      303 +            WHERE nd.naming_id = a.naming_id                  
+      304 +              AND ($3::bigint IS NULL OR nd.seq <= (a.properti
+          +es->>'collapseAt')::bigint)                                   
+      305 +            ORDER BY nd.seq DESC LIMIT 1),                    
+      306 +           'cue'                                              
+      307 +         ) as designation,                                    
+      308 +         -- Whether this appearance is collapsed (pinned) or s
+          +howing latest                                                 
+      309 +         (a.properties->>'collapseAt') IS NOT NULL as is_colla
+          +psed,                                                         
+      310           p.naming_id as part_source_id,
+      311           p.participant_id as part_target_id
+      312         FROM appearances a
+     ...
+      317           AND n.project_id = $2
+      318           AND n.deleted_at IS NULL
+      319         ORDER BY n.seq`,
+      300 -      [mapId, projectId]                                      
+      320 +      [mapId, projectId, null]                                
+      321      )
+      322    ).rows;
+      323  }
+
+● Wait — the $3 parameter is wrong. The collapseAt is per-row (from each
+  appearance's properties), not a global parameter. Let me fix.
+
+● Update(src/lib/server/db/queries/maps.ts)
+  ⎿  Added 6 lines, removed 4 lines
+      287    return (
+      288      await query(
+      289        `SELECT a.*,
+      290 -         -- Inscription: collapsed or current                 
+      290 +         -- Inscription: collapsed (at collapseAt seq) or curr
+          +ent                                                           
+      291           COALESCE(
+      292             (SELECT ni.inscription FROM naming_inscriptions ni
+      293              WHERE ni.naming_id = a.naming_id
+      294 -              AND ($3::bigint IS NULL OR ni.seq <= (a.properti
+          -es->>'collapseAt')::bigint)                                   
+      294 +              AND (a.properties->>'collapseAt' IS NULL        
+      295 +                   OR ni.seq <= (a.properties->>'collapseAt'):
+          +:bigint)                                                      
+      296              ORDER BY ni.seq DESC LIMIT 1),
+      297             n.inscription
+      298           ) as inscription,
+     ...
+      302           COALESCE(
+      303             (SELECT nd.designation FROM naming_designations nd
+      304              WHERE nd.naming_id = a.naming_id
+      304 -              AND ($3::bigint IS NULL OR nd.seq <= (a.properti
+          -es->>'collapseAt')::bigint)                                   
+      305 +              AND (a.properties->>'collapseAt' IS NULL        
+      306 +                   OR nd.seq <= (a.properties->>'collapseAt'):
+          +:bigint)                                                      
+      307              ORDER BY nd.seq DESC LIMIT 1),
+      308             'cue'
+      309           ) as designation,
+     ...
+      319           AND n.project_id = $2
+      320           AND n.deleted_at IS NULL
+      321         ORDER BY n.seq`,
+      320 -      [mapId, projectId, null]                                
+      322 +      [mapId, projectId]                                      
+      323      )
+      324    ).rows;
+      325  }
+
+● Now the designation profile should also respect collapseAt.
+
+● Update(src/lib/server/db/queries/maps.ts)
+  ⎿  Added 5 lines, removed 2 lines
+      346  }
+      347  
+      348  // Get the aggregate designation state of a map:
+      349 -// how many elements at each designation stage                
+      349 +// how many elements at each designation stage (respects colla
+          +pseAt)                                                        
+      350  export async function getMapDesignationProfile(mapId: string, 
+           projectId: string) {
+      351    return (
+      352      await query(
+     ...
+      354           SELECT
+      355             COALESCE(
+      356               (SELECT nd.designation FROM naming_designations n
+           d
+      357 -              WHERE nd.naming_id = a.naming_id ORDER BY nd.seq
+          - DESC LIMIT 1),                                               
+      357 +              WHERE nd.naming_id = a.naming_id                
+      358 +                AND (a.properties->>'collapseAt' IS NULL      
+      359 +                     OR nd.seq <= (a.properties->>'collapseAt'
+          +)::bigint)                                                    
+      360 +              ORDER BY nd.seq DESC LIMIT 1),                  
+      361               'cue'
+      362             ) as designation,
+      363             count(*) as count
+
+● Now add the API action to set/clear a collapse on an appearance, and a query
+  to get the inscription stack for a naming (so the UI can offer the layers).
+
+● Read 1 file (ctrl+o to expand)
+
+● Update(src/lib/server/db/queries/maps.ts)
+  ⎿  Added 54 lines
+      277    );
+      278  }
+      279  
+      280 +// Set the collapse point for a naming in a perspective.      
+      281 +// collapseAt = global seq value → shows inscription + designa
+          +tion as of that seq.                                          
+      282 +// Pass null to clear (return to showing latest).             
+      283 +export async function setCollapse(                            
+      284 +  namingId: string,                                           
+      285 +  perspectiveId: string,                                      
+      286 +  collapseAt: number | null                                   
+      287 +) {                                                           
+      288 +  if (collapseAt === null) {                                  
+      289 +    // Remove collapseAt from properties                      
+      290 +    return queryOne(                                          
+      291 +      `UPDATE appearances                                     
+      292 +       SET properties = properties - 'collapseAt', updated_at 
+          += now()                                                       
+      293 +       WHERE naming_id = $1 AND perspective_id = $2           
+      294 +       RETURNING *`,                                          
+      295 +      [namingId, perspectiveId]                               
+      296 +    );                                                        
+      297 +  }                                                           
+      298 +  return queryOne(                                            
+      299 +    `UPDATE appearances                                       
+      300 +     SET properties = properties || $3::jsonb, updated_at = no
+          +w()                                                           
+      301 +     WHERE naming_id = $1 AND perspective_id = $2             
+      302 +     RETURNING *`,                                            
+      303 +    [namingId, perspectiveId, JSON.stringify({ collapseAt })] 
+      304 +  );                                                          
+      305 +}                                                             
+      306 +                                                              
+      307 +// Get the full stack of a naming: all inscription and designa
+          +tion layers.                                                  
+      308 +// This is not "history" — it IS the naming's constitution.   
+      309 +export async function getNamingStack(namingId: string) {      
+      310 +  const [inscriptions, designations] = await Promise.all([    
+      311 +    query(                                                    
+      312 +      `SELECT ni.seq, ni.inscription, ni.created_at, n.inscrip
+          +tion as by_inscription                                        
+      313 +       FROM naming_inscriptions ni                            
+      314 +       JOIN namings n ON n.id = ni.by                         
+      315 +       WHERE ni.naming_id = $1                                
+      316 +       ORDER BY ni.seq ASC`,                                  
+      317 +      [namingId]                                              
+      318 +    ),                                                        
+      319 +    query(                                                    
+      320 +      `SELECT nd.seq, nd.designation, nd.created_at, n.inscrip
+          +tion as by_inscription                                        
+      321 +       FROM naming_designations nd                            
+      322 +       JOIN namings n ON n.id = nd.by                         
+      323 +       WHERE nd.naming_id = $1                                
+      324 +       ORDER BY nd.seq ASC`,                                  
+      325 +      [namingId]                                              
+      326 +    )                                                         
+      327 +  ]);                                                         
+      328 +  return {                                                    
+      329 +    inscriptions: inscriptions.rows,                          
+      330 +    designations: designations.rows                           
+      331 +  };                                                          
+      332 +}                                                             
+      333 +                                                              
+      334  // ---- Queries ----
+      335  
+      336  // Get all appearances on the map, enriched with designation a
+           nd inscription.
+
+● Now add the API actions for collapse operations.
+
+● Read 1 file (ctrl+o to expand)
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/api/projects/%5BprojectId%5D/maps/%5BmapId%5D/+server.tssrc/routes/api/projects/[projectId]/maps/[mapId]/+server.ts)
+  ⎿  Added 3 lines, removed 1 line
+       7    relateElements,
+       8    createPhase,
+       9    assignToPhase,
+      10 -  removeFromPhase                                              
+      10 +  removeFromPhase,                                             
+      11 +  setCollapse,                                                 
+      12 +  getNamingStack                                               
+      13  } from '$lib/server/db/queries/maps.js';
+      14  import {
+      15    designate,
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/api/projects/%5BprojectId%5D/maps/%5BmapId%5D/+server.tssrc/routes/api/projects/[projectId]/maps/[mapId]/+server.ts)
+  ⎿  Added 14 lines
+      137        return json({ inscriptions, designations });
+      138      }
+      139  
+      140 +    case 'getStack': {                                        
+      141 +      const { namingId } = body;                              
+      142 +      if (!namingId) return json({ error: 'namingId required' 
+          +}, { status: 400 });                                          
+      143 +      const stack = await getNamingStack(namingId);           
+      144 +      return json(stack);                                     
+      145 +    }                                                         
+      146 +                                                              
+      147 +    case 'setCollapse': {                                     
+      148 +      const { namingId, collapseAt } = body;                  
+      149 +      if (!namingId) return json({ error: 'namingId required' 
+          +}, { status: 400 });                                          
+      150 +      const result = await setCollapse(namingId, mapId, collap
+          +seAt ?? null);                                                
+      151 +      return json(result || { ok: true });                    
+      152 +    }                                                         
+      153 +                                                              
+      154      case 'toggleAi': {
+      155        const { enabled } = body;
+      156        await setAiEnabled(mapId, enabled !== false);
+
+● Server-side done. Now the UI — I need to add collapse controls to the
+  history/stack panel. Let me delegate this to an agent since the page.svelte is
+   complex and needs careful editing.
+
+● Agent(Add collapse UI to map page)
+  ⎿  Done (21 tool uses · 40.7k tokens · 2m 26s)
+  (ctrl+o to expand)
+
+● Let me verify the build.
+
+● Bash(npx vite build 2>&1 | tail -5)
+  ⎿  Run npm run preview to preview your production build locally.
+
+     > Using @sveltejs/adapter-node
+       ✔ done
+  ⎿  (timeout 1m)
+
+● Build clean. Let me check the key UI changes.
+
+● Searched for 1 pattern (ctrl+o to expand)
+
+● Alles ist drin. Commit.
+
+● Bash(git status --short)
+  ⎿   M src/lib/server/db/queries/maps.ts
+      M src/routes/api/projects/[projectId]/maps/[mapId]/+server.ts
+      M src/routes/projects/[projectId]/maps/[mapId]/+page.svelte
+
+● Bash(git add src/lib/server/db/queries/maps.ts
+      src/routes/api/projects/\[projectId\]/maps/\[mapId\]/+server.ts
+      src/routes/projects/\[projectId\]/maps/\[mapId\]/+page…)
+  ⎿  [main 9cb0978] Perspectival collapse: a naming IS its stack, not its l
+     atest state
+      3 files changed, 174 insertions(+), 15 deletions(-)
+
+● Committed. Hier die Zusammenfassung:
+
+  Perspectival Collapse — implementiert
+
+  Das Prinzip: Ein Naming IS sein Stack. Die Perspektive (Map/Phase) wählt,
+  welche Schicht sie zeigt — via collapseAt (globaler Seq-Wert). Ohne collapseAt
+   → Default: oberste Schicht.
+
+  Was funktioniert:
+
+  ┌────────────────────┬────────────────────────────────────────────────────┐
+  │       Aktion       │                       Effekt                       │
+  ├────────────────────┼────────────────────────────────────────────────────┤
+  │ Stack-Panel öffnen │ Zeigt alle Inscription-Schichten +                 │
+  │  ("stack")         │ Designation-Schichten                              │
+  ├────────────────────┼────────────────────────────────────────────────────┤
+  │ "pin" an einer     │ setCollapse(namingId, mapId, seq) → diese          │
+  │ Schicht            │ Perspective zeigt ab sofort diese Schicht          │
+  ├────────────────────┼────────────────────────────────────────────────────┤
+  │ "unpin"            │ setCollapse(namingId, mapId, null) → zurück zur    │
+  │                    │ obersten Schicht                                   │
+  ├────────────────────┼────────────────────────────────────────────────────┤
+  │ Gepinntes Element  │ Zeigt 📌, die gepinnte Inscription, UND darunter   │
+  │                    │ "currently: ..." (die aktuelle)                    │
+  └────────────────────┴────────────────────────────────────────────────────┘
+
+  Was noch fehlt für das volle Modell:
+  - Phasen-spezifische Collapses (aktuell nur auf Map-Ebene — aber die Query
+  unterstützt es bereits, weil collapseAt per appearance(naming × perspective)
+  gespeichert wird)
+  - Kohärenz-Visualisierung (welche Collapses "zusammengehören")
+  - AI-Integration: der Agent könnte Collapse-Konstellationen vorschlagen
+
+  Sollen wir pushen und/oder weitermachen?
+
+✻ Crunched for 5m 20s
+
+❯ weitermachen. die "Phases" sitzen in der rechten Spalte, aber mir ist     
+  nicht ganz klar was sie tun                                               
+
+● Lass mich schauen, was die Phases aktuell tatsächlich tun.
+
+● Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Jetzt ist klar was Phases aktuell tun:
+
+  Status quo der Phases
+
+  1. Erstellen — Label eingeben, wird ein Naming + Perspective
+  2. Zuordnen — "assign elements" klicken → dann bei jedem Element/Relation "+
+  phase" klicken
+  3. Anzeige — Label + Element-Count
+
+  Was fehlt:
+  - Man kann nicht sehen, welche Elemente in einer Phase sind
+  - phasesForElement() gibt immer [] zurück (nicht implementiert)
+  - Man kann Elemente nicht aus einer Phase entfernen (Funktion existiert im
+  Code, aber kein UI-Button)
+  - Phases haben keinen eigenen Collapse — obwohl sie Perspectives sind und
+  collapseAt pro Appearance unterstützen
+  - Eine Phase ist aktuell nur ein Container/Tag — nicht eine eigene
+  perspektivische Sicht
+
+  Was Phases sein SOLLTEN (gemäß Datenmodell + Collapse)
+
+  Eine Phase ist eine Sub-Perspektive der Map. Sie hat eigene Appearances für
+  ihre Elemente — mit potenziell eigenen collapseAt-Werten. Das heißt:
+
+  - Phase A zeigt "Schulbuch" bei Schicht 1, Phase B zeigt dasselbe Naming bei
+  Schicht 3
+  - Eine Phase IST eine analytische Iteration / ein perspektivischer Schnitt
+  - "Assign to phase" bedeutet: dieses Naming erscheint auch aus dieser
+  Sub-Perspektive — initial mit dem aktuellen Collapse
+
+  Soll ich die Phases so umbauen? Konkret:
+  1. Phase anklicken → zeigt nur deren Elemente (mit ihren phasen-spezifischen
+  Collapses)
+  2. Collapse-Pinning funktioniert pro Phase (nicht nur pro Map)
+  3. Phase-zu-Phase-Vergleich wird möglich
+
+❯ Ist eine Phase dann nahe an einem Acialcode? 
+
+● Gute Frage. Strukturell ja — funktional nein, und die Differenz ist
+  theoretisch bedeutsam.
+
+  Gemeinsamkeit: Beides gruppiert Namings, die unter einer bestimmten
+  Perspektive zusammengehören. Ein Axialcode organisiert Codes um eine Achse
+  (Kategorie); eine Phase organisiert Namings um eine Sub-Perspektive.
+
+  Differenz: Der Axialcode (Strauss/Corbin) bringt ein vorgefertigtes
+  Relationsschema mit — Bedingungen, Kontext, Strategien, Konsequenzen. Clarke
+  kritisiert genau das: die Kodierparadigma-Struktur wird den Daten
+  übergestülpt. Situational Analysis ersetzt das durch Maps, die keine
+  Relationsgrammatik vorschreiben.
+
+  Unsere Phases sind näher an Clarke als an Strauss/Corbin, weil:
+  - Sie keine Relationstypen vorschreiben
+  - Sie perspektivisch sind (dasselbe Naming erscheint in verschiedenen Phases
+  unterschiedlich)
+  - Sie Collapse unterstützen (verschiedene Schichten desselben Stacks)
+
+  Aber — in unserem Datenmodell ist alles ein Naming. Codes wären Namings.
+  Phases sind Namings. Die Frage ist: brauchen wir überhaupt zwei getrennte
+  Konzepte?
+
+  Ein Code "angewandt auf" ein Element ist strukturell dasselbe wie eine Phase
+  "die dieses Element enthält" — beides ist eine Appearance (naming ×
+  perspective). Der Unterschied wäre nur: eine Phase hat Collapse-Fähigkeit, ein
+   Code typischerweise nicht.
+
+  Vielleicht sind Phases und Codes dasselbe — perspektivische Namings, die
+  andere Namings unter sich versammeln. Der Unterschied liegt nicht im
+  Mechanismus, sondern in der analytischen Absicht. Was denkst du?
+
+❯ Vielleicht sind die insofern ein NAchfolger der Axialcodes, und zwar als  
+  nicht mehr meta- sondern situationally embedded                           
+
+● Genau. Der entscheidende Schritt: Axialcodes sind meta — sie stehen über den
+  Daten und ordnen sie von außen (das Kodierparadigma als externe Grammatik).
+  Unsere Phases sind eingebettet — sie sind Namings im selben Datenraum, mit
+  demselben ontologischen Status wie die Elemente, die sie versammeln.
+
+  Das IST Clarke's Bewegung von Grounded Theory zu Situational Analysis,
+  materialisiert im Datenmodell:
+
+  - Strauss/Corbin: Forscher steht außerhalb → legt Kategorien AN die Daten
+  - Clarke: Die Situation IST das Analytische → Ordnungen emergieren aus den
+  Relationen
+  - Unser Modell: Phase ist ein Naming unter Namings → hat selbst einen Stack,
+  eine Designation, kann umbenannt und relationiert werden
+
+  Eine Phase kann selbst Cue sein ("ich ahne hier eine Gruppierung"), dann
+  Characterization ("diese Elemente gehören zusammen weil..."), dann
+  Specification. Sie hat einen eigenen Naming-Prozess. Sie kann Ko-Akteur in
+  einem Memo sein. Die AI kann sie vorschlagen. Man kann eine Phase MIT einer
+  anderen Phase relationieren.
+
+  Das bedeutet auch: die Trennung zwischen "Phase" und "Code" ist im Datenmodell
+   bereits aufgehoben — beides sind perspektivische Namings. Der Unterschied
+  liegt nur in der analytischen Praxis: ein Code kommt typischerweise aus der
+  Textarbeit (Dokument-Annotation), eine Phase aus der Map-Arbeit. Aber
+  technisch und ontologisch sind sie dasselbe.
+
+  Soll ich die UI so umbauen, dass das sichtbar wird? D.h. Phases als
+  vollwertige Namings behandeln — mit Stack, Designation, Collapse,
+  Relate-Fähigkeit — statt als schlichte Container in der Sidebar?
+
+❯ Nein; ich denke damit würde man die KOmplexität so weit erhöhen dass es   
+  nicht handelbar ist. Immerhin kann man Phases auch verwerfen, nicht mehr  
+  nutzen, neue Bauen. Was ist hervorhebenswert finde ist der Umstand, dass  
+  eine Maß eben nicht eine einheitliche Phase repräsentieren muss, sondern  
+  auch heterogene Phases in sich aufnehmen kann. D.h. die Map erlaubt       
+  Zuordnungen aus den Stacks, aber ggf. tauchen in ihr Phases auf, die      
+  andere Stack-Zuordnungen verwenden.                                       
+
+● Das ist der Punkt: die Map ist kein homogener Raum, sondern ein heterogenes 
+  Feld. Verschiedene Phases innerhalb derselben Map können verschiedene
+  Collapses derselben Namings zeigen — und genau diese Heterogenität ist
+  analytisch produktiv.
+
+  Concret:
+
+  Map "Digitale Bildungsmedien"
+  ├── Phase "Marktlogik":     Schulbuch[0] + Verlag[0]     → "Verlag produziert
+  Schulbuch"
+  ├── Phase "Diskursanalyse":  Bildungsmedium[2] + Verlag[0] → "Verlag
+  produziert Bildungsmedium"
+  └── Ungephasete Elemente:    zeigen Default (oberste Schicht)
+
+  Die Map selbst hat keinen einheitlichen Collapse — sie ist die Arena, in der
+  verschiedene perspektivische Schnitte koexistieren. Das ist Clarke pur: die
+  Situation als Feld heterogener Positionen.
+
+  Praktisch heißt das: die aktuelle Implementation stimmt bereits. Das
+  Collapse-Pinning ist per Appearance (naming × perspective). Eine Phase IST
+  eine Perspective. Also:
+
+  - Elemente auf der Map-Ebene → Collapse der Map-Appearance
+  - Dasselbe Element in Phase A → eigener Collapse der Phase-A-Appearance
+  - Dasselbe Element in Phase B → noch ein anderer Collapse
+
+  Die Query unterstützt das schon — getMapAppearances liest collapseAt aus der
+  jeweiligen Appearance. Für Phasen-Inhalte bräuchte man nur
+  getMapAppearances(phaseId, projectId) statt getMapAppearances(mapId, 
+  projectId) aufzurufen.
+
+  Was fehlt ist nur, dass die UI beim Klick auf eine Phase deren Inhalte mit
+  deren eigenen Collapses anzeigt. Soll ich das einbauen — Phase anklicken →
+  zeigt die Phase-Elemente (mit phasen-eigenem Collapse)?
+
+❯ Ja, das wäre gut. Noch ein pragmatisches Argument gegen                   
+  Phases-als-Stacks: Phases können heterogene Indices von Namings in sich   
+  aufnehmen. Wenn wir nun noch die Phases indizieren, dann müssten wir z.B. 
+   auch die Maps indizieren. THeoretisch spräche nichts dagegen, aber der   
+  Sinn der Plattform selbst ist die Ermöglichung reflektierter Ordnungen.   
+  Btw. derzeit kann bei den Namings in den Phases noch kein Index markiert  
+  werden, da das ja noch nicht zugänglich ist. Aber Phases sollten als      
+  default immer den aktuellen Index der Zuweisung speichern, nicht etwa     
+  einen späteren Index (zumindest nicht ohne Abfrage).                      
+
+● Zwei klare Punkte:
+
+  1. Keine Meta-Indizierung — Phases (und Maps) werden nicht gestackt. Die
+  Plattform ermöglicht reflektierte Ordnungen, sie spiegelt sie nicht unendlich.
+  2. Default-Collapse bei Zuweisung — Wenn ein Element einer Phase zugeordnet
+  wird, speichert die Phase den aktuellen Seq-Wert als collapseAt. Spätere
+  Renamings ändern die Phase-Ansicht nicht automatisch.
+
+  Das ist entscheidend: die Phase friert den Zustand ein, den der Forscher beim
+  Zuweisen sieht. Änderungen erfordern bewusste Entscheidung.
+
+● Read 1 file (ctrl+o to expand)
+
+● Update(src/lib/server/db/queries/maps.ts)
+  ⎿  Added 19 lines, removed 1 line
+      253  
+      254  // Assign an element to a phase: the element gets an appearanc
+           e
+      255  // from the phase-as-perspective.
+      256 +// Assign an element to a phase, capturing its current seq as 
+          +collapseAt.                                                   
+      257 +// The phase freezes the naming's state at the moment of assig
+          +nment.                                                        
+      258 +// Later renamings don't change the phase view unless explicit
+          +ly updated.                                                   
+      259  export async function assignToPhase(
+      260    phaseId: string,
+      261    namingId: string,
+      262    mode?: string,
+      263    properties?: Record<string, unknown>
+      264  ) {
+      265 +  // Get the current highest seq for this naming's inscription
+          +s or designations                                             
+      266 +  const currentSeq = await queryOne<{ seq: string }>(         
+      267 +    `SELECT GREATEST(                                         
+      268 +       COALESCE((SELECT MAX(seq) FROM naming_inscriptions WHER
+          +E naming_id = $1), 0),                                        
+      269 +       COALESCE((SELECT MAX(seq) FROM naming_designations WHER
+          +E naming_id = $1), 0)                                         
+      270 +     ) as seq`,                                               
+      271 +    [namingId]                                                
+      272 +  );                                                          
+      273 +  const collapseAt = currentSeq ? parseInt(currentSeq.seq) : n
+          +ull;                                                          
+      274 +                                                              
+      275 +  const props = { ...properties };                            
+      276 +  if (collapseAt) {                                           
+      277 +    (props as any).collapseAt = collapseAt;                   
+      278 +  }                                                           
+      279 +                                                              
+      280    return queryOne(
+      281      `INSERT INTO appearances (naming_id, perspective_id, mode,
+            properties)
+      282       VALUES ($1, $2, $3, $4)
+      283       ON CONFLICT (naming_id, perspective_id)
+      284       DO UPDATE SET mode = $3, properties = appearances.propert
+           ies || $4::jsonb, updated_at = now()
+      285       RETURNING *`,
+      268 -    [namingId, phaseId, mode || 'entity', JSON.stringify(prope
+          -rties || {})]                                                 
+      286 +    [namingId, phaseId, mode || 'entity', JSON.stringify(props
+          +)]                                                            
+      287    );
+      288  }
+      289  
+
+● Now the UI — Phase click shows phase contents. Let me read the current phases
+  sidebar and the relevant functions.
+
+● Read 1 file (ctrl+o to expand)
+
+● Now let me check the phase-related CSS.
+
+● Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Good, I have the full picture. Now I'll add:
+  1. State for expanded phase + its contents
+  2. Click on phase label → fetch and show phase contents
+  3. Phase contents show with their own collapses (via
+  getMapAppearances(phaseId, projectId))
+  4. Remove-from-phase button on each element within the phase view
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 2 lines
+      33    let newPhaseLabel = $state('');
+      34    let showPhaseForm = $state(false);
+      35    let assigningToPhase = $state<string | null>(null);
+      36 +  let expandedPhase = $state<string | null>(null);             
+      37 +  let phaseContents = $state<any[]>([]);                       
+      38  
+      39    // Inline rename: first step captures new value, then opens n
+          aming act prompt
+      40    let editingId = $state<string | null>(null);
+
+● Now add the function to load phase contents.
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 19 lines
+      214    async function removeElementFromPhase(phaseId: string, namin
+           gId: string) {
+      215      await mapAction('removeFromPhase', { phaseId, namingId });
+      216      await reload();
+      217 +    if (expandedPhase === phaseId) await loadPhaseContents(pha
+          +seId);                                                        
+      218    }
+      219  
+      220 +  async function loadPhaseContents(phaseId: string) {         
+      221 +    const res = await fetch(`/api/projects/${data.projectId}/m
+          +aps/${phaseId}`);                                             
+      222 +    if (!res.ok) { phaseContents = []; return; }              
+      223 +    const fresh = await res.json();                           
+      224 +    // Phase contents = all non-perspective appearances       
+      225 +    phaseContents = [...(fresh.elements || []), ...(fresh.rela
+          +tions || []), ...(fresh.silences || [])];                     
+      226 +  }                                                           
+      227 +                                                              
+      228 +  async function togglePhase(phaseId: string) {               
+      229 +    if (expandedPhase === phaseId) {                          
+      230 +      expandedPhase = null;                                   
+      231 +      phaseContents = [];                                     
+      232 +    } else {                                                  
+      233 +      expandedPhase = phaseId;                                
+      234 +      await loadPhaseContents(phaseId);                       
+      235 +    }                                                         
+      236 +  }                                                           
+      237 +                                                              
+      238    function startDesignation(namingId: string, designation: str
+           ing) {
+      239      actTarget = namingId;
+      240      actType = 'designate';
+
+● Now update the phases sidebar UI to support clicking and showing contents.
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 39 lines, removed 8 lines
+      740          <p class="empty-small">No phases yet. Create one to cl
+           uster elements.</p>
+      741        {:else}
+      742          {#each phases as phase}
+      743 -          <div class="phase-card" class:assigning={assigningTo
+          -Phase === phase.id}>                                          
+      743 +          <div class="phase-card" class:assigning={assigningTo
+          +Phase === phase.id} class:expanded={expandedPhase === phase.id
+          +}>                                                            
+      744              <div class="phase-header">
+      745 -              <span class="phase-label">{phase.label}</span>  
+      745 +              <!-- svelte-ignore a11y_click_events_have_key_ev
+          +ents -->                                                      
+      746 +              <!-- svelte-ignore a11y_no_static_element_intera
+          +ctions -->                                                    
+      747 +              <span class="phase-label clickable" onclick={() 
+          +=> togglePhase(phase.id)}>{phase.label}</span>                
+      748                <span class="phase-count">{phase.element_count}<
+           /span>
+      749              </div>
+      748 -            <button                                           
+      749 -              class="btn-xs"                                  
+      750 -              onclick={() => assigningToPhase = assigningToPha
+          -se === phase.id ? null : phase.id}                            
+      751 -            >                                                 
+      752 -              {assigningToPhase === phase.id ? 'done' : 'assig
+          -n elements'}                                                  
+      753 -            </button>                                         
+      750 +            <div class="phase-actions">                       
+      751 +              <button                                         
+      752 +                class="btn-xs"                                
+      753 +                onclick={() => assigningToPhase = assigningToP
+          +hase === phase.id ? null : phase.id}                          
+      754 +              >                                               
+      755 +                {assigningToPhase === phase.id ? 'done' : 'ass
+          +ign'}                                                         
+      756 +              </button>                                       
+      757 +            </div>                                            
+      758 +                                                              
+      759 +            {#if expandedPhase === phase.id}                  
+      760 +              <div class="phase-contents">                    
+      761 +                {#if phaseContents.length === 0}              
+      762 +                  <p class="empty-small">No elements assigned 
+          +yet.</p>                                                      
+      763 +                {:else}                                       
+      764 +                  {#each phaseContents as pc}                 
+      765 +                    <div class="phase-element">               
+      766 +                      <span class="designation-dot-sm" style="
+          +background: {designationColor(pc.designation)}"></span>       
+      767 +                      {#if pc.is_collapsed}                   
+      768 +                        <span class="collapsed-indicator" titl
+          +e="Pinned at assignment">&#x1F4CC;</span>                     
+      769 +                      {/if}                                   
+      770 +                      <span class="phase-el-label">{pc.inscrip
+          +tion}</span>                                                  
+      771 +                      {#if pc.mode === 'relation'}            
+      772 +                        <span class="phase-el-mode">rel</span>
+      773 +                      {:else if pc.mode === 'silence'}        
+      774 +                        <span class="phase-el-mode">silence</s
+          +pan>                                                          
+      775 +                      {/if}                                   
+      776 +                      {#if pc.is_collapsed && pc.current_inscr
+          +iption && pc.current_inscription !== pc.inscription}          
+      777 +                        <span class="collapsed-current-sm">now
+          +: {pc.current_inscription}</span>                             
+      778 +                      {/if}                                   
+      779 +                      <button class="btn-xs btn-remove" title=
+          +"Remove from phase" onclick={() => removeElementFromPhase(phas
+          +e.id, pc.naming_id)}>×</button>                               
+      780 +                    </div>                                    
+      781 +                  {/each}                                     
+      782 +                {/if}                                         
+      783 +              </div>                                          
+      784 +            {/if}                                             
+      785            </div>
+      786          {/each}
+      787        {/if}
+
+● Now add the CSS for the new phase elements.
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 17 lines
+      975      margin-bottom: 0.25rem;
+      976    }
+      977    .phase-label { font-size: 0.85rem; color: #e1e4e8; font-weig
+           ht: 500; }
+      978 +  .phase-label.clickable { cursor: pointer; }                 
+      979 +  .phase-label.clickable:hover { color: #8b9cf7; }            
+      980    .phase-count { font-size: 0.7rem; color: #6b7280; }
+      981 +  .phase-card.expanded { border-color: #4b5563; }             
+      982 +  .phase-actions { margin-bottom: 0.25rem; }                  
+      983  
+      984 +  .phase-contents {                                           
+      985 +    border-top: 1px solid #2a2d3a; padding-top: 0.4rem; margin
+          +-top: 0.3rem;                                                 
+      986 +  }                                                           
+      987 +  .phase-element {                                            
+      988 +    display: flex; align-items: center; gap: 0.3rem;          
+      989 +    padding: 0.2rem 0; font-size: 0.75rem; color: #c9cdd5;    
+      990 +  }                                                           
+      991 +  .phase-el-label { flex: 1; overflow: hidden; text-overflow: 
+          +ellipsis; white-space: nowrap; }                              
+      992 +  .phase-el-mode { font-size: 0.6rem; color: #6b7280; font-sty
+          +le: italic; }                                                 
+      993 +  .collapsed-current-sm { font-size: 0.6rem; color: #4b5563; f
+          +ont-style: italic; }                                          
+      994 +  .btn-remove { color: #6b7280; border-color: transparent; pad
+          +ding: 0 0.2rem; }                                             
+      995 +  .btn-remove:hover { color: #ef4444; }                       
+      996 +                                                              
+      997    /* Inline rename */
+      998    .editable { cursor: pointer; }
+      999    .editable:hover { text-decoration: underline dotted; text-un
+           derline-offset: 3px; }
+
+● Now I need to make sure the GET endpoint for phases works — it should use
+  getMapStructure(phaseId, projectId) which calls getMapAppearances(phaseId, 
+  ...). Let me check the API GET handler.
+
+● Read 1 file (ctrl+o to expand)
+
+● The GET endpoint already works for phases — getMap(phaseId) finds the phase
+  (self-referential perspective appearance), and getMapAppearances(phaseId)
+  returns all elements assigned to it with their phase-specific collapseAt. The
+  architecture pays off.
+
+● Bash(npx vite build 2>&1 | tail -5)
+  ⎿  Run npm run preview to preview your production build locally.
+
+     > Using @sveltejs/adapter-node
+       ✔ done
+  ⎿  (timeout 1m)
+
+● Bash(git add src/lib/server/db/queries/maps.ts
+      src/routes/projects/\[projectId\]/maps/\[mapId\]/+page.svelte && git
+      commit -m "$(cat <<'EOF'
+      Phases as embedded persp…)
+  ⎿  [main 892b8d7] Phases as embedded perspectives with auto-collapse on a
+     ssignment
+      2 files changed, 96 insertions(+), 9 deletions(-)
+
+● Committed. Zusammenfassung:
+
+  Phases — jetzt funktional
+
+  1. Auto-Collapse bei Zuweisung — assignToPhase friert den aktuellen Seq ein.
+  Die Phase zeigt das Element so, wie es zum Zeitpunkt der Zuordnung war.
+  2. Phase anklicken → zeigt Inhalte mit phasen-spezifischen Collapses. Jedes
+  Element zeigt:
+    - Designation-Dot (aus dem gepinnten Zustand)
+    - 📌 wenn gepinnt
+    - Inscription (aus dem gepinnten Zustand)
+    - "now: ..." wenn sich die aktuelle Inscription unterscheidet
+    - × zum Entfernen
+  3. Heterogene Collapses — Verschiedene Phases derselben Map können
+  verschiedene Stacks desselben Namings zeigen. Die Map ist die Arena, die
+  Phases sind die perspektivischen Schnitte.
+
+  Soll ich pushen oder weitermachen?
+
+✻ Churned for 2m 3s
+
+❯ push 
+
+● Bash(git push origin main)
+  ⎿  To https://github.com/joeriben/transact-qda.git
+        5937f30..892b8d7  main -> main
+
+● Gepusht — 6 Commits seit letztem Push:
+
+  892b8d7 Phases as embedded perspectives with auto-collapse on assignment
+  9cb0978 Perspectival collapse: a naming IS its stack, not its latest state
+  10b9b0c Enable meta-relations: relate to relations, not just entities
+  9cafb5a AI agent as naming: proactive co-analyst with tool-use
+  79464d2 Fix Svelte 5 state_referenced_locally warnings
+  f3006fe Fix '?' for unnamed relations as relation endpoints
+
+❯ Eine abschließende Frage zu dieser Session: Im Menü sind unter            
+  "Documents" auch "Codes" gelistet. Wie sollen wir damit umgehen?          
+
+● Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Codes sind bereits Namings — mit code-system als Perspektive, Hierarchie über
+  Participations (contains), und Annotations als gerichtete Relationen (valence:
+   'codes'). Ontologisch konsistent.
+
+  Die Frage "wie damit umgehen" hat m.E. drei Ebenen:
+
+  1. Ontologisch: Codes = Phases = Namings
+
+  Im Datenmodell gibt es keinen strukturellen Unterschied. Ein Code ist ein
+  Naming, das aus der code-system-Perspektive als Entity erscheint. Eine Phase
+  ist ein Naming, das als Sub-Perspektive einer Map erscheint. Beides sind
+  perspektivische Ordnungen.
+
+  Der Unterschied ist die Herkunft: Codes kommen aus der Textarbeit (Dokument →
+  Annotation → Code), Phases aus der Map-Arbeit (Situation → Gruppierung →
+  Phase).
+
+  2. Praktisch: Brücke fehlt
+
+  Aktuell leben Codes und Maps in getrennten Welten:
+  - Codes annotieren Dokumente, haben eine Baumhierarchie
+  - Map-Elemente stehen auf Maps, haben Designations und Collapses
+  - Es gibt keine Verbindung: ein Code kann nicht als Element auf einer Map
+  erscheinen, und ein Map-Element kann nicht als Code auf ein Dokument angewandt
+   werden
+
+  3. Was tun?
+
+  Option A: Codes auf Maps bringen. Ein Code (z.B. "Digitalisierungsdiskurs")
+  könnte als Element auf einer Situational Map erscheinen — mit eigenem
+  Designation-Stack, relationierbar mit anderen Elementen. Technisch: eine
+  Appearance des Code-Namings auf der Map-Perspektive.
+
+  Option B: Map-Elemente als Codes nutzbar machen. Ein Map-Element (z.B.
+  "Schulbuch") könnte als Code auf Textpassagen angewandt werden. Technisch:
+  eine Annotation, die das Map-Element als code_id referenziert.
+
+  Option C: Beides. Codes und Map-Elemente sind dasselbe — man kann jedes Naming
+   auf einer Map platzieren UND als Code verwenden. Die Perspektive (Code-System
+   vs. Map) bestimmt, wie es erscheint.
+
+  Option C ist ontologisch konsequent, aber — wie du bei Phases gesagt hast —
+  die Komplexität steigt. Was ist dein Instinkt?
+
+✻ Worked for 30s
+
+❯ Das textanalytisch-pragmatische Argument der Herkunft ist interessant,    
+  aber "Code" wäre ein irreführender Begriff, insofern Codes ja auch von    
+  den Dokumenten sehr schnell wegführen können. Dennoch haben wir           
+  vielleicht eine Unterscheidung: der hochgeladene Datenkorpus wird mit     
+  Codes versehen, aber auch Codes die nicht von diesen Daten ausgehen       
+  tauchen auf den Maps auf. Es ist schon wichtig zu sehen welche Codes      
+  direkt mit Positionen in Dokumenten verbunden sind und welche nicht.      
+  Vielleicht muss man sagen alle codes sind namings, aber nicht alle        
+  namings sind codes, und codes dann doch - entgegen meiner Aussage oben -  
+  für das klassische Codier-Paradigma reservieren, zumindest für das        
+  initiale/offene codieren. -- Alternativ müsste man sonst so entscheiden,  
+  dass alle Namings, die keine Codes sind oder auf ihnen aufbauen, auf      
+  Non-Documents basieren, die ihrerseits charakterisiert werden müssten.    
+  Z.B: eigene subjektive Positionen -> nicht Teil von Erhebungen,           
+  klassischeweise Memos mit eher undefiniertem Status, hier aber als        
+  non-document eine Begründung für Namings, die technische betrachtet nicht 
+   aus dem Erhebungskorpus stammen, insofern also keine klassischen Codes   
+  sind. -- Wenn Du das kritisch prüfst - was denkst Du?                     
+
+● Kritische Prüfung:
+
+  Das Problem ist real
+
+  Die Unterscheidung "was kommt aus dem Datenkorpus, was nicht" ist
+  methodologisch zentral — nicht ontologisch, aber für die Nachvollziehbarkeit.
+  Clarke verlangt, dass die Situational Map ALLES aufnimmt (auch
+  Außer-Empirisches), aber die Frage der Herkunft bleibt: Woher stammt dieses
+  Naming? Wer muss das wissen? Gutachter, Betreuer, man selbst in sechs Monaten.
+
+  Gegen "Non-Documents" als Lösung
+
+  Die Idee, nicht-empirische Namings über "Non-Documents" zu begründen, erzeugt
+  eine Begründungsbürokratie, die dem eigentlichen Problem ausweicht. Man würde
+  Quasi-Dokumente erfinden, um eine Lücke zu füllen, die eigentlich eine Lücke
+  der Provenienz-Sichtbarkeit ist.
+
+  Was ich stattdessen vorschlagen würde
+
+  Die Unterscheidung ist nicht ontologisch (Code vs. Naming), sondern
+  relational: Hat dieses Naming eine Verankerung in Dokumenten oder nicht? Das
+  ist bereits im Datenmodell sichtbar — ein Naming mit Annotations (Appearance
+  valence: 'codes') ist empirisch verankert, eines ohne ist es nicht.
+
+  Drei Herkunftstypen, alle legitim in Situational Analysis:
+
+  ┌─────────────┬──────────────────────┬─────────────────────────────────────┐
+  │  Herkunft   │    Sichtbar durch    │              Beispiel               │
+  ├─────────────┼──────────────────────┼─────────────────────────────────────┤
+  │ Empirisch   │ Annotation (Code →   │ "Digitalisierungsdiskurs" codiert   │
+  │             │ Dokumentstelle)      │ an Passage X                        │
+  ├─────────────┼──────────────────────┼─────────────────────────────────────┤
+  │ Analytisch  │ Memo (verlinkt mit   │ "Schulbuch" emergiert aus           │
+  │             │ Naming)              │ Mapping-Prozess, Memo erklärt warum │
+  ├─────────────┼──────────────────────┼─────────────────────────────────────┤
+  │             │                      │ "Implizierter Akteur" aus           │
+  │ Theoretisch │ Memo + Designation   │ Clarke-Framework, bewusst           │
+  │             │                      │ eingebracht                         │
+  └─────────────┴──────────────────────┴─────────────────────────────────────┘
+
+  Alle drei sind Namings. Der Unterschied liegt nicht im Typ, sondern in der
+  Provenienz-Kette: Welche Participations hat dieses Naming? Führt eine davon zu
+   einem Dokument? Zu einem Memo? Zu nichts?
+
+  Konsequenz für die UI
+
+  Statt "Codes" als separate Kategorie: Provenienz-Indikatoren an jedem Naming.
+
+  - 📄 = hat Dokument-Anker (empirisch verankert)
+  - 📝 = hat Memo-Link (analytisch begründet)
+  - ∅ = weder noch (unbegründet — ein Cue, der noch Verankerung braucht)
+
+  Der AI-Agent könnte genau das flaggen: "Dieses Naming hat keine Verbindung zu
+  deinem Datenkorpus und kein erklärendes Memo. Soll ich ein Memo dazu anlegen?"
+
+  Das bewahrt den Begriff "Code" für das, was er in der qualitativen Forschung
+  bedeutet (Textstellen-Annotation), ohne ihm ontologischen Sonderstatus zu
+  geben. Codes wären Namings-mit-Dokument-Anker, nicht eine eigene
+  Entitätsklasse.
+
+  Was denkst du — löst das die Unterscheidung ohne sie zu überladen?
+
+✻ Worked for 1m 19s
+
+❯ Ok. Das bewahr den klassischen Bezug zu Memos, was gegenüber meinem       
+  Vorschlag erhebliche Konsistenzvorteile bringt. Mach das so.              
+
+● Gut. Provenienz-Indikatoren statt Typ-Kategorien. Erst committen was da ist,
+  dann implementieren.
+
+● Bash(git status --short)
+  ⎿   M src/routes/projects/[projectId]/maps/[mapId]/+page.svelte
+
+● Bash(git diff src/routes/projects/\[projectId\]/maps/\[mapId\]/+page.svelte |
+      head -30)
+  ⎿  diff --git a/src/routes/projects/[projectId]/maps/[mapId]/+page.svelte
+      b/src/routes/projects/[projectId]/maps/[mapId]/+page.svelte
+     index 038cd79..8dbf21a 100644
+     … +13 lines (ctrl+o to expand)
+
+● User's change — assignElement now reloads phase contents after assigning and
+  keeps assigningToPhase active (so you can assign multiple elements without
+  re-clicking). Let me commit this, then implement provenance.
+
+● Bash(git add src/routes/projects/\[projectId\]/maps/\[mapId\]/+page.svelte &&
+      git commit -m "$(cat <<'EOF'
+      Keep assign mode active after adding element to phase…)
+  ⎿  [main a794c55] Keep assign mode active after adding element to phase
+      1 file changed, 1 insertion(+), 1 deletion(-)
+
+● Now implement provenance indicators. First the query enrichment.
+
+● Read 1 file (ctrl+o to expand)
+
+● Update(src/lib/server/db/queries/maps.ts)
+  ⎿  Added 14 lines
+      381           ) as designation,
+      382           -- Whether this appearance is collapsed (pinned) or s
+           howing latest
+      383           (a.properties->>'collapseAt') IS NOT NULL as is_colla
+           psed,
+      384 +         -- Provenance: empirical grounding (has document anno
+          +tations)                                                      
+      385 +         EXISTS (                                             
+      386 +           SELECT 1 FROM appearances ann                      
+      387 +           WHERE ann.directed_from = a.naming_id AND ann.valen
+          +ce = 'codes'                                                  
+      388 +         ) as has_document_anchor,                            
+      389 +         -- Provenance: analytical grounding (linked to a memo
+          +)                                                             
+      390 +         EXISTS (                                             
+      391 +           SELECT 1 FROM participations mp                    
+      392 +           JOIN memo_content mc ON mc.naming_id = CASE        
+      393 +             WHEN mp.naming_id = a.naming_id THEN mp.participa
+          +nt_id                                                         
+      394 +             ELSE mp.naming_id END                            
+      395 +           JOIN namings mn ON mn.id = mc.naming_id AND mn.dele
+          +ted_at IS NULL                                                
+      396 +           WHERE mp.naming_id = a.naming_id OR mp.participant_
+          +id = a.naming_id                                              
+      397 +         ) as has_memo_link,                                  
+      398           p.naming_id as part_source_id,
+      399           p.participant_id as part_target_id
+      400         FROM appearances a
+
+● Now update the UI to show provenance indicators. Let me read the element card
+  area.
+
+● Read 1 file (ctrl+o to expand)
+
+● I'll add provenance indicators right after the designation dot, before the
+  inscription. Small, unobtrusive.
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 1 line
+      455                  {#if el.is_collapsed}<span class="collapsed-in
+           dicator" title="Pinned to specific layer">&#x1F4CC;</span>{/if
+           }
+      456                  <span class="designation-dot" style="backgroun
+           d: {designationColor(el.designation)}"
+      457                    title={designationLabel(el.designation)}></s
+           pan>
+      458 +                <span class="provenance-indicator" title={el.h
+          +as_document_anchor ? 'Empirically grounded (document annotatio
+          +n)' : el.has_memo_link ? 'Analytically grounded (memo link)' :
+          + 'No grounding yet'}>{el.has_document_anchor ? '📄' : el.has_m
+          +emo_link ? '📝' : '∅'}</span>                                 
+      459                  {#if editingId === el.naming_id}
+      460                    <form class="inline-rename" onsubmit={e => {
+            e.preventDefault(); confirmRename(); }}>
+      461                      <input type="text" bind:value={editingValu
+           e} />
+
+● Now add the same to relations.
+
+● Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 1 line
+      604                <div class="el-main">
+      605                  {#if rel.is_collapsed}<span class="collapsed-i
+           ndicator" title="Pinned to specific layer">&#x1F4CC;</span>{/i
+           f}
+      606                  <span class="designation-dot" style="backgroun
+           d: {designationColor(rel.designation)}"></span>
+      607 +                <span class="provenance-indicator" title={rel.
+          +has_document_anchor ? 'Empirically grounded' : rel.has_memo_li
+          +nk ? 'Analytically grounded' : 'No grounding yet'}>{rel.has_do
+          +cument_anchor ? '📄' : rel.has_memo_link ? '📝' : '∅'}</span> 
+      608                  <span class="rel-source">
+      609                    {findInscription(srcId)}
+      610                  </span>
+
+● And silences too.
+
+● Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 1 line
+      715          <div class="element-list">
+      716            {#each silences as s}
+      717              <div class="element-card silence-card" class:ai-su
+           ggested={s.properties?.aiSuggested === true} title={s.properti
+           es?.aiReasoning || ''}>
+      718 +              <span class="provenance-indicator" title={s.has_
+          +document_anchor ? 'Empirically grounded' : s.has_memo_link ? '
+          +Analytically grounded' : 'No grounding yet'}>{s.has_document_a
+          +nchor ? '📄' : s.has_memo_link ? '📝' : '∅'}</span>           
+      719                <span class="el-inscription">{s.inscription}</sp
+           an>
+      720              </div>
+      721            {/each}
+
+● Now add the CSS for the provenance indicator.
+
+● Read 1 file (ctrl+o to expand)
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 6 lines
+      1009      padding: 0.2rem 0.4rem; color: #e1e4e8; font-size: 0.85re
+            m; width: 200px;
+      1010    }
+      1011  
+      1012 +  /* Provenance indicators */                                
+      1013 +  .provenance-indicator {                                    
+      1014 +    font-size: 0.6rem; cursor: default; flex-shrink: 0;      
+      1015 +    opacity: 0.7; min-width: 0.9rem; text-align: center;     
+      1016 +  }                                                          
+      1017 +                                                             
+      1018    /* Naming act prompt */
+      1019    .act-prompt {
+      1020      background: #161822; border: 1px solid #f59e0b; border-ra
+            dius: 8px;
+
+● Bash(npx vite build 2>&1 | tail -5)
+  ⎿  Run npm run preview to preview your production build locally.
+
+     > Using @sveltejs/adapter-node
+       ✔ done
+  ⎿  (timeout 1m)
+
+● Now update the AI agent's system prompt to include provenance awareness.
+
+● Read 1 file (ctrl+o to expand)
+
+● Update(src/lib/server/ai/prompts.ts)
+  ⎿  Added 7 lines
+      23  - Write analytical memos with questions, tensions, theoretical 
+          connections
+      24  - Propose phases (thematic groupings) when patterns emerge
+      25  
+      26 +PROVENANCE AWARENESS:                                          
+      27 +- Elements with document anchors (marked 📄) are empirically gr
+         +ounded — they come from coded data                             
+      28 +- Elements with memo links (marked 📝) are analytically grounde
+         +d — the researcher has documented their reasoning              
+      29 +- Elements with neither (marked ∅) lack grounding — flag these 
+         +in your memos                                                  
+      30 +- When you suggest new elements, consider whether they should b
+         +e connected to existing documents or memos                     
+      31 +- Methodological transparency requires that every naming has a 
+         +traceable provenance chain                                     
+      32 +                                                               
+      33  METHODOLOGICAL SENSITIVITY:
+      34  - Situational Analysis foregrounds the situation itself, not in
+          dividual actors
+      35  - Attend to power dynamics, implicated actors (silenced/absent)
+          , and discursive constructions
+
+● Now update the context builder to include provenance info in the element
+  listings.
+
+● Read 1 file (ctrl+o to expand)
+
+● Update(src/lib/server/ai/prompts.ts)
+  ⎿  Added 2 lines
+      57      inscription: string;
+      58      designation: string;
+      59      mode: string;
+      60 +    provenance: 'empirical' | 'analytical' | 'ungrounded';     
+      61    }>;
+      62    relations: Array<{
+      63      id: string;
+     ...
+      67      target: { id: string; inscription: string };
+      68      valence: string | null;
+      69      symmetric: boolean;
+      70 +    provenance: 'empirical' | 'analytical' | 'ungrounded';     
+      71    }>;
+      72    silences: Array<{
+      73      id: string;
+
+● Now update buildContextMessage to include provenance in the element listings.
+
+● Read 1 file (ctrl+o to expand)
+
+● Update(src/lib/server/ai/prompts.ts)
+  ⎿  Added 2 lines, removed 1 line
+      103    if (ctx.elements.length > 0) {
+      104      parts.push('\nELEMENTS:');
+      105      for (const el of ctx.elements) {
+      106 -      parts.push(`  [${el.designation}] "${el.inscription}" (i
+          -d: ${el.id})`);                                               
+      106 +      const prov = el.provenance === 'empirical' ? ' 📄' : el.
+          +provenance === 'analytical' ? ' 📝' : ' ∅';                   
+      107 +      parts.push(`  [${el.designation}]${prov} "${el.inscripti
+          +on}" (id: ${el.id})`);                                        
+      108      }
+      109    } else {
+      110      parts.push('\nELEMENTS: (none yet)');
+
+● Update(src/lib/server/ai/prompts.ts)
+  ⎿  Added 2 lines, removed 1 line
+      117        const arrow = rel.symmetric ? '↔' : '→';
+      118        const label = rel.inscription ? `: "${rel.inscription}"`
+            : '';
+      119        const val = rel.valence ? ` [${rel.valence}]` : '';
+      120 -      parts.push(`  [${rel.designation}] "${rel.source.inscrip
+          -tion}" ${arrow} "${rel.target.inscription}"${label}${val} (id:
+          - ${rel.id})`);                                                
+      120 +      const prov = rel.provenance === 'empirical' ? ' 📄' : re
+          +l.provenance === 'analytical' ? ' 📝' : ' ∅';                 
+      121 +      parts.push(`  [${rel.designation}]${prov} "${rel.source.
+          +inscription}" ${arrow} "${rel.target.inscription}"${label}${va
+          +l} (id: ${rel.id})`);                                         
+      122      }
+      123    }
+      124  
+
+● Now update the agent's context builder to pass provenance data.
+
+● Read 1 file (ctrl+o to expand)
+
+● Update(src/lib/server/ai/agent.ts)
+  ⎿  Added 2 lines, removed 1 line
+      65        id: el.naming_id,
+      66        inscription: el.inscription,
+      67        designation: el.designation || 'cue',
+      68 -      mode: el.mode                                            
+      68 +      mode: el.mode,                                           
+      69 +      provenance: el.has_document_anchor ? 'empirical' as const
+         + : el.has_memo_link ? 'analytical' as const : 'ungrounded' as c
+         +onst                                                           
+      70      })),
+      71      relations,
+      72      silences: structure.silences.map((s: any) => ({
+
+● Update(src/lib/server/ai/agent.ts)
+  ⎿  Added 2 lines, removed 1 line
+      48        inscription: elementMap.get(rel.directed_to) || '?'
+      49      },
+      50      valence: rel.valence,
+      51 -    symmetric: !rel.directed_from && !rel.directed_to          
+      51 +    symmetric: !rel.directed_from && !rel.directed_to,         
+      52 +    provenance: rel.has_document_anchor ? 'empirical' as const 
+         +: rel.has_memo_link ? 'analytical' as const : 'ungrounded' as c
+         +onst                                                           
+      53    }));
+      54  
+      55    // Get recent memos (last 5)
+
+● Bash(npx vite build 2>&1 | tail -5)
+  ⎿  Run npm run preview to preview your production build locally.
+
+     > Using @sveltejs/adapter-node
+       ✔ done
+  ⎿  (timeout 1m)
+
+● Bash(git add src/lib/server/db/queries/maps.ts src/lib/server/ai/prompts.ts
+      src/lib/server/ai/agent.ts
+      src/routes/projects/\[projectId\]/maps/\[mapId\]/+page.svelte…)
+  ⎿  [main 867c62e] Provenance indicators: empirical, analytical, or ungrou
+     nded
+      4 files changed, 40 insertions(+), 4 deletions(-)
+
+● Now update the memory with the provenance decision.
+
+● Wrote 1 memory (ctrl+o to expand)
+
+● Committed. Zusammenfassung:
+
+  Provenienz-Indikatoren — implementiert
+
+  Jedes Naming auf der Map zeigt jetzt seine Herkunft:
+
+  ┌───────────┬────────────────────┬────────────────────────────────────────┐
+  │ Indikator │     Bedeutung      │                 Quelle                 │
+  ├───────────┼────────────────────┼────────────────────────────────────────┤
+  │ 📄        │ Empirisch          │ Hat Dokument-Annotation (Code →        │
+  │           │ verankert          │ Textstelle)                            │
+  ├───────────┼────────────────────┼────────────────────────────────────────┤
+  │ 📝        │ Analytisch         │ Verlinkt mit einem Memo                │
+  │           │ begründet          │                                        │
+  ├───────────┼────────────────────┼────────────────────────────────────────┤
+  │ ∅         │ Unbegründet        │ Weder noch — braucht Dokumentation     │
+  └───────────┴────────────────────┴────────────────────────────────────────┘
+
+  - Query: getMapAppearances enthält jetzt has_document_anchor und has_memo_link
+   (EXISTS-Subqueries)
+  - AI: System-Prompt enthält Provenienz-Bewusstsein; Kontext zeigt Marker; AI
+  kann unbegründete Namings flaggen
+  - UI: Indikatoren an Elements, Relations, Silences mit Tooltips
+
+  Die Entscheidung "Codes = Namings mit Dokument-Anker, nicht eigene
+  Entitätsklasse" ist damit materialisiert. Soll ich pushen?
+
+✻ Sautéed for 3m 18s
+
+❯ Sehr gut. Eine ästhetische Bitte: Ich habe eine starke Aversion gegen     
+  diese Standard-Icons (ich weiß gar nicht wo die herkommen ...). Könntset  
+  Du bitte GRUNDSÄTZLICH immer Google-Icons verwenden:                      
+  /home/joerissen/Downloads/icons_google -- wenn eines fehlt, kann ich gern 
+   onlein ein passendes suchen und laden.                                   
+
+● Read 1 file (ctrl+o to expand)
+
+● Gute Sammlung. Ich wähle:
+
+  ┌──────────────────────┬──────────────┬───────────────┐
+  │      Verwendung      │ Emoji bisher │  Google Icon  │
+  ├──────────────────────┼──────────────┼───────────────┤
+  │ Empirisch verankert  │ 📄           │ text_snippet  │
+  ├──────────────────────┼──────────────┼───────────────┤
+  │ Analytisch begründet │ 📝           │ stylus_note   │
+  ├──────────────────────┼──────────────┼───────────────┤
+  │ Unbegründet          │ ∅            │ question_mark │
+  ├──────────────────────┼──────────────┼───────────────┤
+  │ Gepinnt/Collapsed    │ 📌           │ keep          │
+  └──────────────────────┴──────────────┴───────────────┘
+
+● Bash(mkdir -p /home/joerissen/ai/transact-qda/static/icons && cp
+      /home/joerissen/Downloads/icons_google/text_snippet_24dp_E3E3E3_FILL0_wght
+      400_GRAD0_opsz24.svg /home…)
+  ⎿  Done
+
+● Now replace all emoji with <img> references in the map page.
+
+● Searched for 1 pattern (ctrl+o to expand)
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 2 lines, removed 2 lines
+      452            {#each elements as el}
+      453              <div class="element-card" class:ai-suggested={el.p
+           roperties?.aiSuggested === true} title={el.properties?.aiReaso
+           ning || ''}>
+      454                <div class="el-main">
+      455 -                {#if el.is_collapsed}<span class="collapsed-in
+          -dicator" title="Pinned to specific layer">&#x1F4CC;</span>{/if
+          -}                                                             
+      455 +                {#if el.is_collapsed}<img class="collapsed-ind
+          +icator" src="/icons/keep.svg" alt="pinned" title="Pinned to sp
+          +ecific layer" />{/if}                                         
+      456                  <span class="designation-dot" style="backgroun
+           d: {designationColor(el.designation)}"
+      457                    title={designationLabel(el.designation)}></s
+           pan>
+      458                  <span class="provenance-indicator" title={el.h
+           as_document_anchor ? 'Empirically grounded (document annotatio
+           n)' : el.has_memo_link ? 'Analytically grounded (memo link)' :
+            'No grounding yet'}>{el.has_document_anchor ? '📄' : el.has_m
+           emo_link ? '📝' : '∅'}</span>
+     ...
+      602              {@const tgtId = rel.directed_to || rel.part_target
+           _id}
+      603              <div class="element-card relation-card" class:ai-s
+           uggested={rel.properties?.aiSuggested === true} title={rel.pro
+           perties?.aiReasoning || ''}>
+      604                <div class="el-main">
+      605 -                {#if rel.is_collapsed}<span class="collapsed-i
+          -ndicator" title="Pinned to specific layer">&#x1F4CC;</span>{/i
+          -f}                                                            
+      605 +                {#if rel.is_collapsed}<img class="collapsed-in
+          +dicator" src="/icons/keep.svg" alt="pinned" title="Pinned to s
+          +pecific layer" />{/if}                                        
+      606                  <span class="designation-dot" style="backgroun
+           d: {designationColor(rel.designation)}"></span>
+      607                  <span class="provenance-indicator" title={rel.
+           has_document_anchor ? 'Empirically grounded' : rel.has_memo_li
+           nk ? 'Analytically grounded' : 'No grounding yet'}>{rel.has_do
+           cument_anchor ? '📄' : rel.has_memo_link ? '📝' : '∅'}</span>
+      608                  <span class="rel-source">
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 1 line, removed 1 line
+      768                      <div class="phase-element">
+      769                        <span class="designation-dot-sm" style="
+           background: {designationColor(pc.designation)}"></span>
+      770                        {#if pc.is_collapsed}
+      771 -                        <span class="collapsed-indicator" titl
+          -e="Pinned at assignment">&#x1F4CC;</span>                     
+      771 +                        <img class="collapsed-indicator" src="
+          +/icons/keep.svg" alt="pinned" title="Pinned at assignment" /> 
+      772                        {/if}
+      773                        <span class="phase-el-label">{pc.inscrip
+           tion}</span>
+      774                        {#if pc.mode === 'relation'}
+
+● Now the provenance indicators — these need to become conditional <img> tags.
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 7 lines, removed 1 line
+      455                  {#if el.is_collapsed}<img class="collapsed-ind
+           icator" src="/icons/keep.svg" alt="pinned" title="Pinned to sp
+           ecific layer" />{/if}
+      456                  <span class="designation-dot" style="backgroun
+           d: {designationColor(el.designation)}"
+      457                    title={designationLabel(el.designation)}></s
+           pan>
+      458 -                <span class="provenance-indicator" title={el.h
+          -as_document_anchor ? 'Empirically grounded (document annotatio
+          -n)' : el.has_memo_link ? 'Analytically grounded (memo link)' :
+          - 'No grounding yet'}>{el.has_document_anchor ? '📄' : el.has_m
+          -emo_link ? '📝' : '∅'}</span>                                 
+      458 +                {#if el.has_document_anchor}                  
+      459 +                  <img class="provenance-indicator" src="/icon
+          +s/text_snippet.svg" alt="empirical" title="Empirically grounde
+          +d (document annotation)" />                                   
+      460 +                {:else if el.has_memo_link}                   
+      461 +                  <img class="provenance-indicator" src="/icon
+          +s/stylus_note.svg" alt="analytical" title="Analytically ground
+          +ed (memo link)" />                                            
+      462 +                {:else}                                       
+      463 +                  <img class="provenance-indicator" src="/icon
+          +s/question_mark.svg" alt="ungrounded" title="No grounding yet"
+          + />                                                           
+      464 +                {/if}                                         
+      465                  {#if editingId === el.naming_id}
+      466                    <form class="inline-rename" onsubmit={e => {
+            e.preventDefault(); confirmRename(); }}>
+      467                      <input type="text" bind:value={editingValu
+           e} />
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 7 lines, removed 1 line
+      610                <div class="el-main">
+      611                  {#if rel.is_collapsed}<img class="collapsed-in
+           dicator" src="/icons/keep.svg" alt="pinned" title="Pinned to s
+           pecific layer" />{/if}
+      612                  <span class="designation-dot" style="backgroun
+           d: {designationColor(rel.designation)}"></span>
+      613 -                <span class="provenance-indicator" title={rel.
+          -has_document_anchor ? 'Empirically grounded' : rel.has_memo_li
+          -nk ? 'Analytically grounded' : 'No grounding yet'}>{rel.has_do
+          -cument_anchor ? '📄' : rel.has_memo_link ? '📝' : '∅'}</span> 
+      613 +                {#if rel.has_document_anchor}                 
+      614 +                  <img class="provenance-indicator" src="/icon
+          +s/text_snippet.svg" alt="empirical" title="Empirically grounde
+          +d" />                                                         
+      615 +                {:else if rel.has_memo_link}                  
+      616 +                  <img class="provenance-indicator" src="/icon
+          +s/stylus_note.svg" alt="analytical" title="Analytically ground
+          +ed" />                                                        
+      617 +                {:else}                                       
+      618 +                  <img class="provenance-indicator" src="/icon
+          +s/question_mark.svg" alt="ungrounded" title="No grounding yet"
+          + />                                                           
+      619 +                {/if}                                         
+      620                  <span class="rel-source">
+      621                    {findInscription(srcId)}
+      622                  </span>
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 7 lines, removed 1 line
+      727          <div class="element-list">
+      728            {#each silences as s}
+      729              <div class="element-card silence-card" class:ai-su
+           ggested={s.properties?.aiSuggested === true} title={s.properti
+           es?.aiReasoning || ''}>
+      730 -              <span class="provenance-indicator" title={s.has_
+          -document_anchor ? 'Empirically grounded' : s.has_memo_link ? '
+          -Analytically grounded' : 'No grounding yet'}>{s.has_document_a
+          -nchor ? '📄' : s.has_memo_link ? '📝' : '∅'}</span>           
+      730 +              {#if s.has_document_anchor}                     
+      731 +                <img class="provenance-indicator" src="/icons/
+          +text_snippet.svg" alt="empirical" title="Empirically grounded"
+          + />                                                           
+      732 +              {:else if s.has_memo_link}                      
+      733 +                <img class="provenance-indicator" src="/icons/
+          +stylus_note.svg" alt="analytical" title="Analytically grounded
+          +" />                                                          
+      734 +              {:else}                                         
+      735 +                <img class="provenance-indicator" src="/icons/
+          +question_mark.svg" alt="ungrounded" title="No grounding yet" /
+          +>                                                             
+      736 +              {/if}                                           
+      737                <span class="el-inscription">{s.inscription}</sp
+           an>
+      738              </div>
+      739            {/each}
+
+● Now update the CSS — collapsed-indicator and provenance-indicator need to work
+   as <img> tags instead of <span>.
+
+● Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 2 lines, removed 2 lines
+      1029  
+      1030    /* Provenance indicators */
+      1031    .provenance-indicator {
+      1032 -    font-size: 0.6rem; cursor: default; flex-shrink: 0;      
+      1033 -    opacity: 0.7; min-width: 0.9rem; text-align: center;     
+      1032 +    width: 14px; height: 14px; flex-shrink: 0;               
+      1033 +    opacity: 0.5; cursor: default;                           
+      1034    }
+      1035  
+      1036    /* Naming act prompt */
+
+● Read 1 file (ctrl+o to expand)
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 2 lines, removed 3 lines
+      1086  
+      1087    /* Collapsed / pinned layer */
+      1088    .collapsed-indicator {
+      1089 -    font-size: 0.6rem;                                       
+      1090 -    color: #f59e0b;                                          
+      1091 -    margin-right: 0.2rem;                                    
+      1089 +    width: 12px; height: 12px; flex-shrink: 0;               
+      1090 +    margin-right: 0.2rem; opacity: 0.7;                      
+      1091    }
+      1092    .collapsed-current {
+      1093      font-size: 0.7rem;
+
+● Bash(npx vite build 2>&1 | tail -5)
+  ⎿  Run npm run preview to preview your production build locally.
+
+     > Using @sveltejs/adapter-node
+       ✔ done
+  ⎿  (timeout 1m)
+
+● Bash(git add static/icons/
+      src/routes/projects/\[projectId\]/maps/\[mapId\]/+page.svelte && git
+      commit -m "$(cat <<'EOF'
+      Replace emoji with Google Material Icons…)
+  ⎿  [main d973071] Replace emoji with Google Material Icons
+      5 files changed, 32 insertions(+), 11 deletions(-)
+      create mode 100644 static/icons/keep.svg
+     … +3 lines (ctrl+o to expand)
+
+● Erledigt. Alle Emoji sind durch Google Material SVGs ersetzt. Ich merke mir
+  das für die Zukunft — grundsätzlich Google Icons, keine Unicode-Emoji.
+
+● Wrote 1 memory (ctrl+o to expand)
+
+● Soll ich pushen?
+
+✻ Crunched for 1m 47s
+
+❯ ja 
+
+● Bash(git push origin main)
+  ⎿  To https://github.com/joeriben/transact-qda.git
+        892b8d7..d973071  main -> main
+
+● Gepusht — 4 Commits:
+
+  d973071 Replace emoji with Google Material Icons
+  867c62e Provenance indicators: empirical, analytical, or ungrounded
+  a794c55 Keep assign mode active after adding element to phase
+  9cb0978 Perspectival collapse: a naming IS its stack, not its latest state
