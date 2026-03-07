@@ -100,6 +100,12 @@
 
 	const mapType = $derived(data.map.properties?.mapType || 'situational');
 
+	// Resolve any naming_id to its inscription across all map appearances
+	function findInscription(namingId: string): string {
+		const all = [...elements, ...relations, ...silences, ...processes, ...constellations];
+		return (all as any[]).find(a => a.naming_id === namingId)?.inscription || '?';
+	}
+
 	// API helper
 	async function mapAction(action: string, body: Record<string, unknown> = {}) {
 		const res = await fetch(`/api/projects/${data.projectId}/maps/${data.map.id}`, {
@@ -337,8 +343,8 @@
 
 			<!-- Relation form (inline) -->
 			{#if relatingFrom && relatingTo}
-				{@const fromLabel = elements.find((e: any) => e.naming_id === relatingFrom)?.inscription || '?'}
-				{@const toLabel = elements.find((e: any) => e.naming_id === relatingTo)?.inscription || '?'}
+				{@const fromLabel = findInscription(relatingFrom)}
+				{@const toLabel = findInscription(relatingTo)}
 				<div class="relation-form">
 					<div class="rel-form-header">
 						<span class="rel-form-elements">
@@ -377,8 +383,8 @@
 				</div>
 			{:else if relatingFrom && !relatingTo}
 				<div class="action-bar">
-					Relating from: <strong>{elements.find((e: any) => e.naming_id === relatingFrom)?.inscription}</strong>
-					— click "connect" on another element, or
+					Relating from: <strong>{findInscription(relatingFrom)}</strong>
+					— click "connect" on any element or relation, or
 					<button class="btn-link" onclick={cancelRelation}>cancel</button>
 				</div>
 			{/if}
@@ -524,11 +530,13 @@
 				<h3 class="section-header">Relations</h3>
 				<div class="element-list">
 					{#each relations as rel}
+						{@const srcId = rel.directed_from || rel.part_source_id}
+						{@const tgtId = rel.directed_to || rel.part_target_id}
 						<div class="element-card relation-card" class:ai-suggested={rel.properties?.aiSuggested === true} title={rel.properties?.aiReasoning || ''}>
 							<div class="el-main">
 								<span class="designation-dot" style="background: {designationColor(rel.designation)}"></span>
 								<span class="rel-source">
-									{elements.find((e: any) => e.naming_id === rel.directed_from)?.inscription || '?'}
+									{findInscription(srcId)}
 								</span>
 								<span class="rel-arrow">
 									{#if rel.directed_from && rel.directed_to}
@@ -538,7 +546,7 @@
 									{/if}
 								</span>
 								<span class="rel-target">
-									{elements.find((e: any) => e.naming_id === (rel.directed_to || rel.directed_from))?.inscription || '?'}
+									{findInscription(tgtId)}
 								</span>
 								{#if editingId === rel.naming_id}
 									<form class="inline-rename" onsubmit={e => { e.preventDefault(); confirmRename(); }}>
@@ -572,6 +580,15 @@
 								<button class="btn-xs" title="history" onclick={() => showHistory(rel.naming_id)}>
 									hist
 								</button>
+								{#if relatingFrom && !relatingTo && relatingFrom !== rel.naming_id}
+									<button class="btn-sm btn-relate" onclick={() => startRelation(relatingFrom!, rel.naming_id)}>
+										connect
+									</button>
+								{:else if !relatingFrom}
+									<button class="btn-sm" onclick={() => { relatingFrom = rel.naming_id; relatingTo = null; }}>
+										relate
+									</button>
+								{/if}
 								{#if assigningToPhase}
 									<button class="btn-sm btn-phase" onclick={() => assignElement(assigningToPhase!, rel.naming_id)}>
 										+ phase

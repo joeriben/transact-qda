@@ -280,14 +280,18 @@ export async function removeFromPhase(phaseId: string, namingId: string) {
 // ---- Queries ----
 
 // Get all appearances on the map, enriched with current designation
+// and participation endpoints (for relations — both directed and symmetric)
 export async function getMapAppearances(mapId: string, projectId: string) {
 	return (
 		await query(
 			`SELECT a.*, n.inscription, n.created_at as naming_created_at,
 			   (SELECT nd.designation FROM naming_designations nd
-			    WHERE nd.naming_id = a.naming_id ORDER BY nd.seq DESC LIMIT 1) as designation
+			    WHERE nd.naming_id = a.naming_id ORDER BY nd.seq DESC LIMIT 1) as designation,
+			   p.naming_id as part_source_id,
+			   p.participant_id as part_target_id
 			 FROM appearances a
 			 JOIN namings n ON n.id = a.naming_id
+			 LEFT JOIN participations p ON p.id = a.naming_id
 			 WHERE a.perspective_id = $1
 			   AND a.naming_id != $1
 			   AND n.project_id = $2
