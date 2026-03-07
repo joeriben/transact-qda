@@ -53,3 +53,23 @@ export interface Appearance {
 	createdAt: string;
 	updatedAt: string;
 }
+
+// Dewey/Bentley designation gradient (bidirectional)
+export type DesignationStage = 'cue' | 'characterization' | 'specification';
+
+// A single event in the designation history of a naming
+export interface NamingDesignation {
+	namingId: string;
+	designation: DesignationStage;
+	by: string;           // a naming id (researcher, AI, another naming)
+	createdAt: string;
+	seq: number;
+}
+
+// The researcher as naming in the data space
+export interface ResearcherNaming {
+	userId: string;
+	projectId: string;
+	namingId: string;
+	createdAt: string;
+}

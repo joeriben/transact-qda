@@ -1,6 +1,61 @@
 import { query, queryOne, transaction } from '../index.js';
 import type { CollapseMode } from '$lib/shared/types/index.js';
 
+// ---- Researcher-naming: the user as naming in the data space ----
+
+export async function getOrCreateResearcherNaming(
+	projectId: string,
+	userId: string
+): Promise<string> {
+	// Check if researcher-naming already exists
+	const existing = await queryOne<{ naming_id: string }>(
+		`SELECT naming_id FROM researcher_namings WHERE user_id = $1 AND project_id = $2`,
+		[userId, projectId]
+	);
+	if (existing) return existing.naming_id;
+
+	// Create researcher-naming in a transaction
+	return transaction(async (client) => {
+		// Get user display name for the inscription
+		const user = await client.query(
+			`SELECT display_name, username FROM users WHERE id = $1`,
+			[userId]
+		);
+		const name = user.rows[0]?.display_name || user.rows[0]?.username || 'unknown';
+
+		// Create the naming
+		const naming = await client.query(
+			`INSERT INTO namings (project_id, inscription, created_by)
+			 VALUES ($1, $2, $3) RETURNING id`,
+			[projectId, name, userId]
+		);
+		const namingId = naming.rows[0].id;
+
+		// Self-referential appearance: the researcher appears as perspective from itself
+		await client.query(
+			`INSERT INTO appearances (naming_id, perspective_id, mode, properties)
+			 VALUES ($1, $1, 'perspective', '{"role": "researcher"}')`,
+			[namingId]
+		);
+
+		// Register the link
+		await client.query(
+			`INSERT INTO researcher_namings (user_id, project_id, naming_id)
+			 VALUES ($1, $2, $3)`,
+			[userId, projectId, namingId]
+		);
+
+		// Initial designation: the researcher characterizes itself
+		await client.query(
+			`INSERT INTO naming_designations (naming_id, designation, by)
+			 VALUES ($1, 'characterization', $1)`,
+			[namingId]
+		);
+
+		return namingId;
+	});
+}
+
 // ---- Core naming operations ----
 
 export async function createNaming(
@@ -8,12 +63,24 @@ export async function createNaming(
 	userId: string,
 	inscription: string
 ) {
+	// Ensure researcher-naming exists (first act creates it)
+	const researcherNamingId = await getOrCreateResearcherNaming(projectId, userId);
+
 	const res = await queryOne<{ id: string; inscription: string; created_at: string; seq: string }>(
 		`INSERT INTO namings (project_id, inscription, created_by)
 		 VALUES ($1, $2, $3) RETURNING *`,
 		[projectId, inscription, userId]
 	);
-	return res!;
+	const naming = res!;
+
+	// Initial designation as characterization, by the researcher-naming
+	await query(
+		`INSERT INTO naming_designations (naming_id, designation, by)
+		 VALUES ($1, 'characterization', $2)`,
+		[naming.id, researcherNamingId]
+	);
+
+	return naming;
 }
 
 export async function updateInscription(namingId: string, projectId: string, inscription: string) {
@@ -224,6 +291,41 @@ export async function createNamedAppearance(
 
 		return naming;
 	});
+}
+
+// ---- Designation operations (append-only) ----
+
+export async function designate(
+	namingId: string,
+	designation: 'cue' | 'characterization' | 'specification',
+	byNamingId: string
+) {
+	return queryOne(
+		`INSERT INTO naming_designations (naming_id, designation, by)
+		 VALUES ($1, $2, $3) RETURNING *`,
+		[namingId, designation, byNamingId]
+	);
+}
+
+export async function getCurrentDesignation(namingId: string) {
+	return queryOne<{ designation: string; by: string; created_at: string }>(
+		`SELECT designation, by, created_at FROM naming_designations
+		 WHERE naming_id = $1 ORDER BY seq DESC LIMIT 1`,
+		[namingId]
+	);
+}
+
+export async function getDesignationHistory(namingId: string) {
+	return (
+		await query(
+			`SELECT nd.*, n.inscription as by_inscription
+			 FROM naming_designations nd
+			 JOIN namings n ON n.id = nd.by
+			 WHERE nd.naming_id = $1
+			 ORDER BY nd.seq ASC`,
+			[namingId]
+		)
+	).rows;
 }
 
 // ---- History: namings ARE the event log ----
