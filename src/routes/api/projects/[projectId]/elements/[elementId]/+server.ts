@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { getNaming, updateInscription, softDelete, getAppearances } from '$lib/server/db/queries/namings.js';
+import { getNaming, renameNaming, softDelete, getAppearances } from '$lib/server/db/queries/namings.js';
 
 export const GET: RequestHandler = async ({ params }) => {
 	const naming = await getNaming(params.elementId, params.projectId);
@@ -10,10 +10,10 @@ export const GET: RequestHandler = async ({ params }) => {
 	return json({ ...naming, appearances });
 };
 
-export const PATCH: RequestHandler = async ({ params, request }) => {
+export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 	const { inscription } = await request.json();
 	if (inscription !== undefined) {
-		const naming = await updateInscription(params.elementId, params.projectId, inscription);
+		const naming = await renameNaming(params.elementId, params.projectId, locals.user!.id, inscription);
 		if (!naming) return json({ error: 'Not found' }, { status: 404 });
 		return json(naming);
 	}

@@ -80,16 +80,55 @@ export async function createNaming(
 		[naming.id, researcherNamingId]
 	);
 
+	// Record initial inscription
+	await query(
+		`INSERT INTO naming_inscriptions (naming_id, inscription, by)
+		 VALUES ($1, $2, $3)`,
+		[naming.id, inscription, researcherNamingId]
+	);
+
 	return naming;
 }
 
-export async function updateInscription(namingId: string, projectId: string, inscription: string) {
-	return queryOne(
-		`UPDATE namings SET inscription = $1
-		 WHERE id = $2 AND project_id = $3 AND deleted_at IS NULL
-		 RETURNING *`,
-		[inscription, namingId, projectId]
-	);
+export async function renameNaming(
+	namingId: string,
+	projectId: string,
+	userId: string,
+	inscription: string
+) {
+	const researcherNamingId = await getOrCreateResearcherNaming(projectId, userId);
+
+	return transaction(async (client) => {
+		// Update current inscription
+		const result = await client.query(
+			`UPDATE namings SET inscription = $1
+			 WHERE id = $2 AND project_id = $3 AND deleted_at IS NULL
+			 RETURNING *`,
+			[inscription, namingId, projectId]
+		);
+
+		// Record in history
+		await client.query(
+			`INSERT INTO naming_inscriptions (naming_id, inscription, by)
+			 VALUES ($1, $2, $3)`,
+			[namingId, inscription, researcherNamingId]
+		);
+
+		return result.rows[0];
+	});
+}
+
+export async function getInscriptionHistory(namingId: string) {
+	return (
+		await query(
+			`SELECT ni.*, n.inscription as by_inscription
+			 FROM naming_inscriptions ni
+			 JOIN namings n ON n.id = ni.by
+			 WHERE ni.naming_id = $1
+			 ORDER BY ni.seq ASC`,
+			[namingId]
+		)
+	).rows;
 }
 
 export async function softDelete(namingId: string, projectId: string) {

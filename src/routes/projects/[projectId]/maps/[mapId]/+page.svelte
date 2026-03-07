@@ -20,6 +20,19 @@
 	let showPhaseForm = $state(false);
 	let assigningToPhase = $state<string | null>(null);
 
+	// Inline rename
+	let editingId = $state<string | null>(null);
+	let editingValue = $state('');
+
+	// Designation change with memo prompt
+	let designatingId = $state<string | null>(null);
+	let designatingTo = $state('');
+	let designationMemo = $state('');
+
+	// History panel
+	let historyId = $state<string | null>(null);
+	let historyData = $state<{ inscriptions: any[]; designations: any[] } | null>(null);
+
 	const mapType = $derived(data.map.properties?.mapType || 'situational');
 
 	// API helper
@@ -106,9 +119,46 @@
 		await reload();
 	}
 
-	async function changeDesignation(namingId: string, designation: string) {
-		await mapAction('designate', { namingId, designation });
+	function startDesignation(namingId: string, designation: string) {
+		designatingId = namingId;
+		designatingTo = designation;
+		designationMemo = '';
+	}
+
+	async function submitDesignation() {
+		if (!designatingId) return;
+		await mapAction('designate', {
+			namingId: designatingId,
+			designation: designatingTo,
+			memoText: designationMemo.trim() || undefined
+		});
+		designatingId = null;
+		designationMemo = '';
 		await reload();
+	}
+
+	function cancelDesignation() {
+		designatingId = null;
+		designationMemo = '';
+	}
+
+	function startRename(namingId: string, currentInscription: string) {
+		editingId = namingId;
+		editingValue = currentInscription;
+	}
+
+	async function submitRename() {
+		if (!editingId || !editingValue.trim()) return;
+		await mapAction('rename', { namingId: editingId, inscription: editingValue.trim() });
+		editingId = null;
+		editingValue = '';
+		await reload();
+	}
+
+	async function showHistory(namingId: string) {
+		if (historyId === namingId) { historyId = null; historyData = null; return; }
+		historyId = namingId;
+		historyData = await mapAction('getHistory', { namingId });
 	}
 
 	function designationColor(d: string | undefined) {
@@ -221,17 +271,32 @@
 							<div class="el-main">
 								<span class="designation-dot" style="background: {designationColor(el.designation)}"
 									title={designationLabel(el.designation)}></span>
-								<span class="el-inscription">{el.inscription}</span>
+								{#if editingId === el.naming_id}
+									<form class="inline-rename" onsubmit={e => { e.preventDefault(); submitRename(); }}>
+										<input type="text" bind:value={editingValue} />
+										<button type="submit" class="btn-xs">ok</button>
+										<button type="button" class="btn-xs" onclick={() => editingId = null}>×</button>
+									</form>
+								{:else}
+									<!-- svelte-ignore a11y_click_events_have_key_events -->
+									<!-- svelte-ignore a11y_no_static_element_interactions -->
+									<span class="el-inscription editable" ondblclick={() => startRename(el.naming_id, el.inscription)}>
+										{el.inscription}
+									</span>
+								{/if}
 							</div>
 							<div class="el-actions">
 								<select
 									value={el.designation || 'cue'}
-									onchange={e => changeDesignation(el.naming_id, (e.target as HTMLSelectElement).value)}
+									onchange={e => startDesignation(el.naming_id, (e.target as HTMLSelectElement).value)}
 								>
 									<option value="cue">cue</option>
 									<option value="characterization">characterization</option>
 									<option value="specification">specification</option>
 								</select>
+								<button class="btn-xs" title="history" onclick={() => showHistory(el.naming_id)}>
+									hist
+								</button>
 								{#if relatingFrom && !relatingTo && relatingFrom !== el.naming_id}
 									<button class="btn-sm btn-relate" onclick={() => startRelation(relatingFrom!, el.naming_id)}>
 										connect
@@ -248,7 +313,56 @@
 								{/if}
 							</div>
 						</div>
+
+						{#if historyId === el.naming_id && historyData}
+							<div class="history-panel">
+								{#if historyData.inscriptions.length > 1}
+									<div class="history-section">
+										<span class="history-label">Inscriptions</span>
+										{#each historyData.inscriptions as hi}
+											<div class="history-entry">
+												<span class="he-value">{hi.inscription}</span>
+												<span class="he-by">{hi.by_inscription}</span>
+												<span class="he-date">{new Date(hi.created_at).toLocaleString()}</span>
+											</div>
+										{/each}
+									</div>
+								{/if}
+								<div class="history-section">
+									<span class="history-label">Designations</span>
+									{#each historyData.designations as hd}
+										<div class="history-entry">
+											<span class="designation-dot-sm" style="background: {designationColor(hd.designation)}"></span>
+											<span class="he-value">{hd.designation}</span>
+											<span class="he-by">{hd.by_inscription}</span>
+											<span class="he-date">{new Date(hd.created_at).toLocaleString()}</span>
+										</div>
+									{/each}
+								</div>
+							</div>
+						{/if}
 					{/each}
+				</div>
+			{/if}
+
+			<!-- Designation memo prompt -->
+			{#if designatingId}
+				{@const elName = [...elements, ...relations].find((e: any) => e.naming_id === designatingId)?.inscription || '?'}
+				<div class="designation-prompt">
+					<div class="dp-header">
+						<strong>{elName}</strong> → <span style="color: {designationColor(designatingTo)}">{designatingTo}</span>
+					</div>
+					<textarea
+						placeholder="Why this change? (optional memo)"
+						bind:value={designationMemo}
+						rows="2"
+					></textarea>
+					<div class="dp-actions">
+						<button class="btn-primary btn-sm-primary" onclick={submitDesignation}>
+							{designationMemo.trim() ? 'Change + memo' : 'Change'}
+						</button>
+						<button class="btn-link" onclick={cancelDesignation}>cancel</button>
+					</div>
 				</div>
 			{/if}
 
@@ -264,30 +378,82 @@
 									{elements.find((e: any) => e.naming_id === rel.directed_from)?.inscription || '?'}
 								</span>
 								<span class="rel-arrow">
-									{#if rel.valence}
-										—{rel.valence}→
+									{#if rel.directed_from && rel.directed_to}
+										{#if rel.valence}—{rel.valence}→{:else}→{/if}
 									{:else}
-										→
+										{#if rel.valence}—{rel.valence}—{:else}↔{/if}
 									{/if}
 								</span>
 								<span class="rel-target">
-									{elements.find((e: any) => e.naming_id === rel.directed_to)?.inscription || '?'}
+									{elements.find((e: any) => e.naming_id === (rel.directed_to || rel.directed_from))?.inscription || '?'}
 								</span>
-								{#if rel.inscription}
-									<span class="rel-inscription">{rel.inscription}</span>
+								{#if editingId === rel.naming_id}
+									<form class="inline-rename" onsubmit={e => { e.preventDefault(); submitRename(); }}>
+										<input type="text" bind:value={editingValue} />
+										<button type="submit" class="btn-xs">ok</button>
+										<button type="button" class="btn-xs" onclick={() => editingId = null}>×</button>
+									</form>
+								{:else if rel.inscription}
+									<!-- svelte-ignore a11y_click_events_have_key_events -->
+									<!-- svelte-ignore a11y_no_static_element_interactions -->
+									<span class="rel-inscription editable" ondblclick={() => startRename(rel.naming_id, rel.inscription)}>
+										{rel.inscription}
+									</span>
+								{:else}
+									<!-- svelte-ignore a11y_click_events_have_key_events -->
+									<!-- svelte-ignore a11y_no_static_element_interactions -->
+									<span class="rel-inscription editable unnamed" ondblclick={() => startRename(rel.naming_id, '')}>
+										(name...)
+									</span>
 								{/if}
 							</div>
 							<div class="el-actions">
 								<select
 									value={rel.designation || 'cue'}
-									onchange={e => changeDesignation(rel.naming_id, (e.target as HTMLSelectElement).value)}
+									onchange={e => startDesignation(rel.naming_id, (e.target as HTMLSelectElement).value)}
 								>
 									<option value="cue">cue</option>
 									<option value="characterization">characterization</option>
 									<option value="specification">specification</option>
 								</select>
+								<button class="btn-xs" title="history" onclick={() => showHistory(rel.naming_id)}>
+									hist
+								</button>
+								{#if assigningToPhase}
+									<button class="btn-sm btn-phase" onclick={() => assignElement(assigningToPhase!, rel.naming_id)}>
+										+ phase
+									</button>
+								{/if}
 							</div>
 						</div>
+
+						{#if historyId === rel.naming_id && historyData}
+							<div class="history-panel">
+								{#if historyData.inscriptions.length > 1}
+									<div class="history-section">
+										<span class="history-label">Inscriptions</span>
+										{#each historyData.inscriptions as hi}
+											<div class="history-entry">
+												<span class="he-value">{hi.inscription}</span>
+												<span class="he-by">{hi.by_inscription}</span>
+												<span class="he-date">{new Date(hi.created_at).toLocaleString()}</span>
+											</div>
+										{/each}
+									</div>
+								{/if}
+								<div class="history-section">
+									<span class="history-label">Designations</span>
+									{#each historyData.designations as hd}
+										<div class="history-entry">
+											<span class="designation-dot-sm" style="background: {designationColor(hd.designation)}"></span>
+											<span class="he-value">{hd.designation}</span>
+											<span class="he-by">{hd.by_inscription}</span>
+											<span class="he-date">{new Date(hd.created_at).toLocaleString()}</span>
+										</div>
+									{/each}
+								</div>
+							</div>
+						{/if}
 					{/each}
 				</div>
 			{/if}
@@ -530,4 +696,53 @@
 	}
 	.phase-label { font-size: 0.85rem; color: #e1e4e8; font-weight: 500; }
 	.phase-count { font-size: 0.7rem; color: #6b7280; }
+
+	/* Inline rename */
+	.editable { cursor: pointer; }
+	.editable:hover { text-decoration: underline dotted; text-underline-offset: 3px; }
+	.unnamed { color: #4b5563; font-style: italic; }
+	.inline-rename {
+		display: flex; align-items: center; gap: 0.3rem;
+	}
+	.inline-rename input {
+		background: #0f1117; border: 1px solid #8b9cf7; border-radius: 4px;
+		padding: 0.2rem 0.4rem; color: #e1e4e8; font-size: 0.85rem; width: 200px;
+	}
+
+	/* Designation prompt */
+	.designation-prompt {
+		background: #161822; border: 1px solid #f59e0b; border-radius: 8px;
+		padding: 0.75rem 1rem; margin: 0.75rem 0;
+	}
+	.dp-header { font-size: 0.85rem; color: #c9cdd5; margin-bottom: 0.4rem; }
+	.designation-prompt textarea {
+		width: 100%; background: #0f1117; border: 1px solid #2a2d3a; border-radius: 5px;
+		padding: 0.4rem 0.5rem; color: #e1e4e8; font-size: 0.85rem; resize: vertical;
+		font-family: inherit;
+	}
+	.designation-prompt textarea:focus { outline: none; border-color: #8b9cf7; }
+	.dp-actions { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.4rem; }
+
+	/* History panel */
+	.history-panel {
+		background: #0f1117; border: 1px solid #2a2d3a; border-radius: 6px;
+		padding: 0.6rem 0.75rem; margin-top: -0.1rem; margin-bottom: 0.2rem;
+	}
+	.history-section { margin-bottom: 0.4rem; }
+	.history-section:last-child { margin-bottom: 0; }
+	.history-label {
+		font-size: 0.65rem; color: #6b7280; text-transform: uppercase;
+		letter-spacing: 0.04em; display: block; margin-bottom: 0.2rem;
+	}
+	.history-entry {
+		display: flex; align-items: center; gap: 0.4rem;
+		font-size: 0.75rem; color: #8b8fa3; padding: 0.1rem 0;
+	}
+	.he-value { color: #c9cdd5; }
+	.he-by { color: #6b7280; }
+	.he-by::before { content: '— '; }
+	.he-date { color: #4b5563; margin-left: auto; font-size: 0.7rem; }
+	.designation-dot-sm {
+		width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+	}
 </style>

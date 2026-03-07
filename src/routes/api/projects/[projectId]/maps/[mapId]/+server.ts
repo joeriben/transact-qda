@@ -9,8 +9,14 @@ import {
 	assignToPhase,
 	removeFromPhase
 } from '$lib/server/db/queries/maps.js';
-import { designate } from '$lib/server/db/queries/namings.js';
-import { getOrCreateResearcherNaming } from '$lib/server/db/queries/namings.js';
+import {
+	designate,
+	getOrCreateResearcherNaming,
+	renameNaming,
+	getInscriptionHistory,
+	getDesignationHistory
+} from '$lib/server/db/queries/namings.js';
+import { createMemo } from '$lib/server/db/queries/memos.js';
 
 export const GET: RequestHandler = async ({ params }) => {
 	const map = await getMap(params.mapId, params.projectId);
@@ -67,11 +73,34 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		}
 
 		case 'designate': {
-			const { namingId, designation } = body;
+			const { namingId, designation, memoText } = body;
 			if (!namingId || !designation) return json({ error: 'namingId and designation required' }, { status: 400 });
 			const researcherNamingId = await getOrCreateResearcherNaming(projectId, userId);
 			const result = await designate(namingId, designation, researcherNamingId);
+
+			// If a memo note was provided, create a linked memo
+			if (memoText?.trim()) {
+				await createMemo(projectId, userId, `Designation → ${designation}`, memoText.trim(), [namingId]);
+			}
+
 			return json(result);
+		}
+
+		case 'rename': {
+			const { namingId, inscription } = body;
+			if (!namingId || !inscription?.trim()) return json({ error: 'namingId and inscription required' }, { status: 400 });
+			const result = await renameNaming(namingId, projectId, userId, inscription.trim());
+			return json(result);
+		}
+
+		case 'getHistory': {
+			const { namingId } = body;
+			if (!namingId) return json({ error: 'namingId required' }, { status: 400 });
+			const [inscriptions, designations] = await Promise.all([
+				getInscriptionHistory(namingId),
+				getDesignationHistory(namingId)
+			]);
+			return json({ inscriptions, designations });
 		}
 
 		default:
