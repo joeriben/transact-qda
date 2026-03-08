@@ -553,6 +553,74 @@
 		await saveAllPositions(newPos);
 	}
 
+	// ─── Topology snapshots ───
+
+	let topoSnapshots = $state<any[]>([]);
+	let showTopoPanel = $state(false);
+
+	function positionsToObj(): Record<string, { x: number; y: number }> {
+		const obj: Record<string, { x: number; y: number }> = {};
+		for (const [id, pos] of positions) {
+			obj[id] = { x: pos.x, y: pos.y };
+		}
+		return obj;
+	}
+
+	async function saveTopologyBuffer() {
+		if (positions.size === 0) return;
+		await mapAction('saveTopologyBuffer', { positions: positionsToObj() });
+	}
+
+	async function saveTopologySnapshot() {
+		const label = prompt('Snapshot label:');
+		if (label === null) return;
+		await mapAction('saveTopologySnapshot', { label: label || undefined });
+		await loadTopoSnapshots();
+	}
+
+	async function restoreTopologySnapshot(seq: number) {
+		await mapAction('restoreTopologySnapshot', { seq });
+		await reload();
+		// Reload positions from refreshed data
+		const newPos = new Map<string, { x: number; y: number }>();
+		for (const node of [...elements, ...relations, ...silences]) {
+			const x = node.properties?.x;
+			const y = node.properties?.y;
+			if (typeof x === 'number' && typeof y === 'number') {
+				newPos.set(node.naming_id, { x, y });
+			}
+		}
+		positions = newPos;
+	}
+
+	async function loadTopoSnapshots() {
+		const res = await mapAction('listTopologySnapshots');
+		topoSnapshots = res?.snapshots || [];
+	}
+
+	function switchView(mode: 'list' | 'canvas') {
+		if (viewMode === 'canvas' && mode !== 'canvas') {
+			saveTopologyBuffer();
+		}
+		viewMode = mode;
+	}
+
+	// Auto-save topology buffer on page leave
+	$effect(() => {
+		function onBeforeUnload() {
+			if (viewMode === 'canvas' && positions.size > 0) {
+				// Use sendBeacon for reliable save during unload
+				navigator.sendBeacon(
+					`/api/projects/${data.projectId}/maps/${data.map.id}`,
+					new Blob([JSON.stringify({ action: 'saveTopologyBuffer', positions: positionsToObj() })],
+						{ type: 'application/json' })
+				);
+			}
+		}
+		window.addEventListener('beforeunload', onBeforeUnload);
+		return () => window.removeEventListener('beforeunload', onBeforeUnload);
+	});
+
 	// ─── Escape ───
 
 	function handleKeydown(e: KeyboardEvent) {
@@ -591,15 +659,39 @@
 				<button type="submit" class="btn-primary" disabled={adding || !newInscription.trim()}>Add</button>
 			</form>
 			<div class="view-toggle">
-				<button class="btn-view" class:active={viewMode === 'list'} onclick={() => viewMode = 'list'}>List</button>
-				<button class="btn-view" class:active={viewMode === 'canvas'} onclick={() => viewMode = 'canvas'}>Canvas</button>
+				<button class="btn-view" class:active={viewMode === 'list'} onclick={() => switchView('list')}>List</button>
+				<button class="btn-view" class:active={viewMode === 'canvas'} onclick={() => switchView('canvas')}>Canvas</button>
 			</div>
 			<button class="btn-sm" onclick={runAutoLayout} title="Re-compute layout"
 				disabled={viewMode !== 'canvas'} style="{viewMode !== 'canvas' ? 'opacity: 0.3;' : ''}">Layout</button>
+			<button class="btn-sm" onclick={() => { showTopoPanel = !showTopoPanel; if (showTopoPanel) loadTopoSnapshots(); }}
+				title="Topology snapshots"
+				disabled={viewMode !== 'canvas'} style="{viewMode !== 'canvas' ? 'opacity: 0.3;' : ''}">Topo</button>
 			<button class="btn-ai-toggle" class:ai-active={aiEnabled} onclick={toggleAi}>AI</button>
 			<button class="btn-sm" onclick={requestAnalysis} disabled={!aiEnabled}>Ask AI</button>
 		</div>
 	</div>
+
+	{#if showTopoPanel && viewMode === 'canvas'}
+		<div class="topo-panel">
+			<div class="topo-header">
+				<span>Topology Snapshots</span>
+				<button class="btn-primary btn-sm-primary" onclick={saveTopologySnapshot}>Save</button>
+				<button class="btn-link" onclick={() => showTopoPanel = false}>close</button>
+			</div>
+			{#if topoSnapshots.length === 0}
+				<span class="topo-empty">No snapshots yet</span>
+			{:else}
+				{#each topoSnapshots as snap}
+					<div class="topo-entry">
+						<span class="topo-label">{snap.label || `#${snap.seq}`}</span>
+						<span class="topo-meta">{snap.node_count} nodes · {new Date(snap.created_at).toLocaleString()}</span>
+						<button class="btn-xs" onclick={() => restoreTopologySnapshot(snap.seq)}>restore</button>
+					</div>
+				{/each}
+			{/if}
+		</div>
+	{/if}
 
 	<!-- Status bar (relation mode, etc.) -->
 	{#if relatingFrom && !relatingTo}
@@ -1596,4 +1688,23 @@
 		padding: 0.5rem 1rem; font-size: 0.8rem; color: #c9cdd5;
 		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 	}
+	.topo-panel {
+		background: #161822; border: 1px solid #2a2d3a; border-radius: 8px;
+		padding: 0.6rem 0.8rem; margin: 0 1rem 0.5rem;
+		max-height: 200px; overflow-y: auto;
+	}
+	.topo-header {
+		display: flex; align-items: center; gap: 0.5rem;
+		font-size: 0.8rem; color: #c9cdd5; margin-bottom: 0.4rem;
+	}
+	.topo-header span:first-child { flex: 1; }
+	.topo-empty { font-size: 0.75rem; color: #4b5563; }
+	.topo-entry {
+		display: flex; align-items: center; gap: 0.5rem;
+		padding: 0.25rem 0; border-bottom: 1px solid #1e2030;
+		font-size: 0.78rem;
+	}
+	.topo-entry:last-child { border-bottom: none; }
+	.topo-label { color: #f59e0b; flex: 1; }
+	.topo-meta { color: #4b5563; font-size: 0.7rem; }
 </style>

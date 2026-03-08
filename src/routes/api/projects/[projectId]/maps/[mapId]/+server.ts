@@ -22,6 +22,7 @@ import {
 } from '$lib/server/db/queries/namings.js';
 import { createMemo, getMemosForNaming } from '$lib/server/db/queries/memos.js';
 import { runMapAgent, setAiEnabled } from '$lib/server/ai/agent.js';
+import { saveTopologyBuffer, saveTopologySnapshot, restoreTopologySnapshot, listTopologySnapshots } from '$lib/server/db/queries/topology.js';
 
 export const GET: RequestHandler = async ({ params }) => {
 	const map = await getMap(params.mapId, params.projectId);
@@ -204,6 +205,32 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 				);
 			}
 			return json({ ok: true });
+		}
+
+		case 'saveTopologyBuffer': {
+			const { positions: posData } = body;
+			if (!posData) return json({ error: 'positions required' }, { status: 400 });
+			await saveTopologyBuffer(mapId, posData);
+			return json({ ok: true });
+		}
+
+		case 'saveTopologySnapshot': {
+			const { label: snapLabel } = body;
+			const snapshot = await saveTopologySnapshot(mapId, snapLabel);
+			return json(snapshot, { status: 201 });
+		}
+
+		case 'restoreTopologySnapshot': {
+			const { seq } = body;
+			if (seq == null) return json({ error: 'seq required' }, { status: 400 });
+			const restored = await restoreTopologySnapshot(mapId, seq);
+			if (!restored) return json({ error: 'Snapshot not found' }, { status: 404 });
+			return json({ ok: true });
+		}
+
+		case 'listTopologySnapshots': {
+			const snapshots = await listTopologySnapshots(mapId);
+			return json({ snapshots });
 		}
 
 		default:
