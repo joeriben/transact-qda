@@ -1,4 +1,6 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
+
 	let {
 		id,
 		x = 0,
@@ -7,8 +9,11 @@
 		color = '#8b9cf7',
 		selected = false,
 		kind = 'entity',
+		zoom = 1,
 		ondragend,
-		onclick
+		onclick,
+		oncontextmenu,
+		children
 	}: {
 		id: string;
 		x?: number;
@@ -17,12 +22,16 @@
 		color?: string;
 		selected?: boolean;
 		kind?: string;
+		zoom?: number;
 		ondragend?: (id: string, x: number, y: number) => void;
 		onclick?: (id: string, e: MouseEvent) => void;
+		oncontextmenu?: (id: string, e: MouseEvent) => void;
+		children?: Snippet;
 	} = $props();
 
 	let isDragging = $state(false);
-	let dragOffset = { x: 0, y: 0 };
+	let didDrag = $state(false);
+	let dragStart = { x: 0, y: 0 };
 	let currentX = $state(x);
 	let currentY = $state(y);
 
@@ -37,24 +46,38 @@
 		if (e.button !== 0 || e.altKey) return;
 		e.stopPropagation();
 		isDragging = true;
-		dragOffset = { x: e.clientX - currentX, y: e.clientY - currentY };
+		didDrag = false;
+		dragStart = { x: e.clientX, y: e.clientY };
 		(e.target as HTMLElement).closest('.canvas-element')?.setPointerCapture(e.pointerId);
 	}
 
 	function onPointerMove(e: PointerEvent) {
 		if (!isDragging) return;
-		currentX = e.clientX - dragOffset.x;
-		currentY = e.clientY - dragOffset.y;
+		// Divide screen-space delta by zoom to get canvas-space delta
+		const dx = (e.clientX - dragStart.x) / zoom;
+		const dy = (e.clientY - dragStart.y) / zoom;
+		dragStart = { x: e.clientX, y: e.clientY };
+		currentX += dx;
+		currentY += dy;
+		didDrag = true;
 	}
 
 	function onPointerUp(e: PointerEvent) {
 		if (!isDragging) return;
 		isDragging = false;
-		ondragend?.(id, currentX, currentY);
+		if (didDrag) {
+			ondragend?.(id, currentX, currentY);
+		}
 	}
 
 	function handleClick(e: MouseEvent) {
-		if (!isDragging) onclick?.(id, e);
+		if (!didDrag) onclick?.(id, e);
+	}
+
+	function handleContextMenu(e: MouseEvent) {
+		e.preventDefault();
+		e.stopPropagation();
+		oncontextmenu?.(id, e);
 	}
 </script>
 
@@ -68,11 +91,16 @@
 	onpointermove={onPointerMove}
 	onpointerup={onPointerUp}
 	onclick={handleClick}
+	oncontextmenu={handleContextMenu}
 >
-	<div class="element-body">
-		<span class="element-kind">{kind}</span>
-		<span class="element-label">{label}</span>
-	</div>
+	{#if children}
+		{@render children()}
+	{:else}
+		<div class="element-body">
+			<span class="element-kind">{kind}</span>
+			<span class="element-label">{label}</span>
+		</div>
+	{/if}
 </div>
 
 <style>

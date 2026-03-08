@@ -162,6 +162,33 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			return json({ ok: true });
 		}
 
+		case 'updatePosition': {
+			const { namingId, x, y } = body;
+			if (!namingId || x == null || y == null) return json({ error: 'namingId, x, y required' }, { status: 400 });
+			await import('$lib/server/db/index.js').then(({ query }) =>
+				query(
+					`UPDATE appearances SET properties = COALESCE(properties, '{}'::jsonb) || $1::jsonb, updated_at = now()
+					 WHERE naming_id = $2 AND perspective_id = $3`,
+					[JSON.stringify({ x, y }), namingId, mapId]
+				)
+			);
+			return json({ ok: true });
+		}
+
+		case 'updatePositions': {
+			const { positions } = body;
+			if (!positions || !Array.isArray(positions)) return json({ error: 'positions array required' }, { status: 400 });
+			const { query: dbQuery } = await import('$lib/server/db/index.js');
+			for (const pos of positions) {
+				await dbQuery(
+					`UPDATE appearances SET properties = COALESCE(properties, '{}'::jsonb) || $1::jsonb, updated_at = now()
+					 WHERE naming_id = $2 AND perspective_id = $3`,
+					[JSON.stringify({ x: pos.x, y: pos.y }), pos.namingId, mapId]
+				);
+			}
+			return json({ ok: true });
+		}
+
 		default:
 			return json({ error: `Unknown action: ${action}` }, { status: 400 });
 	}

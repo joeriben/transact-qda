@@ -7,6 +7,7 @@
 		label = '',
 		color = '#4b5563',
 		selected = false,
+		directed = false,
 		isMeta = false,
 		onclick
 	}: {
@@ -17,6 +18,7 @@
 		label?: string;
 		color?: string;
 		selected?: boolean;
+		directed?: boolean;
 		isMeta?: boolean;
 		onclick?: () => void;
 	} = $props();
@@ -31,6 +33,14 @@
 	const cpY = $derived(midY - Math.cos(angle) * cpOffset);
 
 	const pathD = $derived(`M ${x1} ${y1} Q ${cpX} ${cpY} ${x2} ${y2}`);
+
+	// Arrowhead: point at the end of the curve, oriented along the last segment
+	const arrowAngle = $derived(Math.atan2(y2 - cpY, x2 - cpX));
+	const arrowSize = 8;
+	const a1x = $derived(x2 - arrowSize * Math.cos(arrowAngle - 0.4));
+	const a1y = $derived(y2 - arrowSize * Math.sin(arrowAngle - 0.4));
+	const a2x = $derived(x2 - arrowSize * Math.cos(arrowAngle + 0.4));
+	const a2y = $derived(y2 - arrowSize * Math.sin(arrowAngle + 0.4));
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
@@ -45,6 +55,13 @@
 		onclick={onclick}
 	/>
 
+	{#if directed}
+		<polygon
+			points="{x2},{y2} {a1x},{a1y} {a2x},{a2y}"
+			fill={color}
+		/>
+	{/if}
+
 	{#if label}
 		<text
 			x={cpX}
@@ -57,7 +74,6 @@
 	{/if}
 
 	{#if isMeta}
-		<!-- Diamond marker at midpoint for meta-relations -->
 		<polygon
 			points="{midX},{midY - 6} {midX + 6},{midY} {midX},{midY + 6} {midX - 6},{midY}"
 			fill={color}
