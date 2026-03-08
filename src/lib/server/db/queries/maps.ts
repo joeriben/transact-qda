@@ -396,7 +396,18 @@ export async function getMapAppearances(mapId: string, projectId: string) {
 			     WHERE mp.naming_id = a.naming_id OR mp.participant_id = a.naming_id
 			   ) as has_memo_link,
 			   p.naming_id as part_source_id,
-			   p.participant_id as part_target_id
+			   p.participant_id as part_target_id,
+			   ARRAY(
+			     SELECT sub.perspective_id::text FROM appearances sub
+			     WHERE sub.naming_id = a.naming_id
+			       AND sub.naming_id != sub.perspective_id
+			       AND sub.perspective_id IN (
+			         SELECT pa.naming_id FROM appearances pa
+			         WHERE pa.perspective_id = $1
+			           AND pa.mode = 'perspective'
+			           AND pa.naming_id != $1
+			       )
+			   ) as phase_ids
 			 FROM appearances a
 			 JOIN namings n ON n.id = a.naming_id
 			 LEFT JOIN participations p ON p.id = a.naming_id

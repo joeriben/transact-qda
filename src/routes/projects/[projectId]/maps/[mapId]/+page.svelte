@@ -6,6 +6,7 @@
 	import { createViewport } from '$lib/canvas/viewport.svelte.js';
 	import { createSelection } from '$lib/canvas/selection.svelte.js';
 	import { computeLayout } from '$lib/canvas/layout.js';
+	import { regionColor } from '$lib/canvas/regions.js';
 
 	let { data } = $props();
 
@@ -144,6 +145,27 @@
 
 	const mapType = $derived(data.map.properties?.mapType || 'situational');
 
+	// ─── Phase highlight filter ───
+
+	let highlightedPhase = $state<string | null>(null);
+
+	// Build a lookup: phaseId → color (for consistent coloring)
+	const phaseColorMap = $derived(
+		new Map(phases.map((p: any, i: number) => [p.id, regionColor(i)]))
+	);
+
+	// Check if a node is a member of the highlighted phase
+	function isPhaseHighlighted(node: any): boolean {
+		if (!highlightedPhase) return false;
+		return node.phase_ids?.includes(highlightedPhase) ?? false;
+	}
+
+	// Compute node opacity: when a phase is highlighted, dim non-members
+	function nodeOpacity(node: any): number {
+		if (!highlightedPhase) return 1;
+		return isPhaseHighlighted(node) ? 1 : 0.2;
+	}
+
 	// ─── Helpers ───
 
 	function designationColor(d: string | undefined) {
@@ -254,6 +276,7 @@
 	function handleCanvasClick(x: number, y: number) {
 		selection.clear();
 		ctxMenuId = null;
+		highlightedPhase = null;
 		if (relatingFrom) {
 			relatingFrom = null;
 		}
@@ -458,6 +481,7 @@
 			ctxMenuId = null;
 			editingId = null;
 			assigningToPhase = null;
+			highlightedPhase = null;
 		}
 	}
 </script>
@@ -544,7 +568,8 @@
 							onclick={handleNodeClick}
 							oncontextmenu={handleNodeContextMenu}
 						>
-							<div class="map-node" class:ai-suggested={el.properties?.aiSuggested}>
+							<div class="map-node" class:ai-suggested={el.properties?.aiSuggested} class:phase-member={highlightedPhase && isPhaseHighlighted(el)}
+								style="opacity: {nodeOpacity(el)};{highlightedPhase && isPhaseHighlighted(el) ? ` --phase-color: ${phaseColorMap.get(highlightedPhase)};` : ''}">
 								<div class="node-header">
 									<span class="designation-dot" style="background: {designationColor(el.designation)}"></span>
 									{#if el.has_document_anchor}
@@ -555,6 +580,14 @@
 										<img class="prov-icon" src="/icons/question_mark.svg" alt="ungrounded" title="No grounding" />
 									{/if}
 									<span class="node-designation">{designationLabel(el.designation)}</span>
+									{#if el.phase_ids?.length}
+										<span class="phase-dots">
+											{#each el.phase_ids as pid}
+												{@const c = phaseColorMap.get(pid)}
+												{#if c}<span class="phase-dot" style="background: {c}" title={phases.find((p: any) => p.id === pid)?.label}></span>{/if}
+											{/each}
+										</span>
+									{/if}
 								</div>
 								{#if editingId === el.naming_id}
 									<form class="inline-rename" onsubmit={e => { e.preventDefault(); confirmRename(); }}>
@@ -586,7 +619,8 @@
 							onclick={handleNodeClick}
 							oncontextmenu={handleNodeContextMenu}
 						>
-							<div class="map-node relation-node" class:ai-suggested={rel.properties?.aiSuggested}>
+							<div class="map-node relation-node" class:ai-suggested={rel.properties?.aiSuggested} class:phase-member={highlightedPhase && isPhaseHighlighted(rel)}
+								style="opacity: {nodeOpacity(rel)};{highlightedPhase && isPhaseHighlighted(rel) ? ` --phase-color: ${phaseColorMap.get(highlightedPhase)};` : ''}">
 								{#if rel.valence}
 									<span class="rel-valence">{rel.valence}</span>
 								{/if}
@@ -595,6 +629,14 @@
 								{:else}
 									<span class="rel-label unnamed">
 										{findInscription(rel.directed_from || rel.part_source_id)} -> {findInscription(rel.directed_to || rel.part_target_id)}
+									</span>
+								{/if}
+								{#if rel.phase_ids?.length}
+									<span class="phase-dots">
+										{#each rel.phase_ids as pid}
+											{@const c = phaseColorMap.get(pid)}
+											{#if c}<span class="phase-dot" style="background: {c}"></span>{/if}
+										{/each}
 									</span>
 								{/if}
 							</div>
@@ -616,7 +658,8 @@
 							onclick={handleNodeClick}
 							oncontextmenu={handleNodeContextMenu}
 						>
-							<div class="map-node silence-node">
+							<div class="map-node silence-node"
+								style="opacity: {nodeOpacity(s)};">
 								<span class="node-label">{s.inscription}</span>
 							</div>
 						</CanvasElement>
@@ -756,12 +799,13 @@
 			{#if phases.length === 0}
 				<p class="empty-small">No phases yet.</p>
 			{:else}
-				{#each phases as phase}
-					<div class="phase-card" class:assigning={assigningToPhase === phase.id}>
+				{#each phases as phase, i}
+					<div class="phase-card" class:assigning={assigningToPhase === phase.id} class:phase-active={highlightedPhase === phase.id}
+						style="border-left: 3px solid {regionColor(i)}">
 						<div class="phase-header">
 							<!-- svelte-ignore a11y_click_events_have_key_events -->
 							<!-- svelte-ignore a11y_no_static_element_interactions -->
-							<span class="phase-label clickable" onclick={() => togglePhase(phase.id)}>{phase.label}</span>
+							<span class="phase-label clickable" onclick={() => { highlightedPhase = highlightedPhase === phase.id ? null : phase.id; togglePhase(phase.id); }}>{phase.label}</span>
 							<span class="phase-count">{phase.element_count}</span>
 						</div>
 						<button class="btn-xs"
@@ -894,6 +938,10 @@
 		border-color: rgba(139, 156, 247, 0.5);
 		background: rgba(139, 156, 247, 0.04);
 	}
+	.map-node.phase-member {
+		box-shadow: 0 0 10px var(--phase-color, transparent), inset 0 0 0 1px var(--phase-color, transparent);
+	}
+	.map-node { transition: opacity 0.2s, box-shadow 0.2s; }
 	.node-header {
 		display: flex; align-items: center; gap: 0.3rem; margin-bottom: 0.15rem;
 	}
@@ -904,6 +952,12 @@
 	.node-designation {
 		font-size: 0.6rem; color: var(--el-color); text-transform: uppercase;
 		letter-spacing: 0.04em;
+	}
+	.phase-dots {
+		display: inline-flex; gap: 2px; margin-left: auto;
+	}
+	.phase-dot {
+		width: 6px; height: 6px; border-radius: 50%; display: inline-block; flex-shrink: 0;
 	}
 	.node-label {
 		font-size: 0.85rem; color: #e1e4e8; word-break: break-word; display: block;
@@ -1034,6 +1088,7 @@
 		padding: 0.4rem 0.5rem; margin-bottom: 0.3rem;
 	}
 	.phase-card.assigning { border-color: #10b981; }
+	.phase-card.phase-active { background: #1e2030; }
 	.phase-header { display: flex; justify-content: space-between; align-items: center; }
 	.phase-label { font-size: 0.85rem; color: #e1e4e8; font-weight: 500; }
 	.phase-label.clickable { cursor: pointer; }
