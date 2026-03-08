@@ -35,6 +35,40 @@ async function buildMapContext(mapId: string, projectId: string): Promise<MapCon
 		elementMap.set(el.naming_id, el.inscription);
 	}
 
+	// Collect all naming IDs that are AI-suggested to batch-fetch discussion summaries
+	const allAppearances = [...structure.elements, ...structure.relations, ...structure.silences];
+	const aiNamingIds = allAppearances
+		.filter((a: any) => a.properties?.aiSuggested)
+		.map((a: any) => a.naming_id);
+
+	// Fetch discussion summaries for AI-suggested cues (batch query)
+	const discussionMap = new Map<string, string>();
+	if (aiNamingIds.length > 0) {
+		const discussionRows = await query(
+			`SELECT p_outer.naming_id as cue_id,
+			        string_agg(
+			          CASE WHEN m.inscription = 'Discussion: researcher' THEN 'Researcher: ' ELSE 'AI: ' END
+			          || left(mc.content, 150),
+			          ' → ' ORDER BY m.created_at ASC
+			        ) as summary
+			 FROM (
+			   SELECT DISTINCT ON (m2.id) p2.naming_id, m2.id as memo_id
+			   FROM participations p2
+			   JOIN namings m2 ON m2.id = CASE WHEN p2.naming_id = ANY($1::uuid[]) THEN p2.participant_id ELSE p2.naming_id END
+			   WHERE (p2.naming_id = ANY($1::uuid[]) OR p2.participant_id = ANY($1::uuid[]))
+			     AND m2.deleted_at IS NULL
+			     AND m2.inscription LIKE 'Discussion:%'
+			 ) p_outer
+			 JOIN namings m ON m.id = p_outer.memo_id
+			 JOIN memo_content mc ON mc.naming_id = m.id
+			 GROUP BY p_outer.naming_id`,
+			[aiNamingIds]
+		);
+		for (const row of discussionRows.rows) {
+			discussionMap.set(row.cue_id, row.summary);
+		}
+	}
+
 	const relations = structure.relations.map((rel: any) => ({
 		id: rel.naming_id,
 		inscription: rel.inscription || '',
@@ -49,7 +83,10 @@ async function buildMapContext(mapId: string, projectId: string): Promise<MapCon
 		},
 		valence: rel.valence,
 		symmetric: !rel.directed_from && !rel.directed_to,
-		provenance: rel.has_document_anchor ? 'empirical' as const : rel.has_memo_link ? 'analytical' as const : 'ungrounded' as const
+		provenance: rel.has_document_anchor ? 'empirical' as const : rel.has_memo_link ? 'analytical' as const : 'ungrounded' as const,
+		aiSuggested: rel.properties?.aiSuggested || false,
+		aiWithdrawn: rel.properties?.aiWithdrawn || rel.properties?.withdrawn || false,
+		discussionSummary: discussionMap.get(rel.naming_id)
 	}));
 
 	// Get recent memos (last 5)
@@ -67,12 +104,18 @@ async function buildMapContext(mapId: string, projectId: string): Promise<MapCon
 			inscription: el.inscription,
 			designation: el.designation || 'cue',
 			mode: el.mode,
-			provenance: el.has_document_anchor ? 'empirical' as const : el.has_memo_link ? 'analytical' as const : 'ungrounded' as const
+			provenance: el.has_document_anchor ? 'empirical' as const : el.has_memo_link ? 'analytical' as const : 'ungrounded' as const,
+			aiSuggested: el.properties?.aiSuggested || false,
+			aiWithdrawn: el.properties?.aiWithdrawn || el.properties?.withdrawn || false,
+			discussionSummary: discussionMap.get(el.naming_id)
 		})),
 		relations,
 		silences: structure.silences.map((s: any) => ({
 			id: s.naming_id,
-			inscription: s.inscription
+			inscription: s.inscription,
+			aiSuggested: s.properties?.aiSuggested || false,
+			aiWithdrawn: s.properties?.aiWithdrawn || s.properties?.withdrawn || false,
+			discussionSummary: discussionMap.get(s.naming_id)
 		})),
 		phases: structure.phases.map((p: any) => ({
 			id: p.id,

@@ -395,14 +395,14 @@ export async function getNamingStack(namingId: string) {
 			 ORDER BY m.created_at ASC`,
 			[namingId]
 		),
-		// Fetch AI metadata from any appearance of this naming
+		// Fetch AI + withdrawal metadata from any appearance of this naming
 		query(
 			`SELECT a.properties->>'aiReasoning' as ai_reasoning,
 			        (a.properties->>'aiSuggested')::boolean as ai_suggested,
-			        (a.properties->>'aiWithdrawn')::boolean as ai_withdrawn
+			        COALESCE((a.properties->>'aiWithdrawn')::boolean, (a.properties->>'withdrawn')::boolean, false) as is_withdrawn
 			 FROM appearances a
 			 WHERE a.naming_id = $1
-			   AND a.properties ? 'aiSuggested'
+			 ORDER BY (a.properties ? 'aiSuggested') DESC
 			 LIMIT 1`,
 			[namingId]
 		)
@@ -427,7 +427,7 @@ export async function getNamingStack(namingId: string) {
 		})),
 		aiReasoning: ai?.ai_reasoning || null,
 		aiSuggested: ai?.ai_suggested || false,
-		aiWithdrawn: ai?.ai_withdrawn || false
+		aiWithdrawn: ai?.is_withdrawn || false
 	};
 }
 

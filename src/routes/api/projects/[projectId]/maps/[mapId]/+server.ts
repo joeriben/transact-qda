@@ -162,6 +162,20 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			return json(result || { ok: true });
 		}
 
+		case 'withdraw': {
+			const { namingId, withdrawn } = body;
+			if (!namingId) return json({ error: 'namingId required' }, { status: 400 });
+			const flag = withdrawn !== false;
+			await import('$lib/server/db/index.js').then(({ query }) =>
+				query(
+					`UPDATE appearances SET properties = properties || $1::jsonb, updated_at = now()
+					 WHERE naming_id = $2 AND perspective_id = $3`,
+					[JSON.stringify({ withdrawn: flag }), namingId, mapId]
+				)
+			);
+			return json({ ok: true, withdrawn: flag });
+		}
+
 		case 'toggleAi': {
 			const { enabled } = body;
 			await setAiEnabled(mapId, enabled !== false);

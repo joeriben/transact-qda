@@ -92,6 +92,11 @@
 		await saveAllPositions(merged);
 	}
 
+	// Withdrawn check: works for both AI-withdrawn and researcher-withdrawn
+	function isWithdrawn(props: any): boolean {
+		return props?.withdrawn === true || props?.aiWithdrawn === true;
+	}
+
 	// Interaction state
 	let relatingFrom = $state<string | null>(null);
 	let newInscription = $state('');
@@ -555,6 +560,11 @@
 		showAiNotification('AI analysis requested');
 	}
 
+	async function toggleWithdraw(namingId: string, currentlyWithdrawn: boolean) {
+		await mapAction('withdraw', { namingId, withdrawn: !currentlyWithdrawn });
+		await reload();
+	}
+
 	async function submitDiscussion() {
 		if (!stackId || !discussInput.trim() || discussLoading) return;
 		discussLoading = true;
@@ -856,7 +866,7 @@
 							onclick={handleNodeClick}
 							oncontextmenu={handleNodeContextMenu}
 						>
-							<div class="map-node" class:ai-suggested={el.properties?.aiSuggested} class:ai-withdrawn={el.properties?.aiWithdrawn} class:phase-member={highlightedPhase && isPhaseHighlighted(el)} class:phase-dimmed={highlightedPhase && !isPhaseHighlighted(el)}
+							<div class="map-node" class:ai-suggested={el.properties?.aiSuggested} class:ai-withdrawn={isWithdrawn(el.properties)} class:phase-member={highlightedPhase && isPhaseHighlighted(el)} class:phase-dimmed={highlightedPhase && !isPhaseHighlighted(el)}
 								style="{highlightedPhase && isPhaseHighlighted(el) ? `--phase-color: ${phaseColorMap.get(highlightedPhase)};` : ''}">
 								<div class="node-header">
 									<span class="designation-dot" style="background: {designationColor(el.designation)}"></span>
@@ -907,7 +917,7 @@
 							onclick={handleNodeClick}
 							oncontextmenu={handleNodeContextMenu}
 						>
-							<div class="map-node relation-node" class:ai-suggested={rel.properties?.aiSuggested} class:ai-withdrawn={rel.properties?.aiWithdrawn} class:phase-member={highlightedPhase && isPhaseHighlighted(rel)} class:phase-dimmed={highlightedPhase && !isPhaseHighlighted(rel)}
+							<div class="map-node relation-node" class:ai-suggested={rel.properties?.aiSuggested} class:ai-withdrawn={isWithdrawn(rel.properties)} class:phase-member={highlightedPhase && isPhaseHighlighted(rel)} class:phase-dimmed={highlightedPhase && !isPhaseHighlighted(rel)}
 								style="{highlightedPhase && isPhaseHighlighted(rel) ? `--phase-color: ${phaseColorMap.get(highlightedPhase)};` : ''}">
 								{#if rel.valence}
 									<span class="rel-valence">{rel.valence}</span>
@@ -995,7 +1005,7 @@
 			{:else}
 				<div class="element-list">
 					{#each elements as el}
-						<div class="element-card" class:ai-suggested={el.properties?.aiSuggested === true} class:ai-withdrawn={el.properties?.aiWithdrawn === true} title={el.properties?.aiReasoning || ''}>
+						<div class="element-card" class:ai-suggested={el.properties?.aiSuggested === true} class:ai-withdrawn={isWithdrawn(el.properties)} title={el.properties?.aiReasoning || ''}>
 							<div class="el-main">
 								{#if el.is_collapsed}<img class="collapsed-indicator" src="/icons/keep.svg" alt="pinned" title="Pinned to specific layer" />{/if}
 								<span class="designation-dot" style="background: {designationColor(el.designation)}"
@@ -1035,6 +1045,9 @@
 								</select>
 								<button class="btn-xs" title="naming stack" onclick={() => showStack(el.naming_id)}>
 									stack
+								</button>
+								<button class="btn-xs btn-withdraw" title={isWithdrawn(el.properties) ? 'Restore this naming' : 'Withdraw this naming'} onclick={() => toggleWithdraw(el.naming_id, isWithdrawn(el.properties))}>
+									{isWithdrawn(el.properties) ? 'restore' : 'withdraw'}
 								</button>
 								{#if relatingFrom && !relatingTo && relatingFrom !== el.naming_id}
 									<button class="btn-sm btn-relate" onclick={() => startRelation(relatingFrom!, el.naming_id)}>
@@ -1142,7 +1155,7 @@
 					{#each relations as rel}
 						{@const srcId = rel.directed_from || rel.part_source_id}
 						{@const tgtId = rel.directed_to || rel.part_target_id}
-						<div class="element-card relation-card" class:ai-suggested={rel.properties?.aiSuggested === true} class:ai-withdrawn={rel.properties?.aiWithdrawn === true} title={rel.properties?.aiReasoning || ''}>
+						<div class="element-card relation-card" class:ai-suggested={rel.properties?.aiSuggested === true} class:ai-withdrawn={isWithdrawn(rel.properties)} title={rel.properties?.aiReasoning || ''}>
 							<div class="el-main">
 								{#if rel.is_collapsed}<img class="collapsed-indicator" src="/icons/keep.svg" alt="pinned" title="Pinned to specific layer" />{/if}
 								<span class="designation-dot" style="background: {designationColor(rel.designation)}"></span>
@@ -1196,6 +1209,9 @@
 								</select>
 								<button class="btn-xs" title="naming stack" onclick={() => showStack(rel.naming_id)}>
 									stack
+								</button>
+								<button class="btn-xs btn-withdraw" title={isWithdrawn(rel.properties) ? 'Restore' : 'Withdraw'} onclick={() => toggleWithdraw(rel.naming_id, isWithdrawn(rel.properties))}>
+									{isWithdrawn(rel.properties) ? 'restore' : 'withdraw'}
 								</button>
 								{#if relatingFrom && !relatingTo && relatingFrom !== rel.naming_id}
 									<button class="btn-sm btn-relate" onclick={() => startRelation(relatingFrom!, rel.naming_id)}>
@@ -1301,7 +1317,7 @@
 				<h3 class="section-header">Silences</h3>
 				<div class="element-list">
 					{#each silences as s}
-						<div class="element-card silence-card" class:ai-suggested={s.properties?.aiSuggested === true} class:ai-withdrawn={s.properties?.aiWithdrawn === true} title={s.properties?.aiReasoning || ''}>
+						<div class="element-card silence-card" class:ai-suggested={s.properties?.aiSuggested === true} class:ai-withdrawn={isWithdrawn(s.properties)} title={s.properties?.aiReasoning || ''}>
 							{#if s.has_document_anchor}
 								<img class="provenance-indicator" src="/icons/text_snippet.svg" alt="empirical" title="Empirically grounded" />
 							{:else if s.has_memo_link}
@@ -1485,7 +1501,10 @@
 		padding: 0.5rem 0.75rem;
 	}
 	.element-card:hover { border-color: #3a3d4a; }
-	.element-card.ai-withdrawn { opacity: 0.4; text-decoration: line-through; }
+	.element-card.ai-withdrawn { opacity: 0.4; }
+	.element-card.ai-withdrawn .el-inscription { text-decoration: line-through; }
+	.btn-withdraw { border-color: #6b7280; color: #6b7280; font-size: 0.65rem; }
+	.btn-withdraw:hover { background: rgba(107, 114, 128, 0.1); }
 	.relation-card { background: #141620; }
 	.silence-card { border-style: dashed; opacity: 0.7; }
 	.el-main { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }

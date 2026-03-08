@@ -43,10 +43,17 @@ LANGUAGE:
 - Use the researcher's terminology, not generic qualitative research jargon
 - Be concise in memo content — analytical depth over length
 
+DISCUSSION AWARENESS:
+- Elements/relations marked [AI] are your previous suggestions still active as cues
+- Elements/relations marked [WITHDRAWN] were your suggestions that were discussed and withdrawn
+- When you see a withdrawn cue with a discussion summary, LEARN from it — do not repeat the same mistake
+- If a withdrawn cue's discussion reveals a better framing, you may suggest an alternative that addresses the researcher's correction
+- Respect the analytical direction the researcher indicated in the discussion
+
 CONSTRAINTS:
 - Make 1-3 suggestions per trigger, not more. Quality over quantity.
 - Always provide reasoning — the researcher needs to understand YOUR naming act
-- Do not repeat suggestions the researcher has already rejected
+- Do not repeat suggestions the researcher has already rejected or that were withdrawn
 - If the map is very early (few elements), focus on questions and silences rather than relations`;
 
 export const DISCUSSION_SYSTEM_PROMPT = `You are a co-analyst in a qualitative research project using Situational Analysis (Adele Clarke), working within a transactional ontology (Dewey/Bentley).
@@ -116,6 +123,9 @@ export interface MapContext {
 		designation: string;
 		mode: string;
 		provenance: 'empirical' | 'analytical' | 'ungrounded';
+		aiSuggested?: boolean;
+		aiWithdrawn?: boolean;
+		discussionSummary?: string;
 	}>;
 	relations: Array<{
 		id: string;
@@ -126,10 +136,16 @@ export interface MapContext {
 		valence: string | null;
 		symmetric: boolean;
 		provenance: 'empirical' | 'analytical' | 'ungrounded';
+		aiSuggested?: boolean;
+		aiWithdrawn?: boolean;
+		discussionSummary?: string;
 	}>;
 	silences: Array<{
 		id: string;
 		inscription: string;
+		aiSuggested?: boolean;
+		aiWithdrawn?: boolean;
+		discussionSummary?: string;
 	}>;
 	phases: Array<{
 		id: string;
@@ -162,7 +178,12 @@ export function buildContextMessage(ctx: MapContext, triggerEvent: TriggerEvent)
 		parts.push('\nELEMENTS:');
 		for (const el of ctx.elements) {
 			const prov = el.provenance === 'empirical' ? ' 📄' : el.provenance === 'analytical' ? ' 📝' : ' ∅';
-			parts.push(`  [${el.designation}]${prov} "${el.inscription}" (id: ${el.id})`);
+			const withdrawn = el.aiWithdrawn ? ' [WITHDRAWN]' : '';
+			const ai = el.aiSuggested && !el.aiWithdrawn ? ' [AI]' : '';
+			parts.push(`  [${el.designation}]${prov}${ai}${withdrawn} "${el.inscription}" (id: ${el.id})`);
+			if (el.discussionSummary) {
+				parts.push(`    Discussion: ${el.discussionSummary}`);
+			}
 		}
 	} else {
 		parts.push('\nELEMENTS: (none yet)');
@@ -176,7 +197,12 @@ export function buildContextMessage(ctx: MapContext, triggerEvent: TriggerEvent)
 			const label = rel.inscription ? `: "${rel.inscription}"` : '';
 			const val = rel.valence ? ` [${rel.valence}]` : '';
 			const prov = rel.provenance === 'empirical' ? ' 📄' : rel.provenance === 'analytical' ? ' 📝' : ' ∅';
-			parts.push(`  [${rel.designation}]${prov} "${rel.source.inscription}" ${arrow} "${rel.target.inscription}"${label}${val} (id: ${rel.id})`);
+			const withdrawn = rel.aiWithdrawn ? ' [WITHDRAWN]' : '';
+			const ai = rel.aiSuggested && !rel.aiWithdrawn ? ' [AI]' : '';
+			parts.push(`  [${rel.designation}]${prov}${ai}${withdrawn} "${rel.source.inscription}" ${arrow} "${rel.target.inscription}"${label}${val} (id: ${rel.id})`);
+			if (rel.discussionSummary) {
+				parts.push(`    Discussion: ${rel.discussionSummary}`);
+			}
 		}
 	}
 
@@ -184,7 +210,12 @@ export function buildContextMessage(ctx: MapContext, triggerEvent: TriggerEvent)
 	if (ctx.silences.length > 0) {
 		parts.push('\nIDENTIFIED SILENCES:');
 		for (const s of ctx.silences) {
-			parts.push(`  "${s.inscription}" (id: ${s.id})`);
+			const withdrawn = s.aiWithdrawn ? ' [WITHDRAWN]' : '';
+			const ai = s.aiSuggested && !s.aiWithdrawn ? ' [AI]' : '';
+			parts.push(`  ${ai}${withdrawn}"${s.inscription}" (id: ${s.id})`);
+			if (s.discussionSummary) {
+				parts.push(`    Discussion: ${s.discussionSummary}`);
+			}
 		}
 	}
 
