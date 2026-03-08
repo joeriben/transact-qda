@@ -7,8 +7,8 @@ import { getOrCreateAiNaming, logAiInteraction } from '../db/queries/ai.js';
 import { createMemo } from '../db/queries/memos.js';
 import { getMemosByProject } from '../db/queries/memos.js';
 import { emit } from './sse.js';
-import { SYSTEM_PROMPT, buildContextMessage, type MapContext, type TriggerEvent } from './prompts.js';
-import { AI_TOOLS, type SuggestElementInput, type SuggestRelationInput, type IdentifySilenceInput, type WriteMemoInput, type CreatePhaseInput } from './tools.js';
+import { SYSTEM_PROMPT, DISCUSSION_SYSTEM_PROMPT, buildContextMessage, buildDiscussionMessage, type MapContext, type TriggerEvent, type DiscussionContext } from './prompts.js';
+import { AI_TOOLS, DISCUSSION_TOOLS, type SuggestElementInput, type SuggestRelationInput, type IdentifySilenceInput, type WriteMemoInput, type CreatePhaseInput, type RewriteCueInput, type RespondInput, type WithdrawCueInput } from './tools.js';
 import { query } from '../db/index.js';
 
 // Check if AI is enabled for a map
@@ -350,6 +350,183 @@ export async function runMapAgent(
 		console.error('[AI Agent] Error:', error instanceof Error ? error.message : error);
 		// Don't throw — AI failures should never break the researcher's workflow
 	}
+}
+
+// Discuss an AI-generated cue: researcher sends a message, AI responds with tools
+export async function discussCue(
+	projectId: string,
+	mapId: string,
+	namingId: string,
+	researcherMessage: string,
+	userId?: string
+): Promise<{ response: string; actions: Array<{ type: string; detail: unknown }> }> {
+	const model = getModel();
+	const aiNamingId = await getOrCreateAiNaming(projectId, model);
+
+	// Build discussion context from the naming's properties and linked memos
+	const namingRow = await query(
+		`SELECT n.inscription, a.mode, a.properties, a.directed_from, a.directed_to, a.valence
+		 FROM namings n
+		 JOIN appearances a ON a.naming_id = n.id AND a.perspective_id = $2
+		 WHERE n.id = $1`,
+		[namingId, mapId]
+	);
+	if (namingRow.rows.length === 0) throw new Error('Naming not found on this map');
+	const naming = namingRow.rows[0];
+
+	// Determine cue type
+	const cueType = naming.mode === 'relation' ? 'relation' as const
+		: naming.mode === 'silence' ? 'silence' as const
+		: 'element' as const;
+
+	// Get relation detail if applicable
+	let relationDetail: DiscussionContext['relationDetail'];
+	if (cueType === 'relation' && (naming.directed_from || naming.directed_to)) {
+		const [src, tgt] = await Promise.all([
+			naming.directed_from ? query(`SELECT inscription FROM namings WHERE id = $1`, [naming.directed_from]) : null,
+			naming.directed_to ? query(`SELECT inscription FROM namings WHERE id = $1`, [naming.directed_to]) : null
+		]);
+		relationDetail = {
+			sourceInscription: src?.rows[0]?.inscription || '?',
+			targetInscription: tgt?.rows[0]?.inscription || '?',
+			valence: naming.valence || undefined
+		};
+	}
+
+	// Get previous discussion memos linked to this naming (AI discussions have label prefix "Discussion:")
+	const prevMemos = await query(
+		`SELECT DISTINCT m.id, m.inscription as label, mc.content, m.created_by
+		 FROM participations p
+		 JOIN namings m ON m.id = CASE WHEN p.naming_id = $1 THEN p.participant_id ELSE p.naming_id END
+		 JOIN memo_content mc ON mc.naming_id = m.id
+		 WHERE (p.naming_id = $1 OR p.participant_id = $1)
+		   AND m.deleted_at IS NULL
+		   AND m.id != $1
+		   AND m.inscription LIKE 'Discussion:%'
+		 ORDER BY m.created_at ASC
+		 LIMIT 30`,
+		[namingId]
+	);
+
+	const previousDiscussion: DiscussionContext['previousDiscussion'] = [];
+	for (const memo of prevMemos.rows) {
+		// AI memos use the system user UUID
+		const role = memo.created_by === '00000000-0000-0000-0000-000000000000' ? 'ai' as const : 'researcher' as const;
+		previousDiscussion.push({ role, content: memo.content });
+	}
+
+	const discussionCtx: DiscussionContext = {
+		cueId: namingId,
+		cueInscription: naming.inscription,
+		cueType,
+		aiReasoning: naming.properties?.aiReasoning || '(no reasoning recorded)',
+		relationDetail,
+		previousDiscussion
+	};
+
+	const contextMessage = buildDiscussionMessage(discussionCtx, researcherMessage);
+
+	// Save the researcher's message as a discussion memo BEFORE calling AI
+	// (ensures correct chronological ordering in the discussion thread)
+	await createMemo(projectId, userId || '00000000-0000-0000-0000-000000000000',
+		`Discussion: researcher`, researcherMessage, [namingId]);
+
+	let response;
+	try {
+		response = await chat({
+			system: DISCUSSION_SYSTEM_PROMPT,
+			maxTokens: 1024,
+			tools: DISCUSSION_TOOLS,
+			messages: [
+				{ role: 'user', content: contextMessage }
+			]
+		});
+	} catch (error) {
+		// AI call failed — create an error memo so the thread isn't broken
+		const errMsg = error instanceof Error ? error.message : String(error);
+		await createMemo(projectId, '00000000-0000-0000-0000-000000000000',
+			`Discussion: response`, `(AI could not respond: ${errMsg})`, [namingId]);
+		return { response: `AI could not respond: ${errMsg}`, actions: [] };
+	}
+
+	// Execute discussion tool calls
+	const actions: Array<{ type: string; detail: unknown }> = [];
+	let responseText = response.text;
+
+	for (const tc of response.toolCalls) {
+		switch (tc.name) {
+			case 'rewrite_cue': {
+				const { new_inscription, reasoning } = tc.input as unknown as RewriteCueInput;
+				if (!new_inscription?.trim()) break; // guard against empty rewrite
+				// Rename the naming — this creates a new inscription layer in the stack
+				await transaction(async (client) => {
+					await client.query(
+						`UPDATE namings SET inscription = $1 WHERE id = $2`,
+						[new_inscription.trim(), namingId]
+					);
+					await client.query(
+						`INSERT INTO naming_inscriptions (naming_id, inscription, by)
+						 VALUES ($1, $2, $3)`,
+						[namingId, new_inscription.trim(), aiNamingId]
+					);
+				});
+				// Create discussion memo documenting the rewrite
+				await createMemo(projectId, '00000000-0000-0000-0000-000000000000',
+					`Discussion: rewrite`, reasoning || new_inscription, [namingId]);
+				actions.push({ type: 'rewrite', detail: { newInscription: new_inscription, reasoning } });
+				emit(mapId, 'ai:rewrite', { namingId, newInscription: new_inscription, reasoning });
+				break;
+			}
+			case 'respond': {
+				const { content } = tc.input as unknown as RespondInput;
+				if (!content?.trim()) break;
+				await createMemo(projectId, '00000000-0000-0000-0000-000000000000',
+					`Discussion: response`, content, [namingId]);
+				actions.push({ type: 'respond', detail: { content } });
+				break;
+			}
+			case 'withdraw_cue': {
+				const { reasoning } = tc.input as unknown as WithdrawCueInput;
+				// Mark as withdrawn via properties flag (soft — stays in stack)
+				await query(
+					`UPDATE appearances SET properties = properties || '{"aiWithdrawn": true}'::jsonb, updated_at = now()
+					 WHERE naming_id = $1 AND perspective_id = $2`,
+					[namingId, mapId]
+				);
+				await createMemo(projectId, '00000000-0000-0000-0000-000000000000',
+					`Discussion: withdrawn`, reasoning || '(withdrawn)', [namingId]);
+				actions.push({ type: 'withdraw', detail: { reasoning } });
+				emit(mapId, 'ai:withdraw', { namingId, reasoning });
+				break;
+			}
+		}
+	}
+
+	// If AI responded with text but no respond tool call, save it too
+	if (responseText && !actions.some(a => a.type === 'respond')) {
+		await createMemo(projectId, '00000000-0000-0000-0000-000000000000',
+			`Discussion: response`, responseText, [namingId]);
+		actions.push({ type: 'respond', detail: { content: responseText } });
+	}
+
+	// Log the interaction
+	await logAiInteraction(
+		projectId,
+		aiNamingId,
+		'discussion',
+		model,
+		{ mapId, namingId, researcherMessage },
+		{ actions, text: responseText, stopReason: response.stopReason },
+		response.tokensUsed
+	);
+
+	// Build response text for frontend
+	const aiResponseText = actions
+		.filter(a => a.type === 'respond')
+		.map(a => (a.detail as { content: string }).content)
+		.join('\n\n') || responseText;
+
+	return { response: aiResponseText, actions };
 }
 
 // Toggle AI for a map

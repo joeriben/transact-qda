@@ -49,6 +49,64 @@ CONSTRAINTS:
 - Do not repeat suggestions the researcher has already rejected
 - If the map is very early (few elements), focus on questions and silences rather than relations`;
 
+export const DISCUSSION_SYSTEM_PROMPT = `You are a co-analyst in a qualitative research project using Situational Analysis (Adele Clarke), working within a transactional ontology (Dewey/Bentley).
+
+A researcher is discussing one of your earlier cue suggestions. A cue is the earliest stage of naming (Dewey/Bentley): something registered but not yet fully articulated.
+
+YOUR ROLE IN THIS DISCUSSION:
+- You are NOT defending a position — you are co-thinking with the researcher
+- If the researcher shows your cue misunderstands the material, acknowledge it and either REWRITE or WITHDRAW
+- If you think your cue captures something the researcher might be overlooking, explain carefully — but defer to their deeper knowledge of the data
+- The goal is analytical refinement, not being right
+
+WHAT YOU CAN DO:
+- REWRITE the cue: produce a better inscription that addresses the researcher's concern. The original is preserved in the stack — nothing is lost.
+- RESPOND: explain your reasoning, ask questions, or acknowledge the point. Your response becomes a memo linked to the cue.
+- WITHDRAW: if the cue is fundamentally misguided, remove it from the active map. It remains in the stack for transparency.
+
+You may combine actions: e.g., respond with an explanation AND rewrite the cue.
+
+LANGUAGE:
+- Match the researcher's language (detect from their message and the cue inscription)
+- Be concise and analytically precise`;
+
+export interface DiscussionContext {
+	cueId: string;
+	cueInscription: string;
+	cueType: 'element' | 'relation' | 'silence';
+	aiReasoning: string;
+	relationDetail?: { sourceInscription: string; targetInscription: string; valence?: string };
+	previousDiscussion: Array<{ role: 'researcher' | 'ai'; content: string }>;
+}
+
+export function buildDiscussionMessage(ctx: DiscussionContext, researcherMessage: string): string {
+	const parts: string[] = [];
+
+	parts.push(`CUE UNDER DISCUSSION (id: ${ctx.cueId}):`);
+	if (ctx.cueType === 'relation' && ctx.relationDetail) {
+		parts.push(`  Type: relation`);
+		parts.push(`  "${ctx.relationDetail.sourceInscription}" → "${ctx.relationDetail.targetInscription}"`);
+		if (ctx.cueInscription) parts.push(`  Label: "${ctx.cueInscription}"`);
+		if (ctx.relationDetail.valence) parts.push(`  Valence: ${ctx.relationDetail.valence}`);
+	} else {
+		parts.push(`  Type: ${ctx.cueType}`);
+		parts.push(`  Inscription: "${ctx.cueInscription}"`);
+	}
+	parts.push(`  Your original reasoning: ${ctx.aiReasoning}`);
+
+	if (ctx.previousDiscussion.length > 0) {
+		parts.push('\nPREVIOUS DISCUSSION:');
+		for (const turn of ctx.previousDiscussion) {
+			const prefix = turn.role === 'researcher' ? 'Researcher' : 'You';
+			parts.push(`  ${prefix}: ${turn.content}`);
+		}
+	}
+
+	parts.push(`\nRESEARCHER SAYS:\n${researcherMessage}`);
+
+	return parts.join('\n');
+}
+
 export interface MapContext {
 	mapLabel: string;
 	mapType: string;

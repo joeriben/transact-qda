@@ -126,7 +126,14 @@
 
 	// Stack panel
 	let stackId = $state<string | null>(null);
-	let stackData = $state<{ inscriptions: any[]; designations: any[]; memos: any[] } | null>(null);
+	let stackData = $state<{
+		inscriptions: any[]; designations: any[]; memos: any[];
+		discussion?: any[]; aiReasoning?: string | null; aiSuggested?: boolean; aiWithdrawn?: boolean;
+	} | null>(null);
+
+	// Cue discussion
+	let discussInput = $state('');
+	let discussLoading = $state(false);
 
 	// AI
 	let aiEnabled = $state(true);
@@ -541,6 +548,23 @@
 		showAiNotification('AI analysis requested');
 	}
 
+	async function submitDiscussion() {
+		if (!stackId || !discussInput.trim() || discussLoading) return;
+		discussLoading = true;
+		try {
+			await mapAction('discussCue', { namingId: stackId, message: discussInput.trim() });
+			discussInput = '';
+			// Refresh stack to show new discussion entries
+			stackData = await mapAction('getStack', { namingId: stackId });
+			// Reload map in case cue was rewritten or withdrawn
+			await reload();
+		} catch (e) {
+			showAiNotification('Discussion failed');
+		} finally {
+			discussLoading = false;
+		}
+	}
+
 	// ─── Auto layout ───
 
 	async function runAutoLayout() {
@@ -823,7 +847,7 @@
 							onclick={handleNodeClick}
 							oncontextmenu={handleNodeContextMenu}
 						>
-							<div class="map-node" class:ai-suggested={el.properties?.aiSuggested} class:phase-member={highlightedPhase && isPhaseHighlighted(el)} class:phase-dimmed={highlightedPhase && !isPhaseHighlighted(el)}
+							<div class="map-node" class:ai-suggested={el.properties?.aiSuggested} class:ai-withdrawn={el.properties?.aiWithdrawn} class:phase-member={highlightedPhase && isPhaseHighlighted(el)} class:phase-dimmed={highlightedPhase && !isPhaseHighlighted(el)}
 								style="{highlightedPhase && isPhaseHighlighted(el) ? `--phase-color: ${phaseColorMap.get(highlightedPhase)};` : ''}">
 								<div class="node-header">
 									<span class="designation-dot" style="background: {designationColor(el.designation)}"></span>
@@ -874,7 +898,7 @@
 							onclick={handleNodeClick}
 							oncontextmenu={handleNodeContextMenu}
 						>
-							<div class="map-node relation-node" class:ai-suggested={rel.properties?.aiSuggested} class:phase-member={highlightedPhase && isPhaseHighlighted(rel)} class:phase-dimmed={highlightedPhase && !isPhaseHighlighted(rel)}
+							<div class="map-node relation-node" class:ai-suggested={rel.properties?.aiSuggested} class:ai-withdrawn={rel.properties?.aiWithdrawn} class:phase-member={highlightedPhase && isPhaseHighlighted(rel)} class:phase-dimmed={highlightedPhase && !isPhaseHighlighted(rel)}
 								style="{highlightedPhase && isPhaseHighlighted(rel) ? `--phase-color: ${phaseColorMap.get(highlightedPhase)};` : ''}">
 								{#if rel.valence}
 									<span class="rel-valence">{rel.valence}</span>
@@ -962,7 +986,7 @@
 			{:else}
 				<div class="element-list">
 					{#each elements as el}
-						<div class="element-card" class:ai-suggested={el.properties?.aiSuggested === true} title={el.properties?.aiReasoning || ''}>
+						<div class="element-card" class:ai-suggested={el.properties?.aiSuggested === true} class:ai-withdrawn={el.properties?.aiWithdrawn === true} title={el.properties?.aiReasoning || ''}>
 							<div class="el-main">
 								{#if el.is_collapsed}<img class="collapsed-indicator" src="/icons/keep.svg" alt="pinned" title="Pinned to specific layer" />{/if}
 								<span class="designation-dot" style="background: {designationColor(el.designation)}"
@@ -1065,6 +1089,37 @@
 										{/each}
 									</div>
 								{/if}
+								{#if stackData.aiSuggested}
+									<div class="history-section ai-discussion-section">
+										<span class="history-label">
+											<img class="label-icon" src="/icons/comment.svg" alt="" />
+											AI Cue {stackData.aiWithdrawn ? '(withdrawn)' : ''}
+										</span>
+										{#if stackData.aiReasoning}
+											<div class="ai-reasoning">
+												{stackData.aiReasoning}
+											</div>
+										{/if}
+										{#if stackData.discussion && stackData.discussion.length > 0}
+											<div class="discussion-thread">
+												{#each stackData.discussion as turn}
+													<div class="discussion-turn" class:turn-researcher={turn.role === 'researcher'} class:turn-ai={turn.role === 'ai'}>
+														<span class="turn-role">{turn.role === 'researcher' ? 'You' : 'AI'}{turn.type === 'rewrite' ? ' (rewrote)' : turn.type === 'withdrawn' ? ' (withdrew)' : ''}</span>
+														<span class="turn-content">{turn.content}</span>
+													</div>
+												{/each}
+											</div>
+										{/if}
+										{#if !stackData.aiWithdrawn}
+											<form class="discuss-form" onsubmit={e => { e.preventDefault(); submitDiscussion(); }}>
+												<input type="text" placeholder="Discuss this cue..." bind:value={discussInput} disabled={discussLoading} />
+												<button type="submit" class="btn-xs" disabled={discussLoading || !discussInput.trim()}>
+													{discussLoading ? '...' : 'send'}
+												</button>
+											</form>
+										{/if}
+									</div>
+								{/if}
 							</div>
 						{/if}
 					{/each}
@@ -1078,7 +1133,7 @@
 					{#each relations as rel}
 						{@const srcId = rel.directed_from || rel.part_source_id}
 						{@const tgtId = rel.directed_to || rel.part_target_id}
-						<div class="element-card relation-card" class:ai-suggested={rel.properties?.aiSuggested === true} title={rel.properties?.aiReasoning || ''}>
+						<div class="element-card relation-card" class:ai-suggested={rel.properties?.aiSuggested === true} class:ai-withdrawn={rel.properties?.aiWithdrawn === true} title={rel.properties?.aiReasoning || ''}>
 							<div class="el-main">
 								{#if rel.is_collapsed}<img class="collapsed-indicator" src="/icons/keep.svg" alt="pinned" title="Pinned to specific layer" />{/if}
 								<span class="designation-dot" style="background: {designationColor(rel.designation)}"></span>
@@ -1195,6 +1250,37 @@
 										{/each}
 									</div>
 								{/if}
+								{#if stackData.aiSuggested}
+									<div class="history-section ai-discussion-section">
+										<span class="history-label">
+											<img class="label-icon" src="/icons/comment.svg" alt="" />
+											AI Cue {stackData.aiWithdrawn ? '(withdrawn)' : ''}
+										</span>
+										{#if stackData.aiReasoning}
+											<div class="ai-reasoning">
+												{stackData.aiReasoning}
+											</div>
+										{/if}
+										{#if stackData.discussion && stackData.discussion.length > 0}
+											<div class="discussion-thread">
+												{#each stackData.discussion as turn}
+													<div class="discussion-turn" class:turn-researcher={turn.role === 'researcher'} class:turn-ai={turn.role === 'ai'}>
+														<span class="turn-role">{turn.role === 'researcher' ? 'You' : 'AI'}{turn.type === 'rewrite' ? ' (rewrote)' : turn.type === 'withdrawn' ? ' (withdrew)' : ''}</span>
+														<span class="turn-content">{turn.content}</span>
+													</div>
+												{/each}
+											</div>
+										{/if}
+										{#if !stackData.aiWithdrawn}
+											<form class="discuss-form" onsubmit={e => { e.preventDefault(); submitDiscussion(); }}>
+												<input type="text" placeholder="Discuss this cue..." bind:value={discussInput} disabled={discussLoading} />
+												<button type="submit" class="btn-xs" disabled={discussLoading || !discussInput.trim()}>
+													{discussLoading ? '...' : 'send'}
+												</button>
+											</form>
+										{/if}
+									</div>
+								{/if}
 							</div>
 						{/if}
 					{/each}
@@ -1206,7 +1292,7 @@
 				<h3 class="section-header">Silences</h3>
 				<div class="element-list">
 					{#each silences as s}
-						<div class="element-card silence-card" class:ai-suggested={s.properties?.aiSuggested === true} title={s.properties?.aiReasoning || ''}>
+						<div class="element-card silence-card" class:ai-suggested={s.properties?.aiSuggested === true} class:ai-withdrawn={s.properties?.aiWithdrawn === true} title={s.properties?.aiReasoning || ''}>
 							{#if s.has_document_anchor}
 								<img class="provenance-indicator" src="/icons/text_snippet.svg" alt="empirical" title="Empirically grounded" />
 							{:else if s.has_memo_link}
@@ -1390,6 +1476,7 @@
 		padding: 0.5rem 0.75rem;
 	}
 	.element-card:hover { border-color: #3a3d4a; }
+	.element-card.ai-withdrawn { opacity: 0.4; text-decoration: line-through; }
 	.relation-card { background: #141620; }
 	.silence-card { border-style: dashed; opacity: 0.7; }
 	.el-main { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
@@ -1447,6 +1534,52 @@
 	.btn-unpin:hover { background: rgba(245, 158, 11, 0.1); }
 	.pinned-layer { background: rgba(245, 158, 11, 0.1); border-radius: 3px; padding: 0.1rem 0.3rem; }
 
+	/* AI cue discussion */
+	.ai-discussion-section {
+		border-top: 1px solid rgba(139, 156, 247, 0.2);
+		padding-top: 0.5rem;
+		margin-top: 0.3rem;
+	}
+	.label-icon { width: 14px; height: 14px; vertical-align: middle; margin-right: 0.2rem; opacity: 0.7; }
+	.ai-reasoning {
+		font-size: 0.75rem; color: #8b9cf7; font-style: italic;
+		padding: 0.3rem 0.5rem; margin: 0.2rem 0;
+		background: rgba(139, 156, 247, 0.06); border-radius: 4px;
+		border-left: 2px solid rgba(139, 156, 247, 0.3);
+	}
+	.discussion-thread { margin: 0.3rem 0; }
+	.discussion-turn {
+		padding: 0.25rem 0.4rem; margin: 0.15rem 0;
+		border-radius: 4px; font-size: 0.75rem;
+	}
+	.turn-researcher {
+		background: rgba(245, 158, 11, 0.08);
+		border-left: 2px solid rgba(245, 158, 11, 0.4);
+	}
+	.turn-ai {
+		background: rgba(139, 156, 247, 0.06);
+		border-left: 2px solid rgba(139, 156, 247, 0.3);
+	}
+	.turn-role {
+		font-size: 0.68rem; font-weight: 600; display: block;
+		margin-bottom: 0.1rem;
+	}
+	.turn-researcher .turn-role { color: #f59e0b; }
+	.turn-ai .turn-role { color: #8b9cf7; }
+	.turn-content { color: #c9cdd5; display: block; white-space: pre-wrap; }
+	.discuss-form {
+		display: flex; gap: 0.3rem; margin-top: 0.3rem;
+	}
+	.discuss-form input {
+		flex: 1; background: #0f1117; border: 1px solid #2a2d3a;
+		border-radius: 4px; padding: 0.3rem 0.5rem;
+		color: #c9cdd5; font-size: 0.75rem;
+	}
+	.discuss-form input:focus { border-color: #8b9cf7; outline: none; }
+	.discuss-form button { border-color: #8b9cf7; color: #8b9cf7; }
+	.discuss-form button:hover:not(:disabled) { background: rgba(139, 156, 247, 0.1); }
+	.discuss-form button:disabled { opacity: 0.4; }
+
 	/* Naming act prompt */
 	.act-prompt-bar, .act-prompt {
 		background: #161822; border: 1px solid #f59e0b; border-radius: 8px;
@@ -1501,6 +1634,10 @@
 		border-style: dashed;
 		border-color: rgba(139, 156, 247, 0.5);
 		background: rgba(139, 156, 247, 0.04);
+	}
+	.map-node.ai-withdrawn {
+		opacity: 0.3;
+		border-color: rgba(139, 156, 247, 0.2);
 	}
 	.map-node.phase-dimmed { opacity: 0.85; transition: opacity 0.3s; }
 	.map-node.phase-member {

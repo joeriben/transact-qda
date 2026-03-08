@@ -127,6 +127,73 @@ export const AI_TOOLS: ToolDef[] = [
 	}
 ];
 
+// ── Discussion tools: used when a researcher discusses an AI-generated cue ──
+
+export const DISCUSSION_TOOLS: ToolDef[] = [
+	{
+		name: 'rewrite_cue',
+		description:
+			'Rewrite the cue inscription based on the discussion. This creates a new inscription layer — the original is preserved in the stack. Use this when you understand the researcher\'s objection and can produce a better naming.',
+		input_schema: {
+			type: 'object' as const,
+			properties: {
+				new_inscription: {
+					type: 'string',
+					description: 'The revised inscription for the cue'
+				},
+				reasoning: {
+					type: 'string',
+					description: 'Why this revision addresses the researcher\'s concern'
+				}
+			},
+			required: ['new_inscription', 'reasoning']
+		}
+	},
+	{
+		name: 'respond',
+		description:
+			'Respond to the researcher without changing the cue. Use this to explain your reasoning, ask clarifying questions, or acknowledge the researcher\'s point. Your response becomes a memo linked to the cue.',
+		input_schema: {
+			type: 'object' as const,
+			properties: {
+				content: {
+					type: 'string',
+					description: 'Your response to the researcher'
+				}
+			},
+			required: ['content']
+		}
+	},
+	{
+		name: 'withdraw_cue',
+		description:
+			'Withdraw your suggestion. Use this when the researcher has shown the cue is fundamentally misguided. The cue is marked as withdrawn but preserved in the stack for transparency.',
+		input_schema: {
+			type: 'object' as const,
+			properties: {
+				reasoning: {
+					type: 'string',
+					description: 'Why you agree the cue should be withdrawn'
+				}
+			},
+			required: ['reasoning']
+		}
+	}
+];
+
+export interface RewriteCueInput {
+	new_inscription: string;
+	reasoning: string;
+}
+
+export interface RespondInput {
+	content: string;
+}
+
+export interface WithdrawCueInput {
+	reasoning: string;
+}
+
 // Tool call result types for the executor
 export interface SuggestElementInput {
 	inscription: string;

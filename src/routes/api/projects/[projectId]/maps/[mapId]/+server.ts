@@ -21,7 +21,7 @@ import {
 	getNaming
 } from '$lib/server/db/queries/namings.js';
 import { createMemo, getMemosForNaming } from '$lib/server/db/queries/memos.js';
-import { runMapAgent, setAiEnabled } from '$lib/server/ai/agent.js';
+import { runMapAgent, setAiEnabled, discussCue } from '$lib/server/ai/agent.js';
 import { saveTopologyBuffer, saveTopologySnapshot, restoreTopologySnapshot, listTopologySnapshots } from '$lib/server/db/queries/topology.js';
 
 export const GET: RequestHandler = async ({ params }) => {
@@ -171,6 +171,18 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		case 'requestAnalysis': {
 			await runMapAgent(projectId, mapId, { action: 'requestAnalysis', details: {} });
 			return json({ ok: true });
+		}
+
+		case 'discussCue': {
+			const { namingId, message } = body;
+			if (!namingId || !message?.trim()) return json({ error: 'namingId and message required' }, { status: 400 });
+			try {
+				const result = await discussCue(projectId, mapId, namingId, message.trim(), userId);
+				return json(result);
+			} catch (error) {
+				const msg = error instanceof Error ? error.message : String(error);
+				return json({ error: msg }, { status: 500 });
+			}
 		}
 
 		case 'getMemosForNaming': {

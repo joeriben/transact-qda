@@ -365,7 +365,7 @@ export async function setCollapse(
 // Get the full stack of a naming: all inscription and designation layers.
 // This is not "history" — it IS the naming's constitution.
 export async function getNamingStack(namingId: string) {
-	const [inscriptions, designations, memos] = await Promise.all([
+	const [inscriptions, designations, memos, aiMeta] = await Promise.all([
 		query(
 			`SELECT ni.seq, ni.inscription, ni.created_at, n.inscription as by_inscription
 			 FROM naming_inscriptions ni
@@ -392,14 +392,42 @@ export async function getNamingStack(namingId: string) {
 			 WHERE (p.naming_id = $1 OR p.participant_id = $1)
 			   AND m.deleted_at IS NULL
 			   AND m.id != $1
-			 ORDER BY m.created_at DESC`,
+			 ORDER BY m.created_at ASC`,
+			[namingId]
+		),
+		// Fetch AI metadata from any appearance of this naming
+		query(
+			`SELECT a.properties->>'aiReasoning' as ai_reasoning,
+			        (a.properties->>'aiSuggested')::boolean as ai_suggested,
+			        (a.properties->>'aiWithdrawn')::boolean as ai_withdrawn
+			 FROM appearances a
+			 WHERE a.naming_id = $1
+			   AND a.properties ? 'aiSuggested'
+			 LIMIT 1`,
 			[namingId]
 		)
 	]);
+
+	const ai = aiMeta.rows[0];
+	// Separate discussion memos from regular memos
+	const allMemos = memos.rows;
+	const discussion = allMemos.filter((m: any) => m.label?.startsWith('Discussion:'));
+	const regularMemos = allMemos.filter((m: any) => !m.label?.startsWith('Discussion:'));
+
 	return {
 		inscriptions: inscriptions.rows,
 		designations: designations.rows,
-		memos: memos.rows
+		memos: regularMemos,
+		discussion: discussion.map((m: any) => ({
+			id: m.id,
+			role: m.label === 'Discussion: researcher' ? 'researcher' : 'ai',
+			type: m.label?.replace('Discussion: ', '') || 'response',
+			content: m.content,
+			created_at: m.created_at
+		})),
+		aiReasoning: ai?.ai_reasoning || null,
+		aiSuggested: ai?.ai_suggested || false,
+		aiWithdrawn: ai?.ai_withdrawn || false
 	};
 }
 
