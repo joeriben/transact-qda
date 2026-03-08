@@ -86,7 +86,7 @@
 	class="canvas-element"
 	class:selected
 	class:dragging={isDragging}
-	style="left: {currentX}px; top: {currentY}px; --el-color: {color};"
+	style="left: {currentX}px; top: {currentY}px; transform: translate(-50%, -50%); --el-color: {color};"
 	onpointerdown={onPointerDown}
 	onpointermove={onPointerMove}
 	onpointerup={onPointerUp}

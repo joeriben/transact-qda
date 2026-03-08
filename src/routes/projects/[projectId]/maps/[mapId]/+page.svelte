@@ -210,10 +210,7 @@
 	function nodeCenter(namingId: string): { x: number; y: number } {
 		const pos = positions.get(namingId);
 		if (!pos) return { x: 0, y: 0 };
-		const node = findNode(namingId);
-		const w = estimateNodeWidth(node);
-		const h = node?.mode === 'relation' ? 36 : 50;
-		return { x: pos.x + w / 2, y: pos.y + h / 2 };
+		return { x: pos.x, y: pos.y };
 	}
 
 	// ─── API ───
