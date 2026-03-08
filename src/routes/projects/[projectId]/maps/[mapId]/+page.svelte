@@ -513,6 +513,13 @@
 	async function assignElement(phaseId: string, namingId: string) {
 		await mapAction('assignToPhase', { phaseId, namingId });
 		await reload();
+		if (expandedPhase === phaseId) {
+			const res = await fetch(`/api/projects/${data.projectId}/maps/${phaseId}`);
+			if (res.ok) {
+				const fresh = await res.json();
+				phaseContents = [...(fresh.elements || []), ...(fresh.relations || []), ...(fresh.silences || [])];
+			}
+		}
 	}
 
 	async function togglePhase(phaseId: string) {
@@ -552,10 +559,12 @@
 		if (!stackId || !discussInput.trim() || discussLoading) return;
 		discussLoading = true;
 		try {
-			await mapAction('discussCue', { namingId: stackId, message: discussInput.trim() });
+			const result = await mapAction('discussCue', { namingId: stackId, message: discussInput.trim() });
+			if (!result) { showAiNotification('Discussion failed (server error)'); return; }
 			discussInput = '';
 			// Refresh stack to show new discussion entries
-			stackData = await mapAction('getStack', { namingId: stackId });
+			const freshStack = await mapAction('getStack', { namingId: stackId });
+			if (freshStack) stackData = freshStack;
 			// Reload map in case cue was rewritten or withdrawn
 			await reload();
 		} catch (e) {

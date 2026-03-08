@@ -395,7 +395,7 @@ export async function discussCue(
 
 	// Get previous discussion memos linked to this naming (AI discussions have label prefix "Discussion:")
 	const prevMemos = await query(
-		`SELECT DISTINCT m.id, m.inscription as label, mc.content, m.created_by
+		`SELECT DISTINCT m.id, m.inscription as label, mc.content, m.created_by, m.created_at
 		 FROM participations p
 		 JOIN namings m ON m.id = CASE WHEN p.naming_id = $1 THEN p.participant_id ELSE p.naming_id END
 		 JOIN memo_content mc ON mc.naming_id = m.id
