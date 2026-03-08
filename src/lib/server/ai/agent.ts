@@ -134,7 +134,7 @@ async function executeTool(
 				const phase = await createPhaseAsAi(projectId, aiNamingId, mapId, inscription, { aiReasoning: reasoning });
 				// Assign elements to phase
 				for (const elementId of element_ids) {
-					await assignToPhase(phase.id, elementId);
+					await assignToPhase(phase.id, elementId, undefined, undefined, aiNamingId);
 				}
 				emit(mapId, 'ai:phase', { phase, elementIds: element_ids, reasoning });
 				return { success: true, result: { id: phase.id, inscription, elementCount: element_ids.length } };

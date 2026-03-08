@@ -253,14 +253,15 @@ export async function createPhase(
 
 // Assign an element to a phase: the element gets an appearance
 // from the phase-as-perspective.
-// Assign an element to a phase, capturing its current seq as collapseAt.
-// The phase freezes the naming's state at the moment of assignment.
-// Later renamings don't change the phase view unless explicitly updated.
+// Captures the naming's current seq as collapseAt — the phase freezes
+// the naming's state at the moment of assignment.
+// If byNamingId is provided, logs the act to phase_memberships (append-only).
 export async function assignToPhase(
 	phaseId: string,
 	namingId: string,
 	mode?: string,
-	properties?: Record<string, unknown>
+	properties?: Record<string, unknown>,
+	byNamingId?: string
 ) {
 	// Get the current highest seq for this naming's inscriptions or designations
 	const currentSeq = await queryOne<{ seq: string }>(
@@ -277,22 +278,61 @@ export async function assignToPhase(
 		(props as any).collapseAt = collapseAt;
 	}
 
-	return queryOne(
+	const resolvedMode = mode || 'entity';
+
+	const result = await queryOne(
 		`INSERT INTO appearances (naming_id, perspective_id, mode, properties)
 		 VALUES ($1, $2, $3, $4)
 		 ON CONFLICT (naming_id, perspective_id)
 		 DO UPDATE SET mode = $3, properties = appearances.properties || $4::jsonb, updated_at = now()
 		 RETURNING *`,
-		[namingId, phaseId, mode || 'entity', JSON.stringify(props)]
+		[namingId, phaseId, resolvedMode, JSON.stringify(props)]
 	);
+
+	// Log the membership act (append-only history)
+	if (byNamingId) {
+		await query(
+			`INSERT INTO phase_memberships (phase_id, naming_id, action, mode, by, properties)
+			 VALUES ($1, $2, 'assign', $3, $4, $5)`,
+			[phaseId, namingId, resolvedMode, byNamingId, JSON.stringify(props)]
+		);
+	}
+
+	return result;
 }
 
-// Remove an element from a phase
-export async function removeFromPhase(phaseId: string, namingId: string) {
+// Remove an element from a phase.
+// If byNamingId is provided, logs the removal act to phase_memberships (append-only).
+export async function removeFromPhase(phaseId: string, namingId: string, byNamingId?: string) {
 	await query(
 		`DELETE FROM appearances WHERE naming_id = $1 AND perspective_id = $2`,
 		[namingId, phaseId]
 	);
+
+	// Log the membership act (append-only history)
+	if (byNamingId) {
+		await query(
+			`INSERT INTO phase_memberships (phase_id, naming_id, action, mode, by)
+			 VALUES ($1, $2, 'remove', 'entity', $3)`,
+			[phaseId, namingId, byNamingId]
+		);
+	}
+}
+
+// Get the full membership history for a phase (append-only chain).
+// Returns all assign/remove acts in chronological order.
+export async function getPhaseMembershipHistory(phaseId: string) {
+	return (
+		await query(
+			`SELECT pm.*, n.inscription as naming_inscription, b.inscription as by_inscription
+			 FROM phase_memberships pm
+			 JOIN namings n ON n.id = pm.naming_id
+			 JOIN namings b ON b.id = pm.by
+			 WHERE pm.phase_id = $1
+			 ORDER BY pm.seq ASC`,
+			[phaseId]
+		)
+	).rows;
 }
 
 // Set the collapse point for a naming in a perspective.

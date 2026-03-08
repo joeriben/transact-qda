@@ -27,7 +27,7 @@
 	const viewport = createViewport();
 	const selection = createSelection();
 
-	let viewMode = $state<'canvas' | 'list'>('canvas');
+	let viewMode = $state<'canvas' | 'list'>('list');
 
 	// Positions: naming_id → {x, y}
 	let positions = $state<Map<string, { x: number; y: number }>>(new Map());
@@ -111,6 +111,8 @@
 	let actType = $state<'rename' | 'designate'>('rename');
 	let actNewValue = $state('');
 	let actMemo = $state('');
+	let actLinkedIds = $state<string[]>([]);
+	let showActLinks = $state(false);
 
 	// Inline editing
 	let editingId = $state<string | null>(null);
@@ -376,9 +378,9 @@
 	async function submitAct() {
 		if (!actTarget) return;
 		if (actType === 'rename') {
-			await mapAction('rename', { namingId: actTarget, inscription: actNewValue, memoText: actMemo.trim() || undefined });
+			await mapAction('rename', { namingId: actTarget, inscription: actNewValue, memoText: actMemo.trim() || undefined, linkedNamingIds: actLinkedIds.length > 0 ? actLinkedIds : undefined });
 		} else {
-			await mapAction('designate', { namingId: actTarget, designation: actNewValue, memoText: actMemo.trim() || undefined });
+			await mapAction('designate', { namingId: actTarget, designation: actNewValue, memoText: actMemo.trim() || undefined, linkedNamingIds: actLinkedIds.length > 0 ? actLinkedIds : undefined });
 		}
 		cancelAct();
 		await reload();
@@ -398,6 +400,16 @@
 	function cancelAct() {
 		actTarget = null;
 		actMemo = '';
+		actLinkedIds = [];
+		showActLinks = false;
+	}
+
+	function toggleActLink(namingId: string) {
+		if (actLinkedIds.includes(namingId)) {
+			actLinkedIds = actLinkedIds.filter(id => id !== namingId);
+		} else {
+			actLinkedIds = [...actLinkedIds, namingId];
+		}
 	}
 
 	// ─── Stack ───
@@ -408,7 +420,49 @@
 		stackData = await mapAction('getStack', { namingId });
 	}
 
+	// ─── Designation (list view) ───
+
+	function startDesignation(namingId: string, designation: string) {
+		actTarget = namingId;
+		actType = 'designate';
+		actNewValue = designation;
+		actMemo = '';
+		actLinkedIds = [];
+		showActLinks = false;
+	}
+
+	// ─── Relation (list view) ───
+
+	function startRelation(fromId: string, toId: string) {
+		relatingFrom = fromId;
+		completeRelating(toId);
+	}
+
+	// ─── Perspectival collapse ───
+
+	async function pinToLayer(namingId: string, seq: number) {
+		await mapAction('setCollapse', { namingId, collapseAt: seq });
+		await reload();
+	}
+
+	async function unpinLayer(namingId: string) {
+		await mapAction('setCollapse', { namingId, collapseAt: null });
+		await reload();
+	}
+
 	// ─── Phases ───
+
+	async function removeElementFromPhase(phaseId: string, namingId: string) {
+		await mapAction('removeFromPhase', { phaseId, namingId });
+		await reload();
+		if (expandedPhase === phaseId) {
+			const res = await fetch(`/api/projects/${data.projectId}/maps/${phaseId}`);
+			if (res.ok) {
+				const fresh = await res.json();
+				phaseContents = [...(fresh.elements || []), ...(fresh.relations || []), ...(fresh.silences || [])];
+			}
+		}
+	}
 
 	async function addPhase() {
 		if (!newPhaseLabel.trim()) return;
@@ -509,9 +563,8 @@
 				<button class="btn-view" class:active={viewMode === 'list'} onclick={() => viewMode = 'list'}>List</button>
 				<button class="btn-view" class:active={viewMode === 'canvas'} onclick={() => viewMode = 'canvas'}>Canvas</button>
 			</div>
-			{#if viewMode === 'canvas'}
-				<button class="btn-sm" onclick={runAutoLayout} title="Re-compute layout">Layout</button>
-			{/if}
+			<button class="btn-sm" onclick={runAutoLayout} title="Re-compute layout"
+				disabled={viewMode !== 'canvas'} style="{viewMode !== 'canvas' ? 'opacity: 0.3;' : ''}">Layout</button>
 			<button class="btn-ai-toggle" class:ai-active={aiEnabled} onclick={toggleAi}>AI</button>
 			<button class="btn-sm" onclick={requestAnalysis} disabled={!aiEnabled}>Ask AI</button>
 		</div>
@@ -529,10 +582,72 @@
 		<div class="ai-notification">{aiNotification}</div>
 	{/if}
 
+	<!-- Naming act prompt (shared, always visible) -->
+	{#if actTarget}
+		{@const actNode = findNode(actTarget)}
+		{@const allMapNamings = [...elements, ...relations].filter((e: any) => e.naming_id !== actTarget)}
+		<div class="act-prompt-bar">
+			<div class="act-header">
+				{#if actType === 'rename'}
+					Rename: <strong>{actNode?.inscription}</strong> → <strong>{actNewValue}</strong>
+				{:else}
+					Designation: <strong>{actNode?.inscription}</strong> →
+					<span style="color: {designationColor(actNewValue)}">{actNewValue}</span>
+				{/if}
+			</div>
+			<textarea placeholder="What influenced this act? What changed in your understanding?" bind:value={actMemo} rows="2"></textarea>
+			<div class="act-links-toggle">
+				<button class="btn-xs" onclick={() => showActLinks = !showActLinks}>
+					{showActLinks ? 'hide co-actors' : `link co-actors (${actLinkedIds.length})`}
+				</button>
+			</div>
+			{#if showActLinks}
+				<div class="act-links-list">
+					{#each allMapNamings as n}
+						<label class="act-link-item">
+							<input type="checkbox" checked={actLinkedIds.includes(n.naming_id)} onchange={() => toggleActLink(n.naming_id)} />
+							<span class="designation-dot-sm" style="background: {designationColor(n.designation)}"></span>
+							<span>{n.inscription || '(unnamed relation)'}</span>
+						</label>
+					{/each}
+				</div>
+			{/if}
+			<div class="act-actions">
+				<button class="btn-primary btn-sm-primary" onclick={submitAct}>Apply + memo</button>
+				<button class="btn-link" onclick={skipAct}>skip memo</button>
+				<button class="btn-link" onclick={cancelAct}>cancel</button>
+			</div>
+		</div>
+	{/if}
+
+	<!-- Relation form (shared, always visible) -->
+	{#if relatingFrom && relatingTo}
+		<div class="act-prompt-bar">
+			<div class="rel-form-header">
+				{findInscription(relatingFrom)}
+				{#if relDirected}<span class="arrow">→</span>{:else}<span class="arrow">↔</span>{/if}
+				{findInscription(relatingTo)}
+				<button class="btn-link" onclick={cancelRelation}>cancel</button>
+			</div>
+			<label>
+				<span class="field-label">Valence</span>
+				<input type="text" placeholder="e.g. enables, constrains..." bind:value={relValence} />
+			</label>
+			<label>
+				<span class="field-label">Name</span>
+				<input type="text" placeholder="Name for this relation (optional)" bind:value={relInscription} />
+			</label>
+			<label class="toggle-label">
+				<input type="checkbox" bind:checked={relDirected} />
+				<span>directed</span>
+			</label>
+			<button class="btn-primary btn-sm-primary" onclick={submitRelation}>Create relation</button>
+		</div>
+	{/if}
+
 	<div class="map-workspace">
-		{#if viewMode === 'canvas'}
 		<!-- Canvas -->
-		<div class="canvas-container">
+		<div class="canvas-container" style="{viewMode !== 'canvas' ? 'display: none;' : ''}">
 			<InfiniteCanvas {viewport} oncanvasclick={handleCanvasClick}>
 				<!-- Connections: draw edges between elements and their relation nodes -->
 				{#each relations as rel}
@@ -703,104 +818,25 @@
 				</div>
 			{/if}
 
-			<!-- Relation form overlay -->
-			{#if relatingFrom && relatingTo}
-				<div class="overlay-form">
-					<div class="rel-form-header">
-						{findInscription(relatingFrom)}
-						{#if relDirected}<span class="arrow">-></span>{:else}<span class="arrow">&lt;-&gt;</span>{/if}
-						{findInscription(relatingTo)}
-						<button class="btn-link" onclick={cancelRelation}>cancel</button>
-					</div>
-					<label>
-						<span class="field-label">Valence</span>
-						<input type="text" placeholder="e.g. enables, constrains..." bind:value={relValence} />
-					</label>
-					<label>
-						<span class="field-label">Name</span>
-						<input type="text" placeholder="Name for this relation (optional)" bind:value={relInscription} />
-					</label>
-					<label class="toggle-label">
-						<input type="checkbox" bind:checked={relDirected} />
-						<span>directed</span>
-					</label>
-					<button class="btn-primary btn-sm-primary" onclick={submitRelation}>Create relation</button>
-				</div>
-			{/if}
-
-			<!-- Naming act prompt -->
-			{#if actTarget}
-				{@const actNode = findNode(actTarget)}
-				<div class="overlay-form act-prompt">
-					<div class="act-header">
-						{#if actType === 'rename'}
-							Rename: <strong>{actNode?.inscription}</strong> -> <strong>{actNewValue}</strong>
-						{:else}
-							Designate: <strong>{actNode?.inscription}</strong> ->
-							<span style="color: {designationColor(actNewValue)}">{actNewValue}</span>
-						{/if}
-					</div>
-					<textarea placeholder="What influenced this act?" bind:value={actMemo} rows="2"></textarea>
-					<div class="act-actions">
-						<button class="btn-primary btn-sm-primary" onclick={submitAct}>Apply + memo</button>
-						<button class="btn-link" onclick={skipAct}>skip memo</button>
-						<button class="btn-link" onclick={cancelAct}>cancel</button>
-					</div>
-				</div>
-			{/if}
-
-			<!-- Stack panel -->
-			{#if stackId && stackData}
-				{@const stackNode = findNode(stackId)}
-				<div class="overlay-form stack-panel">
-					<div class="stack-header">
-						Stack: <strong>{stackNode?.inscription || '?'}</strong>
-						<button class="btn-xs" onclick={() => { stackId = null; stackData = null; }}>close</button>
-					</div>
-					{#if stackData.inscriptions.length > 1}
-						<div class="stack-section">
-							<span class="stack-label">Inscriptions</span>
-							{#each stackData.inscriptions as hi}
-								<div class="stack-entry">
-									<span class="se-value">{hi.inscription}</span>
-									<span class="se-by">{hi.by_inscription}</span>
-									<span class="se-date">{new Date(hi.created_at).toLocaleString()}</span>
-								</div>
-							{/each}
-						</div>
-					{/if}
-					<div class="stack-section">
-						<span class="stack-label">Designations</span>
-						{#each stackData.designations as hd}
-							<div class="stack-entry">
-								<span class="designation-dot-sm" style="background: {designationColor(hd.designation)}"></span>
-								<span class="se-value">{hd.designation}</span>
-								<span class="se-by">{hd.by_inscription}</span>
-							</div>
-						{/each}
-					</div>
-				</div>
-			{/if}
 		</div>
-		{:else}
-		<!-- List view -->
-		<div class="list-container">
-			{#if elements.length === 0 && relations.length === 0 && silences.length === 0}
+		<!-- List view (original) -->
+		<div class="main-area" style="{viewMode !== 'list' ? 'display: none;' : ''}">
+			{#if elements.length === 0 && relations.length === 0}
 				<p class="empty">Name what is in the situation. Everything is a cue at first.</p>
 			{:else}
-				{#if elements.length > 0}
-					<h3 class="section-header">Elements ({elements.length})</h3>
-					<div class="list-items">
-						{#each elements as el}
-							<div class="list-item" class:ai-suggested={el.properties?.aiSuggested}>
+				<div class="element-list">
+					{#each elements as el}
+						<div class="element-card" class:ai-suggested={el.properties?.aiSuggested === true} title={el.properties?.aiReasoning || ''}>
+							<div class="el-main">
+								{#if el.is_collapsed}<img class="collapsed-indicator" src="/icons/keep.svg" alt="pinned" title="Pinned to specific layer" />{/if}
 								<span class="designation-dot" style="background: {designationColor(el.designation)}"
 									title={designationLabel(el.designation)}></span>
 								{#if el.has_document_anchor}
-									<img class="prov-icon" src="/icons/text_snippet.svg" alt="empirical" title="Empirically grounded" />
+									<img class="provenance-indicator" src="/icons/text_snippet.svg" alt="empirical" title="Empirically grounded" />
 								{:else if el.has_memo_link}
-									<img class="prov-icon" src="/icons/stylus_note.svg" alt="analytical" title="Analytically grounded" />
+									<img class="provenance-indicator" src="/icons/stylus_note.svg" alt="analytical" title="Analytically grounded" />
 								{:else}
-									<img class="prov-icon" src="/icons/question_mark.svg" alt="ungrounded" title="No grounding" />
+									<img class="provenance-indicator" src="/icons/question_mark.svg" alt="ungrounded" title="No grounding yet" />
 								{/if}
 								{#if editingId === el.naming_id}
 									<form class="inline-rename" onsubmit={e => { e.preventDefault(); confirmRename(); }}>
@@ -811,51 +847,101 @@
 								{:else}
 									<!-- svelte-ignore a11y_click_events_have_key_events -->
 									<!-- svelte-ignore a11y_no_static_element_interactions -->
-									<span class="list-inscription editable" ondblclick={() => startRename(el.naming_id, el.inscription)}>
+									<span class="el-inscription editable" ondblclick={() => ctxRename(el.naming_id, el.inscription)}>
 										{el.inscription}
 									</span>
+									{#if el.is_collapsed && el.current_inscription && el.current_inscription !== el.inscription}
+										<span class="collapsed-current">currently: {el.current_inscription}</span>
+									{/if}
 								{/if}
-								{#if el.is_collapsed && el.current_inscription && el.current_inscription !== el.inscription}
-									<span class="collapsed-hint">now: {el.current_inscription}</span>
+							</div>
+							<div class="el-actions">
+								<select
+									value={el.designation || 'cue'}
+									onchange={e => startDesignation(el.naming_id, (e.target as HTMLSelectElement).value)}
+								>
+									<option value="cue">cue</option>
+									<option value="characterization">characterization</option>
+									<option value="specification">specification</option>
+								</select>
+								<button class="btn-xs" title="naming stack" onclick={() => showStack(el.naming_id)}>
+									stack
+								</button>
+								{#if relatingFrom && !relatingTo && relatingFrom !== el.naming_id}
+									<button class="btn-sm btn-relate" onclick={() => startRelation(relatingFrom!, el.naming_id)}>
+										connect
+									</button>
+								{:else if !relatingFrom}
+									<button class="btn-sm" onclick={() => { relatingFrom = el.naming_id; relatingTo = null; }}>
+										relate
+									</button>
 								{/if}
-								{#if el.phase_ids?.length}
-									<span class="phase-dots">
-										{#each el.phase_ids as pid}
-											{@const c = phaseColorMap.get(pid)}
-											{#if c}<span class="phase-dot" style="background: {c}" title={phases.find((p: any) => p.id === pid)?.label}></span>{/if}
+								{#if assigningToPhase}
+									<button class="btn-sm btn-phase" onclick={() => assignElement(assigningToPhase!, el.naming_id)}>
+										+ phase
+									</button>
+								{/if}
+							</div>
+						</div>
+
+						{#if stackId === el.naming_id && stackData}
+							<div class="history-panel">
+								{#if el.is_collapsed}
+									<button class="btn-xs btn-unpin" onclick={() => unpinLayer(el.naming_id)}>
+										unpin (show latest)
+									</button>
+								{/if}
+								{#if stackData.inscriptions.length > 1}
+									<div class="history-section">
+										<span class="history-label">Inscriptions</span>
+										{#each stackData.inscriptions as hi}
+											<div class="history-entry" class:pinned-layer={el.is_collapsed && el.properties?.collapseAt === hi.seq}>
+												<span class="he-value">{hi.inscription}</span>
+												<span class="he-by">{hi.by_inscription}</span>
+												<span class="he-date">{new Date(hi.created_at).toLocaleString()}</span>
+												<button class="btn-xs btn-pin" title="Pin to this layer" onclick={() => pinToLayer(el.naming_id, hi.seq)}>
+													pin
+												</button>
+											</div>
 										{/each}
-									</span>
+									</div>
 								{/if}
-								<div class="list-actions">
-									<select value={el.designation || 'cue'}
-										onchange={e => startDesignation(el.naming_id, (e.target as HTMLSelectElement).value)}>
-										<option value="cue">cue</option>
-										<option value="characterization">characterization</option>
-										<option value="specification">specification</option>
-									</select>
-									<button class="btn-xs" onclick={() => showStack(el.naming_id)}>stack</button>
-									{#if relatingFrom && relatingFrom !== el.naming_id}
-										<button class="btn-xs" onclick={() => startRelation(relatingFrom!, el.naming_id)}>connect</button>
-									{:else if !relatingFrom}
-										<button class="btn-xs" onclick={() => { relatingFrom = el.naming_id; relatingTo = null; }}>relate</button>
-									{/if}
-									{#if assigningToPhase}
-										<button class="btn-xs" onclick={() => assignElement(assigningToPhase!, el.naming_id)}>+ phase</button>
-									{/if}
+								<div class="history-section">
+									<span class="history-label">Designations</span>
+									{#each stackData.designations as hd}
+										<div class="history-entry">
+											<span class="designation-dot-sm" style="background: {designationColor(hd.designation)}"></span>
+											<span class="he-value">{hd.designation}</span>
+											<span class="he-by">{hd.by_inscription}</span>
+											<span class="he-date">{new Date(hd.created_at).toLocaleString()}</span>
+										</div>
+									{/each}
 								</div>
 							</div>
-						{/each}
-					</div>
-				{/if}
+						{/if}
+					{/each}
+				</div>
+			{/if}
 
-				{#if relations.length > 0}
-					<h3 class="section-header">Relations ({relations.length})</h3>
-					<div class="list-items">
-						{#each relations as rel}
-							<div class="list-item relation-item" class:ai-suggested={rel.properties?.aiSuggested}>
-								<span class="designation-dot" style="background: {designationColor(rel.designation)}"
-									title={designationLabel(rel.designation)}></span>
-								<span class="rel-source">{findInscription(rel.directed_from || rel.part_source_id)}</span>
+			<!-- Relations -->
+			{#if relations.length > 0}
+				<h3 class="section-header">Relations</h3>
+				<div class="element-list">
+					{#each relations as rel}
+						{@const srcId = rel.directed_from || rel.part_source_id}
+						{@const tgtId = rel.directed_to || rel.part_target_id}
+						<div class="element-card relation-card" class:ai-suggested={rel.properties?.aiSuggested === true} title={rel.properties?.aiReasoning || ''}>
+							<div class="el-main">
+								{#if rel.is_collapsed}<img class="collapsed-indicator" src="/icons/keep.svg" alt="pinned" title="Pinned to specific layer" />{/if}
+								<span class="designation-dot" style="background: {designationColor(rel.designation)}"></span>
+								{#if rel.has_document_anchor}
+									<img class="provenance-indicator" src="/icons/text_snippet.svg" alt="empirical" title="Empirically grounded" />
+								{:else if rel.has_memo_link}
+									<img class="provenance-indicator" src="/icons/stylus_note.svg" alt="analytical" title="Analytically grounded" />
+								{:else}
+									<img class="provenance-indicator" src="/icons/question_mark.svg" alt="ungrounded" title="No grounding yet" />
+								{/if}
+								<span class="rel-source">{findInscription(srcId)}</span>
 								<span class="rel-arrow">
 									{#if rel.directed_from && rel.directed_to}
 										{#if rel.valence}—{rel.valence}→{:else}→{/if}
@@ -863,37 +949,118 @@
 										{#if rel.valence}—{rel.valence}—{:else}↔{/if}
 									{/if}
 								</span>
-								<span class="rel-target">{findInscription(rel.directed_to || rel.part_target_id)}</span>
-								{#if rel.inscription}
-									<span class="rel-name">"{rel.inscription}"</span>
+								<span class="rel-target">{findInscription(tgtId)}</span>
+								{#if editingId === rel.naming_id}
+									<form class="inline-rename" onsubmit={e => { e.preventDefault(); confirmRename(); }}>
+										<input type="text" bind:value={editingValue} />
+										<button type="submit" class="btn-xs">ok</button>
+										<button type="button" class="btn-xs" onclick={() => editingId = null}>×</button>
+									</form>
+								{:else if rel.inscription}
+									<!-- svelte-ignore a11y_click_events_have_key_events -->
+									<!-- svelte-ignore a11y_no_static_element_interactions -->
+									<span class="rel-inscription editable" ondblclick={() => ctxRename(rel.naming_id, rel.inscription)}>
+										{rel.inscription}
+									</span>
+								{:else}
+									<!-- svelte-ignore a11y_click_events_have_key_events -->
+									<!-- svelte-ignore a11y_no_static_element_interactions -->
+									<span class="rel-inscription editable unnamed" ondblclick={() => ctxRename(rel.naming_id, '')}>
+										(name...)
+									</span>
 								{/if}
-								<div class="list-actions">
-									<select value={rel.designation || 'cue'}
-										onchange={e => startDesignation(rel.naming_id, (e.target as HTMLSelectElement).value)}>
-										<option value="cue">cue</option>
-										<option value="characterization">characterization</option>
-										<option value="specification">specification</option>
-									</select>
-									<button class="btn-xs" onclick={() => showStack(rel.naming_id)}>stack</button>
+								{#if rel.is_collapsed && rel.current_inscription && rel.current_inscription !== rel.inscription}
+									<span class="collapsed-current">currently: {rel.current_inscription}</span>
+								{/if}
+							</div>
+							<div class="el-actions">
+								<select
+									value={rel.designation || 'cue'}
+									onchange={e => startDesignation(rel.naming_id, (e.target as HTMLSelectElement).value)}
+								>
+									<option value="cue">cue</option>
+									<option value="characterization">characterization</option>
+									<option value="specification">specification</option>
+								</select>
+								<button class="btn-xs" title="naming stack" onclick={() => showStack(rel.naming_id)}>
+									stack
+								</button>
+								{#if relatingFrom && !relatingTo && relatingFrom !== rel.naming_id}
+									<button class="btn-sm btn-relate" onclick={() => startRelation(relatingFrom!, rel.naming_id)}>
+										connect
+									</button>
+								{:else if !relatingFrom}
+									<button class="btn-sm" onclick={() => { relatingFrom = rel.naming_id; relatingTo = null; }}>
+										relate
+									</button>
+								{/if}
+								{#if assigningToPhase}
+									<button class="btn-sm btn-phase" onclick={() => assignElement(assigningToPhase!, rel.naming_id)}>
+										+ phase
+									</button>
+								{/if}
+							</div>
+						</div>
+
+						{#if stackId === rel.naming_id && stackData}
+							<div class="history-panel">
+								{#if rel.is_collapsed}
+									<button class="btn-xs btn-unpin" onclick={() => unpinLayer(rel.naming_id)}>
+										unpin (show latest)
+									</button>
+								{/if}
+								{#if stackData.inscriptions.length > 1}
+									<div class="history-section">
+										<span class="history-label">Inscriptions</span>
+										{#each stackData.inscriptions as hi}
+											<div class="history-entry" class:pinned-layer={rel.is_collapsed && rel.properties?.collapseAt === hi.seq}>
+												<span class="he-value">{hi.inscription}</span>
+												<span class="he-by">{hi.by_inscription}</span>
+												<span class="he-date">{new Date(hi.created_at).toLocaleString()}</span>
+												<button class="btn-xs btn-pin" title="Pin to this layer" onclick={() => pinToLayer(rel.naming_id, hi.seq)}>
+													pin
+												</button>
+											</div>
+										{/each}
+									</div>
+								{/if}
+								<div class="history-section">
+									<span class="history-label">Designations</span>
+									{#each stackData.designations as hd}
+										<div class="history-entry">
+											<span class="designation-dot-sm" style="background: {designationColor(hd.designation)}"></span>
+											<span class="he-value">{hd.designation}</span>
+											<span class="he-by">{hd.by_inscription}</span>
+											<span class="he-date">{new Date(hd.created_at).toLocaleString()}</span>
+										</div>
+									{/each}
 								</div>
 							</div>
-						{/each}
-					</div>
-				{/if}
-
-				{#if silences.length > 0}
-					<h3 class="section-header">Silences ({silences.length})</h3>
-					<div class="list-items">
-						{#each silences as s}
-							<div class="list-item silence-item" class:ai-suggested={s.properties?.aiSuggested}>
-								<span class="list-inscription">{s.inscription}</span>
-							</div>
-						{/each}
-					</div>
-				{/if}
+						{/if}
+					{/each}
+				</div>
 			{/if}
+
+			<!-- Silences -->
+			{#if silences.length > 0}
+				<h3 class="section-header">Silences</h3>
+				<div class="element-list">
+					{#each silences as s}
+						<div class="element-card silence-card" class:ai-suggested={s.properties?.aiSuggested === true} title={s.properties?.aiReasoning || ''}>
+							{#if s.has_document_anchor}
+								<img class="provenance-indicator" src="/icons/text_snippet.svg" alt="empirical" title="Empirically grounded" />
+							{:else if s.has_memo_link}
+								<img class="provenance-indicator" src="/icons/stylus_note.svg" alt="analytical" title="Analytically grounded" />
+							{:else}
+								<img class="provenance-indicator" src="/icons/question_mark.svg" alt="ungrounded" title="No grounding yet" />
+							{/if}
+							<span class="el-inscription">{s.inscription}</span>
+						</div>
+					{/each}
+				</div>
+			{/if}
+
 		</div>
-		{/if}
 
 		<!-- Sidebar: Phases -->
 		<div class="sidebar">
@@ -933,6 +1100,8 @@
 									<div class="phase-element">
 										<span class="designation-dot-sm" style="background: {designationColor(pc.designation)}"></span>
 										<span class="phase-el-label">{pc.inscription}</span>
+										<button class="btn-xs btn-remove" title="Remove from phase"
+											onclick={() => removeElementFromPhase(phase.id, pc.naming_id)}>×</button>
 									</div>
 								{/each}
 							</div>
@@ -958,6 +1127,7 @@
 			{/if}
 		</div>
 	</div>
+
 </div>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -1047,33 +1217,92 @@
 	.canvas-container { flex: 1; position: relative; overflow: hidden; }
 
 	/* List view */
-	.list-container {
-		flex: 1; overflow-y: auto; padding: 1rem;
-	}
+	.main-area { flex: 1; padding: 1.25rem; overflow-y: auto; }
+	.empty { color: #6b7280; font-size: 0.9rem; padding: 2rem 0; text-align: center; }
 	.section-header {
-		font-size: 0.8rem; color: #8b8fa3; text-transform: uppercase; letter-spacing: 0.04em;
-		margin: 1rem 0 0.4rem; padding-bottom: 0.25rem; border-bottom: 1px solid #2a2d3a;
+		font-size: 0.75rem; color: #6b7280; text-transform: uppercase;
+		letter-spacing: 0.05em; margin: 1.5rem 0 0.5rem;
 	}
-	.section-header:first-child { margin-top: 0; }
-	.list-items { display: flex; flex-direction: column; gap: 0.3rem; }
-	.list-item {
-		display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
+	.element-list { display: flex; flex-direction: column; gap: 0.35rem; }
+	.element-card {
+		display: flex; align-items: center; justify-content: space-between;
 		background: #161822; border: 1px solid #2a2d3a; border-radius: 6px;
-		padding: 0.4rem 0.6rem; font-size: 0.85rem;
+		padding: 0.5rem 0.75rem;
 	}
-	.list-item.ai-suggested { border-style: dashed; border-color: rgba(139, 156, 247, 0.5); }
-	.list-item.silence-item { border-color: #4b5563; color: #6b7280; font-style: italic; }
-	.list-inscription { color: #e1e4e8; }
-	.list-inscription.editable { cursor: pointer; }
-	.list-inscription.editable:hover { color: #8b9cf7; }
-	.list-actions { display: flex; align-items: center; gap: 0.3rem; margin-left: auto; }
-	.list-actions select {
+	.element-card:hover { border-color: #3a3d4a; }
+	.relation-card { background: #141620; }
+	.silence-card { border-style: dashed; opacity: 0.7; }
+	.el-main { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
+	.el-inscription { font-size: 0.9rem; color: #e1e4e8; }
+	.el-actions { display: flex; align-items: center; gap: 0.4rem; flex-shrink: 0; }
+	.el-actions select {
 		background: #0f1117; border: 1px solid #2a2d3a; border-radius: 4px;
-		color: #c9cdd5; font-size: 0.75rem; padding: 0.15rem 0.3rem;
+		color: #8b8fa3; font-size: 0.7rem; padding: 0.2rem 0.3rem; cursor: pointer;
 	}
-	.rel-source, .rel-target { color: #c9cdd5; font-size: 0.85rem; }
-	.rel-arrow { color: #6b7280; font-size: 0.8rem; }
-	.rel-name { color: #8b9cf7; font-size: 0.8rem; font-style: italic; }
+	.rel-source, .rel-target { font-size: 0.85rem; color: #c9cdd5; }
+	.rel-arrow { font-size: 0.8rem; color: #6b7280; margin: 0 0.25rem; }
+	.rel-inscription { font-size: 0.75rem; color: #8b8fa3; margin-left: 0.5rem; font-style: italic; }
+	.editable { cursor: pointer; }
+	.editable:hover { text-decoration: underline dotted; text-underline-offset: 3px; }
+	.unnamed { color: #4b5563; font-style: italic; }
+	.btn-relate { border-color: #f59e0b; color: #f59e0b; }
+	.btn-phase { border-color: #10b981; color: #10b981; }
+	.provenance-indicator { width: 14px; height: 14px; flex-shrink: 0; opacity: 0.5; cursor: default; }
+	.collapsed-indicator { width: 12px; height: 12px; flex-shrink: 0; margin-right: 0.2rem; opacity: 0.7; }
+	.collapsed-current { font-size: 0.7rem; color: #6b7280; font-style: italic; margin-left: 0.5rem; }
+
+	/* History panel (inline in list view) */
+	.history-panel {
+		background: #0f1117; border: 1px solid #2a2d3a; border-radius: 6px;
+		padding: 0.6rem 0.75rem; margin-top: -0.1rem; margin-bottom: 0.2rem;
+	}
+	.history-section { margin-bottom: 0.4rem; }
+	.history-section:last-child { margin-bottom: 0; }
+	.history-label {
+		font-size: 0.65rem; color: #6b7280; text-transform: uppercase;
+		letter-spacing: 0.04em; display: block; margin-bottom: 0.2rem;
+	}
+	.history-entry {
+		display: flex; align-items: center; gap: 0.4rem;
+		font-size: 0.75rem; color: #8b8fa3; padding: 0.1rem 0;
+	}
+	.he-value { color: #c9cdd5; }
+	.he-by { color: #6b7280; }
+	.he-by::before { content: '— '; }
+	.he-date { color: #4b5563; margin-left: auto; font-size: 0.7rem; }
+	.btn-pin { margin-left: auto; border-color: #f59e0b; color: #f59e0b; }
+	.btn-pin:hover { background: rgba(245, 158, 11, 0.1); }
+	.btn-unpin { border-color: #f59e0b; color: #f59e0b; margin-bottom: 0.4rem; }
+	.btn-unpin:hover { background: rgba(245, 158, 11, 0.1); }
+	.pinned-layer { background: rgba(245, 158, 11, 0.1); border-radius: 3px; padding: 0.1rem 0.3rem; }
+
+	/* Naming act prompt */
+	.act-prompt-bar, .act-prompt {
+		background: #161822; border: 1px solid #f59e0b; border-radius: 8px;
+		padding: 0.75rem 1rem; margin: 0 1rem 0.5rem;
+	}
+	.act-header { font-size: 0.85rem; color: #c9cdd5; margin-bottom: 0.4rem; }
+	.act-prompt-bar textarea, .act-prompt textarea {
+		width: 100%; background: #0f1117; border: 1px solid #2a2d3a; border-radius: 5px;
+		padding: 0.4rem 0.5rem; color: #e1e4e8; font-size: 0.85rem; resize: vertical;
+		font-family: inherit;
+	}
+	.act-prompt-bar textarea:focus, .act-prompt textarea:focus { outline: none; border-color: #8b9cf7; }
+	.act-links-toggle { margin-top: 0.35rem; }
+	.act-links-list {
+		display: flex; flex-direction: column; gap: 0.15rem;
+		max-height: 150px; overflow-y: auto;
+		background: #0f1117; border: 1px solid #2a2d3a; border-radius: 5px;
+		padding: 0.4rem; margin-top: 0.25rem;
+	}
+	.act-link-item {
+		display: flex; align-items: center; gap: 0.35rem;
+		font-size: 0.8rem; color: #c9cdd5; cursor: pointer;
+		padding: 0.15rem 0.2rem; border-radius: 3px;
+	}
+	.act-link-item:hover { background: #1e2030; }
+	.act-link-item input[type="checkbox"] { accent-color: #8b9cf7; }
+	.act-actions { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.4rem; }
 
 	/* Map nodes */
 	.map-node {
@@ -1202,11 +1431,12 @@
 	}
 	.arrow { color: #8b9cf7; }
 	.act-header { font-size: 0.85rem; color: #c9cdd5; margin-bottom: 0.4rem; }
-	.act-prompt { border-color: #f59e0b; }
 	.act-actions { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.4rem; }
 
 	/* Stack panel */
 	.stack-panel { bottom: auto; top: 1rem; right: 240px; left: auto; transform: none; min-width: 280px; }
+	.btn-remove { color: #ef4444; border-color: #ef4444; font-size: 0.7rem; padding: 0 0.3rem; margin-left: auto; }
+	.btn-remove:hover { background: rgba(239, 68, 68, 0.1); }
 	.stack-header {
 		display: flex; align-items: center; justify-content: space-between;
 		font-size: 0.85rem; color: #c9cdd5; margin-bottom: 0.4rem;

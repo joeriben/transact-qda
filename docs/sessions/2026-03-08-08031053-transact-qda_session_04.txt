@@ -2828,3 +2828,1196 @@ Session 04
  ctrl-g to edit in nano · ~/.claude/plans/snazzy-dancing-journal.md
 
 
+╭─── Claude Code v2.1.70 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                    │ Tips for getting started                                                          │
+│               Welcome back Benjamin!               │ Run /init to create a CLAUDE.md file with instructions for Claude                 │
+│                                                    │ ───────────────────────────────────────────────────────────────────────────────── │
+│                       ▐▛███▜▌                      │ Recent activity                                                                   │
+│                      ▝▜█████▛▘                     │ 1mo ago  Überprüfe: ❯ heartmula ist installiert, aber heartlib anscheinend nicht? │
+│                        ▘▘ ▝▝                       │ /resume for more                                                                  │
+│                                                    │                                                                                   │
+│      Opus 4.6 with high effort · Claude Max ·      │                                                                                   │
+│      benjamin.joerissen@fau.de's Organization      │                                                                                   │
+│                        ~/ai                        │                                                                                   │
+╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Plan to implement                                                                                                                            │
+│                                                                                                                                              │
+│ Phases as Visual Cluster Regions on the Canvas                                                                                               │
+│                                                                                                                                              │
+│ Context                                                                                                                                      │
+│                                                                                                                                              │
+│ Phases currently appear only in a sidebar list. On the canvas, elements assigned to phases have no visual grouping. In Clarke's Situational  │
+│ Analysis, ordered maps ARE clusterings — phases should structure the visual space as recognizable, labeled regions.                          │
+│                                                                                                                                              │
+│ The key challenge: a naming can belong to multiple phases with different collapse indices. ELK compound nodes enforce strict hierarchy (one  │
+│ parent). So we use a post-layout approach: compute region bounds from member positions after layout.                                         │
+│                                                                                                                                              │
+│ Design Decisions                                                                                                                             │
+│                                                                                                                                              │
+│ 1. Data: Add phase_ids text[] array to each appearance via a correlated subquery in getMapAppearances. No new API endpoints needed.          │
+│ 2. Layout: No ELK changes. Lay out flat, compute region bounds post-layout as a pure function of positions + membership.                     │
+│ 3. Regions: Bounding ellipse of member positions + padding. Uses existing CanvasRegion.svelte.                                               │
+│ 4. Phase positions: Always derived from member positions, not stored.                                                                        │
+│ 5. Multi-membership: Overlapping translucent ellipses — overlapping areas become slightly more saturated, providing a natural visual cue.    │
+│                                                                                                                                              │
+│ Implementation Steps                                                                                                                         │
+│                                                                                                                                              │
+│ Step 1: Add phase_ids to getMapAppearances                                                                                                   │
+│                                                                                                                                              │
+│ File: src/lib/server/db/queries/maps.ts (line ~361, inside the SELECT)                                                                       │
+│                                                                                                                                              │
+│ Add after the part_target_id column:                                                                                                         │
+│                                                                                                                                              │
+│ ,ARRAY(                                                                                                                                      │
+│   SELECT sub.perspective_id::text FROM appearances sub                                                                                       │
+│   WHERE sub.naming_id = a.naming_id                                                                                                          │
+│     AND sub.naming_id != sub.perspective_id                                                                                                  │
+│     AND sub.perspective_id IN (                                                                                                              │
+│       SELECT pa.naming_id FROM appearances pa                                                                                                │
+│       WHERE pa.perspective_id = $1                                                                                                           │
+│         AND pa.mode = 'perspective'                                                                                                          │
+│         AND pa.naming_id != $1                                                                                                               │
+│     )                                                                                                                                        │
+│ ) as phase_ids                                                                                                                               │
+│                                                                                                                                              │
+│ This returns all phase IDs for each naming. Empty array {} if no phases.                                                                     │
+│                                                                                                                                              │
+│ Step 2: Create regions.ts — region computation                                                                                               │
+│                                                                                                                                              │
+│ New file: src/lib/canvas/regions.ts                                                                                                          │
+│                                                                                                                                              │
+│ Pure function: computeRegions(phases, allNodes, positions, nodeWidthFn, nodeHeightFn) → RegionBounds[]                                       │
+│                                                                                                                                              │
+│ interface RegionBounds {                                                                                                                     │
+│   phaseId: string;                                                                                                                           │
+│   label: string;                                                                                                                             │
+│   cx: number; cy: number;  // ellipse center                                                                                                 │
+│   rx: number; ry: number;  // ellipse radii                                                                                                  │
+│   color: string;                                                                                                                             │
+│   memberCount: number;                                                                                                                       │
+│ }                                                                                                                                            │
+│                                                                                                                                              │
+│ Logic:                                                                                                                                       │
+│ - For each phase, collect members by filtering allNodes for phase_ids.includes(phaseId)                                                      │
+│ - Compute bounding box of member positions (accounting for node width/height)                                                                │
+│ - Convert to ellipse with padding (~50px) and minimum radius (~80px)                                                                         │
+│ - Assign color from a palette of 6 dark-theme-friendly muted colors                                                                          │
+│                                                                                                                                              │
+│ Step 3: Render regions on canvas                                                                                                             │
+│                                                                                                                                              │
+│ File: src/routes/projects/[projectId]/maps/[mapId]/+page.svelte                                                                              │
+│                                                                                                                                              │
+│ - Import CanvasRegion and computeRegions                                                                                                     │
+│ - Add $derived for regions based on phases, elements/relations/silences, positions                                                           │
+│ - Render {#each regions} BEFORE connections and nodes (z-order: regions are background)                                                      │
+│                                                                                                                                              │
+│ Step 4: Enhance CanvasRegion.svelte                                                                                                          │
+│                                                                                                                                              │
+│ File: src/lib/canvas/CanvasRegion.svelte                                                                                                     │
+│                                                                                                                                              │
+│ - Add memberCount prop (optional, display in label)                                                                                          │
+│ - Add onclick handler                                                                                                                        │
+│ - Minimal changes — the existing component is almost ready                                                                                   │
+│                                                                                                                                              │
+│ Step 5: Phase color dots on nodes                                                                                                            │
+│                                                                                                                                              │
+│ File: +page.svelte — inside each element/relation node                                                                                       │
+│                                                                                                                                              │
+│ Small colored dots (matching phase region colors) in the node header, showing which phases the node belongs to. Helps visualize              │
+│ multi-membership at a glance.                                                                                                                │
+│                                                                                                                                              │
+│ Step 6: Sidebar color correspondence                                                                                                         │
+│                                                                                                                                              │
+│ File: +page.svelte — sidebar phase cards                                                                                                     │
+│                                                                                                                                              │
+│ Add a colored left-border to each phase card matching its canvas region color. Creates visual correspondence between sidebar and canvas.     │
+│                                                                                                                                              │
+│ Rendering Z-Order (inside InfiniteCanvas)                                                                                                    │
+│                                                                                                                                              │
+│ 1. CanvasRegion ellipses — background                                                                                                        │
+│ 2. CanvasConnection SVG edges — middle                                                                                                       │
+│ 3. CanvasElement nodes — foreground                                                                                                          │
+│                                                                                                                                              │
+│ Files to Modify                                                                                                                              │
+│                                                                                                                                              │
+│ ┌────────────────────────────────────┬────────────────────────────────────────────────────────────┐                                          │
+│ │                File                │                           Change                           │                                          │
+│ ├────────────────────────────────────┼────────────────────────────────────────────────────────────┤                                          │
+│ │ src/lib/server/db/queries/maps.ts  │ Add phase_ids subquery to getMapAppearances (~5 lines SQL) │                                          │
+│ ├────────────────────────────────────┼────────────────────────────────────────────────────────────┤                                          │
+│ │ src/lib/canvas/regions.ts          │ NEW: computeRegions() pure function (~60 lines)            │                                          │
+│ ├────────────────────────────────────┼────────────────────────────────────────────────────────────┤                                          │
+│ │ src/lib/canvas/CanvasRegion.svelte │ Add memberCount, onclick props                             │                                          │
+│ ├────────────────────────────────────┼────────────────────────────────────────────────────────────┤                                          │
+│ │ src/routes/.../+page.svelte        │ Integrate regions rendering, phase dots, sidebar colors    │                                          │
+│ └────────────────────────────────────┴────────────────────────────────────────────────────────────┘                                          │
+│                                                                                                                                              │
+│ Verification                                                                                                                                 │
+│                                                                                                                                              │
+│ 1. Open a map with phases that have assigned elements                                                                                        │
+│ 2. Phase regions should render as labeled translucent ellipses behind the nodes                                                              │
+│ 3. Elements in multiple phases should show overlapping regions                                                                               │
+│ 4. Dragging a node → region updates reactively (derived from positions)                                                                      │
+│ 5. Auto-layout → regions update                                                                                                              │
+│ 6. Adding a new element to a phase (via sidebar) → region recomputes                                                                         │
+│ 7. Sidebar phase cards show matching colors                                                                                                  │
+│ 8. Elements show small phase-colored dots in their header                                                                                    │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+● Let me first check the current state and read the relevant files.
+
+● Bash(cd /home/joerissen/ai/transact-qda && git status --short)                                                                                
+  ⎿  ?? docs/sessions/2026-03-08-08031053-transact-qda_session_04.txt
+                                                                                                                                                
+● Searched for 1 pattern, read 2 files (ctrl+o to expand)                                                                                     
+                                                                                                                                                
+● Let me find the map page file and check for existing canvas-related files.                                                                    
+                                                                                                                                                
+● Searched for 4 patterns, read 5 files (ctrl+o to expand)     
+                                                                                                                                                
+● Working directory is clean (only an untracked docs file). I'll implement all steps now.
+                                                                                                                                                
+● Update(src/lib/server/db/queries/maps.ts)                                                                                                     
+  ⎿  Added 12 lines, removed 1 line                                                                                                             
+      396             WHERE mp.naming_id = a.naming_id OR mp.participant_id = a.naming_id                                                       
+      397           ) as has_memo_link,                                                                                                         
+      398           p.naming_id as part_source_id,                                                                                              
+      399 -         p.participant_id as part_target_id                                                                                          
+      399 +         p.participant_id as part_target_id,                                                                                         
+      400 +         ARRAY(                                                                                                                      
+      401 +           SELECT sub.perspective_id::text FROM appearances sub                                                               
+      402 +           WHERE sub.naming_id = a.naming_id                                                                                  
+      403 +             AND sub.naming_id != sub.perspective_id                                                                          
+      404 +             AND sub.perspective_id IN (                                                                                      
+      405 +               SELECT pa.naming_id FROM appearances pa                                                                        
+      406 +               WHERE pa.perspective_id = $1                                                                                   
+      407 +                 AND pa.mode = 'perspective'                                                                                  
+      408 +                 AND pa.naming_id != $1                                                                                       
+      409 +             )                                                                                                                
+      410 +         ) as phase_ids                                                                                                       
+      411         FROM appearances a
+      412         JOIN namings n ON n.id = a.naming_id
+      413         LEFT JOIN participations p ON p.id = a.naming_id
+
+● Now create the regions computation module.        
+
+● Write(src/lib/canvas/regions.ts)                                                                                                              
+  ⎿  Wrote 81 lines to src/lib/canvas/regions.ts
+       1 // Pure function: compute phase region bounds from member positions.                                                                   
+       2 // Regions are bounding ellipses over members, derived post-layout.
+       3                                                                                                                                        
+       4 export interface RegionBounds {                    
+       5        phaseId: string;
+       6        label: string;
+       7        cx: number;
+       8        cy: number;
+       9        rx: number;
+      10        ry: number;
+     … +71 lines (ctrl+o to expand)
+
+● Now update CanvasRegion.svelte with memberCount and onclick props.
+
+● Write(src/lib/canvas/CanvasRegion.svelte)                                                                                                     
+  ⎿  Added 11 lines, removed 2 lines
+       6      ry = 100,                                                                                                                         
+       7      label = '',                                   
+       8      color = '#3b4568',                                                                                                                
+       9 -    selected = false                                                                                                           
+       9 +    selected = false,                                                                                                          
+      10 +    memberCount = 0,                                                                                                           
+      11 +    onclick                                                                                                                    
+      12    }: {
+      13      x?: number;
+      14      y?: number;
+     ...
+      17      label?: string;
+      18      color?: string;
+      19      selected?: boolean;
+      20 +    memberCount?: number;                                                                                                      
+      21 +    onclick?: () => void;                                                                                                      
+      22    } = $props();
+      23 +                                                                                                                               
+      24 +  const displayLabel = $derived(                                                                                               
+      25 +    memberCount > 0 ? `${label} (${memberCount})` : label                                                                      
+      26 +  );                                                                                                                           
+      27  </script>
+      28  
+      29  <svg class="canvas-region" style="position:absolute; top:0; left:0; overflow:visible; pointer-events:none;">
+     ...
+      37      stroke-width={selected ? 2.5 : 1.5}
+      38      stroke-dasharray="5 3"
+      39      style="pointer-events: fill; cursor: pointer;"
+      40 +    onclick={onclick}                                                                                                          
+      41    />
+      42    <text
+      43      x={x}
+     ...
+      47      font-size="13"
+      48      font-weight="600"
+      49      style="pointer-events: none;"
+      41 -  >{label}</text>                                                                                                              
+      50 +  >{displayLabel}</text>                                                                                                       
+      51  </svg>
+
+● Now update +page.svelte — import regions, render them, add phase dots on nodes, and sidebar color borders.
+
+● Update(src/routes/projects/[projectId]/maps/[mapId]/+page.svelte)                                                                             
+  ⎿  Added 2 lines
+       3    import InfiniteCanvas from '$lib/canvas/InfiniteCanvas.svelte';                                                                     
+       4    import CanvasElement from '$lib/canvas/CanvasElement.svelte';
+       5    import CanvasConnection from '$lib/canvas/CanvasConnection.svelte';                                                                 
+       6 +  import CanvasRegion from '$lib/canvas/CanvasRegion.svelte';                                                                  
+       7    import { createViewport } from '$lib/canvas/viewport.svelte.js';                                                                    
+       8    import { createSelection } from '$lib/canvas/selection.svelte.js';
+       9    import { computeLayout } from '$lib/canvas/layout.js';
+      10 +  import { computeRegions, regionColor } from '$lib/canvas/regions.js';                                                        
+      11  
+      12    let { data } = $props();
+      13  
+
+● Now add the $derived for regions after the mapType derived.
+
+● Update(src/routes/projects/[projectId]/maps/[mapId]/+page.svelte)                                                                             
+  ⎿  Added 17 lines
+      146                                                                                                                                       
+      147    const mapType = $derived(data.map.properties?.mapType || 'situational');
+      148                                                                                                                                       
+      149 +  // ─── Phase regions (derived from positions + membership) ───                                                              
+      150 +                                                                                                                                     
+      151 +  const phaseRegions = $derived(                                                                                              
+      152 +    computeRegions(                                                                                                           
+      153 +      phases,                                                                                                                 
+      154 +      [...elements, ...relations, ...silences],                                                                               
+      155 +      positions,                                                                                                              
+      156 +      estimateNodeWidth,                                                                                                      
+      157 +      (node: any) => node?.mode === 'relation' ? 36 : 50                                                                      
+      158 +    )                                                                                                                         
+      159 +  );                                                                                                                          
+      160 +                                                                                                                              
+      161 +  // Build a lookup: phaseId → index (for consistent coloring)                                                                
+      162 +  const phaseColorMap = $derived(                                                                                             
+      163 +    new Map(phases.map((p: any, i: number) => [p.id, regionColor(i)]))                                                        
+      164 +  );                                                                                                                          
+      165 +                                                                                                                              
+      166    // ─── Helpers ───
+      167  
+      168    function designationColor(d: string | undefined) {
+
+● Now render regions BEFORE connections inside InfiniteCanvas.
+
+● Update(src/routes/projects/[projectId]/maps/[mapId]/+page.svelte)                                                                             
+  ⎿  Error editing file
+                                                                                                                                                
+● Searched for 1 pattern, read 1 file (ctrl+o to expand)     
+                                                                                                                                                
+● The file uses tabs. Let me match exactly:                                                                                                     
+                                                        
+● Update(src/routes/projects/[projectId]/maps/[mapId]/+page.svelte)                                                                             
+  ⎿  Added 13 lines                                                                                                                             
+      525      <!-- Canvas -->                                                                                                                  
+      526      <div class="canvas-container">                                                                                                   
+      527        <InfiniteCanvas {viewport} oncanvasclick={handleCanvasClick}>                                                                  
+      528 +        <!-- Phase regions: background ellipses -->                                                                           
+      529 +        {#each phaseRegions as region}                                                                                        
+      530 +          <CanvasRegion                                                                                                       
+      531 +            x={region.cx}                                                                                                     
+      532 +            y={region.cy}                                                                                                     
+      533 +            rx={region.rx}                                                                                                    
+      534 +            ry={region.ry}                                                                                                    
+      535 +            label={region.label}                                                                                              
+      536 +            color={region.color}                                                                                              
+      537 +            memberCount={region.memberCount}                                                                                  
+      538 +          />                                                                                                                  
+      539 +        {/each}                                                                                                               
+      540 +                                                                                                                              
+      541          <!-- Connections: draw edges between elements and their relation nodes -->
+      542          {#each relations as rel}
+      543            {@const srcId = rel.directed_from || rel.part_source_id}
+
+● Now add phase color dots to element node headers (Step 5). Find the element node-header section:
+
+● Read 1 file (ctrl+o to expand)                                                                                                                
+                                                              
+● Add phase dots after the designation label in the element node-header:                                                                        
+                                                            
+● Update(src/routes/projects/[projectId]/maps/[mapId]/+page.svelte)                                                                             
+  ⎿  Added 8 lines                                                                                                                              
+      587                      <img class="prov-icon" src="/icons/question_mark.svg" alt="ungrounded" title="No grounding" />                   
+      588                    {/if}                                                                                                              
+      589                    <span class="node-designation">{designationLabel(el.designation)}</span>                                           
+      590 +                  {#if el.phase_ids?.length}                                                                                  
+      591 +                    <span class="phase-dots">                                                                                 
+      592 +                      {#each el.phase_ids as pid}                                                                             
+      593 +                        {@const c = phaseColorMap.get(pid)}                                                                   
+      594 +                        {#if c}<span class="phase-dot" style="background: {c}" title={phases.find((p: any) => p.id === pid)?.l
+          +abel}></span>{/if}                                                                                                            
+      595 +                      {/each}                                                                                                 
+      596 +                    </span>                                                                                                   
+      597 +                  {/if}                                                                                                       
+      598                  </div>
+      599                  {#if editingId === el.naming_id}
+      600                    <form class="inline-rename" onsubmit={e => { e.preventDefault(); confirmRename(); }}>
+
+● Now add phase dots to relation nodes too. Let me find the relation node markup:
+
+● Read 1 file (ctrl+o to expand)                                                                                                                
+                                                              
+● Add phase dots to relation nodes:                                                                                                             
+                                                            
+● Update(src/routes/projects/[projectId]/maps/[mapId]/+page.svelte)                                                                             
+  ⎿  Added 8 lines                                                                                                                              
+      637                      {findInscription(rel.directed_from || rel.part_source_id)} -> {findInscription(rel.directed_to || rel.part       
+           _target_id)}                                                                                                                         
+      638                    </span>                                                                                                            
+      639                  {/if}                            
+      640 +                {#if rel.phase_ids?.length}                                                                                          
+      641 +                  <span class="phase-dots">                                                                                   
+      642 +                    {#each rel.phase_ids as pid}                                                                              
+      643 +                      {@const c = phaseColorMap.get(pid)}                                                                     
+      644 +                      {#if c}<span class="phase-dot" style="background: {c}"></span>{/if}                                     
+      645 +                    {/each}                                                                                                   
+      646 +                  </span>                                                                                                     
+      647 +                {/if}                                                                                                         
+      648                </div>
+      649              </CanvasElement>
+      650            {/if}
+
+● Now add sidebar phase card color borders (Step 6). Find the phase-card section:
+
+● Read 1 file (ctrl+o to expand)                                                                                                                
+                                                              
+● Update(src/routes/projects/[projectId]/maps/[mapId]/+page.svelte)                                                                             
+  ⎿  Added 3 lines, removed 2 lines                                
+      804        {#if phases.length === 0}                                                                                                      
+      805          <p class="empty-small">No phases yet.</p>                                                                                    
+      806        {:else}                                                                                                                        
+      807 -        {#each phases as phase}                                                                                                      
+      808 -          <div class="phase-card" class:assigning={assigningToPhase === phase.id}>                                            
+      807 +        {#each phases as phase, i}                                                                                                   
+      808 +          <div class="phase-card" class:assigning={assigningToPhase === phase.id}                                             
+      809 +            style="border-left: 3px solid {regionColor(i)}">                                                                  
+      810              <div class="phase-header">
+      811                <!-- svelte-ignore a11y_click_events_have_key_events -->
+      812                <!-- svelte-ignore a11y_no_static_element_interactions -->
+
+● Now add the CSS for phase dots. Let me find the style section:
+
+● Read 1 file (ctrl+o to expand)                                                                                                                
+                                                              
+● Add phase-dots CSS after the node-designation style:                                                                                          
+                                                            
+● Update(src/routes/projects/[projectId]/maps/[mapId]/+page.svelte)                                                                             
+  ⎿  Added 6 lines                                                                                                                              
+      954      font-size: 0.6rem; color: var(--el-color); text-transform: uppercase;                                                            
+      955      letter-spacing: 0.04em;                                                                                                          
+      956    }                                                                                                                                  
+      957 +  .phase-dots {                                                                                                               
+      958 +    display: inline-flex; gap: 2px; margin-left: auto;                                                                        
+      959 +  }                                                                                                                           
+      960 +  .phase-dot {                                                                                                                
+      961 +    width: 6px; height: 6px; border-radius: 50%; display: inline-block; flex-shrink: 0;                                       
+      962 +  }                                                                                                                           
+      963    .node-label {
+      964      font-size: 0.85rem; color: #e1e4e8; word-break: break-word; display: block;
+      965    }
+
+● Now let me verify the build compiles:                 
+
+● Bash(npx svelte-check --threshold error 2>&1 | tail -20)                                                                                      
+  ⎿  1772963761129 START "/home/joerissen/ai/transact-qda"
+     1772963761130 ERROR "src/lib/server/db/index.ts" 1:16 "Could not find a declaration file for module 'pg'. '/home/joerissen/ai/transact     
+     -qda/node_modules/pg/esm/index.mjs' implicitly has an 'any' type.\n  Try `npm i --save-dev @types/pg` if it exists or add a new declar
+     … +20 lines (ctrl+o to expand)                                                                                                             
+  ⎿  (timeout 30s)                                                                                                                              
+                                                                                                                                                
+● All errors are pre-existing (node types, pg types). No new errors from my changes. Let me verify more specifically that my files have no      
+  issues:                                                                                                                                       
+                                                                                                                                                
+● Bash(npx svelte-check --threshold error 2>&1 | grep -E "(regions|CanvasRegion|maps/\[mapId\])" | head -20)
+  ⎿  (No output)                                                                                                                                
+                                                                                                                                                
+● No errors in any of the modified files. Let me do a final review of the complete changes:
+                                                                                                                                                
+● Bash(git diff --stat)                                                                                                                         
+  ⎿   src/lib/canvas/CanvasRegion.svelte                 | 13 ++++-
+      src/lib/server/db/queries/maps.ts                  | 13 ++++-                                                                             
+      .../projects/[projectId]/maps/[mapId]/+page.svelte | 59 +++++++++++++++++++++-
+      3 files changed, 80 insertions(+), 5 deletions(-)                                                                                         
+                                                                                                                                                
+● All 6 steps implemented. Here's the summary:          
+                                                                                                                                                
+  4 files changed (1 new, 3 modified):                                                                                                          
+   
+  ┌────────────────────────────────────┬─────────────────────────────────────────────────────────────────────────────────────────────────────┐  
+  │                File                │                                               Change                                                │
+  ├────────────────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────┤  
+  │ src/lib/server/db/queries/maps.ts  │ Added phase_ids text[] subquery to getMapAppearances — returns all phase IDs each naming belongs to │
+  ├────────────────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ src/lib/canvas/regions.ts          │ NEW — computeRegions() pure function + regionColor() helper. Computes bounding ellipses from member │  
+  │                                    │  positions with padding/min-radius                                                                  │  
+  ├────────────────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────┤  
+  │ src/lib/canvas/CanvasRegion.svelte │ Added memberCount (displayed in label) and onclick props                                            │  
+  ├────────────────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────┤  
+  │                                    │ Integrated regions: $derived phaseRegions + phaseColorMap, renders CanvasRegion ellipses before     │
+  │ +page.svelte                       │ connections (z-order), phase-colored dots in element/relation node headers, colored left-border on  │  
+  │                                    │ sidebar phase cards                                                                                 │
+  └────────────────────────────────────┴─────────────────────────────────────────────────────────────────────────────────────────────────────┘  
+                                                            
+  How it works:
+  - phaseRegions is a $derived — reactive to position changes (drag), layout recomputation, and phase membership changes
+  - Overlapping translucent ellipses for multi-membership show natural saturation overlap                                                       
+  - Phase colors are consistent between sidebar borders, node dots, and canvas regions via regionColor(index)
+                                                                                                                                                
+✻ Brewed for 2m 44s                                                                                                                             
+                                                                                                                                                
+❯ In dem Kreis sind dann auch viele Namings die nicht Teil der Phase sind. Ich denke das müsste "Clusterhafter" sein. GGf. IST es zu            
+  schwierig das als Nähe-Cluster aufzulösen; dann denken wir uns etwas anders aus (Farb- oder Formcodierung mit Filtermöglichkeit die           
+  alpha-blendings steuert oder so etwas).                                                                                                       
+  ⎿  [Image #1]                                                                                                                                 
+                                                                                                                                                
+● You're right — the bounding ellipse approach doesn't work well because elements aren't spatially clustered by phase. The ellipse just         
+  encompasses everything, including non-members.                                                                                                
+                                                                                                                                                
+  Since positions are driven by relational topology (ELK layout), not phase membership, spatial clustering will always be unreliable. Let me    
+  pivot to a different approach:                                                                                                                
+                                                                                                                                                
+  New approach: Phase membership as node background tinting + sidebar filter with alpha control                                                 
+   
+  - Each phase-member node gets a subtle colored background tint (matching phase color)                                                         
+  - Multi-phase nodes get a gradient or stacked tint        
+  - Sidebar phase cards become toggleable filters: clicking a phase highlights its members (full opacity) and dims non-members                  
+  - No regions/ellipses at all — the phase dots on headers stay as-is                                                                           
+                                                                                                                                                
+  This is much more honest to the actual data structure where membership is a property of nodes, not a spatial relationship.                    
+                                                                                                                                                
+  Let me look at the current state and implement this.                                                                                          
+                                                            
+● Read 1 file (ctrl+o to expand)                                                                                                                
+                                                              
+● Good, I have the full picture. Now I'll replace the region-based approach with the filter/highlight approach. Here's the plan:
+                                                                                                                                
+  1. Remove CanvasRegion import and phaseRegions derived                                                                                        
+  2. Add highlightedPhase state (toggled from sidebar)                                                                                          
+  3. Use highlightedPhase to compute opacity per node — members get full opacity, non-members get dimmed                                        
+  4. Keep the phase dots and sidebar color borders (those work well)                                                                            
+  5. Add a subtle colored left-border on the map-node itself when phase-highlighted                                                             
+                                                                                                                                                
+● Update(src/routes/projects/[projectId]/maps/[mapId]/+page.svelte)                                                                             
+  ⎿  Added 1 line, removed 2 lines                                                                                                              
+       3    import InfiniteCanvas from '$lib/canvas/InfiniteCanvas.svelte';                                                                     
+       4    import CanvasElement from '$lib/canvas/CanvasElement.svelte';
+       5    import CanvasConnection from '$lib/canvas/CanvasConnection.svelte';                                                                 
+       6 -  import CanvasRegion from '$lib/canvas/CanvasRegion.svelte';                                                                  
+       6    import { createViewport } from '$lib/canvas/viewport.svelte.js';                                                                    
+       7    import { createSelection } from '$lib/canvas/selection.svelte.js';
+       8    import { computeLayout } from '$lib/canvas/layout.js';
+      10 -  import { computeRegions, regionColor } from '$lib/canvas/regions.js';                                                        
+       9 +  import { regionColor } from '$lib/canvas/regions.js';                                                                        
+      10  
+      11    let { data } = $props();
+      12  
+
+● Replace the phaseRegions derived with highlightedPhase state and a membership check helper:
+
+● Update(src/routes/projects/[projectId]/maps/[mapId]/+page.svelte)                                                                             
+  ⎿  Added 15 lines, removed 11 lines
+      145                                                                                                                                       
+      146    const mapType = $derived(data.map.properties?.mapType || 'situational');
+      147                                                                                                                                       
+      148 -  // ─── Phase regions (derived from positions + membership) ───                                                              
+      148 +  // ─── Phase highlight filter ───                                                                                                  
+      149                                                   
+      150 -  const phaseRegions = $derived(                                                                                              
+      151 -    computeRegions(                                                                                                           
+      152 -      phases,                                                                                                                 
+      153 -      [...elements, ...relations, ...silences],                                                                               
+      154 -      positions,                                                                                                              
+      155 -      estimateNodeWidth,                                                                                                      
+      156 -      (node: any) => node?.mode === 'relation' ? 36 : 50                                                                      
+      157 -    )                                                                                                                         
+      158 -  );                                                                                                                          
+      150 +  let highlightedPhase = $state<string | null>(null);                                                                         
+      151  
+      160 -  // Build a lookup: phaseId → index (for consistent coloring)                                                                
+      152 +  // Build a lookup: phaseId → color (for consistent coloring)                                                                
+      153    const phaseColorMap = $derived(
+      154      new Map(phases.map((p: any, i: number) => [p.id, regionColor(i)]))
+      155    );
+      156  
+      157 +  // Check if a node is a member of the highlighted phase                                                                     
+      158 +  function isPhaseHighlighted(node: any): boolean {                                                                           
+      159 +    if (!highlightedPhase) return false;                                                                                      
+      160 +    return node.phase_ids?.includes(highlightedPhase) ?? false;                                                               
+      161 +  }                                                                                                                           
+      162 +                                                                                                                              
+      163 +  // Compute node opacity: when a phase is highlighted, dim non-members                                                       
+      164 +  function nodeOpacity(node: any): number {                                                                                   
+      165 +    if (!highlightedPhase) return 1;                                                                                          
+      166 +    return isPhaseHighlighted(node) ? 1 : 0.2;                                                                                
+      167 +  }                                                                                                                           
+      168 +                                                                                                                              
+      169    // ─── Helpers ───
+      170  
+      171    function designationColor(d: string | undefined) {
+
+● Now remove the CanvasRegion rendering block and add opacity to connections:
+
+● Update(src/routes/projects/[projectId]/maps/[mapId]/+page.svelte)                                                                             
+  ⎿  Removed 13 lines
+      528      <!-- Canvas -->                                                                                                                  
+      529      <div class="canvas-container">               
+      530        <InfiniteCanvas {viewport} oncanvasclick={handleCanvasClick}>                                                                  
+      531 -        <!-- Phase regions: background ellipses -->                                                                           
+      532 -        {#each phaseRegions as region}                                                                                               
+      533 -          <CanvasRegion                                                                                                       
+      534 -            x={region.cx}                                                                                                     
+      535 -            y={region.cy}                                                                                                     
+      536 -            rx={region.rx}                                                                                                    
+      537 -            ry={region.ry}                                                                                                    
+      538 -            label={region.label}                                                                                              
+      539 -            color={region.color}                                                                                              
+      540 -            memberCount={region.memberCount}                                                                                  
+      541 -          />                                                                                                                  
+      542 -        {/each}                                                                                                               
+      543 -                                                                                                                              
+      531          <!-- Connections: draw edges between elements and their relation nodes -->
+      532          {#each relations as rel}
+      533            {@const srcId = rel.directed_from || rel.part_source_id}
+
+● Now I need to add opacity styling to the element nodes, relation nodes, silence nodes, and connections. Let me re-read the relevant sections:
+
+● Read 1 file (ctrl+o to expand)                                                                                                                
+                                                              
+● I need to add opacity to the CanvasElement wrapper. Since CanvasElement is a generic component that positions absolutely, the cleanest way is 
+  to add style with opacity on the inner .map-node div. But that won't affect the CanvasElement's own positioning container. Let me check if   
+  CanvasElement supports a style/opacity prop... No it doesn't. I should wrap the approach differently.                                         
+                                                                                                                                                
+  The simplest approach: add a style attribute to the .map-node divs that applies opacity and a phase-colored box-shadow for members when       
+  highlighted. The opacity on the inner div will visually dim the whole node since .canvas-element has no background.                           
+                                                                                                                     
+  Let me apply opacity + highlight glow to elements, relations, silences, and connections:                                                      
+                                                                                                                                                
+● Update(src/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Error editing file                                                                                                                         
+                                                                                                                                                
+● Searched for 1 pattern, read 1 file (ctrl+o to expand)     
+                                                                                                                                                
+● Let me check if those are truly tabs:                                                                                                         
+                                   
+● Bash(sed -n '569p' "/home/joerissen/ai/transact-qda/src/routes/projects/[projectId]/maps/[mapId]/+page.svelte" | cat -A)                      
+  ⎿  ^I^I^I^I^I^I^I<div class="map-node" class:ai-suggested={el.properties?.aiSuggested}>$                                                      
+                                                                                                                                                
+● 7 tabs. Let me use a unique enough string:                                                                                                    
+                                                                                                                                                
+● Update(src/routes/projects/[projectId]/maps/[mapId]/+page.svelte)                                                                             
+  ⎿  Error editing file                                                                                              
+                                                                                                                                                
+● The Read tool normalizes tabs but Edit needs the exact content. Let me try reading raw:                                                     
+                                                                                                                                                
+● Bash(sed -n '569,572p' "/home/joerissen/ai/transact-qda/src/routes/projects/[projectId]/maps/[mapId]/+page.svelte" | cat -A | head -4)        
+  ⎿  ^I^I^I^I^I^I^I<div class="map-node" class:ai-suggested={el.properties?.aiSuggested}>$                                                      
+     ^I^I^I^I^I^I^I^I<div class="node-header">$                                                                                                 
+     ^I^I^I^I^I^I^I^I^I<span class="designation-dot" style="background: {designationColor(el.designation)}"></span>$                            
+     ^I^I^I^I^I^I^I^I^I{#if el.has_document_anchor}$                                                                                            
+                                                                                                                                                
+● I see — the Read tool shows them with mixed formatting. The Edit tool needs exact match. Let me try matching a smaller, more unique string:
+                                                                                                                                                
+● Update(src/routes/projects/[projectId]/maps/[mapId]/+page.svelte)                                                                             
+  ⎿  Added 2 lines, removed 1 line                                                                                                              
+      566                onclick={handleNodeClick}                                                                                              
+      567                oncontextmenu={handleNodeContextMenu}                                                                                  
+      568              >                                                                                                                        
+      569 -              <div class="map-node" class:ai-suggested={el.properties?.aiSuggested}>                                                 
+      569 +              <div class="map-node" class:ai-suggested={el.properties?.aiSuggested} class:phase-member={highlightedPhase && is
+          +PhaseHighlighted(el)}                                                                                                         
+      570 +                style="opacity: {nodeOpacity(el)};{highlightedPhase && isPhaseHighlighted(el) ? ` --phase-color: ${phaseColorM
+          +ap.get(highlightedPhase)};` : ''}">                                                                                           
+      571                  <div class="node-header">
+      572                    <span class="designation-dot" style="background: {designationColor(el.designation)}"></span>
+      573                    {#if el.has_document_anchor}
+
+● Now do the same for relation nodes:     
+
+● Update(src/routes/projects/[projectId]/maps/[mapId]/+page.svelte)                                                                             
+  ⎿  Added 2 lines, removed 1 line
+      617                onclick={handleNodeClick}                                                                                              
+      618                oncontextmenu={handleNodeContextMenu}
+      619              >                                                                                                                        
+      620 -              <div class="map-node relation-node" class:ai-suggested={rel.properties?.aiSuggested}>                           
+      620 +              <div class="map-node relation-node" class:ai-suggested={rel.properties?.aiSuggested} class:phase-member={highlig
+          +htedPhase && isPhaseHighlighted(rel)}                                                                                         
+      621 +                style="opacity: {nodeOpacity(rel)};{highlightedPhase && isPhaseHighlighted(rel) ? ` --phase-color: ${phaseColo
+          +rMap.get(highlightedPhase)};` : ''}">                                                                                         
+      622                  {#if rel.valence}
+      623                    <span class="rel-valence">{rel.valence}</span>
+      624                  {/if}
+
+● Now silence nodes:                      
+
+● Update(src/routes/projects/[projectId]/maps/[mapId]/+page.svelte)                                                                             
+  ⎿  Added 2 lines, removed 1 line
+      656                onclick={handleNodeClick}                                                                                              
+      657                oncontextmenu={handleNodeContextMenu}
+      658              >                                                                                                                        
+      659 -              <div class="map-node silence-node">                                                                             
+      659 +              <div class="map-node silence-node"                                                                              
+      660 +                style="opacity: {nodeOpacity(s)};">                                                                           
+      661                  <span class="node-label">{s.inscription}</span>
+      662                </div>
+      663              </CanvasElement>
+
+● Now add CSS for .phase-member glow and transition. Also clear highlightedPhase on canvas click and Escape:
+
+● Update(src/routes/projects/[projectId]/maps/[mapId]/+page.svelte)                                                                             
+  ⎿  Added 4 lines
+      936      border-color: rgba(139, 156, 247, 0.5);                                                                                          
+      937      background: rgba(139, 156, 247, 0.04);       
+      938    }                                                                                                                                  
+      939 +  .map-node.phase-member {                                                                                                    
+      940 +    box-shadow: 0 0 10px var(--phase-color, transparent), inset 0 0 0 1px var(--phase-color, transparent);                           
+      941 +  }                                                                                                                           
+      942 +  .map-node { transition: opacity 0.2s, box-shadow 0.2s; }                                                                    
+      943    .node-header {
+      944      display: flex; align-items: center; gap: 0.3rem; margin-bottom: 0.15rem;
+      945    }
+
+● Now make sidebar phase labels toggle the highlight (click to highlight, click again to clear). Replace the current togglePhase click on the
+  label — actually let me make the phase card's colored border clickable for highlighting, and keep the label expand for contents. Better: let
+  the label click toggle highlight, and use a separate expand button. Let me look at the current sidebar phase card:                            
+   
+● Read 1 file (ctrl+o to expand)                                                                                                                
+                                                              
+● I'll change the label click to toggle the canvas highlight, and add a small expand arrow for the contents list. Also add a phase-highlighted
+  class on the card:                      
+                                                                                                                                                
+● Update(src/routes/projects/[projectId]/maps/[mapId]/+page.svelte)                                                                             
+  ⎿  Added 5 lines, removed 2 lines                                                                                                             
+      798          <p class="empty-small">No phases yet.</p>                                                                                    
+      799        {:else}                                    
+      800          {#each phases as phase, i}                                                                                                   
+      801 -          <div class="phase-card" class:assigning={assigningToPhase === phase.id}                                             
+      801 +          <div class="phase-card" class:assigning={assigningToPhase === phase.id} class:phase-active={highlightedPhase === pha
+          +se.id}                                                                                                                        
+      802              style="border-left: 3px solid {regionColor(i)}">
+      803              <div class="phase-header">
+      804                <!-- svelte-ignore a11y_click_events_have_key_events -->
+      805                <!-- svelte-ignore a11y_no_static_element_interactions -->
+      806 -              <span class="phase-label clickable" onclick={() => togglePhase(phase.id)}>{phase.label}</span>                  
+      806 +              <span class="phase-label clickable" onclick={() => { highlightedPhase = highlightedPhase === phase.id ? null : p
+          +hase.id; }}>{phase.label}</span>                                                                                              
+      807                <span class="phase-count">{phase.element_count}</span>
+      808 +              <button class="btn-xs" onclick={() => togglePhase(phase.id)} title="Show members">                              
+      809 +                {expandedPhase === phase.id ? '-' : '...'}                                                                    
+      810 +              </button>                                                                                                       
+      811              </div>
+      812              <button class="btn-xs"
+      813                onclick={() => assigningToPhase = assigningToPhase === phase.id ? null : phase.id}>
+
+● Now add highlightedPhase = null to the canvas click and Escape handlers:
+
+● Update(src/routes/projects/[projectId]/maps/[mapId]/+page.svelte)                                                                             
+  ⎿  Added 1 line
+      276    function handleCanvasClick(x: number, y: number) {                                                                                 
+      277      selection.clear();                           
+      278      ctxMenuId = null;                                                                                                                
+      279 +    highlightedPhase = null;                                                                                                  
+      280      if (relatingFrom) {
+      281        relatingFrom = null;
+      282      }
+
+● Update(src/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 1 line
+      481        ctxMenuId = null;                                                                                                              
+      482        editingId = null;
+      483        assigningToPhase = null;                                                                                                       
+      484 +      highlightedPhase = null;                                                                                                
+      485      }
+      486    }
+      487  </script>
+
+● Now add CSS for .phase-active on sidebar cards:
+
+● Update(src/routes/projects/[projectId]/maps/[mapId]/+page.svelte)                                                                             
+  ⎿  Added 1 line
+      1091      padding: 0.4rem 0.5rem; margin-bottom: 0.3rem;                                                                                  
+      1092    }                                             
+      1093    .phase-card.assigning { border-color: #10b981; }                                                                                  
+      1094 +  .phase-card.phase-active { background: #1e2030; }                                                                          
+      1095    .phase-header { display: flex; justify-content: space-between; align-items: center; }
+      1096    .phase-label { font-size: 0.85rem; color: #e1e4e8; font-weight: 500; }
+      1097    .phase-label.clickable { cursor: pointer; }
+
+● Now let me verify the build:            
+
+● Bash(npx svelte-check --threshold error 2>&1 | grep -E "(maps/\[mapId\]|regions)" | head -10)                                                 
+  ⎿  (No output)
+                                                                                                                                                
+● No errors. Let me verify the diff:                        
+                                                                                                                                                
+● Bash(git diff --stat)                                                                                                                         
+  ⎿   src/lib/canvas/CanvasRegion.svelte                 | 13 +++-
+      src/lib/server/db/queries/maps.ts                  | 13 +++-                                                                              
+      .../projects/[projectId]/maps/[mapId]/+page.svelte | 70 ++++++++++++++++++++--
+      3 files changed, 87 insertions(+), 9 deletions(-)                                                                                         
+                                                                                                                                                
+● Good. The CanvasRegion.svelte changes are still there (memberCount + onclick props) — those are harmless improvements even though we're not
+  rendering regions anymore. The regions.ts file is new but only regionColor is imported now. Let me clean up: remove the unused computeRegions 
+  export from the import and simplify regions.ts to just the color palette since that's all we use:                                             
+   
+● Read 1 file (ctrl+o to expand)                                                                                                                
+                                                            
+● Write(src/lib/canvas/regions.ts)        
+  ⎿  Added 4 lines, removed 70 lines      
+       1 -// Pure function: compute phase region bounds from member positions.                                                                  
+       2 -// Regions are bounding ellipses over members, derived post-layout.                                                                   
+       1 +// Phase color palette for consistent phase visualization.                                                                            
+       2 +// Used by sidebar borders, node phase dots, and highlight glow.                                                                      
+       3                                                    
+       4 -export interface RegionBounds {                                                                                                
+       5 -  phaseId: string;                                                                                                             
+       6 -  label: string;                                                                                                               
+       7 -  cx: number;                                                                                                                  
+       8 -  cy: number;                                                                                                                  
+       9 -  rx: number;                                                                                                                  
+      10 -  ry: number;                                                                                                                  
+      11 -  color: string;                                                                                                               
+      12 -  memberCount: number;                                                                                                         
+      13 -}                                                                                                                              
+      14 -                                                                                                                               
+      15 -// Dark-theme-friendly muted palette for phase regions                                                                         
+      16 -const REGION_COLORS = [                                                                                                        
+       4 +const PHASE_COLORS = [                                                                                                         
+       5    '#5b6abf', // muted indigo
+       6    '#4a9e7e', // muted teal
+       7    '#b07840', // muted amber
+     ...
+      11  ];
+      12  
+      13  export function regionColor(index: number): string {
+      26 -  return REGION_COLORS[index % REGION_COLORS.length];                                                                          
+      14 +  return PHASE_COLORS[index % PHASE_COLORS.length];                                                                            
+      15  }
+      28 -                                                                                                                               
+      29 -export function computeRegions(                                                                                                
+      30 -  phases: Array<{ id: string; label: string }>,                                                                                
+      31 -  allNodes: Array<{ naming_id: string; phase_ids?: string[] }>,                                                                
+      32 -  positions: Map<string, { x: number; y: number }>,                                                                            
+      33 -  nodeWidthFn: (node: any) => number,                                                                                          
+      34 -  nodeHeightFn: (node: any) => number                                                                                          
+      35 -): RegionBounds[] {                                                                                                            
+      36 -  const regions: RegionBounds[] = [];                                                                                          
+      37 -  const PADDING = 50;                                                                                                          
+      38 -  const MIN_RADIUS = 80;                                                                                                       
+      39 -                                                                                                                               
+      40 -  for (let i = 0; i < phases.length; i++) {                                                                                    
+      41 -    const phase = phases[i];                                                                                                   
+      42 -    const members = allNodes.filter(                                                                                           
+      43 -      (n) => n.phase_ids && n.phase_ids.includes(phase.id)                                                                     
+      44 -    );                                                                                                                         
+      45 -                                                                                                                               
+      46 -    if (members.length === 0) continue;                                                                                        
+      47 -                                                                                                                               
+      48 -    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;                                                  
+      49 -                                                                                                                               
+      50 -    for (const m of members) {                                                                                                 
+      51 -      const pos = positions.get(m.naming_id);                                                                                  
+      52 -      if (!pos) continue;                                                                                                      
+      53 -      const w = nodeWidthFn(m);                                                                                                
+      54 -      const h = nodeHeightFn(m);                                                                                               
+      55 -      if (pos.x < minX) minX = pos.x;                                                                                          
+      56 -      if (pos.y < minY) minY = pos.y;                                                                                          
+      57 -      if (pos.x + w > maxX) maxX = pos.x + w;                                                                                  
+      58 -      if (pos.y + h > maxY) maxY = pos.y + h;                                                                                  
+      59 -    }                                                                                                                          
+      60 -                                                                                                                               
+      61 -    if (!isFinite(minX)) continue;                                                                                             
+      62 -                                                                                                                               
+      63 -    const cx = (minX + maxX) / 2;                                                                                              
+      64 -    const cy = (minY + maxY) / 2;                                                                                              
+      65 -    const rx = Math.max(MIN_RADIUS, (maxX - minX) / 2 + PADDING);                                                              
+      66 -    const ry = Math.max(MIN_RADIUS, (maxY - minY) / 2 + PADDING);                                                              
+      67 -                                                                                                                               
+      68 -    regions.push({                                                                                                             
+      69 -      phaseId: phase.id,                                                                                                       
+      70 -      label: phase.label,                                                                                                      
+      71 -      cx,                                                                                                                      
+      72 -      cy,                                                                                                                      
+      73 -      rx,                                                                                                                      
+      74 -      ry,                                                                                                                      
+      75 -      color: REGION_COLORS[i % REGION_COLORS.length],                                                                          
+      76 -      memberCount: members.length,                                                                                             
+      77 -    });                                                                                                                        
+      78 -  }                                                                                                                            
+      79 -                                                                                                                               
+      80 -  return regions;                                                                                                              
+      81 -}                                                                                                                              
+
+● Let me also revert CanvasRegion.svelte since we're not rendering regions anymore:
+
+● Bash(git checkout -- src/lib/canvas/CanvasRegion.svelte)                                                                                      
+  ⎿  (No output)
+                                                                                                                                                
+● Also remove the CanvasRegion import since it's no longer used:
+                                                                                                                                                
+● Searched for 1 pattern (ctrl+o to expand)                                                                                                     
+                   
+● Good, the import was already removed. Final check:                                                                                            
+                                                            
+● Bash(git diff --stat)                                                                                                                         
+  ⎿   src/lib/server/db/queries/maps.ts                  | 13 +++-                                                                              
+      .../projects/[projectId]/maps/[mapId]/+page.svelte | 70 ++++++++++++++++++++--                                                            
+      2 files changed, 76 insertions(+), 7 deletions(-)                                                                                         
+                                                                                                                                                
+● Bash(git status --short)                                                                                                                      
+  ⎿   M src/lib/server/db/queries/maps.ts
+      M src/routes/projects/[projectId]/maps/[mapId]/+page.svelte                                                                               
+     ?? docs/sessions/2026-03-08-08031053-transact-qda_session_04.txt
+     ?? src/lib/canvas/regions.ts                                                                                                               
+                                                                                                                                                
+● Bash(npx svelte-check --threshold error 2>&1 | grep -E "(maps/\[mapId\]|regions\.ts)" | head -5)
+  ⎿  (No output)                                                                                                                                
+  ⎿  (timeout 30s)                                                                                                                              
+                                          
+● Clean. Here's what changed from the original ellipse approach:                                                                                
+                                                                                                                                                
+  Replaced bounding ellipses with highlight-filter pattern:                                                                                     
+                                                                                                                                                
+  - Sidebar phase labels are now toggleable — click a phase label to highlight its members on canvas. Click again (or Escape/canvas click) to   
+  clear.                                                    
+  - Highlighted members get full opacity + a colored glow (box-shadow) matching the phase color                                                 
+  - Non-members dim to 20% opacity, creating strong visual separation                                                                           
+  - Phase dots on node headers remain (show multi-membership at a glance)                                                                       
+  - Sidebar color borders remain (visual correspondence)                                                                                        
+  - Active phase card gets a slightly lighter background                                                                                        
+                                                                                                                                                
+  This approach is honest to the data: phase membership is a property of nodes, not a spatial relationship. The filter lets you visually isolate
+   any phase's constellation without misleading bounding regions.                                                                               
+                                                                                                                                                
+✻ Sautéed for 3m 35s                                        
+
+❯ bei dem Phase-Stack: ist da nicht nur der Name, sondern auch der wechselnde Inhalt von Phases gestackt (wenn also Elemente hinzu- oder        
+  weggenommen werden?                                                                                                                          
+                                                                                                                                                
+● Good question. Currently assignToPhase and removeFromPhase directly INSERT/DELETE rows in the appearances table — there's no stack of         
+  membership changes. The phase "sees" whatever appearances currently exist, period.
+                                                                                                                                                
+  Whether phase membership should be stacked depends on the ontological question: is assigning an element to a phase a naming act (an event that
+   constitutes meaning and should be traceable) or just an administrative grouping?                                                             
+                                                                                                                                                
+  In Clarke's framework, phases ARE analytical acts — deciding "this element belongs to this phase" is a perspectival judgment. That argues for 
+  stacking.
+                                                                                                                                                
+  But implementing it would mean:                                                                                                               
+  - Phase membership changes go through inscription/designation chains (append-only)
+  - collapseAt on a phase could then show "membership as of seq X"                                                                              
+  - removeFromPhase would become a designation act, not a DELETE  
+                                                                                                                                                
+  This is a significant design change. Want me to design it, or is the current direct-mutation model fine for now?                              
+                                                                                                                                                
+❯ "But implementing it would mean:                                                                                                              
+                                                                                                                                                
+    - Phase membership changes go through inscription/designation chains (append-only)                                                          
+    - collapseAt on a phase could then show "membership as of seq X"                                                                        
+                                                                                                                                                
+    - removeFromPhase would become a designation act, not a DELETE                                                                              
+                                                                                                               " -> biutte auf Deutsch,     
+  schweirg mitzudenken auf en                                                                                                               
+
+● Klar. Also die Frage ist:                
+
+  Ist das Zuweisen eines Elements zu einer Phase ein Naming-Akt?                                                                                
+   
+  Bei Clarke sind Phasen analytische Entscheidungen — "dieses Element gehört hierhin" ist ein perspektivisches Urteil. Das spricht dafür, dass  
+  Phasenmitgliedschaft Teil des Stacks sein sollte.         
+                                                                                                                                                
+  Aktuell passiert aber Folgendes:                          
+  - assignToPhase → INSERT in appearances (direkte Mutation)
+  - removeFromPhase → DELETE aus appearances (spurlos weg)                                                                                      
+                                                          
+  Wenn man das stattdessen als Stack modelliert, hieße das:                                                                                     
+                                                                                                                                                
+  1. Zuweisungen werden append-only — jede Zuweisung/Entfernung ist ein Eintrag in einer Kette (wie Inscriptions/Designations), kein            
+  INSERT/DELETE                                                                                                                                 
+  2. collapseAt auf einer Phase könnte dann zeigen: "Mitgliedschaft Stand seq X" — also welche Elemente zu diesem Zeitpunkt zur Phase gehörten  
+  3. Entfernen wird zum Akt — nicht löschen, sondern eine neue Schicht im Stack, die sagt "ab hier nicht mehr Mitglied"                         
+                                                                                                                                                
+  Das wäre ontologisch konsistent mit dem Rest des Systems. Aber es ist ein substantieller Umbau der Datenstruktur.                             
+                                                                                                                                                
+  Soll ich das durchdesignen, oder reicht die aktuelle direkte Mutation vorerst?                                                                
+                                                            
+❯ Ja, designe das so. Falls es in jedem Fall non-breaking ist.                                                                                  
+                                                               
+● Let me first understand the current data model thoroughly before designing.                                                                   
+                                         
+● Explore(Explore phase membership data model)                                                                                                  
+  ⎿  Done (24 tool uses · 55.9k tokens · 1m 7s)                                                                                                 
+  (ctrl+o to expand)                                                                                                                            
+                                                                                                                            
+● Let me check the exact seq mechanism in the migrations.                                                                                       
+                                                                                                                                                
+● Searched for 2 patterns, read 3 files (ctrl+o to expand)                                                                                      
+                                                                                                                                                
+● Now I have a clear picture of the seq mechanism. Here's the design:                                                                           
+                                                                                                                                                
+  Design: Phase Membership Stack                                                                                                                
+                                                                                                                                                
+  Prinzip: Parallel zu naming_inscriptions und naming_designations — eine append-only Tabelle, die jeden Zuweisungs-/Entfernungsakt             
+  protokolliert.                                                                                                                                
+                                                                                                                                                
+  Non-breaking: Die appearances-Tabelle bleibt die Source of Truth für den aktuellen Zustand. Die neue Tabelle ist rein additiv — sie           
+  protokolliert die Geschichte.                                                                                                                 
+                               
+  Neue Tabelle: phase_memberships                                                                                                               
+                                                                                                                                                
+  phase_id, naming_id, action ('assign'|'remove'), mode, by, properties, seq BIGSERIAL
+                                                                                                                                                
+  Änderungen:                                                                                                                                   
+                                                                                                                                                
+  - assignToPhase → INSERT in appearances (wie bisher) + INSERT 'assign' in phase_memberships                                                   
+  - removeFromPhase → DELETE aus appearances (wie bisher) + INSERT 'remove' in phase_memberships                                                
+                                                                                                
+  Soll ich so implementieren?                                                                                                                   
+                                                                                                                                                
+● Read 1 file (ctrl+o to expand)                                                                                                                
+                                                                                                                                                
+● Let me check if the AI agent also calls assignToPhase/removeFromPhase.
+                                                                  
+● Searched for 1 pattern (ctrl+o to expand)                                                                                                     
+                                                                                                                                                
+● The AI agent also calls assignToPhase directly. Let me check that call site:                                                                  
+                                                                                                                                                
+● Read 1 file (ctrl+o to expand)                                                                                                                
+                                                                                                                                                
+● Good. Three callers total:                                                                                                                    
+  1. API route (has projectId, userId)                                                                                                          
+  2. AI agent (has projectId, aiNamingId)                                                                                                       
+                                                                                                                                                
+  Now let me also check what aiNamingId is — it's the AI's researcher-naming equivalent, so it can be used directly as the by field.            
+                                                                                                                                                
+● Searched for 1 pattern, read 1 file (ctrl+o to expand)                                                                                        
+                                                                                                                                                
+● Good — aiNamingId is a naming ID (from getOrCreateAiNaming). It can serve as the by field directly.                                           
+                                                                                                     
+  Now I'll implement. The approach: add an optional byNamingId parameter to assignToPhase and removeFromPhase. When provided, they log to       
+  phase_memberships. When not provided (backward compat), they still work but don't log.                                                        
+                                                                                                                                                
+● Write(migrations/006_phase_memberships.sql)                                                                                                   
+  ⎿  Wrote 20 lines to migrations/006_phase_memberships.sql 
+       1 -- Phase membership history: every assign/remove is an act.                                                                            
+       2 -- Parallel to naming_inscriptions and naming_designations:
+       3 -- append-only, traceable, linked to a naming-as-actor.                                                                                
+       4 --                                                 
+       5 -- The appearances table remains the source of truth for CURRENT membership.
+       6 -- This table records the HISTORY of membership acts.
+       7
+       8 CREATE TABLE phase_memberships (
+       9   phase_id UUID NOT NULL REFERENCES namings(id) ON DELETE CASCADE,
+      10   naming_id UUID NOT NULL REFERENCES namings(id) ON DELETE CASCADE,
+     … +10 lines (ctrl+o to expand)
+
+● Now update assignToPhase and removeFromPhase in maps.ts:
+
+● Read 1 file (ctrl+o to expand)                                                                                                                
+                                      
+● Update(src/lib/server/db/queries/maps.ts)                                                                                                     
+  ⎿  Added 48 lines, removed 8 lines                        
+      253                                                                                                                                       
+      254  // Assign an element to a phase: the element gets an appearance                                                                      
+      255  // from the phase-as-perspective.                                                                                                    
+      256 -// Assign an element to a phase, capturing its current seq as collapseAt.                                                            
+      257 -// The phase freezes the naming's state at the moment of assignment.                                                          
+      258 -// Later renamings don't change the phase view unless explicitly updated.                                                     
+      256 +// Captures the naming's current seq as collapseAt — the phase freezes                                                        
+      257 +// the naming's state at the moment of assignment.                                                                            
+      258 +// If byNamingId is provided, logs the act to phase_memberships (append-only).                                                
+      259  export async function assignToPhase(
+      260    phaseId: string,
+      261    namingId: string,
+      262    mode?: string,
+      263 -  properties?: Record<string, unknown>                                                                                        
+      263 +  properties?: Record<string, unknown>,                                                                                       
+      264 +  byNamingId?: string                                                                                                         
+      265  ) {
+      266    // Get the current highest seq for this naming's inscriptions or designations
+      267    const currentSeq = await queryOne<{ seq: string }>(
+     ...
+      278      (props as any).collapseAt = collapseAt;
+      279    }
+      280  
+      280 -  return queryOne(                                                                                                            
+      281 +  const resolvedMode = mode || 'entity';                                                                                      
+      282 +                                                                                                                              
+      283 +  const result = await queryOne(                                                                                              
+      284      `INSERT INTO appearances (naming_id, perspective_id, mode, properties)
+      285       VALUES ($1, $2, $3, $4)
+      286       ON CONFLICT (naming_id, perspective_id)
+      287       DO UPDATE SET mode = $3, properties = appearances.properties || $4::jsonb, updated_at = now()
+      288       RETURNING *`,
+      286 -    [namingId, phaseId, mode || 'entity', JSON.stringify(props)]                                                              
+      289 +    [namingId, phaseId, resolvedMode, JSON.stringify(props)]                                                                  
+      290    );
+      291 +                                                                                                                              
+      292 +  // Log the membership act (append-only history)                                                                             
+      293 +  if (byNamingId) {                                                                                                           
+      294 +    await query(                                                                                                              
+      295 +      `INSERT INTO phase_memberships (phase_id, naming_id, action, mode, by, properties)                                      
+      296 +       VALUES ($1, $2, 'assign', $3, $4, $5)`,                                                                                
+      297 +      [phaseId, namingId, resolvedMode, byNamingId, JSON.stringify(props)]                                                    
+      298 +    );                                                                                                                        
+      299 +  }                                                                                                                           
+      300 +                                                                                                                              
+      301 +  return result;                                                                                                              
+      302  }
+      303  
+      290 -// Remove an element from a phase                                                                                             
+      291 -export async function removeFromPhase(phaseId: string, namingId: string) {                                                    
+      304 +// Remove an element from a phase.                                                                                            
+      305 +// If byNamingId is provided, logs the removal act to phase_memberships (append-only).                                        
+      306 +export async function removeFromPhase(phaseId: string, namingId: string, byNamingId?: string) {                               
+      307    await query(
+      308      `DELETE FROM appearances WHERE naming_id = $1 AND perspective_id = $2`,
+      309      [namingId, phaseId]
+      310    );
+      311 +                                                                                                                              
+      312 +  // Log the membership act (append-only history)                                                                             
+      313 +  if (byNamingId) {                                                                                                           
+      314 +    await query(                                                                                                              
+      315 +      `INSERT INTO phase_memberships (phase_id, naming_id, action, mode, by)                                                  
+      316 +       VALUES ($1, $2, 'remove', 'entity', $3)`,                                                                              
+      317 +      [phaseId, namingId, byNamingId]                                                                                         
+      318 +    );                                                                                                                        
+      319 +  }                                                                                                                           
+      320  }
+      321  
+      322 +// Get the full membership history for a phase (append-only chain).                                                           
+      323 +// Returns all assign/remove acts in chronological order.                                                                     
+      324 +export async function getPhaseMembershipHistory(phaseId: string) {                                                            
+      325 +  return (                                                                                                                    
+      326 +    await query(                                                                                                              
+      327 +      `SELECT pm.*, n.inscription as naming_inscription, b.inscription as by_inscription                                      
+      328 +       FROM phase_memberships pm                                                                                              
+      329 +       JOIN namings n ON n.id = pm.naming_id                                                                                  
+      330 +       JOIN namings b ON b.id = pm.by                                                                                         
+      331 +       WHERE pm.phase_id = $1                                                                                                 
+      332 +       ORDER BY pm.seq ASC`,                                                                                                  
+      333 +      [phaseId]                                                                                                               
+      334 +    )                                                                                                                         
+      335 +  ).rows;                                                                                                                     
+      336 +}                                                                                                                             
+      337 +                                                                                                                              
+      338  // Set the collapse point for a naming in a perspective.
+      339  // collapseAt = global seq value → shows inscription + designation as of that seq.
+      340  // Pass null to clear (return to showing latest).
+
+● Now update the API route to pass byNamingId:
+
+● Update(src/routes/api/projects/[projectId]/maps/[mapId]/+server.ts)                                                                           
+  ⎿  Added 1 line
+       8    createPhase,                                                                                                                        
+       9    assignToPhase,                                  
+      10    removeFromPhase,                                                                                                                    
+      11 +  getPhaseMembershipHistory,                                                                                                   
+      12    setCollapse,
+      13    getNamingStack
+      14  } from '$lib/server/db/queries/maps.js';
+
+● Update(src/routes/api/projects/[projectId]/maps/[mapId]/+server.ts)
+  ⎿  Added 11 lines, removed 2 lines
+       78      case 'assignToPhase': {                                                                                                          
+       79        const { phaseId, namingId, mode, properties } = body;
+       80        if (!phaseId || !namingId) return json({ error: 'phaseId and namingId required' }, { status: 400 });                           
+       81 -      const appearance = await assignToPhase(phaseId, namingId, mode, properties);                                            
+       81 +      const researcherNamingId = await getOrCreateResearcherNaming(projectId, userId);                                        
+       82 +      const appearance = await assignToPhase(phaseId, namingId, mode, properties, researcherNamingId);                        
+       83        return json(appearance);
+       84      }
+       85  
+       86      case 'removeFromPhase': {
+       87        const { phaseId, namingId } = body;
+       88        if (!phaseId || !namingId) return json({ error: 'phaseId and namingId required' }, { status: 400 });
+       88 -      await removeFromPhase(phaseId, namingId);                                                                               
+       89 +      const researcherNamingId = await getOrCreateResearcherNaming(projectId, userId);                                        
+       90 +      await removeFromPhase(phaseId, namingId, researcherNamingId);                                                           
+       91        return json({ ok: true });
+       92      }
+       93  
+       94 +    case 'getPhaseMembershipHistory': {                                                                                       
+       95 +      const { phaseId } = body;                                                                                               
+       96 +      if (!phaseId) return json({ error: 'phaseId required' }, { status: 400 });                                              
+       97 +      const history = await getPhaseMembershipHistory(phaseId);                                                               
+       98 +      return json({ memberships: history });                                                                                  
+       99 +    }                                                                                                                         
+      100 +                                                                                                                              
+      101      case 'designate': {
+      102        const { namingId, designation, memoText, linkedNamingIds } = body;
+      103        if (!namingId || !designation) return json({ error: 'namingId and designation required' }, { status: 400 });
+
+● Now update the AI agent to pass aiNamingId as byNamingId:
+
+● Read 1 file (ctrl+o to expand)                                                                                                                
+                               
+● Update(src/lib/server/ai/agent.ts)                                                                                                            
+  ⎿  Added 1 line, removed 1 line                           
+      134          const phase = await createPhaseAsAi(projectId, aiNamingId, mapId, inscription, { aiReasoning: reasoning });                  
+      135          // Assign elements to phase                                                                                                  
+      136          for (const elementId of element_ids) {                                                                                       
+      137 -          await assignToPhase(phase.id, elementId);                                                                                  
+      137 +          await assignToPhase(phase.id, elementId, undefined, undefined, aiNamingId);                                         
+      138          }                                                                                                                            
+      139          emit(mapId, 'ai:phase', { phase, elementIds: element_ids, reasoning });
+      140          return { success: true, result: { id: phase.id, inscription, elementCount: element_ids.length } };
+
+● Now run the migration and verify:  
+
+● Read 2 files (ctrl+o to expand)                                                                                                               
+                                
+● Shall I run the migration? It will create the phase_memberships table.                                                                        
+                                                            
+● Bash(bash scripts/4_db_migrate.sh)                                                                                                            
+  ⎿  Running migrations...                                                                                                                      
+       skip: 001_initial_schema.sql (already applied)                                                                                           
+       skip: 002_transactional_ontology.sql (already applied)                                                                                   
+     … +6 lines (ctrl+o to expand)                                                                                                              
+                                                                                                                                                
+● Now verify the build:              
+                                                                                                                                                
+● Bash(npx svelte-check --threshold error 2>&1 | grep -E "(maps\.ts|agent\.ts|server\.ts.*mapId)" | head -10)                                   
+  ⎿  (No output)
+                                                                                                                                                
+● No errors. Final diff summary:                            
+                                                                                                                                                
+● Bash(git diff --stat && echo "---" && git status --short)                                                                                     
+  ⎿   src/lib/server/ai/agent.ts                         |  2 +-
+      src/lib/server/db/queries/maps.ts                  | 56 ++++++++++++++++++----                                                            
+      .../projects/[projectId]/maps/[mapId]/+server.ts   | 14 +++++-                                                                            
+     … +6 lines (ctrl+o to expand)                                                                                                              
+                                                                                                                                                
+● (Plus the earlier +page.svelte and regions.ts changes for the phase highlight feature, and the new migration file.)
+                                                                                                                                                
+  Zusammenfassung:                                                                                                                              
+                                                                                                                                                
+  Non-breaking garantiert:                                                                                                                      
+  - assignToPhase(phaseId, namingId, mode?, properties?) funktioniert weiterhin ohne byNamingId — dann wird nur kein History-Eintrag geschrieben
+  - removeFromPhase(phaseId, namingId) ebenso                                                                                                   
+  - Bestehende appearances-Rows unverändert, keine Schema-Änderung an existierenden Tabellen                                                    
+  - Neue Tabelle phase_memberships ist rein additiv                                                                                             
+                                                                                                                                                
+  Was sich ändert:                                                                                                                              
+  - API-Route übergibt jetzt researcherNamingId als byNamingId → jede Zuweisung/Entfernung wird protokolliert                                   
+  - AI-Agent übergibt aiNamingId → AI-Akte werden ebenfalls protokolliert                                                                       
+  - Neuer API-Endpoint getPhaseMembershipHistory zum Abrufen der Geschichte
+  - getPhaseMembershipHistory(phaseId) gibt die vollständige append-only Kette zurück                                                           
+                                                                                                                                                
+  Die phase_memberships-Tabelle folgt exakt dem Muster von naming_inscriptions/naming_designations: append-only, by referenziert ein Naming     
+  (nicht einen User), seq BIGSERIAL für Ordnung.                                                                                                
+                                                                                                                                                
+✻ Crunched for 4m 58s                                                                                                                           
+                                                            
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── ▪▪▪ ─
+❯  
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ accept edits on (shift+tab to cycle)
+
+

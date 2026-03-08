@@ -8,6 +8,7 @@ import {
 	createPhase,
 	assignToPhase,
 	removeFromPhase,
+	getPhaseMembershipHistory,
 	setCollapse,
 	getNamingStack
 } from '$lib/server/db/queries/maps.js';
@@ -77,15 +78,24 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		case 'assignToPhase': {
 			const { phaseId, namingId, mode, properties } = body;
 			if (!phaseId || !namingId) return json({ error: 'phaseId and namingId required' }, { status: 400 });
-			const appearance = await assignToPhase(phaseId, namingId, mode, properties);
+			const researcherNamingId = await getOrCreateResearcherNaming(projectId, userId);
+			const appearance = await assignToPhase(phaseId, namingId, mode, properties, researcherNamingId);
 			return json(appearance);
 		}
 
 		case 'removeFromPhase': {
 			const { phaseId, namingId } = body;
 			if (!phaseId || !namingId) return json({ error: 'phaseId and namingId required' }, { status: 400 });
-			await removeFromPhase(phaseId, namingId);
+			const researcherNamingId = await getOrCreateResearcherNaming(projectId, userId);
+			await removeFromPhase(phaseId, namingId, researcherNamingId);
 			return json({ ok: true });
+		}
+
+		case 'getPhaseMembershipHistory': {
+			const { phaseId } = body;
+			if (!phaseId) return json({ error: 'phaseId required' }, { status: 400 });
+			const history = await getPhaseMembershipHistory(phaseId);
+			return json({ memberships: history });
 		}
 
 		case 'designate': {
