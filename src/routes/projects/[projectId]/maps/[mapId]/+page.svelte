@@ -108,7 +108,7 @@
 
 	// Naming act prompt
 	let actTarget = $state<string | null>(null);
-	let actType = $state<'rename' | 'designate'>('rename');
+	let actType = $state<'rename' | 'designate' | 'relate'>('rename');
 	let actNewValue = $state('');
 	let actMemo = $state('');
 	let actLinkedIds = $state<string[]>([]);
@@ -314,17 +314,27 @@
 
 	async function submitRelation() {
 		if (!relatingFrom || !relatingTo) return;
-		await mapAction('relate', {
+		const result = await mapAction('relate', {
 			sourceId: relatingFrom,
 			targetId: relatingTo,
 			inscription: relInscription.trim() || undefined,
 			valence: relValence.trim() || undefined,
 			symmetric: !relDirected
 		});
+		const relationId = result?.id;
 		relatingFrom = null;
 		relatingTo = null;
 		await reload();
 		await layoutNewNodes();
+		// Open act-prompt for memo on the new relation
+		if (relationId) {
+			actTarget = relationId;
+			actType = 'relate';
+			actNewValue = relInscription.trim() || relValence.trim() || '';
+			actMemo = '';
+			actLinkedIds = [];
+			showActLinks = false;
+		}
 	}
 
 	function cancelRelation() {
@@ -379,8 +389,20 @@
 		if (!actTarget) return;
 		if (actType === 'rename') {
 			await mapAction('rename', { namingId: actTarget, inscription: actNewValue, memoText: actMemo.trim() || undefined, linkedNamingIds: actLinkedIds.length > 0 ? actLinkedIds : undefined });
-		} else {
+		} else if (actType === 'designate') {
 			await mapAction('designate', { namingId: actTarget, designation: actNewValue, memoText: actMemo.trim() || undefined, linkedNamingIds: actLinkedIds.length > 0 ? actLinkedIds : undefined });
+		} else if (actType === 'relate') {
+			// Relation already created — just add the memo
+			const links = [actTarget, ...actLinkedIds];
+			await fetch(`/api/projects/${data.projectId}/memos`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					label: `Relation: ${actNewValue || '(unnamed)'}`,
+					content: actMemo.trim(),
+					linkedElementIds: links
+				})
+			});
 		}
 		cancelAct();
 		await reload();
@@ -390,9 +412,10 @@
 		if (!actTarget) return;
 		if (actType === 'rename') {
 			await mapAction('rename', { namingId: actTarget, inscription: actNewValue });
-		} else {
+		} else if (actType === 'designate') {
 			await mapAction('designate', { namingId: actTarget, designation: actNewValue });
 		}
+		// For 'relate': relation already created, nothing more to do
 		cancelAct();
 		await reload();
 	}
@@ -590,9 +613,11 @@
 			<div class="act-header">
 				{#if actType === 'rename'}
 					Rename: <strong>{actNode?.inscription}</strong> → <strong>{actNewValue}</strong>
-				{:else}
+				{:else if actType === 'designate'}
 					Designation: <strong>{actNode?.inscription}</strong> →
 					<span style="color: {designationColor(actNewValue)}">{actNewValue}</span>
+				{:else if actType === 'relate'}
+					Relation: <strong>{actNode?.inscription || actNewValue || '(unnamed)'}</strong>
 				{/if}
 			</div>
 			<textarea placeholder="What influenced this act? What changed in your understanding?" bind:value={actMemo} rows="2"></textarea>
@@ -613,9 +638,9 @@
 				</div>
 			{/if}
 			<div class="act-actions">
-				<button class="btn-primary btn-sm-primary" onclick={submitAct}>Apply + memo</button>
+				<button class="btn-primary btn-sm-primary" onclick={submitAct}>{actType === 'relate' ? 'Save memo' : 'Apply + memo'}</button>
 				<button class="btn-link" onclick={skipAct}>skip memo</button>
-				<button class="btn-link" onclick={cancelAct}>cancel</button>
+				{#if actType !== 'relate'}<button class="btn-link" onclick={cancelAct}>cancel</button>{/if}
 			</div>
 		</div>
 	{/if}
