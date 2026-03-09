@@ -926,6 +926,19 @@
 								{#if el.is_collapsed && el.current_inscription && el.current_inscription !== el.inscription}
 									<span class="collapsed-hint">now: {el.current_inscription}</span>
 								{/if}
+								{#if el.memo_previews?.length}
+									<div class="memo-tooltip">
+										{#each el.memo_previews.slice(0, 3) as mp}
+											<div class="memo-tip-entry">
+												<span class="memo-tip-label">{mp.label}</span>
+												{#if mp.content}<span class="memo-tip-content">{mp.content.slice(0, 120)}{mp.content.length > 120 ? '…' : ''}</span>{/if}
+											</div>
+										{/each}
+										{#if el.memo_previews.length > 3}
+											<span class="memo-tip-more">+{el.memo_previews.length - 3} more</span>
+										{/if}
+									</div>
+								{/if}
 							</div>
 						</CanvasElement>
 					{/if}
@@ -964,6 +977,19 @@
 											{#if c}<span class="phase-dot" style="background: {c}"></span>{/if}
 										{/each}
 									</span>
+								{/if}
+								{#if rel.memo_previews?.length}
+									<div class="memo-tooltip">
+										{#each rel.memo_previews.slice(0, 3) as mp}
+											<div class="memo-tip-entry">
+												<span class="memo-tip-label">{mp.label}</span>
+												{#if mp.content}<span class="memo-tip-content">{mp.content.slice(0, 120)}{mp.content.length > 120 ? '…' : ''}</span>{/if}
+											</div>
+										{/each}
+										{#if rel.memo_previews.length > 3}
+											<span class="memo-tip-more">+{rel.memo_previews.length - 3} more</span>
+										{/if}
+									</div>
 								{/if}
 							</div>
 						</CanvasElement>
@@ -1781,6 +1807,7 @@
 
 	/* Map nodes */
 	.map-node {
+		position: relative;
 		background: #161822;
 		border: 2px solid var(--el-color, #8b9cf7);
 		border-radius: 8px;
@@ -1788,6 +1815,26 @@
 		min-width: 80px;
 		max-width: 220px;
 	}
+
+	/* Memo hover tooltip */
+	.memo-tooltip {
+		display: none;
+		position: absolute;
+		top: 100%; left: 0;
+		margin-top: 4px;
+		min-width: 200px; max-width: 280px;
+		background: #1e2030; border: 1px solid #2a2d3a; border-radius: 6px;
+		padding: 0.5rem; z-index: 50;
+		box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+	}
+	.map-node:hover > .memo-tooltip { display: block; }
+	.memo-tip-entry {
+		padding: 0.2rem 0; border-bottom: 1px solid #161822;
+	}
+	.memo-tip-entry:last-child { border-bottom: none; }
+	.memo-tip-label { font-size: 0.7rem; color: #f59e0b; display: block; }
+	.memo-tip-content { font-size: 0.75rem; color: #a0a4b0; display: block; margin-top: 0.1rem; }
+	.memo-tip-more { font-size: 0.7rem; color: #6b7280; margin-top: 0.2rem; display: block; }
 	.map-node.ai-suggested {
 		border-style: dashed;
 		border-color: rgba(139, 156, 247, 0.5);
