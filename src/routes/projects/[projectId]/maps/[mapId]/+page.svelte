@@ -617,21 +617,22 @@
 	async function saveTopologySnapshot() {
 		const label = prompt('Snapshot label:');
 		if (label === null) return;
-		await mapAction('saveTopologySnapshot', { label: label || undefined });
+		// Send current in-memory positions directly — don't rely on the stale buffer
+		await mapAction('saveTopologySnapshot', { label: label || undefined, positions: positionsToObj() });
 		await loadTopoSnapshots();
 	}
 
 	async function restoreTopologySnapshot(seq: number) {
-		await mapAction('restoreTopologySnapshot', { seq });
-		await reload();
-		// Reload positions from refreshed data
+		const result = await mapAction('restoreTopologySnapshot', { seq });
+		if (!result?.positions) { showAiNotification('Restore failed'); return; }
+		// Apply positions directly from the snapshot — no reload needed (only positions change)
 		const newPos = new Map<string, { x: number; y: number }>();
-		for (const node of [...elements, ...relations, ...silences]) {
-			const x = node.properties?.x;
-			const y = node.properties?.y;
-			if (typeof x === 'number' && typeof y === 'number') {
-				newPos.set(node.naming_id, { x, y });
-			}
+		for (const [id, pos] of Object.entries(result.positions as Record<string, { x: number; y: number }>)) {
+			newPos.set(id, { x: pos.x, y: pos.y });
+		}
+		// Keep existing positions for nodes not in the snapshot
+		for (const [id, pos] of positions) {
+			if (!newPos.has(id)) newPos.set(id, pos);
 		}
 		positions = newPos;
 	}

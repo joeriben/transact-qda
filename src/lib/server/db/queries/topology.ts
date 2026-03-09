@@ -12,24 +12,28 @@ export async function saveTopologyBuffer(mapId: string, positions: Record<string
 }
 
 // Create a named snapshot (next seq after current max)
-export async function saveTopologySnapshot(mapId: string, label?: string) {
+// If positions are provided (from the client), use them directly.
+// Otherwise fall back to the buffer (seq 0) or DB appearances.
+export async function saveTopologySnapshot(
+	mapId: string,
+	label?: string,
+	clientPositions?: Record<string, { x: number; y: number }>
+) {
 	const maxSeq = await queryOne<{ max: number }>(
 		`SELECT COALESCE(MAX(seq), 0) as max FROM topology_snapshots WHERE map_id = $1 AND seq > 0`,
 		[mapId]
 	);
 	const nextSeq = (maxSeq?.max || 0) + 1;
 
-	// Copy current positions from buffer (seq 0) or from appearances
-	const buffer = await queryOne<{ positions: Record<string, unknown> }>(
-		`SELECT positions FROM topology_snapshots WHERE map_id = $1 AND seq = 0`,
-		[mapId]
-	);
-
 	let positions: Record<string, unknown>;
-	if (buffer) {
-		positions = buffer.positions;
+	if (clientPositions) {
+		positions = clientPositions;
 	} else {
-		positions = await collectCurrentPositions(mapId);
+		const buffer = await queryOne<{ positions: Record<string, unknown> }>(
+			`SELECT positions FROM topology_snapshots WHERE map_id = $1 AND seq = 0`,
+			[mapId]
+		);
+		positions = buffer ? buffer.positions : await collectCurrentPositions(mapId);
 	}
 
 	const result = await queryOne(

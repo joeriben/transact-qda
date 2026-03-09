@@ -241,8 +241,8 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		}
 
 		case 'saveTopologySnapshot': {
-			const { label: snapLabel } = body;
-			const snapshot = await saveTopologySnapshot(mapId, snapLabel);
+			const { label: snapLabel, positions: snapPositions } = body;
+			const snapshot = await saveTopologySnapshot(mapId, snapLabel, snapPositions);
 			return json(snapshot, { status: 201 });
 		}
 
@@ -251,7 +251,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			if (seq == null) return json({ error: 'seq required' }, { status: 400 });
 			const restored = await restoreTopologySnapshot(mapId, seq);
 			if (!restored) return json({ error: 'Snapshot not found' }, { status: 404 });
-			return json({ ok: true });
+			return json({ ok: true, positions: restored.positions });
 		}
 
 		case 'listTopologySnapshots': {
