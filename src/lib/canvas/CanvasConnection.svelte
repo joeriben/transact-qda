@@ -9,6 +9,7 @@
 		selected = false,
 		directed = false,
 		isMeta = false,
+		opacity = 1,
 		onclick
 	}: {
 		x1?: number;
@@ -20,6 +21,7 @@
 		selected?: boolean;
 		directed?: boolean;
 		isMeta?: boolean;
+		opacity?: number;
 		onclick?: () => void;
 	} = $props();
 
@@ -44,7 +46,7 @@
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-<svg class="canvas-connection" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; overflow:visible;">
+<svg class="canvas-connection" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; overflow:visible; opacity: {opacity};">
 	<path
 		d={pathD}
 		fill="none"

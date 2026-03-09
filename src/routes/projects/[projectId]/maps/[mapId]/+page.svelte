@@ -164,17 +164,37 @@
 
 	// ─── Phase highlight filter ───
 
+	const DECLINED_PHASE = '__declined__';
 	let highlightedPhase = $state<string | null>(null);
+	const isDeclinedFilter = $derived(highlightedPhase === DECLINED_PHASE);
 
 	// Build a lookup: phaseId → color (for consistent coloring)
 	const phaseColorMap = $derived(
 		new Map(phases.map((p: any, i: number) => [p.id, regionColor(i)]))
 	);
 
+	// Count declined items for the virtual phase
+	const declinedCount = $derived(
+		[...elements, ...relations, ...silences].filter((n: any) => isWithdrawn(n.properties)).length
+	);
+
 	// Check if a node is a member of the highlighted phase
 	function isPhaseHighlighted(node: any): boolean {
 		if (!highlightedPhase) return false;
 		return node.phase_ids?.includes(highlightedPhase) ?? false;
+	}
+
+	// Should a node be hidden? (declined filter active + node is declined)
+	function isHiddenByFilter(node: any): boolean {
+		return isDeclinedFilter && isWithdrawn(node.properties);
+	}
+
+	// Connection line opacity: declined relations and their endpoints get dimmed
+	function connectionOpacity(rel: any, srcNode: any, tgtNode: any): number {
+		if (isDeclinedFilter && isWithdrawn(rel.properties)) return 0;
+		if (isDeclinedFilter && (isWithdrawn(srcNode?.properties) || isWithdrawn(tgtNode?.properties))) return 0;
+		if (isWithdrawn(rel.properties)) return 0.2;
+		return 1;
 	}
 
 
@@ -838,17 +858,20 @@
 						{@const srcCenter = nodeCenter(srcId)}
 						{@const relCenter = nodeCenter(rel.naming_id)}
 						{@const tgtCenter = nodeCenter(tgtId)}
+						{@const lineOpacity = connectionOpacity(rel, findNode(srcId), findNode(tgtId))}
 						<CanvasConnection
 							x1={srcCenter.x} y1={srcCenter.y}
 							x2={relCenter.x} y2={relCenter.y}
 							color={designationColor(rel.designation)}
 							directed={isDirected}
+							opacity={lineOpacity}
 						/>
 						<CanvasConnection
 							x1={relCenter.x} y1={relCenter.y}
 							x2={tgtCenter.x} y2={tgtCenter.y}
 							color={designationColor(rel.designation)}
 							directed={isDirected}
+							opacity={lineOpacity}
 						/>
 					{/if}
 				{/each}
@@ -856,7 +879,7 @@
 				<!-- Element nodes -->
 				{#each elements as el}
 					{@const pos = positions.get(el.naming_id)}
-					{#if pos}
+					{#if pos && !isHiddenByFilter(el)}
 						<CanvasElement
 							id={el.naming_id}
 							x={pos.x} y={pos.y}
@@ -907,7 +930,7 @@
 				<!-- Relation nodes (first-class, smaller) -->
 				{#each relations as rel}
 					{@const pos = positions.get(rel.naming_id)}
-					{#if pos}
+					{#if pos && !isHiddenByFilter(rel)}
 						<CanvasElement
 							id={rel.naming_id}
 							x={pos.x} y={pos.y}
@@ -946,7 +969,7 @@
 				<!-- Silence nodes -->
 				{#each silences as s}
 					{@const pos = positions.get(s.naming_id)}
-					{#if pos}
+					{#if pos && !isHiddenByFilter(s)}
 						<CanvasElement
 							id={s.naming_id}
 							x={pos.x} y={pos.y}
@@ -1006,6 +1029,7 @@
 			{:else}
 				<div class="element-list">
 					{#each elements as el}
+						{#if !isHiddenByFilter(el)}
 						<div class="element-card" class:ai-suggested={el.properties?.aiSuggested === true} class:ai-withdrawn={isWithdrawn(el.properties)} title={el.properties?.aiReasoning || ''}>
 							<div class="el-main">
 								{#if el.is_collapsed}<img class="collapsed-indicator" src="/icons/keep.svg" alt="pinned" title="Pinned to specific layer" />{/if}
@@ -1145,6 +1169,7 @@
 								{/if}
 							</div>
 						{/if}
+						{/if}
 					{/each}
 				</div>
 			{/if}
@@ -1156,6 +1181,7 @@
 					{#each relations as rel}
 						{@const srcId = rel.directed_from || rel.part_source_id}
 						{@const tgtId = rel.directed_to || rel.part_target_id}
+						{#if !isHiddenByFilter(rel)}
 						<div class="element-card relation-card" class:ai-suggested={rel.properties?.aiSuggested === true} class:ai-withdrawn={isWithdrawn(rel.properties)} title={rel.properties?.aiReasoning || ''}>
 							<div class="el-main">
 								{#if rel.is_collapsed}<img class="collapsed-indicator" src="/icons/keep.svg" alt="pinned" title="Pinned to specific layer" />{/if}
@@ -1309,6 +1335,7 @@
 								{/if}
 							</div>
 						{/if}
+						{/if}
 					{/each}
 				</div>
 			{/if}
@@ -1318,6 +1345,7 @@
 				<h3 class="section-header">Silences</h3>
 				<div class="element-list">
 					{#each silences as s}
+						{#if !isHiddenByFilter(s)}
 						<div class="element-card silence-card" class:ai-suggested={s.properties?.aiSuggested === true} class:ai-withdrawn={isWithdrawn(s.properties)} title={s.properties?.aiReasoning || ''}>
 							{#if s.has_document_anchor}
 								<img class="provenance-indicator" src="/icons/text_snippet.svg" alt="empirical" title="Empirically grounded" />
@@ -1328,6 +1356,7 @@
 							{/if}
 							<span class="el-inscription">{s.inscription}</span>
 						</div>
+						{/if}
 					{/each}
 				</div>
 			{/if}
@@ -1380,6 +1409,19 @@
 						{/if}
 					</div>
 				{/each}
+			{/if}
+
+			{#if declinedCount > 0}
+				<!-- svelte-ignore a11y_click_events_have_key_events -->
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div class="phase-card declined-phase" class:phase-active={isDeclinedFilter}
+					style="border-left: 3px solid #6b7280">
+					<div class="phase-header">
+						<span class="phase-label clickable" onclick={() => { highlightedPhase = isDeclinedFilter ? null : DECLINED_PHASE; }}>Declined</span>
+						<span class="phase-count">{declinedCount}</span>
+					</div>
+					<span class="declined-hint">{isDeclinedFilter ? 'showing' : 'click to hide'}</span>
+				</div>
 			{/if}
 
 			<!-- Selected node info -->
@@ -1825,6 +1867,8 @@
 	}
 	.phase-card.assigning { border-color: #10b981; }
 	.phase-card.phase-active { background: #1e2030; }
+	.declined-phase { margin-top: 0.5rem; border-style: dashed; }
+	.declined-hint { font-size: 0.65rem; color: #6b7280; }
 	.phase-header { display: flex; justify-content: space-between; align-items: center; }
 	.phase-label { font-size: 0.85rem; color: #e1e4e8; font-weight: 500; }
 	.phase-label.clickable { cursor: pointer; }
