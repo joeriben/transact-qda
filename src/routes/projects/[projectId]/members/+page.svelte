@@ -1,0 +1,215 @@
+<script lang="ts">
+	let { data }: { data: any } = $props();
+	let members = $state<any[]>([]);
+	$effect(() => { members = data.members; });
+	const canManage = $derived(data.myRole === 'owner' || data.myRole === 'admin');
+	const isOwner = $derived(data.myRole === 'owner');
+
+	// Add member form
+	let showAdd = $state(false);
+	let addUsername = $state('');
+	let addRole = $state('member');
+	let addLoading = $state(false);
+	let addError = $state('');
+
+	async function addMember() {
+		if (!addUsername.trim()) return;
+		addLoading = true;
+		addError = '';
+		const res = await fetch(`/api/projects/${data.projectId}/members`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ username: addUsername.trim(), role: addRole })
+		});
+		const result = await res.json();
+		if (res.ok) {
+			members = [...members, result];
+			addUsername = '';
+			addRole = 'member';
+			showAdd = false;
+		} else {
+			addError = result.error || 'Failed to add member';
+		}
+		addLoading = false;
+	}
+
+	async function changeRole(userId: string, newRole: string) {
+		const res = await fetch(`/api/projects/${data.projectId}/members`, {
+			method: 'PATCH',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ userId, role: newRole })
+		});
+		if (res.ok) {
+			members = members.map((m: any) => m.id === userId ? { ...m, role: newRole } : m);
+		}
+	}
+
+	async function removeMember(userId: string, username: string) {
+		if (!confirm(`Remove ${username} from this project?`)) return;
+		const res = await fetch(`/api/projects/${data.projectId}/members`, {
+			method: 'DELETE',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ userId })
+		});
+		if (res.ok) {
+			members = members.filter((m: any) => m.id !== userId);
+		}
+	}
+
+	function roleLabel(role: string) {
+		return role.charAt(0).toUpperCase() + role.slice(1);
+	}
+</script>
+
+<div class="members-page">
+	<div class="header">
+		<h1>
+			<img src="/icons/group.svg" alt="" class="header-icon" />
+			Members
+		</h1>
+		{#if canManage}
+			<button class="btn-primary" onclick={() => showAdd = !showAdd}>
+				{showAdd ? 'Cancel' : 'Add member'}
+			</button>
+		{/if}
+	</div>
+
+	{#if showAdd}
+		<form class="add-form" onsubmit={e => { e.preventDefault(); addMember(); }}>
+			<input
+				type="text"
+				placeholder="Username"
+				bind:value={addUsername}
+				required
+			/>
+			<select bind:value={addRole}>
+				{#if isOwner}<option value="admin">Admin</option>{/if}
+				<option value="member">Member</option>
+				<option value="viewer">Viewer</option>
+			</select>
+			<button type="submit" class="btn-primary" disabled={addLoading}>
+				{addLoading ? 'Adding...' : 'Add'}
+			</button>
+			{#if addError}
+				<span class="error">{addError}</span>
+			{/if}
+		</form>
+	{/if}
+
+	<div class="member-list">
+		{#each members as member (member.id)}
+			<div class="member-card">
+				<div class="member-info">
+					<img src="/icons/person_edit.svg" alt="" class="member-icon" />
+					<div>
+						<span class="member-name">
+							{member.display_name || member.username}
+							{#if member.id === data.myUserId}
+								<span class="you-badge">you</span>
+							{/if}
+						</span>
+						<span class="member-username">@{member.username}</span>
+					</div>
+				</div>
+				<div class="member-actions">
+					{#if canManage && member.role !== 'owner' && member.id !== data.myUserId}
+						<select
+							value={member.role}
+							onchange={e => changeRole(member.id, (e.target as HTMLSelectElement).value)}
+						>
+							{#if isOwner}<option value="admin">Admin</option>{/if}
+							<option value="member">Member</option>
+							<option value="viewer">Viewer</option>
+						</select>
+						<button
+							class="btn-remove"
+							title="Remove member"
+							onclick={() => removeMember(member.id, member.username)}
+						>
+							&times;
+						</button>
+					{:else}
+						<span class="role-badge role-{member.role}">{roleLabel(member.role)}</span>
+					{/if}
+				</div>
+			</div>
+		{/each}
+	</div>
+</div>
+
+<style>
+	.members-page { max-width: 600px; }
+	.header {
+		display: flex; align-items: center; justify-content: space-between;
+		margin-bottom: 1.25rem;
+	}
+	h1 {
+		font-size: 1.3rem; display: flex; align-items: center; gap: 0.5rem;
+	}
+	.header-icon { width: 24px; height: 24px; opacity: 0.7; }
+
+	.btn-primary {
+		background: #8b9cf7; color: #0f1117; border: none; border-radius: 6px;
+		padding: 0.5rem 1rem; font-size: 0.85rem; font-weight: 600; cursor: pointer;
+	}
+	.btn-primary:disabled { opacity: 0.5; }
+
+	.add-form {
+		display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;
+		background: #161822; border: 1px solid #2a2d3a;
+		border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem;
+	}
+	.add-form input {
+		flex: 1; min-width: 150px;
+		background: #0f1117; border: 1px solid #2a2d3a; border-radius: 6px;
+		padding: 0.6rem 0.75rem; color: #e1e4e8; font-size: 0.9rem;
+	}
+	.add-form input:focus { outline: none; border-color: #8b9cf7; }
+	.add-form select {
+		background: #0f1117; border: 1px solid #2a2d3a; border-radius: 6px;
+		padding: 0.6rem 0.75rem; color: #e1e4e8; font-size: 0.9rem;
+	}
+	.error { color: #ef4444; font-size: 0.8rem; width: 100%; }
+
+	.member-list { display: flex; flex-direction: column; gap: 0.5rem; }
+
+	.member-card {
+		display: flex; align-items: center; justify-content: space-between;
+		background: #161822; border: 1px solid #2a2d3a; border-radius: 8px;
+		padding: 0.75rem 1rem;
+	}
+	.member-info {
+		display: flex; align-items: center; gap: 0.75rem;
+	}
+	.member-icon { width: 20px; height: 20px; opacity: 0.5; }
+	.member-name { font-size: 0.95rem; font-weight: 500; color: #e1e4e8; }
+	.member-username { display: block; font-size: 0.8rem; color: #6b7280; }
+	.you-badge {
+		font-size: 0.7rem; color: #8b9cf7; background: rgba(139, 156, 247, 0.12);
+		padding: 0.1rem 0.4rem; border-radius: 4px; margin-left: 0.4rem;
+	}
+
+	.member-actions {
+		display: flex; align-items: center; gap: 0.5rem;
+	}
+	.member-actions select {
+		background: #0f1117; border: 1px solid #2a2d3a; border-radius: 6px;
+		padding: 0.35rem 0.5rem; color: #e1e4e8; font-size: 0.8rem;
+	}
+
+	.btn-remove {
+		background: none; border: 1px solid transparent; border-radius: 4px;
+		color: #6b7280; font-size: 1.2rem; cursor: pointer; padding: 0.1rem 0.4rem;
+		line-height: 1;
+	}
+	.btn-remove:hover { color: #ef4444; border-color: #ef4444; }
+
+	.role-badge {
+		font-size: 0.8rem; padding: 0.2rem 0.6rem; border-radius: 4px;
+		font-weight: 500;
+	}
+	.role-owner { background: rgba(251, 191, 36, 0.15); color: #fbbf24; }
+	.role-admin { background: rgba(139, 156, 247, 0.15); color: #8b9cf7; }
+	.role-member { background: rgba(107, 114, 128, 0.15); color: #9ca3af; }
+	.role-viewer { background: rgba(107, 114, 128, 0.1); color: #6b7280; }
+</style>

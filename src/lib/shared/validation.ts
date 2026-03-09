@@ -35,4 +35,21 @@ export type LoginInput = z.infer<typeof loginSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type ProjectInput = z.infer<typeof projectSchema>;
 export type NamingInput = z.infer<typeof namingSchema>;
+export const addMemberSchema = z.object({
+	username: z.string().min(1).max(100),
+	role: z.enum(['admin', 'member', 'viewer']).default('member')
+});
+
+export const changeMemberRoleSchema = z.object({
+	userId: z.string().uuid(),
+	role: z.enum(['admin', 'member', 'viewer'])
+});
+
+export const removeMemberSchema = z.object({
+	userId: z.string().uuid()
+});
+
 export type AppearanceInput = z.infer<typeof appearanceSchema>;
+export type AddMemberInput = z.infer<typeof addMemberSchema>;
+export type ChangeMemberRoleInput = z.infer<typeof changeMemberRoleSchema>;
+export type RemoveMemberInput = z.infer<typeof removeMemberSchema>;

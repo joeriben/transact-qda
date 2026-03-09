@@ -15,11 +15,7 @@ export const load: LayoutServerLoad = async ({ params, locals }) => {
 		error(404, 'Project not found');
 	}
 
-	// Count documents (namings with document_content)
-	// Count codes (namings appearing as entity in code-system perspective)
-	// Count maps (namings appearing as perspective with mapType)
-	// Count memos (namings with memo_content)
-	const counts = await queryOne<{ documents: string; codes: string; maps: string; memos: string }>(
+	const counts = await queryOne<{ documents: string; codes: string; maps: string; memos: string; members: string }>(
 		`SELECT
 			(SELECT COUNT(*) FROM document_content dc
 			 JOIN namings n ON n.id = dc.naming_id
@@ -40,7 +36,9 @@ export const load: LayoutServerLoad = async ({ params, locals }) => {
 			   AND a.mode = 'perspective' AND a.properties ? 'mapType') as maps,
 			(SELECT COUNT(*) FROM memo_content mc
 			 JOIN namings n ON n.id = mc.naming_id
-			 WHERE n.project_id = $1 AND n.deleted_at IS NULL) as memos`,
+			 WHERE n.project_id = $1 AND n.deleted_at IS NULL) as memos,
+			(SELECT COUNT(*) FROM project_members
+			 WHERE project_id = $1) as members`,
 		[params.projectId]
 	);
 
@@ -50,7 +48,8 @@ export const load: LayoutServerLoad = async ({ params, locals }) => {
 			documents: parseInt(counts?.documents || '0'),
 			codes: parseInt(counts?.codes || '0'),
 			maps: parseInt(counts?.maps || '0'),
-			memos: parseInt(counts?.memos || '0')
+			memos: parseInt(counts?.memos || '0'),
+			members: parseInt(counts?.members || '0')
 		}
 	};
 };
