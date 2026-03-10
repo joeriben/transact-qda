@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import ImageAnnotationViewer from '$lib/components/ImageAnnotationViewer.svelte';
 
 	let { data } = $props();
 	const doc = $derived(data.document);
@@ -9,12 +10,24 @@
 	let annotations = $state<any[]>([]);
 	$effect(() => { annotations = data.annotations; });
 
-	// Selection state
+	// Text selection state
 	let selection = $state<{ pos0: number; pos1: number; text: string } | null>(null);
+	// Image region selection state
+	let regionSelection = $state<{ x: number; y: number; width: number; height: number } | null>(null);
+
 	let comment = $state('');
 	let annotating = $state(false);
 
-	// DOM refs
+	// Annotation highlight on hover
+	let highlightedAnnotationId = $state<string | null>(null);
+
+	// Image viewer ref
+	let imageViewer = $state<{ clearRegion: () => void }>();
+
+	// Unified "has selection" check
+	const hasSelection = $derived(!!selection || !!regionSelection);
+
+	// DOM refs (text mode)
 	let textEl = $state<HTMLPreElement>();
 	let dynamicStyle = $state<HTMLStyleElement>();
 
@@ -130,22 +143,36 @@
 	});
 
 	async function annotate(codeId: string) {
-		if (!selection) return;
+		if (!selection && !regionSelection) return;
 		annotating = true;
+
+		const body = isImage
+			? {
+				codeId,
+				anchorType: 'image_region',
+				anchor: { type: 'rect', ...regionSelection },
+				comment: comment.trim() || undefined
+			}
+			: {
+				codeId,
+				anchorType: 'text',
+				anchor: { pos0: selection!.pos0, pos1: selection!.pos1, text: selection!.text },
+				comment: comment.trim() || undefined
+			};
+
 		const res = await fetch(`/api/projects/${data.projectId}/documents/${doc.id}/annotations`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				codeId,
-				anchorType: 'text',
-				anchor: { pos0: selection.pos0, pos1: selection.pos1, text: selection.text },
-				comment: comment.trim() || undefined
-			})
+			body: JSON.stringify(body)
 		});
 		if (res.ok) {
 			const annRes = await fetch(`/api/projects/${data.projectId}/documents/${doc.id}/annotations`);
 			annotations = await annRes.json();
 			comment = '';
+			if (isImage) {
+				regionSelection = null;
+				imageViewer?.clearRegion();
+			}
 		}
 		annotating = false;
 	}
@@ -159,9 +186,27 @@
 		}
 	}
 
+	function cancelSelection() {
+		if (isImage) {
+			regionSelection = null;
+			imageViewer?.clearRegion();
+		} else {
+			selection = null;
+			window.getSelection()?.removeAllRanges();
+		}
+		comment = '';
+	}
+
 	function getSnippet(ann: any): string {
 		const anchor = ann.properties?.anchor;
 		if (!anchor) return '';
+		// Image region annotation
+		if (anchor.type === 'rect') {
+			const w = Math.round(anchor.width * 100);
+			const h = Math.round(anchor.height * 100);
+			return `Region ${w}% \u00d7 ${h}%`;
+		}
+		// Text annotation
 		if (anchor.text) return anchor.text;
 		if (anchor.pos0 != null && anchor.pos1 != null && doc.full_text) {
 			return doc.full_text.slice(anchor.pos0, anchor.pos1);
@@ -178,6 +223,18 @@
 		if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
 		return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 	}
+
+	function getSelectionPreview(): string {
+		if (regionSelection) {
+			const w = Math.round(regionSelection.width * 100);
+			const h = Math.round(regionSelection.height * 100);
+			return `Region ${w}% \u00d7 ${h}%`;
+		}
+		if (selection) {
+			return `"${truncate(selection.text, 120)}"`;
+		}
+		return '';
+	}
 </script>
 
 <div class="doc-viewer">
@@ -188,9 +245,15 @@
 	</div>
 
 	<div class="doc-body">
-		<div class="text-panel">
+		<div class="content-panel" class:image-mode={isImage}>
 			{#if isImage}
-				<p class="placeholder">[Image annotation — coming soon]</p>
+				<ImageAnnotationViewer
+					bind:this={imageViewer}
+					imageUrl="/api/projects/{data.projectId}/documents/{doc.id}/image"
+					{annotations}
+					bind:highlightedAnnotationId
+					onregionselect={(region) => { regionSelection = region; }}
+				/>
 			{:else if doc.full_text}
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<pre class="document-text" bind:this={textEl} onmouseup={handleMouseUp}>{doc.full_text}</pre>
@@ -200,18 +263,18 @@
 		</div>
 
 		<div class="code-panel">
-			{#if selection}
+			{#if hasSelection}
 				<div class="selection-section">
 					<div class="section-header">
 						<h3>
-							<img src="/icons/ink_highlighter.svg" alt="" class="section-icon" />
+							<img src="/icons/{isImage ? 'draw' : 'ink_highlighter'}.svg" alt="" class="section-icon" />
 							Annotate
 						</h3>
-						<button class="btn-cancel" onclick={() => { selection = null; comment = ''; window.getSelection()?.removeAllRanges(); }}>
+						<button class="btn-cancel" onclick={cancelSelection}>
 							Cancel
 						</button>
 					</div>
-					<div class="selection-preview">"{truncate(selection.text, 120)}"</div>
+					<div class="selection-preview">{getSelectionPreview()}</div>
 
 					{#if codes.length === 0}
 						<p class="empty">No codes yet. <a href="/projects/{data.projectId}/codes">Create codes</a> first.</p>
@@ -239,8 +302,8 @@
 				</div>
 			{:else}
 				<div class="hint">
-					<img src="/icons/ink_highlighter.svg" alt="" class="section-icon" />
-					<span>Select text to annotate</span>
+					<img src="/icons/{isImage ? 'draw' : 'ink_highlighter'}.svg" alt="" class="section-icon" />
+					<span>{isImage ? 'Draw a region to annotate' : 'Select text to annotate'}</span>
 				</div>
 			{/if}
 
@@ -250,14 +313,20 @@
 					<p class="empty">No annotations yet.</p>
 				{:else}
 					{#each annotations as ann (ann.id)}
-						<div class="annotation-card">
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
+						<div
+							class="annotation-card"
+							class:ann-highlighted={highlightedAnnotationId === ann.id}
+							onmouseenter={() => { highlightedAnnotationId = ann.id; }}
+							onmouseleave={() => { highlightedAnnotationId = null; }}
+						>
 							<div class="ann-header">
 								<span class="color-dot" style="background: {ann.code_properties?.color || '#8b9cf7'}"></span>
 								<span class="code-name">{ann.code_label}</span>
 								<button class="btn-remove" title="Delete annotation" onclick={() => deleteAnnotation(ann.id)}>&times;</button>
 							</div>
 							{#if getSnippet(ann)}
-								<div class="ann-text">"{truncate(getSnippet(ann), 80)}"</div>
+								<div class="ann-text">{getSnippet(ann)}</div>
 							{/if}
 							{#if ann.properties?.comment}
 								<div class="ann-comment">{ann.properties.comment}</div>
@@ -279,13 +348,18 @@
 
 	.doc-body { display: flex; gap: 1rem; flex: 1; min-height: 0; }
 
-	.text-panel {
+	.content-panel {
 		flex: 1;
 		background: #161822;
 		border: 1px solid #2a2d3a;
 		border-radius: 8px;
 		padding: 1.25rem;
 		overflow-y: auto;
+	}
+
+	.content-panel.image-mode {
+		padding: 0;
+		overflow: hidden;
 	}
 
 	.document-text {
@@ -436,6 +510,12 @@
 		border-radius: 6px;
 		padding: 0.5rem 0.6rem;
 		margin-bottom: 0.4rem;
+		transition: border-color 0.15s;
+		cursor: default;
+	}
+
+	.annotation-card.ann-highlighted {
+		border-color: #8b9cf7;
 	}
 
 	.ann-header {
