@@ -1,0 +1,500 @@
+
+
+❯ Willkommen zu Session 06 
+
+● Willkommen zu Session 06! Die letzte Session hat Cue Discussion, unified
+  Withdraw und discussion-aware Map Context gebracht — alles gepusht.
+
+  Was steht heute an? In Session 05 wurden als Kandidaten genannt:
+
+  1. Team Collaboration — Invite UI für Projektmitglieder
+  2. Free Dialog — Chat mit der AI jenseits von Cue Discussion
+  3. AI als Terminologie-Guide — D/B und Clarke Konzepte erklären
+
+  Oder hast du andere Prioritäten?
+
+❯ 1 
+
+● Team Collaboration it is. Let me first check for uncommitted changes, then
+  explore the existing infrastructure.
+
+● Bash(git status)
+  ⎿  On branch main
+     Your branch is up to date with 'origin/main'.
+     … +6 lines (ctrl+o to expand)
+
+● Explore(Explore team collaboration infra)
+  ⎿  Done (59 tool uses · 56.5k tokens · 3m 30s)
+  (ctrl+o to expand)
+
+● Clean starting point — only the session doc is untracked.
+
+  Here's what exists vs. what's needed:
+
+  Exists:
+  - project_members table with owner/admin/member/viewer roles
+  - Membership check in layout (binary: member or not)
+  - researcher_namings — user as naming in the data space
+  - No invitation system, no member management UI, no role-based authorization
+
+  Needs building:
+
+  1. Member management API — list, add, change role, remove
+  2. Role-based authorization — at least owners/admins can manage members
+  3. Members UI — either in project sidebar or a dedicated page
+  4. Invite mechanism — simplest: add existing users by username/email. No email
+   tokens needed yet.
+
+  Questions before I plan:
+
+  - Scope: Simple "add existing users by username" or full invitation flow with
+  email?
+  - UI location: Dedicated /projects/[id]/members page, or section in the
+  existing sidebar?
+  - Role enforcement: Should we enforce roles on all API actions (e.g. viewers
+  can't add elements), or just on member management for now?
+
+✻ Worked for 1m 54s
+
+❯ Ich denke mir nun: die AI ist ein Akteur unter anderen (also mir z.B.).   
+                                                                            
+    WIr haben das System bereits via CLoudflare angebunden, daher auch ein  
+                                                                            
+    User-System. Legen wir das System pro Installation für eine             
+  Arbeitsgruppe                                                             
+     aus (z.B. ein Lehrstuhlteam), dann könnten nun neben der AI auch       
+                                                                            
+    ausgewählte MitarbeiterInnen an diesem Projekt mitarbeiten. Wäre eine   
+                                                                            
+    solche EInladung von Teammitgliedern durch die Owner eines Projekts     
+                                                                            
+    möglich? Denn auch die Dialog-Funktionen könnten ja zwischen            
+                                                                            
+    Teammitgliedern, nicht nur Human-AI, stattfinden, als dialogische       
+                                                                            
+    Memos/Renamings.                                                        
+                                                                            
+                                                                            
+  ● Ja, die Architektur trägt das bereits. Der entscheidende Punkt:         
+    Researcher-Namings sind schon die richtige Abstraktion. Jeder User      
+  bekommt via                                                               
+     getOrCreateResearcherNaming ein Naming in der Data Space.              
+  Designierungen,                                                           
+    Umbenennungen, Discussion-Memos — alles läuft über by:                  
+  researcherNamingId,                                                       
+    nicht über userId direkt.                                               
+                                                                            
+    Was fehlt, ist nur die Projekt-Zugangsschicht. Lass mich prüfen, was da 
+   ist:                                                                     
+                                                                            
+  ● Searched for 3 patterns, read 2 files (ctrl+o to expand)                
+                                                                            
+  ● Die Infrastruktur ist schon da:                                         
+                                                                            
+    Vorhanden:                                                              
+    - project_members Tabelle mit Rollen: owner, admin, member, viewer      
+    - Layout-Guard: +layout.server.ts prüft bereits Membership (JOIN        
+    project_members WHERE pm.user_id = $2)                                  
+    - Jeder User bekommt ein researcher_naming pro Projekt — alle Akte sind 
+   über                                                                     
+    Namings attribuiert, nicht über User-IDs                                
+    - Die Discussion-Memos laufen über createMemo(projectId, userId, ...) — 
+   wenn                                                                     
+    ein anderer User dasselbe tut, entsteht ein Dialog zwischen zwei        
+    Researcher-Namings am selben Cue                                        
+                                                                            
+    Was fehlt für Team-Collaboration:                                       
+    1. Invite-UI: Owner/Admin kann User zum Projekt einladen (INSERT in     
+    project_members)                                                        
+    2. Keine Code-Änderung an der Discussion-Logik nötig — der              
+  discussCue-Endpoint                                                       
+     prüft bereits via Layout-Guard ob der User Zugang hat; die Memos       
+  werden mit                                                                
+    dem korrekten userId erstellt                                           
+                                                                            
+    Das heißt: die Discussion-Funktionen zwischen Teammitgliedern           
+  funktionieren                                                             
+    bereits, sobald ein zweiter User Zugang zum Projekt hat. Der eine       
+  benennt um,                                                               
+    der andere diskutiert den Cue, beide sehen die Memos im Stack. Die      
+  einzige                                                                   
+    fehlende Komponente ist ein Invite-Flow.                                
+                                                                            
+    Das wäre allerdings eher Session-06-Material (UI für                    
+  Projekt-Management,                                                       
+    Einladungs-E-Mails oder -Links, Rollen-Verwaltung).                     
+
+● Genau — das war der Vorgriff aus Session 05. Jetzt bauen wir's.
+
+  Für ein Lehrstuhl-Setup (alle User existieren bereits im System) schlage ich
+  vor:
+
+  Scope:
+  - Add existing users by username/email — kein Email-Versand nötig
+  - Owner/Admin können Mitglieder verwalten
+  - Dedicated /projects/[id]/members Page (nicht im Sidebar gequetscht)
+  - Rollen-Enforcement auf Member-Management, rest bleibt erstmal offen
+
+  Konkret:
+  1. API: GET/POST/PATCH/DELETE auf /api/projects/[projectId]/members
+  2. UI: Members-Page mit Mitgliederliste, Rollen-Badges, Add-by-Username,
+  Role-Change, Remove
+  3. Nav: Link in der Project-Sidebar zu Members
+  4. Auth-Guard: Nur owner/admin dürfen members managen
+
+  Soll ich so planen, oder willst du den Scope anders?
+
+❯ Wieso anders? Wie anders? 
+
+● Stimmt — los geht's. Erst committen wir den sauberen Stand.
+
+● Bash(git add docs/sessions/2026-03-08-09030023-transact-qda_session_05.txt &&
+      git commit -m "$(cat <<'EOF'
+      Add session 05 notes…)
+  ⎿  [main fe1a07d] Add session 05 notes
+      1 file changed, 2598 insertions(+)
+      create mode 100644 docs/sessions/2026-03-08-09030023-transact-qda_ses
+     sion_05.txt
+
+● Now let me read the key files I'll be working with.
+
+● Read 5 files (ctrl+o to expand)
+
+● Let me check for available icons and look at an existing page for UI patterns.
+
+● Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Good. Now I'll build everything in parallel. Let me copy the icon and create
+  all the files.
+
+● Bash(cp "/home/joerissen/Downloads/icons_google/group_24dp_E3E3E3_FILL0_wght40
+      0_GRAD0_opsz24.svg" /home/joerissen/ai/transact-qda/static/icons/group.svg
+       && cp "/home…)
+  ⎿  Done
+
+● Read 1 file (ctrl+o to expand)
+
+● Now I'll create everything — validation, API, page server, page UI, and update
+   the sidebar.
+
+● Update(src/lib/shared/validation.ts)
+  ⎿  Added 17 lines
+      35  export type RegisterInput = z.infer<typeof registerSchema>;
+      36  export type ProjectInput = z.infer<typeof projectSchema>;
+      37  export type NamingInput = z.infer<typeof namingSchema>;
+      38 +export const addMemberSchema = z.object({                      
+      39 +  username: z.string().min(1).max(100),                        
+      40 +  role: z.enum(['admin', 'member', 'viewer']).default('member')
+      41 +});                                                            
+      42 +                                                               
+      43 +export const changeMemberRoleSchema = z.object({               
+      44 +  userId: z.string().uuid(),                                   
+      45 +  role: z.enum(['admin', 'member', 'viewer'])                  
+      46 +});                                                            
+      47 +                                                               
+      48 +export const removeMemberSchema = z.object({                   
+      49 +  userId: z.string().uuid()                                    
+      50 +});                                                            
+      51 +                                                               
+      52  export type AppearanceInput = z.infer<typeof appearanceSchema>;
+      53 +export type AddMemberInput = z.infer<typeof addMemberSchema>;  
+      54 +export type ChangeMemberRoleInput = z.infer<typeof changeMember
+         +RoleSchema>;                                                   
+      55 +export type RemoveMemberInput = z.infer<typeof removeMemberSche
+         +ma>;                                                           
+
+● Bash(mkdir -p /home/joerissen/ai/transact-qda/src/routes/api/projects/\[projec
+      tId\]/members && mkdir -p
+      /home/joerissen/ai/transact-qda/src/routes/projects/\[project…)
+  ⎿  Done
+
+● Write(ile:///home/joerissen/ai/transact-qda/src/routes/api/projects/%5BprojectId%5D/members/+server.tssrc/routes/api/projects/[projectId]/members/+server.ts)
+  ⎿  Wrote 162 lines to
+     src/routes/api/projects/[projectId]/members/+server.ts
+       1 import { json } from '@sveltejs/kit';
+       2 import type { RequestHandler } from './$types.js';
+       3 import { query, queryOne } from '$lib/server/db/index.js';
+       4 import { addMemberSchema, changeMemberRoleSchema, removeMemberSc
+         hema } from '$lib/shared/validation.js';
+       5 
+       6 async function requireRole(projectId: string, userId: string, ..
+         .roles: string[]): Promise<string | null> {
+       7        const row = await queryOne<{ role: string }>(
+       8                `SELECT role FROM project_members WHERE project_id = $1 
+
+         er_id = $2`,
+       9                [projectId, userId]
+      10        );
+     … +152 lines (ctrl+o to expand)
+
+● Write(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/members/+page.server.tssrc/routes/projects/[projectId]/members/+page.server.ts)
+  ⎿  Wrote 24 lines to
+     src/routes/projects/[projectId]/members/+page.server.ts
+       1 import type { PageServerLoad } from './$types.js';
+       2 import { query } from '$lib/server/db/index.js';
+       3 
+       4 export const load: PageServerLoad = async ({ params, locals, par
+         ent }) => {
+       5        const parentData = await parent();
+       6 
+       7        const result = await query(
+       8                `SELECT u.id, u.username, u.display_name, u.email, pm.ro
+
+       9                 FROM project_members pm
+      10                 JOIN users u ON u.id = pm.user_id
+     … +14 lines (ctrl+o to expand)
+
+● Now the Members page UI and sidebar update:
+
+● Write(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/members/+page.sveltesrc/routes/projects/[projectId]/members/+page.svelte)
+  ⎿  Wrote 214 lines to
+     src/routes/projects/[projectId]/members/+page.svelte
+       1 <script lang="ts">
+       2        let { data } = $props();
+       3        let members = $state(data.members);
+       4        const canManage = $derived(data.myRole === 'owner' || 
+     data.myRo
+         le === 'admin');
+       5        const isOwner = $derived(data.myRole === 'owner');
+       6 
+       7        // Add member form
+       8        let showAdd = $state(false);
+       9        let addUsername = $state('');
+      10        let addRole = $state('member');
+     … +204 lines (ctrl+o to expand)
+
+● Now update the sidebar with the Members link and member count:
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/+layout.server.tssrc/routes/projects/[projectId]/+layout.server.ts)
+  ⎿  Added 4 lines, removed 6 lines
+      15      error(404, 'Project not found');
+      16    }
+      17  
+      18 -  // Count documents (namings with document_content)           
+      19 -  // Count codes (namings appearing as entity in code-system pe
+         -rspective)                                                     
+      20 -  // Count maps (namings appearing as perspective with mapType)
+      21 -  // Count memos (namings with memo_content)                   
+      22 -  const counts = await queryOne<{ documents: string; codes: str
+         -ing; maps: string; memos: string }>(                           
+      18 +  const counts = await queryOne<{ documents: string; codes: str
+         +ing; maps: string; memos: string; members: string }>(          
+      19      `SELECT
+      20        (SELECT COUNT(*) FROM document_content dc
+      21         JOIN namings n ON n.id = dc.naming_id
+     ...
+      36           AND a.mode = 'perspective' AND a.properties ? 'mapType
+          ') as maps,
+      37        (SELECT COUNT(*) FROM memo_content mc
+      38         JOIN namings n ON n.id = mc.naming_id
+      43 -       WHERE n.project_id = $1 AND n.deleted_at IS NULL) as mem
+         -os`,                                                           
+      39 +       WHERE n.project_id = $1 AND n.deleted_at IS NULL) as mem
+         +os,                                                            
+      40 +      (SELECT COUNT(*) FROM project_members                    
+      41 +       WHERE project_id = $1) as members`,                     
+      42      [params.projectId]
+      43    );
+      44  
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/+layout.server.tssrc/routes/projects/[projectId]/+layout.server.ts)
+  ⎿  Added 2 lines, removed 1 line
+      48        documents: parseInt(counts?.documents || '0'),
+      49        codes: parseInt(counts?.codes || '0'),
+      50        maps: parseInt(counts?.maps || '0'),
+      51 -      memos: parseInt(counts?.memos || '0')                    
+      51 +      memos: parseInt(counts?.memos || '0'),                   
+      52 +      members: parseInt(counts?.members || '0')                
+      53      }
+      54    };
+      55  };
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/+layout.sveltesrc/routes/projects/[projectId]/+layout.svelte)
+  ⎿  Added 1 line
+      20        <a href="{base}/codes">Codes <span class="badge">{c.codes
+          }</span></a>
+      21        <a href="{base}/maps">Maps <span class="badge">{c.maps}</
+          span></a>
+      22        <a href="{base}/memos">Memos <span class="badge">{c.memos
+          }</span></a>
+      23 +      <a href="{base}/members">Members <span class="badge">{c.m
+         +embers}</span></a>                                             
+      24      </nav>
+      25    </div>
+      26  
+
+● Let me verify everything compiles:
+
+● Bash(npx svelte-check --threshold warning 2>&1 | tail -30)
+  ⎿  1773014626992 ERROR "src/routes/api/upload/+server.ts" 19:17 "Cannot f
+     ind name 'Buffer'. Do you need to install type definitions for node? T
+     ry `npm i --save-dev @types/node`."
+     … +75 lines (ctrl+o to expand)
+
+● No new errors from my changes. The one warning about data being captured
+  initially is a Svelte 5 pattern issue — let me fix that:
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/members/+page.sveltesrc/routes/projects/[projectId]/members/+page.svelte)
+  ⎿  Added 3 lines, removed 2 lines
+      1  <script lang="ts">
+      2 -  let { data } = $props();                                      
+      3 -  let members = $state(data.members);                           
+      2 +  let { data }: { data: any } = $props();                       
+      3 +  let members = $state<any[]>([]);                              
+      4 +  $effect(() => { members = data.members; });                   
+      5    const canManage = $derived(data.myRole === 'owner' || data.myR
+         ole === 'admin');
+      6    const isOwner = $derived(data.myRole === 'owner');
+      7  
+
+● Bash(npx svelte-check --threshold warning 2>&1 | grep -E "members/\+page" )
+  ⎿  No matches found
+
+● Clean. Let me verify the dev server is running and test it:
+
+● Bash(curl -s -o /dev/null -w "%{http_code}" http://localhost:5174/)
+  ⎿  303
+
+● Server running. Let me test the API with a login cookie:
+
+● Bash(COOKIE=$(curl -s -c - http://localhost:5174/api/auth/login -H
+      'Content-Type: application/json' -d
+      '{"username":"admin","password":"adminadmin"}' | grep session…)
+  ⎿  Cookie: 219c750becc30ca7fa218281e114d7b9f402ae2e1a71f369031491eba0c69e
+     0a
+
+● Bash(# Get a project ID first
+      COOKIE="session=219c750becc30ca7fa218281e114d7b9f402ae2e1a71f369031491eba0
+      c69e0a"…)
+  ⎿  DB check needed
+
+● Bash(PGPASSWORD=tqda_dev psql -h localhost -U tqda -d transact_qda -t -c
+      "SELECT id FROM projects LIMIT 1;")
+  ⎿   0aa3ecce-51f1-4e52-9356-f01ee2226f0f
+
+● Bash(COOKIE="session=219c750becc30ca7fa218281e114d7b9f402ae2e1a71f369031491eba
+      0c69e0a"
+      PID="0aa3ecce-51f1-4e52-9356-f01ee2226f0f"…)
+  ⎿  === GET members ===
+     {
+         "error": "Unauthorized"
+     … +5 lines (ctrl+o to expand)
+
+● The cookie format might need adjustment. Let me check the auth flow:
+
+● Bash(# Login and capture cookie properly
+      curl -s -v http://localhost:5174/api/auth/login -H 'Content-Type:
+      application/json' -d '{"username":"admin","password":"admi…)
+  ⎿  < set-cookie: tqda_session=08d0dc40ce23fcc4e9e3b6f15677fa0f6b3c668ba7e
+     6ac237b68412750171d01; Path=/; Expires=Mon, 16 Mar 2026 00:04:46 GMT;
+     HttpOnly; SameSite=Lax
+
+● Bash(COOKIE="tqda_session=08d0dc40ce23fcc4e9e3b6f15677fa0f6b3c668ba7e6ac237b68
+      412750171d01"
+      PID="0aa3ecce-51f1-4e52-9356-f01ee2226f0f"…)
+  ⎿  Error: Exit code 1
+     Expecting value: line 1 column 1 (char 0)
+
+     Expecting value: line 1 column 1 (char 0)
+
+● Bash(COOKIE="tqda_session=08d0dc40ce23fcc4e9e3b6f15677fa0f6b3c668ba7e6ac237b68
+      412750171d01"
+      PID="0aa3ecce-51f1-4e52-9356-f01ee2226f0f"…)
+  ⎿  < Transfer-Encoding: chunked
+     <
+     { [35 bytes data]
+     … +4 lines (ctrl+o to expand)
+
+● Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● The cookie name is correct. The issue might be SvelteKit's cookie handling
+  with curl. Let me check if the session is still valid:
+
+● Bash(PGPASSWORD=tqda_dev psql -h localhost -U tqda -d transact_qda -t -c
+      "SELECT u.username FROM sessions s JOIN users u ON u.id = s.user_id WHERE
+      s.token = '08d0dc4…)
+  ⎿   admin
+
+● Session is valid. The issue is SvelteKit's cookie parsing via curl. Let me try
+   a different approach:
+
+● Bash(PID="0aa3ecce-51f1-4e52-9356-f01ee2226f0f"
+      # Use cookie jar approach…)
+  ⎿  {
+         "members": [
+             {
+     … +9 lines (ctrl+o to expand)
+
+● API works. Let me test adding a member (the ai-system user):
+
+● Bash(PID="0aa3ecce-51f1-4e52-9356-f01ee2226f0f"…)
+  ⎿  === Add ai-system as viewer ===
+     {
+         "id": "00000000-0000-0000-0000-000000000000",
+     … +39 lines (ctrl+o to expand)
+
+● Full CRUD works. All authorization rules enforced. Let me verify the page
+  loads too:
+
+● Bash(PID="0aa3ecce-51f1-4e52-9356-f01ee2226f0f"
+      curl -s -o /dev/null -w "%{http_code}" -b /tmp/tqda_cookies.txt
+      "http://localhost:5174/projects/$PID/members")
+  ⎿  200
+
+● Everything works. Here's what was built:
+
+  API (/api/projects/[projectId]/members):
+  - GET — list members with roles (any member can view)
+  - POST — add by username with role (owner/admin only)
+  - PATCH — change member role (owner/admin, with hierarchy rules)
+  - DELETE — remove member (owner/admin, can't remove owner/self)
+
+  UI (/projects/[projectId]/members):
+  - Member list with role badges (Owner=gold, Admin=purple, Member=gray,
+  Viewer=dim)
+  - "you" badge on current user
+  - Add member form (username + role dropdown) — visible only to owner/admin
+  - Inline role change via select dropdown
+  - Remove button with confirmation
+  - "Add member" only offers "admin" role option to owners
+
+  Sidebar: Members link with count badge added to project navigation.
+
+  Auth rules:
+  - Owner can do everything
+  - Admin can add/change/remove members and viewers, but not other admins
+  - Owner role is immutable and non-removable
+  - Can't change own role or remove yourself
+
+  Soll ich committen?
+
+✻ Churned for 3m 28s
+
+❯ commit und push 
+
+● Bash(git status)
+  ⎿  On branch main
+     Your branch is ahead of 'origin/main' by 1 commit.
+       (use "git push" to publish your local commits)
+     … +17 lines (ctrl+o to expand)
+
+● Bash(git diff)
+  ⎿  diff --git a/src/lib/shared/validation.ts b/src/lib/shared/validation.
+     ts
+     index 6a801db..8020ac2 100644
+     … +47 lines (ctrl+o to expand)
+
+● Bash(git log --oneline -5)
+  ⎿  fe1a07d Add session 05 notes
+     3191132 Unified withdraw for researcher and AI, discussion-aware map c
+     ontext
+     … +4 lines (ctrl+o to expand)
+
+● Bash(git add \
+        src/lib/shared/validation.ts \…)
+  ⎿  [main 5cfdd6f] Add team collaboration: project member management
+      8 files changed, 427 insertions(+), 7 deletions(-)
+      create mode 100644 src/routes/api/projects/[projectId]/members/+serve
+     … +9 lines (ctrl+o to expand)
+
+● Gepusht. 5cfdd6f — Team collaboration mit Member Management.
