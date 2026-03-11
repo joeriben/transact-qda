@@ -138,6 +138,32 @@
 		return segments;
 	});
 
+	// Margin annotations: code labels positioned at the starting line of each annotation
+	function shortLabel(label: string): string {
+		const words = label.split(/\s+/);
+		return words.length <= 2 ? label : words.slice(0, 2).join(' ') + '…';
+	}
+
+	type MarginAnnotation = { annId: string; line: number; label: string; color: string };
+	const marginAnnotations = $derived.by((): MarginAnnotation[] => {
+		const text = doc.full_text;
+		if (!text) return [];
+		const textAnns = annotations.filter((a: any) => {
+			const anchor = a.properties?.anchor;
+			return anchor && anchor.pos0 != null && anchor.pos1 != null;
+		});
+		return textAnns.map((ann: any) => {
+			const pos0 = ann.properties.anchor.pos0;
+			const line = text.slice(0, pos0).split('\n').length - 1;
+			return {
+				annId: ann.id,
+				line,
+				label: shortLabel(ann.code_label),
+				color: ann.code_properties?.color || '#8b9cf7'
+			};
+		});
+	});
+
 	async function annotate(codeId: string) {
 		if (!selection && !regionSelection) return;
 		annotating = true;
@@ -273,14 +299,28 @@
 					onregionselect={(region) => { regionSelection = region; }}
 				/>
 			{:else if doc.full_text}
-				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<pre class="document-text" bind:this={textEl} onmouseup={handleMouseUp}>{#each textSegments as seg}{#if seg.codes.length > 0}<span
+				<div class="text-with-margin">
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<pre class="document-text" bind:this={textEl} onmouseup={handleMouseUp}>{#each textSegments as seg}{#if seg.codes.length > 0}<span
 						class="coded-text"
 						class:coded-highlighted={seg.codes.some(c => c.annId === highlightedAnnotationId)}
 						style="background: {codedBackground(seg.codes)}; border-bottom: 2px solid {seg.codes[0].color};"
 						onmouseenter={() => { highlightedAnnotationId = seg.codes[0].annId; }}
 						onmouseleave={() => { highlightedAnnotationId = null; }}
 					>{seg.text}<span class="code-tooltip">{seg.codes.map(c => c.label).join(', ')}</span></span>{:else}{seg.text}{/if}{/each}</pre>
+					<div class="code-margin">
+						{#each marginAnnotations as ma (ma.annId)}
+							<!-- svelte-ignore a11y_no_static_element_interactions -->
+							<span
+								class="margin-label"
+								class:margin-highlighted={highlightedAnnotationId === ma.annId}
+								style="top: calc({ma.line} * 1.7em); color: {ma.color};"
+								onmouseenter={() => { highlightedAnnotationId = ma.annId; }}
+								onmouseleave={() => { highlightedAnnotationId = null; }}
+							>{ma.label}</span>
+						{/each}
+					</div>
+				</div>
 			{:else}
 				<p class="placeholder">No text content available</p>
 			{/if}
@@ -404,7 +444,15 @@
 		overflow: hidden;
 	}
 
+	.text-with-margin {
+		display: flex;
+		gap: 0;
+		min-height: min-content;
+	}
+
 	.document-text {
+		flex: 1;
+		min-width: 0;
 		white-space: pre-wrap;
 		word-break: break-word;
 		font-family: 'Courier New', 'Consolas', monospace;
@@ -416,6 +464,33 @@
 
 	.document-text::selection {
 		background: rgba(139, 156, 247, 0.35);
+	}
+
+	/* Code margin column */
+	.code-margin {
+		position: relative;
+		width: 100px;
+		flex-shrink: 0;
+		border-left: 1px solid #2a2d3a;
+		margin-left: 0.5rem;
+		padding-left: 0.4rem;
+	}
+	.margin-label {
+		position: absolute;
+		left: 0.4rem;
+		font-family: system-ui, sans-serif;
+		font-size: 0.65rem;
+		line-height: 1.7em;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		max-width: 95px;
+		cursor: default;
+		opacity: 0.8;
+	}
+	.margin-label:hover, .margin-label.margin-highlighted {
+		opacity: 1;
+		font-weight: 600;
 	}
 
 	/* Coded text: background + underline, no layout shift */
