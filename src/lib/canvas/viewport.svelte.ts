@@ -1,10 +1,10 @@
-export function createViewport() {
+export function createViewport(opts?: { minZoom?: number; maxZoom?: number }) {
 	let x = $state(0);
 	let y = $state(0);
 	let zoom = $state(1);
 
-	const MIN_ZOOM = 0.1;
-	const MAX_ZOOM = 5;
+	const MIN_ZOOM = opts?.minZoom ?? 0.1;
+	const MAX_ZOOM = opts?.maxZoom ?? 5;
 
 	function pan(dx: number, dy: number) {
 		x += dx / zoom;

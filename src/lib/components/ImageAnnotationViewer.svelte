@@ -22,7 +22,7 @@
 		onregionselect: (region: RegionSelection | null) => void;
 	} = $props();
 
-	const vp = createViewport();
+	const vp = createViewport({ minZoom: 0.01 });
 
 	let containerEl = $state<HTMLDivElement>();
 	let imgNaturalWidth = $state(0);
@@ -52,10 +52,36 @@
 		const rect = containerEl.getBoundingClientRect();
 		const scaleX = rect.width / imgNaturalWidth;
 		const scaleY = rect.height / imgNaturalHeight;
-		const scale = Math.min(scaleX, scaleY, 1) * 0.95;
+		// No cap at 1 — large images need small zoom to fit
+		const scale = Math.min(scaleX, scaleY) * 0.95;
 		vp.zoom = scale;
 		vp.x = (rect.width / scale - imgNaturalWidth) / 2;
 		vp.y = (rect.height / scale - imgNaturalHeight) / 2;
+	}
+
+	/** After zoom, nudge viewport so image center stays within the visible area */
+	function constrainViewport() {
+		if (!containerEl || !imgNaturalWidth || !imgNaturalHeight) return;
+		const rect = containerEl.getBoundingClientRect();
+		const viewW = rect.width / vp.zoom;
+		const viewH = rect.height / vp.zoom;
+
+		// Image center in canvas coords
+		const imgCx = imgNaturalWidth / 2;
+		const imgCy = imgNaturalHeight / 2;
+
+		// Visible area in canvas: [−vp.x, −vp.x + viewW] × [−vp.y, −vp.y + viewH]
+		// Ensure image center is within visible area (with margin)
+		const margin = 50 / vp.zoom; // 50 screen pixels
+		const visLeft = -vp.x + margin;
+		const visRight = -vp.x + viewW - margin;
+		const visTop = -vp.y + margin;
+		const visBottom = -vp.y + viewH - margin;
+
+		if (imgCx < visLeft) vp.x = -(imgCx - margin);
+		else if (imgCx > visRight) vp.x = -(imgCx - viewW + margin);
+		if (imgCy < visTop) vp.y = -(imgCy - margin);
+		else if (imgCy > visBottom) vp.y = -(imgCy - viewH + margin);
 	}
 
 	function toNormalized(px: number, py: number): { x: number; y: number } {
@@ -148,16 +174,17 @@
 	}
 
 	function handleWheel(e: WheelEvent) {
-		if (!containerEl) return;
+		if (!containerEl || !imgNaturalWidth) return;
 		e.preventDefault();
 		const rect = containerEl.getBoundingClientRect();
 		const cx = (e.clientX - rect.left) / vp.zoom;
 		const cy = (e.clientY - rect.top) / vp.zoom;
 		const factor = e.deltaY < 0 ? 1.1 : 0.9;
 		vp.zoomAt(factor, cx, cy);
+		constrainViewport();
 	}
 
-	function clearRegion() {
+	export function clearRegion() {
 		currentRegion = null;
 		drawStart = null;
 		drawCurrent = null;
@@ -181,9 +208,6 @@
 			height: Math.abs(drawCurrent.y - drawStart.y)
 		};
 	});
-
-	// Expose clearRegion for parent
-	export { clearRegion };
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -264,6 +288,10 @@
 			</svg>
 		{/if}
 	</div>
+
+	{#if imgLoaded}
+		<div class="pan-hint">Alt + drag to pan</div>
+	{/if}
 </div>
 
 <style>
@@ -303,5 +331,15 @@
 
 	.annotation-rect.highlighted {
 		filter: brightness(1.3);
+	}
+
+	.pan-hint {
+		position: absolute;
+		bottom: 0.5rem;
+		right: 0.5rem;
+		font-size: 0.7rem;
+		color: #4b5060;
+		pointer-events: none;
+		user-select: none;
 	}
 </style>
