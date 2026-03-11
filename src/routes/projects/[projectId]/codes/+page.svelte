@@ -1,7 +1,7 @@
 <script lang="ts">
 	let { data } = $props();
 
-	let filterStatus = $state<'all' | 'grounded' | 'reflected' | 'ungrounded'>('all');
+	let filterStatus = $state<'all' | 'grounded' | 'ungrounded'>('all');
 
 	type Candidate = {
 		id: string;
@@ -13,28 +13,12 @@
 		has_document_anchor: boolean;
 	};
 
-	function getStatus(c: Candidate): 'grounded' | 'reflected' | 'ungrounded' {
-		if (c.has_document_anchor) return 'grounded';
-		if ((data.memoCounts[c.id] || 0) > 0) return 'reflected';
-		return 'ungrounded';
-	}
-
-	function statusIcon(s: 'grounded' | 'reflected' | 'ungrounded'): string {
-		if (s === 'grounded') return '/icons/text_snippet.svg';
-		if (s === 'reflected') return '/icons/stylus_note.svg';
-		return '/icons/question_mark.svg';
-	}
-
-	function statusLabel(s: 'grounded' | 'reflected' | 'ungrounded'): string {
-		if (s === 'grounded') return 'Grounded';
-		if (s === 'reflected') return 'Reflected only';
-		return 'Ungrounded';
-	}
-
 	const filtered = $derived(
 		filterStatus === 'all'
 			? data.candidates
-			: data.candidates.filter((c: Candidate) => getStatus(c) === filterStatus)
+			: data.candidates.filter((c: Candidate) =>
+				filterStatus === 'grounded' ? c.has_document_anchor : !c.has_document_anchor
+			)
 	);
 
 	// Group by source map
@@ -69,9 +53,6 @@
 		<button class="filter-btn" class:active={filterStatus === 'grounded'} onclick={() => filterStatus = 'grounded'}>
 			<img src="/icons/text_snippet.svg" alt="" class="filter-icon" /> Grounded
 		</button>
-		<button class="filter-btn" class:active={filterStatus === 'reflected'} onclick={() => filterStatus = 'reflected'}>
-			<img src="/icons/stylus_note.svg" alt="" class="filter-icon" /> Reflected
-		</button>
 		<button class="filter-btn" class:active={filterStatus === 'ungrounded'} onclick={() => filterStatus = 'ungrounded'}>
 			<img src="/icons/question_mark.svg" alt="" class="filter-icon" /> Ungrounded
 		</button>
@@ -91,19 +72,21 @@
 				<h3 class="group-label">{group.label}</h3>
 				<div class="group-items">
 					{#each group.items as c (c.id)}
-						{@const status = getStatus(c)}
+						{@const hasMemo = (data.memoCounts[c.id] || 0) > 0}
 						<div class="naming-row">
 							<span class="color-dot" style="background: {c.color || '#8b9cf7'}"></span>
 							<span class="naming-label">{c.label}</span>
+							{#if hasMemo}
+								<img src="/icons/stylus_note.svg" alt="Has memo" title="Has memo" class="memo-icon" />
+							{/if}
 							<span class="naming-count">{data.annotationCounts[c.id] || 0}</span>
 							<img
-								src={statusIcon(status)}
-								alt={statusLabel(status)}
-								title={statusLabel(status)}
+								src={c.has_document_anchor ? '/icons/text_snippet.svg' : '/icons/question_mark.svg'}
+								alt={c.has_document_anchor ? 'Grounded' : 'Ungrounded'}
+								title={c.has_document_anchor ? 'Grounded' : 'Ungrounded'}
 								class="status-icon"
-								class:status-grounded={status === 'grounded'}
-								class:status-reflected={status === 'reflected'}
-								class:status-ungrounded={status === 'ungrounded'}
+								class:status-grounded={c.has_document_anchor}
+								class:status-ungrounded={!c.has_document_anchor}
 							/>
 						</div>
 					{/each}
@@ -186,6 +169,13 @@
 		font-size: 0.9rem;
 	}
 
+	.memo-icon {
+		width: 14px;
+		height: 14px;
+		opacity: 0.4;
+		flex-shrink: 0;
+	}
+
 	.naming-count {
 		font-size: 0.75rem;
 		color: #6b7280;
@@ -197,6 +187,5 @@
 		flex-shrink: 0;
 	}
 	.status-grounded { opacity: 0.7; filter: brightness(0) saturate(100%) invert(72%) sepia(33%) saturate(589%) hue-rotate(78deg) brightness(96%) contrast(92%); }
-	.status-reflected { opacity: 0.5; filter: brightness(0) saturate(100%) invert(70%) sepia(43%) saturate(700%) hue-rotate(10deg) brightness(100%) contrast(90%); }
 	.status-ungrounded { opacity: 0.3; }
 </style>

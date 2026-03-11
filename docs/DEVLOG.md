@@ -203,3 +203,23 @@ Core principle: the fundamental unit is the event (naming/relating act), not the
 | `de0c481` | Add color picker for in-vivo codes, enforce code uniqueness |
 | `ac39f27` | Fix image viewer zoom, cancel button, and large image support |
 | `a550c06` | Segment-based text annotation rendering, monospace font, fixed code panel |
+
+---
+
+## Session 09 — 2026-03-11
+
+**Focus**: Code system refactor — codes as derived view from maps
+
+- **Retired `code-system` perspective** (ATLAS.ti model: codes as pre-existing categories)
+- Renamed to `grounding-workspace`: infrastructure holding pen for orphan in-vivo codes, not a separate analytical domain
+- **`getAnnotationCandidates()`** replaces `getCodeTree()`: pulls entities from ALL map perspectives + grounding workspace, `DISTINCT ON` preferring map appearances
+- Annotation sidebar now groups candidates by source map (section headers)
+- Color resolution perspective-agnostic (subquery across all entity appearances)
+- Layout nav: "Codes" → "Grounding", badge shows grounded naming count
+- **Grounding dashboard**: filter by grounded (📄) / ungrounded, grouped by source map
+- Memo indicator (📝) shown as orthogonal marker — reflexive process, not a grounding category
+- **Correction**: removed "reflected" as a grounding filter status — having a memo is CCS-gradient movement (cue→characterization), not grounding
+
+| Commit | Description |
+|--------|-------------|
+| `71de965` | Refactor code system: codes as derived view from maps |
