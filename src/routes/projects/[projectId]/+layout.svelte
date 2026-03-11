@@ -33,7 +33,7 @@
 	.project-layout {
 		display: flex;
 		gap: 0;
-		min-height: calc(100vh - 4rem);
+		height: calc(100vh - 4rem);
 		margin: -2rem;
 	}
 
