@@ -173,3 +173,29 @@ Core principle: the fundamental unit is the event (naming/relating act), not the
 | `c699799` | Add memo hover tooltips on canvas nodes |
 | `2c19e50` | Add nightly database backup via pg_dump + systemd timer |
 | `d2c7774` | Add interactive document text annotation with CSS Custom Highlight API |
+
+---
+
+## Session 08 — 2026-03-11
+
+**Focus**: Image annotation, in-vivo coding, provenance design
+
+- Image region annotation: rectangle selection with SVG overlay on normalized coordinates
+- Image serving endpoint, ImageAnnotationViewer component with zoom/pan (reuses `createViewport()`)
+- Unified sidebar: text selections and image regions share the same code picker panel
+- In-vivo coding: create codes inline during annotation (type name → create + annotate in one step)
+- Color picker for in-vivo codes, code uniqueness enforcement
+- Zoom fixes: configurable min/max zoom in viewport, large image support, viewport constraint after zoom
+- **Design decision: provenance and codes** — documented in `docs/design-provenance-and-codes.md`
+  - Codes should be a derived view from maps, not a separate ontological domain
+  - Two orthogonal dimensions: CCS gradient (cue → characterization → specification) vs. grounding (📄 document anchor)
+  - "There is no such thing as context" → all material (including discourse/theory texts) belongs in the corpus
+  - Memos (📝) are reflexive process, not grounding. 📄 is the only grounding indicator.
+  - AI visual analysis deferred — requires multimodal client, positioned as grounding assistant (not map-level co-analyst)
+
+| Commit | Description |
+|--------|-------------|
+| `45b6f29` | Add image region annotation with rectangle selection and SVG overlay |
+| `287d4c5` | Add in-vivo coding: create codes inline during annotation |
+| `de0c481` | Add color picker for in-vivo codes, enforce code uniqueness |
+| `ac39f27` | Fix image viewer zoom, cancel button, and large image support |

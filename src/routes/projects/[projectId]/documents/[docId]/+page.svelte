@@ -110,51 +110,60 @@
 		return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 	}
 
-	// Update CSS Custom Highlights when annotations or DOM refs change
-	$effect(() => {
-		const _anns = annotations;
-		const _el = textEl;
-		const _style = dynamicStyle;
-		if (!_el || !_style || typeof CSS === 'undefined' || !('highlights' in CSS)) return;
+	function codedBackground(codez: { color: string }[]): string {
+		if (codez.length === 1) return hexToRgba(codez[0].color, 0.2);
+		const stops = codez.map((c, i) => {
+			const from = (i * 100 / codez.length);
+			const to = ((i + 1) * 100 / codez.length);
+			return `${hexToRgba(c.color, 0.25)} ${from}%, ${hexToRgba(c.color, 0.25)} ${to}%`;
+		});
+		return `linear-gradient(180deg, ${stops.join(', ')})`;
+	}
 
-		(CSS as any).highlights.clear();
-		const codeColors = new Map<string, string>();
+	// Build text segments with inline annotation labels
+	type TextSegment = { text: string; codes: { id: string; annId: string; label: string; color: string }[]; startsHere: { label: string; color: string; annId: string }[] };
+	const textSegments = $derived.by((): TextSegment[] => {
+		const text = doc.full_text;
+		if (!text) return [];
 
-		for (const ann of _anns) {
-			const anchor = ann.properties?.anchor;
-			if (!anchor || anchor.pos0 == null || anchor.pos1 == null) continue;
+		// Collect text annotations only
+		const textAnns = annotations.filter((a: any) => {
+			const anchor = a.properties?.anchor;
+			return anchor && anchor.pos0 != null && anchor.pos1 != null;
+		});
+		if (textAnns.length === 0) return [{ text, codes: [], startsHere: [] }];
 
-			const range = createRangeFromOffsets(_el, anchor.pos0, anchor.pos1);
-			if (!range) continue;
-
-			const key = `ann${ann.code_id.replace(/-/g, '')}`;
-			if (!(CSS as any).highlights.has(key)) {
-				(CSS as any).highlights.set(key, new (window as any).Highlight());
-			}
-			(CSS as any).highlights.get(key)!.add(range);
-
-			if (!codeColors.has(key)) {
-				codeColors.set(key, ann.code_properties?.color || '#8b9cf7');
-			}
+		// Build boundary points
+		const points = new Set<number>();
+		points.add(0);
+		points.add(text.length);
+		for (const ann of textAnns) {
+			const { pos0, pos1 } = ann.properties.anchor;
+			if (pos0 >= 0 && pos0 <= text.length) points.add(pos0);
+			if (pos1 >= 0 && pos1 <= text.length) points.add(pos1);
 		}
+		const sorted = [...points].sort((a, b) => a - b);
 
-		let css = '';
-		for (const [key, color] of codeColors) {
-			css += `::highlight(${key}) { background-color: ${hexToRgba(color, 0.25)}; }\n`;
-		}
-		_style.textContent = css;
-	});
+		// Build segments
+		const segments: TextSegment[] = [];
+		for (let i = 0; i < sorted.length - 1; i++) {
+			const start = sorted[i];
+			const end = sorted[i + 1];
+			if (start === end) continue;
 
-	onMount(() => {
-		const el = document.createElement('style');
-		document.head.appendChild(el);
-		dynamicStyle = el;
-		return () => {
-			el.remove();
-			if (typeof CSS !== 'undefined' && 'highlights' in CSS) {
-				(CSS as any).highlights.clear();
+			const activeCodes: TextSegment['codes'] = [];
+			const startsHere: TextSegment['startsHere'] = [];
+			for (const ann of textAnns) {
+				const { pos0, pos1 } = ann.properties.anchor;
+				if (pos0 <= start && pos1 > start) {
+					const info = { id: ann.code_id, annId: ann.id, label: ann.code_label, color: ann.code_properties?.color || '#8b9cf7' };
+					activeCodes.push(info);
+					if (pos0 === start) startsHere.push(info);
+				}
 			}
-		};
+			segments.push({ text: text.slice(start, end), codes: activeCodes, startsHere });
+		}
+		return segments;
 	});
 
 	async function annotate(codeId: string) {
@@ -293,7 +302,17 @@
 				/>
 			{:else if doc.full_text}
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<pre class="document-text" bind:this={textEl} onmouseup={handleMouseUp}>{doc.full_text}</pre>
+				<pre class="document-text" bind:this={textEl} onmouseup={handleMouseUp}>{#each textSegments as seg}{#if seg.codes.length > 0}{#each seg.startsHere as c}<span
+						class="code-tag"
+						class:tag-highlighted={highlightedAnnotationId === c.annId}
+						style="background: {c.color};"
+						onmouseenter={() => { highlightedAnnotationId = c.annId; }}
+						onmouseleave={() => { highlightedAnnotationId = null; }}
+					>{c.label}</span>{/each}<span
+						class="coded-text"
+						class:coded-highlighted={seg.codes.some(c => c.annId === highlightedAnnotationId)}
+						style="background: {codedBackground(seg.codes)}; border-bottom: 2px solid {seg.codes[0].color};"
+					>{seg.text}</span>{:else}{seg.text}{/if}{/each}</pre>
 			{:else}
 				<p class="placeholder">No text content available</p>
 			{/if}
@@ -431,12 +450,42 @@
 		background: rgba(139, 156, 247, 0.35);
 	}
 
+	/* Inline code annotations */
+	.code-tag {
+		display: inline;
+		font-family: system-ui, sans-serif;
+		font-size: 0.6rem;
+		font-weight: 600;
+		color: #0f1117;
+		padding: 0.05rem 0.3rem;
+		border-radius: 2px;
+		margin-right: 1px;
+		vertical-align: text-top;
+		line-height: 1;
+		cursor: default;
+		white-space: nowrap;
+	}
+	.code-tag.tag-highlighted {
+		outline: 1px solid #fff;
+	}
+	.coded-text {
+		border-radius: 2px;
+		transition: filter 0.15s;
+	}
+	.coded-text.coded-highlighted {
+		filter: brightness(1.4);
+	}
+
 	.code-panel {
 		width: 300px;
 		display: flex;
 		flex-direction: column;
 		gap: 0.75rem;
 		overflow-y: auto;
+		position: sticky;
+		top: 0;
+		align-self: flex-start;
+		max-height: 100%;
 	}
 
 	.section-icon { width: 16px; height: 16px; opacity: 0.5; }
