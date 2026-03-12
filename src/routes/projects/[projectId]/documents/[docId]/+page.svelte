@@ -164,25 +164,21 @@
 		return words.length <= 2 ? label : words.slice(0, 2).join(' ') + '…';
 	}
 
-	type MarginAnnotation = { annId: string; line: number; label: string; color: string };
-	const marginAnnotations = $derived.by((): MarginAnnotation[] => {
+	const marginMap = $derived.by(() => {
 		const text = doc.full_text;
-		if (!text) return [];
-		const textAnns = annotations.filter((a: any) => {
-			const anchor = a.properties?.anchor;
-			return anchor && anchor.pos0 != null && anchor.pos1 != null;
-		});
-		return textAnns.map((ann: any) => {
-			const pos0 = ann.properties.anchor.pos0;
-			const line = text.slice(0, pos0).split('\n').length - 1;
-			return {
-				annId: ann.id,
-				line,
-				label: shortLabel(ann.code_label),
-				color: ann.code_color || '#8b9cf7'
-			};
-		});
+		if (!text) return new Map<number, { annId: string; label: string; color: string }>();
+		const map = new Map<number, { annId: string; label: string; color: string }>();
+		for (const ann of annotations) {
+			const anchor = ann.properties?.anchor;
+			if (!anchor || anchor.pos0 == null) continue;
+			const line = text.slice(0, anchor.pos0).split('\n').length - 1;
+			if (!map.has(line)) {
+				map.set(line, { annId: ann.id, label: shortLabel(ann.code_label), color: ann.code_color || '#8b9cf7' });
+			}
+		}
+		return map;
 	});
+	const lineCount = $derived(doc.full_text ? doc.full_text.split('\n').length : 0);
 
 	async function annotate(codeId: string) {
 		if (!selection && !regionSelection) return;
@@ -329,15 +325,20 @@
 						onmouseleave={() => { highlightedAnnotationId = null; }}
 					>{seg.text}<span class="code-tooltip">{seg.codes.map(c => c.label).join(', ')}</span></span>{:else}{seg.text}{/if}{/each}</pre>
 					<div class="code-margin">
-						{#each marginAnnotations as ma (ma.annId)}
-							<!-- svelte-ignore a11y_no_static_element_interactions -->
-							<span
-								class="margin-label"
-								class:margin-highlighted={highlightedAnnotationId === ma.annId}
-								style="top: calc({ma.line} * 0.85rem * 1.7); color: {ma.color};"
-								onmouseenter={() => { highlightedAnnotationId = ma.annId; }}
-								onmouseleave={() => { highlightedAnnotationId = null; }}
-							>{ma.label}</span>
+						{#each { length: lineCount } as _, i}
+							<div class="margin-line">
+								{#if marginMap.has(i)}
+									{@const ma = marginMap.get(i)}
+									<!-- svelte-ignore a11y_no_static_element_interactions -->
+									<span
+										class="margin-label"
+										class:margin-highlighted={highlightedAnnotationId === ma.annId}
+										style="color: {ma.color};"
+										onmouseenter={() => { highlightedAnnotationId = ma.annId; }}
+										onmouseleave={() => { highlightedAnnotationId = null; }}
+									>{ma.label}</span>
+								{/if}
+							</div>
 						{/each}
 					</div>
 				</div>
@@ -480,6 +481,7 @@
 	.document-text {
 		flex: 1;
 		min-width: 0;
+		margin: 0;
 		white-space: pre-wrap;
 		word-break: break-word;
 		font-family: 'Courier New', 'Consolas', monospace;
@@ -493,20 +495,26 @@
 		background: rgba(139, 156, 247, 0.35);
 	}
 
-	/* Code margin column */
+	/* Code margin column — same typography as .document-text for flow-based alignment */
 	.code-margin {
-		position: relative;
 		width: 100px;
 		flex-shrink: 0;
 		border-left: 1px solid #2a2d3a;
 		margin-left: 0.5rem;
 		padding-left: 0.4rem;
+		font-size: 0.85rem;
+		line-height: 1.7;
+	}
+	.margin-line {
+		height: 1lh;
+		overflow: hidden;
 	}
 	.margin-label {
-		position: absolute;
-		left: 0.4rem;
+		display: inline-block;
 		font-family: system-ui, sans-serif;
 		font-size: 0.65rem;
+		line-height: normal;
+		vertical-align: middle;
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;

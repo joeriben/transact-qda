@@ -5,6 +5,7 @@
 	const p = $derived(data.project);
 	const c = $derived(data.counts);
 	const base = $derived(`/projects/${p.id}`);
+	const maps = $derived(data.mapByType as Record<string, { id: string }>);
 </script>
 
 <div class="project-layout">
@@ -15,12 +16,13 @@
 		{/if}
 
 		<nav>
-			<a href="{base}">Overview</a>
-			<a href="{base}/documents">Documents <span class="badge">{c.documents}</span></a>
-			<a href="{base}/codes">Grounding <span class="badge">{c.codes}</span></a>
-			<a href="{base}/maps">Maps <span class="badge">{c.maps}</span></a>
-			<a href="{base}/memos">Memos <span class="badge">{c.memos}</span></a>
-			<a href="{base}/members">Members <span class="badge">{c.members}</span></a>
+			{#if maps['situational']}<a href="{base}/maps/{maps['situational'].id}">Situational Map</a>{/if}
+			{#if maps['social-worlds']}<a href="{base}/maps/{maps['social-worlds'].id}">Social Worlds Map</a>{/if}
+			{#if maps['positional']}<a href="{base}/maps/{maps['positional'].id}">Positional Map</a>{/if}
+			<a href="{base}/codes">Namings</a>
+			<a href="{base}/documents">Documents</a>
+			<a href="{base}/memos">Memos</a>
+			<a href="{base}/members">Members</a>
 		</nav>
 	</div>
 

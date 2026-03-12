@@ -1,6 +1,7 @@
 import type { LayoutServerLoad } from './$types.js';
 import { queryOne } from '$lib/server/db/index.js';
 import { error } from '@sveltejs/kit';
+import { getMapsByProject } from '$lib/server/db/queries/maps.js';
 
 export const load: LayoutServerLoad = async ({ params, locals }) => {
 	const project = await queryOne<{ id: string; name: string; description: string | null; role: string }>(
@@ -37,8 +38,16 @@ export const load: LayoutServerLoad = async ({ params, locals }) => {
 		[params.projectId]
 	);
 
+	const maps = await getMapsByProject(params.projectId);
+	const mapByType: Record<string, { id: string }> = {};
+	for (const m of maps) {
+		const t = m.properties?.mapType;
+		if (t && !mapByType[t]) mapByType[t] = { id: m.id };
+	}
+
 	return {
 		project,
+		mapByType,
 		counts: {
 			documents: parseInt(counts?.documents || '0'),
 			codes: parseInt(counts?.codes || '0'),
