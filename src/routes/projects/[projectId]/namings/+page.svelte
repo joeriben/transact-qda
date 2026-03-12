@@ -522,6 +522,7 @@
 			<div class="naming-list">
 				{#each relations as n (n.naming_id)}
 					{@const withdrawn = isWithdrawn(n.naming_id, n.properties)}
+					{@const hasInscription = hasMeaningfulInscription(n.current_inscription || n.inscription)}
 					<div class="naming-card relation-card" class:withdrawn>
 						<div class="naming-main">
 							<span class="designation-dot" style="background: {designationColor(n.designation)}" title="{designationLabel(n.designation)}"></span>
@@ -533,51 +534,38 @@
 								<img class="provenance-indicator" src="/icons/question_mark.svg" alt="ungrounded" title="No grounding yet" />
 							{/if}
 
-							<div class="relation-display">
-								<span class="rel-endpoints">
-									<span class="rel-source">{n.source_inscription || '?'}</span>
+							<div class="relation-proposition">
+								{#if hasInscription}
+									<span
+										class="rel-title editable"
+										ondblclick={() => startRename(n.naming_id, n.current_inscription || n.inscription)}
+										onclick={() => showStack(n.naming_id)}
+									>{n.current_inscription || n.inscription}:</span>
+								{/if}
+								<span class="rel-source">{n.source_inscription || '?'}</span>
+								<span class="rel-connector">—</span>
+								{#if editingId === n.naming_id}
+									<form class="inline-rename" onsubmit={e => { e.preventDefault(); confirmRename(); }}>
+										<input type="text" bind:value={editingValue} placeholder="inscription" />
+										<button type="submit" class="btn-xs">ok</button>
+										<button type="button" class="btn-xs" onclick={() => editingId = null}>x</button>
+									</form>
 									<span class="rel-connector">—</span>
-									<span class="rel-target">{n.target_inscription || '?'}</span>
-								</span>
-								{@const hasInscription = hasMeaningfulInscription(n.current_inscription || n.inscription)}
-								<span class="rel-qualifiers">
-									{#if editingId === n.naming_id}
-										<form class="inline-rename" onsubmit={e => { e.preventDefault(); confirmRename(); }}>
-											<input type="text" bind:value={editingValue} placeholder="inscription" />
-											<button type="submit" class="btn-xs">ok</button>
-											<button type="button" class="btn-xs" onclick={() => editingId = null}>x</button>
-										</form>
-									{:else if hasInscription && n.valence}
-										<!-- Both: valence as tag, inscription as label -->
-										<span class="rel-valence-tag">{n.valence}</span>
-										<span
-											class="rel-inscription editable"
-											ondblclick={() => startRename(n.naming_id, n.current_inscription || n.inscription)}
-											onclick={() => showStack(n.naming_id)}
-										>{n.current_inscription || n.inscription}</span>
-									{:else if hasInscription}
-										<!-- Only inscription -->
-										<span
-											class="rel-inscription editable"
-											ondblclick={() => startRename(n.naming_id, n.current_inscription || n.inscription)}
-											onclick={() => showStack(n.naming_id)}
-										>{n.current_inscription || n.inscription}</span>
-									{:else if n.valence}
-										<!-- Only valence: promoted to inscription position -->
-										<span
-											class="rel-inscription editable"
-											ondblclick={() => startRename(n.naming_id, n.valence || '')}
-											onclick={() => showStack(n.naming_id)}
-										>{n.valence}</span>
-									{:else}
-										<!-- Neither -->
-										<span
-											class="rel-inscription-empty editable"
-											ondblclick={() => startRename(n.naming_id, '')}
-											onclick={() => showStack(n.naming_id)}
-										>+ name</span>
-									{/if}
-								</span>
+								{:else if n.valence}
+									<span
+										class="rel-predicate"
+										ondblclick={() => { if (!hasInscription) startRename(n.naming_id, n.valence || ''); }}
+										onclick={() => showStack(n.naming_id)}
+									>{n.valence}</span>
+									<span class="rel-connector">—</span>
+								{:else}
+									<span
+										class="rel-predicate-empty"
+										ondblclick={() => startRename(n.naming_id, '')}
+									>+ name</span>
+									<span class="rel-connector">—</span>
+								{/if}
+								<span class="rel-target">{n.target_inscription || '?'}</span>
 							</div>
 						</div>
 
@@ -962,45 +950,36 @@
 		flex: 1;
 	}
 
-	/* Relation card */
-	.relation-display {
+	/* Relation card — proposition format */
+	.relation-proposition {
 		display: flex;
-		flex-direction: column;
-		gap: 0.15rem;
+		align-items: baseline;
+		gap: 0.3rem;
 		flex: 1;
 		min-width: 0;
-	}
-	.rel-endpoints {
-		display: flex;
-		align-items: center;
-		gap: 0.3rem;
 		font-size: 0.82rem;
+		flex-wrap: wrap;
 	}
+	.rel-title {
+		color: #e1e4e8;
+		font-weight: 600;
+		cursor: default;
+	}
+	.rel-title.editable { cursor: pointer; }
+	.rel-title.editable:hover { color: #8b9cf7; }
 	.rel-source, .rel-target { color: #8b8fa3; }
 	.rel-connector { color: #3a3d4a; }
-	.rel-qualifiers {
-		display: flex;
-		align-items: center;
-		gap: 0.4rem;
-		padding-left: 0.1rem;
-	}
-	.rel-valence-tag {
-		font-size: 0.72rem;
+	.rel-predicate {
 		color: #f59e0b;
-		background: rgba(245, 158, 11, 0.08);
-		border: 1px solid rgba(245, 158, 11, 0.2);
-		border-radius: 3px;
-		padding: 0.05rem 0.35rem;
+		cursor: default;
 	}
-	.rel-inscription { color: #e1e4e8; font-size: 0.82rem; cursor: default; }
-	.rel-inscription.editable { cursor: pointer; }
-	.rel-inscription.editable:hover { color: #8b9cf7; }
-	.rel-inscription-empty {
-		font-size: 0.72rem;
+	.rel-predicate:hover { color: #fbbf24; }
+	.rel-predicate-empty {
 		color: #3a3d4a;
+		font-size: 0.72rem;
 		cursor: pointer;
 	}
-	.rel-inscription-empty:hover { color: #6b7280; }
+	.rel-predicate-empty:hover { color: #6b7280; }
 
 	/* Map links */
 	.map-links {
