@@ -11,8 +11,8 @@
 		<span class="lbl">Documents</span>
 	</div>
 	<div class="stat">
-		<span class="val">{c.codes}</span>
-		<span class="lbl">Codes</span>
+		<span class="val">{c.namings}</span>
+		<span class="lbl">Namings</span>
 	</div>
 	<div class="stat">
 		<span class="val">{c.maps}</span>

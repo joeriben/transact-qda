@@ -367,6 +367,71 @@ export async function getDesignationHistory(namingId: string) {
 	).rows;
 }
 
+// ---- All project namings (uncollapsed, for Namings workspace) ----
+
+export async function getAllProjectNamings(projectId: string) {
+	return (
+		await query(
+			`SELECT n.id as naming_id, n.inscription, n.created_at, n.seq,
+			   -- Current designation (latest in chain)
+			   (SELECT nd.designation FROM naming_designations nd
+			    WHERE nd.naming_id = n.id ORDER BY nd.seq DESC LIMIT 1) as designation,
+			   -- Current inscription (latest in chain)
+			   (SELECT ni.inscription FROM naming_inscriptions ni
+			    WHERE ni.naming_id = n.id ORDER BY ni.seq DESC LIMIT 1) as current_inscription,
+			   -- Grounding: has document anchor
+			   EXISTS(SELECT 1 FROM appearances a
+			    WHERE a.directed_from = n.id AND a.valence = 'codes') as has_document_anchor,
+			   -- Grounding: has memo link
+			   EXISTS(SELECT 1 FROM participations mp
+			    JOIN namings pn ON pn.id = mp.id AND pn.deleted_at IS NULL
+			    JOIN memo_content mc ON mc.naming_id = CASE
+			      WHEN mp.naming_id = n.id THEN mp.participant_id
+			      ELSE mp.naming_id END
+			    JOIN namings mn ON mn.id = mc.naming_id AND mn.deleted_at IS NULL
+			    WHERE mp.naming_id = n.id OR mp.participant_id = n.id) as has_memo_link,
+			   -- Mode from any appearance
+			   (SELECT a.mode FROM appearances a
+			    WHERE a.naming_id = n.id AND a.mode IN ('entity','relation','silence')
+			    LIMIT 1) as mode,
+			   -- Relation endpoints (if relation via participation)
+			   (SELECT p.naming_id FROM participations p WHERE p.id = n.id) as directed_from,
+			   (SELECT p.participant_id FROM participations p WHERE p.id = n.id) as directed_to,
+			   -- Source/target inscriptions for relations
+			   (SELECT src.inscription FROM participations p
+			    JOIN namings src ON src.id = p.naming_id
+			    WHERE p.id = n.id) as source_inscription,
+			   (SELECT tgt.inscription FROM participations p
+			    JOIN namings tgt ON tgt.id = p.participant_id
+			    WHERE p.id = n.id) as target_inscription,
+			   -- Valence (for relations)
+			   (SELECT a.valence FROM appearances a
+			    WHERE a.naming_id = n.id AND a.mode = 'relation' LIMIT 1) as valence,
+			   -- Properties (withdrawn, aiSuggested etc.)
+			   (SELECT a.properties FROM appearances a
+			    WHERE a.naming_id = n.id AND a.naming_id != a.perspective_id
+			    LIMIT 1) as properties,
+			   -- Which maps does this naming appear on?
+			   (SELECT json_agg(json_build_object('id', mp.id, 'label', mp.inscription))
+			    FROM (SELECT DISTINCT m.id, m.inscription
+			          FROM appearances a2
+			          JOIN namings m ON m.id = a2.perspective_id
+			          WHERE a2.naming_id = n.id AND a2.perspective_id != n.id
+			            AND m.deleted_at IS NULL) mp) as appears_on_maps
+			 FROM namings n
+			 WHERE n.project_id = $1
+			   AND n.deleted_at IS NULL
+			   AND (
+			     EXISTS (SELECT 1 FROM appearances a WHERE a.naming_id = n.id
+			             AND a.mode IN ('entity','relation','silence'))
+			     OR EXISTS (SELECT 1 FROM researcher_namings rn WHERE rn.naming_id = n.id)
+			   )
+			 ORDER BY n.seq DESC`,
+			[projectId]
+		)
+	).rows;
+}
+
 // ---- History: namings ARE the event log ----
 
 export async function getHistory(projectId: string, opts?: { afterSeq?: number; limit?: number }) {

@@ -162,14 +162,16 @@ export async function relateElements(
 		);
 
 		// Auto-designation based on determination level:
-		// neither valence nor inscription → cue
-		// one of them → characterization
+		// Valence alone is structural (like ATLAS.ti edge types), not a naming act.
+		// Only the researcher's own inscription constitutes characterization.
+		// valence only (or neither) → cue
+		// inscription only → characterization
 		// both → specification
-		const hasValence = !!opts?.valence?.trim();
 		const hasInscription = !!opts?.inscription?.trim();
+		const hasValence = !!opts?.valence?.trim();
 		let relDesignation: string = 'cue';
-		if (hasValence && hasInscription) relDesignation = 'specification';
-		else if (hasValence || hasInscription) relDesignation = 'characterization';
+		if (hasInscription && hasValence) relDesignation = 'specification';
+		else if (hasInscription) relDesignation = 'characterization';
 
 		await client.query(
 			`INSERT INTO naming_designations (naming_id, designation, by)

@@ -16,15 +16,18 @@ export const load: LayoutServerLoad = async ({ params, locals }) => {
 		error(404, 'Project not found');
 	}
 
-	const counts = await queryOne<{ documents: string; codes: string; maps: string; memos: string; members: string }>(
+	const counts = await queryOne<{ documents: string; namings: string; maps: string; memos: string; members: string }>(
 		`SELECT
 			(SELECT COUNT(*) FROM document_content dc
 			 JOIN namings n ON n.id = dc.naming_id
 			 WHERE n.project_id = $1 AND n.deleted_at IS NULL) as documents,
-			(SELECT COUNT(DISTINCT a.directed_from)
-			 FROM appearances a
-			 JOIN namings n ON n.id = a.directed_from AND n.deleted_at IS NULL
-			 WHERE a.valence = 'codes' AND n.project_id = $1) as codes,
+			(SELECT COUNT(*) FROM namings n
+			 WHERE n.project_id = $1 AND n.deleted_at IS NULL
+			   AND (
+			     EXISTS (SELECT 1 FROM appearances a WHERE a.naming_id = n.id
+			             AND a.mode IN ('entity','relation','silence'))
+			     OR EXISTS (SELECT 1 FROM researcher_namings rn WHERE rn.naming_id = n.id)
+			   )) as namings,
 			(SELECT COUNT(*) FROM appearances a
 			 JOIN namings n ON n.id = a.naming_id
 			 WHERE n.project_id = $1 AND n.deleted_at IS NULL
@@ -50,7 +53,7 @@ export const load: LayoutServerLoad = async ({ params, locals }) => {
 		mapByType,
 		counts: {
 			documents: parseInt(counts?.documents || '0'),
-			codes: parseInt(counts?.codes || '0'),
+			namings: parseInt(counts?.namings || '0'),
 			maps: parseInt(counts?.maps || '0'),
 			memos: parseInt(counts?.memos || '0'),
 			members: parseInt(counts?.members || '0')
