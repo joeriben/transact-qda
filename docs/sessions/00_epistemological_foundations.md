@@ -231,3 +231,74 @@ The 12 categories are NOT built into the tool as structural features (no fixed `
 - **Theories on the map**: theoretical commitments are nameable, relatable, designatable — visible actants, not invisible lenses
 
 Reference images: `~/Pictures/Clarkes-Situational-Matrix.png`, `~/Pictures/Abstract-Situational-Map-Messy-Working-Version.png`, `~/Pictures/Abstract-Situational-Map-Ordered-Working-Version.png`
+
+---
+
+## 12. The Unmarked — Extended Critique of Clarke's Categories (Session 11)
+
+### Pre-Analytical Ontologization
+
+Clarke's ordered working map requires the researcher to KNOW before analysis what is "human," "nonhuman," "discourse," etc. — instead of discovering through analysis what the human/nonhuman moments of a thing ARE. This is a **performative contradiction**: Clarke claims Foucault (discursive construction, power/knowledge), but "Human Actors" as category #1 presupposes the very anthropological figure whose historical constitution is Foucault's analytical object. The category performs exactly the pre-discursive subject constitution that Foucault dismantles.
+
+Similarly, "Nonhuman Elements" as a category presupposes a human/nonhuman boundary that Haraway's entire project transgresses — despite Clarke claiming Haraway as a theoretical foundation. The ordered map operationalizes distinctions its own theoretical commitments deconstruct.
+
+### The Structure of the Unmarked (Spencer-Brown / Luhmann / Rancière)
+
+Every naming act draws a distinction (Spencer-Brown, *Laws of Form*). Every distinction simultaneously produces a **marked space** (what is named) and an **unmarked space** (what the naming leaves undesignated). The unmarked is not homogeneous — it has structure:
+
+1. **Named exclusion**: the marked side of exclusion. Explicitly excluded from the category but recognized within the distinction's horizon. "Non-stakeholders" who are known to exist and known to not be stakeholders. Countable but excluded.
+
+2. **The uncounted** (Rancière, *Disagreement*): everything the distinction cannot count. Not excluded (exclusion presupposes countability) but **structurally uncountable**. Glaciers, spirits, atmospheric CO2 concentrations, future generations, the naming act itself — all equally uncountable within a "stakeholder" frame, **no differentiation possible or necessary** from within the frame. They are not "absent" — they are present but as noise, not as signal.
+
+The distinction between (1) and (2) is not a typology to apply but a structural property of every naming act: every distinction simultaneously defines what it counts and constitutes a horizon beyond which countability fails.
+
+**The political/analytical act** is not differentiating WITHIN the uncounted but **making-countable** what was uncountable — which retroactively restructures the entire distinction. (Example: nominating a glacier for presidential election in Iceland is not arguing the glacier is a good candidate but disrupting the counting frame itself.)
+
+### Clarke's Categories and the Unmarked
+
+Clarke's categories pre-determine what is countable. "Human Actors" as a category does not just exclude glaciers from the human category — it renders the QUESTION of glacier-agency ontologically unaskable within the method. The categories not only pre-ontologize the marked; they simultaneously **fix the horizon of the unmarked**. What CAN'T appear as "human" or "nonhuman" becomes structurally invisible, and the fact of this structural invisibility is itself invisible — because the category presents itself as merely organizing what exists, not as constituting the boundary of countability.
+
+**The ordered map destroys precisely the analytical capacity it claims to enable**: the messy map and the discursive map (especially Clarke's attention to implicated actors) are powerful tools for naming the unnamed. But the ordering step undermines this by pre-determining the counting frame. The damage is specifically in the ORDERED version — the messy version and the discursive map do not have this problem.
+
+### Two Observation Levels of the Unmarked
+
+Two distinct phenomena must not be conflated:
+
+1. **Observed unmarked**: what the actors/discourses/institutions in the researched situation leave uncounted. The Spencer-Brown distinction operating in the **object of inquiry**. A policy document naming "stakeholders" produces an unmarked space — this is IN the data.
+
+2. **Analytical unmarked**: what our own naming efforts leave uncounted. Second-order observation of our own observation. Reflexive awareness that WE haven't named something — this is about our research practice.
+
+Both levels have the same structure (named exclusion + the uncounted). The key insight: Clarke's categories damage the **analytical level** specifically — they fix OUR counting frame, which then determines what we can see as uncounted in the observed situation. If our categories can't count glaciers-as-actors, we can't observe the glacier's uncountedness in the researched situation either.
+
+### Inquiry as Dual Operation
+
+Inquiry consists of two complementary operations:
+
+**(a) Re-naming observed namings**: The observed naming already exists as empirical material (document-anchored). Our analytical act is a re-naming — CCS movement from cue through characterization to specification. Provenance: observed naming → our re-naming. This is what the current architecture handles well.
+
+**(b) Naming observed unnameds**: Here there IS no observed naming to re-name. The analytical act is **constitutive** — it brings something into countability for the first time. The unnamed cannot be derived from a single document passage because the unmarked is not locatable in one place — it is a structural property of the PATTERN of namings. It arises as a cue through pattern analysis of relationings — through the **between** of namings, not from any single naming. It is a structural hole that becomes visible through the constellation (Benjamin/Adorno) of relational patterns.
+
+### Constellation Grounding
+
+The provenance of an observed-unnamed (type b) is not a document anchor but a **set of participations**. The silence is grounded by its relations to the namings whose pattern produces it. The silence names the hole; its participations point to the namings that constitute the boundary of the hole.
+
+This is architecturally supported: a silence with `mode='silence'` can have participations to multiple other namings. The provenance is relational (participations), not textual (document anchor). No new provenance type is needed — the existing architecture handles this through the relational fabric.
+
+### Deconstructive AI — Questions About Distinctions, Not Category Prompts
+
+The AI must NOT reproduce Clarke's categories as questions. Not "did you consider nonhuman actors?" (which reinstates the category as slot) but questions that **challenge the distinction itself**:
+
+- "What are the hybrid human/nonhuman moments in this element?" (questions the boundary)
+- "What is the genealogy of this categorization?" (historicizes the frame)
+- "What does this naming make uncountable?" (attends to the unmarked)
+- "Which discourse constitutes this as a 'human' element?" (Foucault)
+- "What is the relational pattern around this absence?" (constellation grounding)
+
+The categories become questions ABOUT the distinctions, not prompts to fill in the distinctions. The AI operates **deconstructively**, not categorically. The structure of the unmarked (named exclusion / the uncounted) functions as a sensitizing reminder — "when you name something, ask what your naming makes uncountable" — not as a typology to apply.
+
+### Architectural Consequence (extending Section 11)
+
+- The AI's co-researcher capacity uses the 12 categories as **relational differances** (not axial codes, not real categories) — each category is a provocation to examine the distinction it draws, not a slot to fill
+- The AI's methodology advisor capacity includes attention to the **frame of countability** — not just what's missing, but what the current constellation of namings makes structurally unnameable
+- **Silences** grounded through participations (constellation grounding) are architecturally complete — no additional provenance type needed
+- The distinction observed-unmarked / analytical-unmarked is articulated through **inscription and memos**, not through structural properties — this avoids pre-determining the distinction that should emerge through analysis
