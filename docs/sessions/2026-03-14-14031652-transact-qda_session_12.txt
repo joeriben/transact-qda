@@ -1841,3 +1841,402 @@ markiert.
 ● Committed: 122d424 — Manual + CCS-Korrektur. Working tree clean.
 
 ✻ Cooked for 42s
+
+ ▐▛███▜▌   Claude Code v2.1.75
+▝▜█████▛▘  Opus 4.6 (1M context) · Claude Max
+  ▘▘ ▝▝    ~/ai/transact-qda
+
+❯ /clear                                                                        
+  ⎿  (no content)
+
+Ich habe eine Asymmatrie entdeckt -> Klärungsbedarf. Entitäten    
+können viele Relationen aufweisen, aber Relationen haben klassischerweise immer 
+ nur 2 Entitäten die sie verbinden (jedenfalls in der Netzwerksoziologie). Das  
+ist möglicherweise ein Schein-Problem, nämlich dann wenn sich alles auf "x zu   
+y"-Beziehungen zurückführen lässt (wobei x udn y auch Relationen sein können    
+bei uns). 1) Logische Analyse bitte; 2) wie wird das in der SNA behandelt?      
+
+● Good question — and your intuition that it might be a pseudo-problem is
+  largely correct, but for interesting reasons.
+
+  1) Logical Analysis
+
+  The asymmetry you describe is real at the graph-theoretic level: in standard
+  graphs, edges are dyadic (connect exactly 2 nodes), while nodes have unbounded
+   degree. But this is an artifact of the formalism, not a deep ontological
+  fact.
+
+  Three levels of resolution:
+
+  a) Formal reducibility: Any n-ary relation can be decomposed into binary
+  relations + auxiliary entities (this is provable in first-order logic via
+  reification). But this is lossy: "A, B, C meet together" ≠ "A meets B" + "B
+  meets C" + "A meets C". The co-presence is lost — the event-as-unit dissolves.
+
+  b) Your model already solves this. The 3-table structure (namings →
+  participations → appearances) is precisely a hypergraph in disguise. A naming
+  with 5 participations IS a 5-ary relation. The participation table is the
+  incidence matrix of a hypergraph. There is no dyadic constraint.
+
+  c) The deeper dissolution: In your transactional ontology, namings (relations)
+   can themselves be participants in other namings. This means the
+  entity/relation distinction is not ontologically primitive — everything is an
+  event that can connect to other events. The asymmetry (many-to-2 vs.
+  many-to-many) only exists if you hold the entity/relation distinction fixed.
+  You don't.
+
+  So: pseudo-problem, but an instructive one. It reveals that the classical
+  graph formalism smuggles in an ontological commitment (dyadic ties between
+  pre-given entities) that your framework explicitly rejects.
+
+  2) Treatment in SNA
+
+  SNA has struggled with exactly this:
+
+  Dominant paradigm (Wasserman & Faust): Dyadic ties, adjacency matrices.
+  Everything is reduced to pairs. This works for simple cases but systematically
+   loses n-ary structure.
+
+  Two-mode / affiliation networks (Breiger 1974, "The Duality of Persons and 
+  Groups"): Exactly your structure — actors connected to events, events
+  connected to actors. Breiger showed that persons are constituted by their
+  group memberships and vice versa. This is the closest SNA antecedent to your
+  transactional ontology.
+
+  The projection problem: When researchers project a two-mode network (actors ↔
+  events) onto a one-mode network (actors ↔ actors), they create dyadic ties and
+   lose the event structure. This is widely acknowledged as a problem but done
+  anyway for computational convenience. Your model avoids this by keeping the
+  event (naming) as first-class.
+
+  Simmel's triad argument: The triad is qualitatively different from the dyad
+  (coalition formation, tertius gaudens). This means n-ary relations have
+  emergent properties that dyadic decomposition destroys.
+
+  Hypergraph SNA (newer work, e.g., Bretto, Aksoy et al.): Explicitly models
+  hyperedges. Still rare in practice but gaining traction in computational
+  sociology.
+
+  Upshot for transact-qda
+
+  Your naming → participations structure is already the right solution. The
+  "asymmetry" is an artifact of thinking in classical graph terms. In your
+  ontology:
+
+  - A naming with 1 participation = a monadic event (self-designation)
+  - A naming with 2 participations = classical dyadic tie
+  - A naming with n participations = n-ary event (naturally represented)
+  - A naming participating in another naming = relation-on-relation (no special
+  machinery needed)
+
+  The participation table is the hypergraph incidence structure. No reduction to
+   dyads required.
+
+✻ Cogitated for 49s
+
+❯ ok, fine. I need to understand the difference between participations within a 
+ naming and relations between namings more thoroughly, concerning the logical   
+but in particular the technical side.                                           
+
+● Explore(Explore data model and schema)
+  ⎿  Done (26 tool uses · 63.3k tokens · 1m 6s)
+  (ctrl+o to expand)
+
+● Now I have the full picture. Let me lay this out precisely.
+
+  The Two Layers
+
+  1. Participation (Datenstruktur — structural bond)
+
+  CREATE TABLE participations (
+    id UUID PRIMARY KEY REFERENCES namings(id),  -- participation IS a naming
+    naming_id UUID NOT NULL REFERENCES namings(id),
+    participant_id UUID NOT NULL REFERENCES namings(id),
+    UNIQUE (naming_id, participant_id)
+  );
+
+  A participation is:
+  - Always dyadic: connects exactly 2 namings (naming_id ↔ participant_id)
+  - Undirected: no intrinsic from/to
+  - Itself a naming: the participation's id lives in the namings table
+  - Structural: pure co-constitution, no interpretation
+
+  2. Relation (Appearance — perspectival interpretation)
+
+  -- In appearances:
+  mode = 'relation',
+  directed_from UUID,  -- perspectival direction
+  directed_to UUID,
+  valence TEXT          -- 'enables', 'constrains', etc.
+
+  A relation is a participation seen from a perspective with added:
+  - Direction (from/to — not intrinsic, assigned per map/phase)
+  - Valence (structural type — also perspectival)
+  - Mode (the appearance says "this naming appears as a relation here")
+
+  The Technical Flow
+
+  When you call relateElements(source, target):
+
+  1. INSERT INTO namings (id=R)           -- R is the relation naming
+  2. INSERT INTO participations            -- structural bond
+       (id=R, naming_id=source, participant_id=target)
+  3. INSERT INTO appearances               -- perspectival interpretation
+       (naming_id=R, perspective_id=mapId, mode='relation',
+        directed_from=source, directed_to=target, valence=...)
+
+  When you call reifyAsRelation(existingEntity, source, target):
+
+  1. INSERT INTO participations            -- add structural bond to existing
+  naming
+       (id=existingEntity, naming_id=source, participant_id=target)
+  2. UPDATE appearances SET mode='relation' -- reinterpret all appearances
+
+  The reverse (switchToEntity) only changes appearances — the participation
+  stays. The structural bond persists even when the perspectival interpretation
+  changes.
+
+  The Asymmetry You Found
+
+  Here's where it gets interesting. The participations table is strictly dyadic
+  — one row = one bond between 2 namings. But nothing prevents a naming from
+  having multiple participations:
+
+  Participation P1: id=X1, naming_id=A, participant_id=B
+  Participation P2: id=X2, naming_id=A, participant_id=C
+  Participation P3: id=X3, naming_id=A, participant_id=D
+
+  Naming A now has 3 co-constitution bonds. Structurally, this is a star graph 
+  centered on A — which is the standard way to represent a hyperedge via a
+  bipartite graph. A functions as the event connecting B, C, D.
+
+  But in practice, relateElements() always creates exactly one participation per
+   relation naming: the relation R connects source to target, period. So the
+  current implementation is dyadic by convention, not by schema constraint.
+
+  The Logical Situation
+
+  ┌─────────────┬───────────────────────────────┬───────────────────────────┐
+  │             │        Participations         │         Relations         │
+  ├─────────────┼───────────────────────────────┼───────────────────────────┤
+  │ Layer       │ Datenstruktur (ground truth)  │ Appearance (perspectival) │
+  ├─────────────┼───────────────────────────────┼───────────────────────────┤
+  │             │ Dyadic per row, but n-ary per │ Always dyadic             │
+  │ Arity       │  naming (via multiple rows)   │ (directed_from →          │
+  │             │                               │ directed_to)              │
+  ├─────────────┼───────────────────────────────┼───────────────────────────┤
+  │ Direction   │ None (symmetric)              │ Perspectival (varies by   │
+  │             │                               │ map)                      │
+  ├─────────────┼───────────────────────────────┼───────────────────────────┤
+  │ Valence     │ None                          │ Perspectival              │
+  ├─────────────┼───────────────────────────────┼───────────────────────────┤
+  │ Identity    │ IS a naming                   │ IS a participation seen   │
+  │             │                               │ as 'relation'             │
+  ├─────────────┼───────────────────────────────┼───────────────────────────┤
+  │ Persistence │ Survives mode change          │ Can be switched to        │
+  │             │                               │ 'entity'                  │
+  └─────────────┴───────────────────────────────┴───────────────────────────┘
+
+  The key tension: the appearance layer (directed_from, directed_to) is
+  hardwired for 2 endpoints. If you wanted a naming to appear as an n-ary
+  relation (connecting 3+ namings simultaneously on a canvas), the current
+  appearance schema can't express that — it would need directed_endpoints UUID[]
+   or similar.
+
+  But at the participation layer, n-ary events are already representable. The
+  question is whether the UI/appearance layer should ever need to show them as
+  such, or whether decomposition into dyads + a shared participation hub is
+  always sufficient.
+
+  What's your intuition — is there a concrete analytical case where a 3+-ary
+  relation needs to appear as a single visual element, not decomposed into
+  dyads?
+
+✻ Churned for 2m 25s
+
+❯ I see! So "participations" are really non-qualified relations, i.e.           
+relating-cues of sorts.                                                         
+
+● Exactly. And that maps directly onto your CCS gradient:
+
+  ┌───────────────────────────────┬──────────────────┬──────────────────────┐
+  │             Layer             │   Designation    │  What's determined   │
+  │                               │      level       │                      │
+  ├───────────────────────────────┼──────────────────┼──────────────────────┤
+  │                               │                  │ "Something connects  │
+  │ Participation                 │ Cue              │ A and B" —           │
+  │                               │                  │ unqualified          │
+  │                               │                  │ co-constitution      │
+  ├───────────────────────────────┼──────────────────┼──────────────────────┤
+  │                               │                  │ + direction, +       │
+  │ Appearance mode='relation'    │ Characterization │ valence, +           │
+  │                               │                  │ perspectival context │
+  ├───────────────────────────────┼──────────────────┼──────────────────────┤
+  │ NamingAct with                │                  │ Analytically         │
+  │ designation='specification'   │ Specification    │ precise, fully       │
+  │                               │                  │ determined           │
+  └───────────────────────────────┴──────────────────┴──────────────────────┘
+
+  The participation is the structural registration that a bond exists — the
+  relational equivalent of "I noticed something." The appearance layer is where
+  you start saying what kind of bond it is.
+
+  This also explains why switchToEntity doesn't delete the participation:
+  removing the relational interpretation doesn't un-notice the bond. The cue
+  persists. And reifyAsRelation is literally the act of designating a
+  participation further — moving it from cue toward characterization.
+
+  One implication worth noting: your schema already treats this consistently. A
+  participation-naming enters the world as a naming with seq but no designation.
+   It only becomes a relation through an appearance. The designation stack
+  (naming_acts) then tracks its analytical refinement over time. So the CCS
+  gradient applies uniformly to entities AND relations — because both are
+  namings.
+
+❯ and at the same time they form a difference/different layer, because they are 
+ independent on single entities.                                                
+
+● Yes — that's the crucial point. Participations are not properties of entities.
+   They're an autonomous structural layer: the between.
+
+  A participation doesn't belong to A or to B. It exists as a third thing (with
+  its own naming-id, its own seq, its own potential designation history) that
+  cannot be derived from either endpoint alone. Delete A, and the participation
+  is orphaned — not because B lost a property, but because a bond lost a
+  constituent.
+
+  So your three tables are genuinely three layers:
+
+  ┌────────────────┬───────────────────────────┬─────────────────────────────┐
+  │     Table      │     Ontological role      │  Reducible to the others?   │
+  ├────────────────┼───────────────────────────┼─────────────────────────────┤
+  │ namings        │ Events (the stuff)        │ No                          │
+  ├────────────────┼───────────────────────────┼─────────────────────────────┤
+  │ participations │ Bonds (the between)       │ No — requires 2+ namings    │
+  │                │                           │ but belongs to neither      │
+  ├────────────────┼───────────────────────────┼─────────────────────────────┤
+  │ appearances    │ Perspectives (the         │ No — requires naming +      │
+  │                │ how-it-collapses)         │ perspective                 │
+  └────────────────┴───────────────────────────┴─────────────────────────────┘
+
+  Each layer is independently necessary. You can't reconstruct the participation
+   layer from namings alone (you'd lose which things are bonded), and you can't
+  reconstruct it from appearances alone (because the same participation might
+  appear differently — or not at all — from different perspectives).
+
+  This also means: the participation layer is where your hypergraph structure
+  actually lives. A naming that accumulates many participations becomes a hub —
+  not because it "has" relations as properties, but because the bond-layer is
+  dense around it. That density is a structural fact independent of how any map
+  renders it.
+
+❯ look into our new manual.md. I think this clarification would be quite        
+helpful there.                                                                  
+
+● Explore(Find manual.md in docs)
+  ⎿  Done (3 tool uses · 23.7k tokens · 12s)
+  (ctrl+o to expand)
+
+● Read 1 file (ctrl+o to expand)
+
+● Good text. The Participations subsection (lines 148-153) is where this
+  belongs. The current description says they're "undirected bonds" but doesn't
+  articulate that they're an autonomous layer (the between) or that they are
+  relating-cues that get qualified through appearances. Let me add that.
+
+● Update(docs/manual.md)
+  ⎿  Added 7 lines, removed 1 line
+      146  
+      147  ### Participations
+      148  
+      149 -Undirected bonds between namings. Symmetric, co-constitutive. 
+          -Critically, a participation IS itself a naming — its `id` exis
+          -ts in the `namings` table. This means a participation (relatio
+          -n) can itself participate in other relations. Meta-relations —
+          - Sünkel's *Eta-Beziehung*, the relation of relations — require
+          - no special mechanism; they are participations of participatio
+          -ns.                                                           
+      149 +Undirected, non-qualified bonds between namings — **relating-c
+          +ues**. A participation registers that a bond exists between tw
+          +o namings without determining what kind of bond it is. It is t
+          +he relational equivalent of "I noticed something": the structu
+          +ral registration that two namings are co-constituted, prior to
+          + any interpretation of how.                                   
+      150  
+      151 +Participations form an **autonomous structural layer** — the *
+          +between*. A participation does not belong to either of its end
+          +points. It exists as a third thing, irreducible to the namings
+          + it connects: delete one endpoint and the participation is orp
+          +haned — not because the other lost a property, but because a b
+          +ond lost a constituent. This independence means the participat
+          +ion layer cannot be reconstructed from the namings table alone
+          + (you would lose which things are bonded) or from the appearan
+          +ces table alone (the same participation may appear differently
+          + — or not at all — from different perspectives).              
+      152 +                                                              
+      153 +Qualification — direction, valence, mode — is added through **
+          +appearances**. A participation that receives an appearance wit
+          +h `mode = 'relation'`, `directed_from`, `directed_to`, and a `
+          +valence` has moved from relating-cue toward relational charact
+          +erization. The CCS gradient thus applies to bonds as well as t
+          +o entities: a participation is a cue-level bond; a fully chara
+          +cterized relation-appearance with specified valence is a bond 
+          +at specification level. The analytical determination of *what 
+          +connects* follows the same designation logic as the determinat
+          +ion of *what is*.                                             
+      154 +                                                              
+      155 +Critically, a participation IS itself a naming — its `id` exis
+          +ts in the `namings` table. This means a participation can itse
+          +lf participate in further relations. Meta-relations — Sünkel's
+          + *Eta-Beziehung*, the relation of relations — require no speci
+          +al mechanism; they are participations of participations.      
+      156 +                                                              
+      157  ```
+      158  participations(id [= a naming_id], naming_id, participant_id)
+      159  ```
+
+● Done. The Participations subsection now articulates three things that were
+  implicit before:
+
+  1. Relating-cues: participations are non-qualified bonds — the CCS gradient
+  applies to relational determination just as it does to entities
+  2. Autonomous layer: the "between" is irreducible to either endpoints or
+  perspectives — three genuinely independent layers
+  3. Qualification through appearances: direction, valence, mode are added
+  perspectivally, moving a bond from cue toward specification
+
+  The rest of the section (meta-relations via participations-of-participations)
+  stays as is since it was already clear.
+
+✻ Cooked for 60s
+
+❯ commit. I rename THIS Session part of Session 12 - documentation              
+
+● Bash(git status)
+  ⎿  On branch main
+     Your branch is ahead of 'origin/main' by 33 commits.
+       (use "git push" to publish your local commits)
+     … +12 lines (ctrl+o to expand)
+
+● Bash(git diff docs/manual.md)
+  ⎿  diff --git a/docs/manual.md b/docs/manual.md
+     index d0bcf01..2ad0462 100644
+     --- a/docs/manual.md
+     … +34 lines (ctrl+o to expand)
+
+● Bash(git log --oneline -5)
+  ⎿  122d424 Add transact-qda manual and correct CCS terminology
+     46fdcf5 Add extended Clarke critique: the unmarked, deconstructive AI
+     questioning (Session 11)
+     … +5 lines (ctrl+o to expand)
+
+● Bash(git add docs/manual.md
+      docs/sessions/2026-03-14-14031652-transact-qda_session_12.txt && git
+      commit -m "$(cat <<'EOF'
+      Clarify participations as relating-cues and…)
+  ⎿  [main 5784884] Clarify participations as relating-cues and autonomous
+     structural layer (Session 12)
+      2 files changed, 1850 insertions(+), 1 deletion(-)
+     … +2 lines (ctrl+o to expand)
+
+● Committed as 5784884.
