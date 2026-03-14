@@ -146,7 +146,13 @@ namings(id, project_id, inscription, created_by, created_at, deleted_at, seq)
 
 ### Participations
 
-Undirected bonds between namings. Symmetric, co-constitutive. Critically, a participation IS itself a naming — its `id` exists in the `namings` table. This means a participation (relation) can itself participate in other relations. Meta-relations — Sünkel's *Eta-Beziehung*, the relation of relations — require no special mechanism; they are participations of participations.
+Undirected, non-qualified bonds between namings — **relating-cues**. A participation registers that a bond exists between two namings without determining what kind of bond it is. It is the relational equivalent of "I noticed something": the structural registration that two namings are co-constituted, prior to any interpretation of how.
+
+Participations form an **autonomous structural layer** — the *between*. A participation does not belong to either of its endpoints. It exists as a third thing, irreducible to the namings it connects: delete one endpoint and the participation is orphaned — not because the other lost a property, but because a bond lost a constituent. This independence means the participation layer cannot be reconstructed from the namings table alone (you would lose which things are bonded) or from the appearances table alone (the same participation may appear differently — or not at all — from different perspectives).
+
+Qualification — direction, valence, mode — is added through **appearances**. A participation that receives an appearance with `mode = 'relation'`, `directed_from`, `directed_to`, and a `valence` has moved from relating-cue toward relational characterization. The CCS gradient thus applies to bonds as well as to entities: a participation is a cue-level bond; a fully characterized relation-appearance with specified valence is a bond at specification level. The analytical determination of *what connects* follows the same designation logic as the determination of *what is*.
+
+Critically, a participation IS itself a naming — its `id` exists in the `namings` table. This means a participation can itself participate in further relations. Meta-relations — Sünkel's *Eta-Beziehung*, the relation of relations — require no special mechanism; they are participations of participations.
 
 ```
 participations(id [= a naming_id], naming_id, participant_id)
