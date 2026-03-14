@@ -209,6 +209,21 @@ export async function relateElements(
 	return transaction(async (client) => {
 		const researcherNamingId = await getOrCreateResearcherNaming(projectId, userId);
 
+		// Ensure both endpoints have appearances on this map (structural integrity)
+		for (const endpointId of [sourceId, targetId]) {
+			const onMap = await client.query(
+				`SELECT 1 FROM appearances WHERE naming_id = $1 AND perspective_id = $2`,
+				[endpointId, mapId]
+			);
+			if (onMap.rows.length === 0) {
+				await client.query(
+					`INSERT INTO appearances (naming_id, perspective_id, mode, properties)
+					 VALUES ($1, $2, 'entity', '{}')`,
+					[endpointId, mapId]
+				);
+			}
+		}
+
 		// The participation is itself a naming
 		const partNamingRes = await client.query(
 			`INSERT INTO namings (project_id, inscription, created_by)
