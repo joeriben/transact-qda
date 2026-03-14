@@ -425,6 +425,129 @@ export async function getAllProjectNamings(projectId: string) {
 	).rows;
 }
 
+// ---- Merge: two namings that turn out to be the same ----
+// The survivor keeps its ID. The merged naming's participations, appearances,
+// and directed_from/to references are transferred. The merged naming is soft-deleted.
+// This is ground-truth surgery — the merge is recorded as a naming_act on the survivor.
+export async function mergeNamings(
+	projectId: string,
+	userId: string,
+	survivorId: string,
+	mergedId: string
+) {
+	return transaction(async (client) => {
+		const researcherNamingId = await getOrCreateResearcherNaming(projectId, userId);
+
+		// Verify both exist
+		const [survivor, merged] = await Promise.all([
+			client.query(
+				`SELECT id, inscription FROM namings WHERE id = $1 AND project_id = $2 AND deleted_at IS NULL`,
+				[survivorId, projectId]
+			),
+			client.query(
+				`SELECT id, inscription FROM namings WHERE id = $1 AND project_id = $2 AND deleted_at IS NULL`,
+				[mergedId, projectId]
+			)
+		]);
+		if (survivor.rows.length === 0 || merged.rows.length === 0) {
+			throw new Error('Both namings must exist');
+		}
+
+		// Reject if merged naming IS a relation (participations.id = mergedId)
+		const isRelation = await client.query(
+			`SELECT 1 FROM participations WHERE id = $1`, [mergedId]
+		);
+		if (isRelation.rows.length > 0) {
+			throw new Error('Cannot merge relation namings — only entity namings');
+		}
+
+		const mergedInscription = merged.rows[0].inscription;
+
+		// 1. Transfer participations (as endpoint)
+		// Update naming_id where merged is the first endpoint
+		await client.query(
+			`UPDATE participations SET naming_id = $1
+			 WHERE naming_id = $2
+			   AND NOT EXISTS (
+			     SELECT 1 FROM participations p2
+			     WHERE p2.naming_id = $1 AND p2.participant_id = participations.participant_id
+			   )`,
+			[survivorId, mergedId]
+		);
+		// Update participant_id where merged is the second endpoint
+		await client.query(
+			`UPDATE participations SET participant_id = $1
+			 WHERE participant_id = $2
+			   AND NOT EXISTS (
+			     SELECT 1 FROM participations p2
+			     WHERE p2.naming_id = participations.naming_id AND p2.participant_id = $1
+			   )`,
+			[survivorId, mergedId]
+		);
+		// Soft-delete conflicting participation-namings that couldn't be transferred
+		await client.query(
+			`UPDATE namings SET deleted_at = now()
+			 WHERE id IN (
+			   SELECT id FROM participations WHERE naming_id = $1 OR participant_id = $1
+			 ) AND project_id = $2`,
+			[mergedId, projectId]
+		);
+
+		// 2. Transfer appearances
+		// Move appearances where survivor doesn't already appear on that perspective
+		await client.query(
+			`UPDATE appearances SET naming_id = $1
+			 WHERE naming_id = $2
+			   AND NOT EXISTS (
+			     SELECT 1 FROM appearances a2
+			     WHERE a2.naming_id = $1 AND a2.perspective_id = appearances.perspective_id
+			   )`,
+			[survivorId, mergedId]
+		);
+		// Delete remaining (conflicting) appearances of merged
+		await client.query(
+			`DELETE FROM appearances WHERE naming_id = $1`,
+			[mergedId]
+		);
+
+		// 3. Update directed_from/directed_to references in other appearances
+		await client.query(
+			`UPDATE appearances SET directed_from = $1 WHERE directed_from = $2`,
+			[survivorId, mergedId]
+		);
+		await client.query(
+			`UPDATE appearances SET directed_to = $1 WHERE directed_to = $2`,
+			[survivorId, mergedId]
+		);
+
+		// 4. Transfer phase memberships
+		await client.query(
+			`UPDATE phase_memberships SET naming_id = $1 WHERE naming_id = $2`,
+			[survivorId, mergedId]
+		);
+
+		// 5. Record merge as naming_act on the survivor
+		await client.query(
+			`INSERT INTO naming_acts (naming_id, by, memo_text)
+			 VALUES ($1, $2, $3)`,
+			[survivorId, researcherNamingId, `Merged with "${mergedInscription}"`]
+		);
+
+		// 6. Soft-delete the merged naming
+		await client.query(
+			`UPDATE namings SET deleted_at = now() WHERE id = $1`,
+			[mergedId]
+		);
+
+		return {
+			survivorId,
+			mergedId,
+			mergedInscription,
+			survivorInscription: survivor.rows[0].inscription
+		};
+	});
+}
+
 // ---- History: namings ARE the event log ----
 
 export async function getHistory(projectId: string, opts?: { afterSeq?: number; limit?: number }) {

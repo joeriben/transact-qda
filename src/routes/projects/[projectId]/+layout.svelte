@@ -1,11 +1,21 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import { page } from '$app/stores';
 
 	let { data, children }: { data: any; children: Snippet } = $props();
 	const p = $derived(data.project);
 	const c = $derived(data.counts);
 	const base = $derived(`/projects/${p.id}`);
-	const maps = $derived(data.mapByType as Record<string, { id: string }>);
+	const mapsByType = $derived(data.mapsByType as Record<string, { id: string; label: string }[]>);
+	const pathname = $derived($page.url.pathname);
+
+	const mapTypeLabels: Record<string, string> = {
+		situational: 'Situational Maps',
+		'social-worlds': 'Social Worlds Maps',
+		positional: 'Positional Maps',
+		network: 'Network Maps'
+	};
+	const mapTypeOrder = ['situational', 'social-worlds', 'positional', 'network'];
 </script>
 
 <div class="project-layout">
@@ -16,9 +26,18 @@
 		{/if}
 
 		<nav>
-			{#if maps['situational']}<a href="{base}/maps/{maps['situational'].id}">Situational Map</a>{/if}
-			{#if maps['social-worlds']}<a href="{base}/maps/{maps['social-worlds'].id}">Social Worlds Map</a>{/if}
-			{#if maps['positional']}<a href="{base}/maps/{maps['positional'].id}">Positional Map</a>{/if}
+			{#each mapTypeOrder as type}
+				{#if mapsByType[type]?.length}
+					<span class="map-group-label">{mapTypeLabels[type]}</span>
+					{#each mapsByType[type] as map}
+						<a
+							href="{base}/maps/{map.id}"
+							class="map-link"
+							class:active={pathname === `${base}/maps/${map.id}`}
+						>{map.label}</a>
+					{/each}
+				{/if}
+			{/each}
 			<a href="{base}/namings">Namings</a>
 			<a href="{base}/documents">Documents</a>
 			<a href="{base}/memos">Memos</a>
@@ -75,6 +94,28 @@
 		color: #c9cdd5;
 	}
 	nav a:hover {
+		background: #1e2030;
+		color: #fff;
+	}
+
+	.map-group-label {
+		font-size: 0.75rem;
+		color: #6b7280;
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+		padding: 0.5rem 0.65rem 0.15rem;
+		margin-top: 0.15rem;
+	}
+
+	.map-group-label:first-child {
+		margin-top: 0;
+	}
+
+	.map-link {
+		padding-left: 1.2rem !important;
+	}
+
+	.active {
 		background: #1e2030;
 		color: #fff;
 	}

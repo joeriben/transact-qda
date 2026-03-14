@@ -6,7 +6,8 @@ import {
 	renameNaming,
 	softDelete,
 	getNaming,
-	createParticipation
+	createParticipation,
+	mergeNamings
 } from '$lib/server/db/queries/namings.js';
 import { relateElements, getNamingStack } from '$lib/server/db/queries/maps.js';
 import { createMemo, getMemosForNaming } from '$lib/server/db/queries/memos.js';
@@ -162,6 +163,19 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			);
 
 			return json({ ok: true });
+		}
+
+		case 'merge': {
+			const { survivorId, mergedId } = body;
+			if (!survivorId || !mergedId) return json({ error: 'survivorId and mergedId required' }, { status: 400 });
+			if (survivorId === mergedId) return json({ error: 'Cannot merge a naming with itself' }, { status: 400 });
+			try {
+				const result = await mergeNamings(projectId, userId, survivorId, mergedId);
+				return json(result);
+			} catch (error) {
+				const msg = error instanceof Error ? error.message : String(error);
+				return json({ error: msg }, { status: 400 });
+			}
 		}
 
 		case 'getMemosForNaming': {

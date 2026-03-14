@@ -43,14 +43,20 @@ export const load: LayoutServerLoad = async ({ params, locals }) => {
 
 	const maps = await getMapsByProject(params.projectId);
 	const mapByType: Record<string, { id: string }> = {};
+	const mapsByType: Record<string, { id: string; label: string }[]> = {};
 	for (const m of maps) {
 		const t = m.properties?.mapType;
-		if (t && !mapByType[t]) mapByType[t] = { id: m.id };
+		if (t) {
+			if (!mapByType[t]) mapByType[t] = { id: m.id };
+			if (!mapsByType[t]) mapsByType[t] = [];
+			mapsByType[t].push({ id: m.id, label: m.label });
+		}
 	}
 
 	return {
 		project,
 		mapByType,
+		mapsByType,
 		counts: {
 			documents: parseInt(counts?.documents || '0'),
 			namings: parseInt(counts?.namings || '0'),

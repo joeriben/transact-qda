@@ -70,6 +70,9 @@
 	let reifyNamingId = $state<string | null>(null);
 	let reifySourceId = $state<string | null>(null);
 
+	// Merge mode: select survivor, then merged
+	let mergeSurvivorId = $state<string | null>(null);
+
 	// Local withdrawn set (keeps items visible until next page load)
 	let localWithdrawn = $state<Set<string>>(new Set());
 
@@ -100,6 +103,7 @@
 	// ---- Escape key handler ----
 	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') {
+			if (mergeSurvivorId) { mergeSurvivorId = null; e.preventDefault(); return; }
 			if (actTarget) { cancelAct(); e.preventDefault(); return; }
 			if (reifyNamingId) { cancelReify(); e.preventDefault(); return; }
 			if (relateSource || relateTarget) { cancelRelate(); e.preventDefault(); return; }
@@ -313,6 +317,22 @@
 		// Don't invalidate — item stays visible (struck through) until next navigation
 	}
 
+	// ---- Merge ----
+	function startMerge(survivorId: string) {
+		mergeSurvivorId = survivorId;
+	}
+
+	async function completeMerge(mergedId: string) {
+		if (!mergeSurvivorId || mergedId === mergeSurvivorId) return;
+		const result = await apiAction('merge', { survivorId: mergeSurvivorId, mergedId });
+		if (result.error) {
+			alert(result.error);
+		}
+		mergeSurvivorId = null;
+		const module = await import('$app/navigation');
+		module.invalidateAll();
+	}
+
 	// ---- Mode switching ----
 	async function switchToEntity(namingId: string) {
 		await apiAction('switchToEntity', { namingId });
@@ -459,6 +479,15 @@
 		</div>
 	{/if}
 
+	<!-- Merge mode indicator -->
+	{#if mergeSurvivorId}
+		{@const survNaming = findNaming(mergeSurvivorId)}
+		<div class="relate-banner merge-banner">
+			Merge into <strong>{survNaming?.current_inscription || survNaming?.inscription}</strong> — click the naming to absorb
+			<button class="btn-xs" onclick={() => mergeSurvivorId = null}>cancel</button>
+		</div>
+	{/if}
+
 	<!-- Act-prompt bar -->
 	{#if actTarget}
 		{@const targetNaming = findNaming(actTarget)}
@@ -517,8 +546,9 @@
 			<div class="naming-list">
 				{#each entities as n (n.naming_id)}
 					{@const withdrawn = isWithdrawn(n.naming_id, n.properties)}
-					<div class="naming-card" class:withdrawn class:relate-target={(relateSource && relateSource !== n.naming_id) || (reifyNamingId && reifyNamingId !== n.naming_id)}
+					<div class="naming-card" class:withdrawn class:relate-target={(relateSource && relateSource !== n.naming_id) || (reifyNamingId && reifyNamingId !== n.naming_id)} class:merge-target={mergeSurvivorId && mergeSurvivorId !== n.naming_id} class:merge-survivor={mergeSurvivorId === n.naming_id}
 						onclick={() => {
+							if (mergeSurvivorId && mergeSurvivorId !== n.naming_id) { completeMerge(n.naming_id); return; }
 							if (relateSource && !relateTarget && relateSource !== n.naming_id) { startRelate(n.naming_id); return; }
 							if (reifyNamingId && reifyNamingId !== n.naming_id) {
 								if (!reifySourceId) { reifyPickSource(n.naming_id); return; }
@@ -565,6 +595,7 @@
 							<button class="btn-xs" onclick={() => showStack(n.naming_id)}>stack</button>
 							<button class="btn-xs" onclick={() => startRelate(n.naming_id)}>relate</button>
 							<button class="btn-xs btn-mode" onclick={() => startReifyAsRelation(n.naming_id)}>→ relation</button>
+							<button class="btn-xs btn-merge" onclick={(e) => { e.stopPropagation(); startMerge(n.naming_id); }}>merge</button>
 							<button class="btn-xs btn-withdraw" onclick={() => withdraw(n.naming_id)}>
 								{withdrawn ? 'restore' : 'withdraw'}
 							</button>
@@ -1010,6 +1041,11 @@
 	.naming-card.withdrawn .naming-inscription { text-decoration: line-through; }
 	.naming-card.relate-target { cursor: crosshair; }
 	.naming-card.relate-target:hover { background: rgba(139, 156, 247, 0.12); }
+	.naming-card.merge-target { cursor: pointer; }
+	.naming-card.merge-target:hover { background: rgba(232, 165, 75, 0.12); }
+	.naming-card.merge-survivor { border-left: 3px solid #e8a54b; }
+	.merge-banner { border-color: #e8a54b; }
+	.btn-merge { color: #e8a54b; }
 
 	.naming-main {
 		display: flex;
