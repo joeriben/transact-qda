@@ -1,6 +1,6 @@
 # Epistemological Foundations — Transact-QDA
 
-Compressed reference from Sessions 00–02 + key clarifications from Session 09.
+Compressed reference from Sessions 00–02 + key clarifications from Sessions 09, 11–13.
 Every fresh session MUST read this before making architectural decisions.
 
 ---
@@ -302,3 +302,23 @@ The categories become questions ABOUT the distinctions, not prompts to fill in t
 - The AI's methodology advisor capacity includes attention to the **frame of countability** — not just what's missing, but what the current constellation of namings makes structurally unnameable
 - **Silences** grounded through participations (constellation grounding) are architecturally complete — no additional provenance type needed
 - The distinction observed-unmarked / analytical-unmarked is articulated through **inscription and memos**, not through structural properties — this avoids pre-determining the distinction that should emerge through analysis
+
+---
+
+## 13. Maps as Perspectives (Session 13)
+
+The Namings list IS the "one complete messy map" — complete, dimensionless, the privileged representation. Maps (canvas) are **curated perspectives** that select a subset of namings and collapse them into 2D space. Multiple maps are necessary — they are genuine perspectives, not copies.
+
+### Three principles for multi-map architecture
+
+1. **Structural integrity within a map**: If a relation appears on a map, its endpoints must too (auto-enforced, not manual).
+2. **Cross-boundary signaling**: Maps show indicators for participations with namings outside the perspective. This marks what the map leaves uncounted — a direct application of the unmarked (Section 11). The user decides whether to pull outside namings in.
+3. **Naming identity is suggestion-based**: Two separate naming acts creating the same inscription ARE two different namings. The system suggests existing namings when adding to a map; merge is available as explicit ground-truth surgery when duplicates are discovered.
+
+### Two legitimate workflows
+
+**(a) Document → Map** (re-naming observed namings): Import annotation-codes from documents, then relate and designate. Grounding is textual (document anchors). This is Clarke's standard path.
+
+**(b) Direct Map** (naming observed unnameds): Name what is in the situation without documents first. Grounding is relational (participations/constellation). This corresponds to operation (b) from Section 11.
+
+Both produce the same data structure. Both are available at any time. No enforced sequence — diffractory methods (Section 12).
