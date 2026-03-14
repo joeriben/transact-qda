@@ -74,8 +74,12 @@ function buildElkGraph(
 	// Track which naming_ids are elements vs relations (for meta-relation detection)
 	const relationIds = new Set(relations.map(r => r.naming_id));
 
+	// Build set of all node IDs in this graph (for orphan edge detection)
+	const allNodeIds = new Set<string>();
+
 	// Elements as regular nodes
 	for (const el of elements) {
+		allNodeIds.add(el.naming_id);
 		graph.children!.push({
 			id: el.naming_id,
 			width: estimateWidth(el.inscription || ''),
@@ -83,11 +87,18 @@ function buildElkGraph(
 		});
 	}
 
+	// Silences as node IDs (needed for edge validation below)
+	for (const s of silences) {
+		allNodeIds.add(s.naming_id);
+	}
+
 	// Relations as intermediate nodes + edges to participants
+	// Skip edges whose endpoints aren't on this map (partial perspective)
 	for (const rel of relations) {
 		const relNodeId = `rel:${rel.naming_id}`;
 		const relWidth = rel.inscription ? estimateWidth(rel.inscription) : 36;
 
+		allNodeIds.add(relNodeId);
 		graph.children!.push({
 			id: relNodeId,
 			width: relWidth,
@@ -100,20 +111,25 @@ function buildElkGraph(
 		if (sourceId) {
 			// If source is a relation, point to its intermediate node
 			const srcElkId = relationIds.has(sourceId) ? `rel:${sourceId}` : sourceId;
-			graph.edges!.push({
-				id: `e:${rel.naming_id}:in`,
-				sources: [srcElkId],
-				targets: [relNodeId]
-			} as ElkExtendedEdge);
+			// Only add edge if the source node exists in this graph
+			if (allNodeIds.has(srcElkId)) {
+				graph.edges!.push({
+					id: `e:${rel.naming_id}:in`,
+					sources: [srcElkId],
+					targets: [relNodeId]
+				} as ElkExtendedEdge);
+			}
 		}
 
 		if (targetId) {
 			const tgtElkId = relationIds.has(targetId) ? `rel:${targetId}` : targetId;
-			graph.edges!.push({
-				id: `e:${rel.naming_id}:out`,
-				sources: [relNodeId],
-				targets: [tgtElkId]
-			} as ElkExtendedEdge);
+			if (allNodeIds.has(tgtElkId)) {
+				graph.edges!.push({
+					id: `e:${rel.naming_id}:out`,
+					sources: [relNodeId],
+					targets: [tgtElkId]
+				} as ElkExtendedEdge);
+			}
 		}
 	}
 

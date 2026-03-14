@@ -4,6 +4,9 @@ import {
 	getMap,
 	getMapStructure,
 	addElementToMap,
+	placeExistingOnMap,
+	searchNamingsForPlacement,
+	getOutsideParticipations,
 	relateElements,
 	createPhase,
 	assignToPhase,
@@ -48,6 +51,28 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			// Fire AI agent asynchronously — never blocks the response
 			runMapAgent(projectId, mapId, { action: 'addElement', details: { inscription: inscription.trim() } }).catch(() => {});
 			return json(element, { status: 201 });
+		}
+
+		case 'placeExisting': {
+			const { namingId, mode, properties } = body;
+			if (!namingId) return json({ error: 'namingId required' }, { status: 400 });
+			const placed = await placeExistingOnMap(projectId, userId, mapId, namingId, mode, properties);
+			if (!placed) return json({ error: 'Naming not found or already on this map' }, { status: 409 });
+			return json(placed, { status: 201 });
+		}
+
+		case 'searchForPlacement': {
+			const { query: searchQuery } = body;
+			if (!searchQuery?.trim()) return json({ results: [] });
+			const results = await searchNamingsForPlacement(projectId, mapId, searchQuery.trim());
+			return json({ results });
+		}
+
+		case 'getOutsideParticipations': {
+			const { namingId } = body;
+			if (!namingId) return json({ error: 'namingId required' }, { status: 400 });
+			const outside = await getOutsideParticipations(mapId, projectId, namingId);
+			return json({ participations: outside });
 		}
 
 		case 'relate': {

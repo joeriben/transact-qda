@@ -111,6 +111,85 @@ export async function addElementToMap(
 	});
 }
 
+// Place an existing naming on this map without creating a new naming.
+// This is the key operation for multi-map work: the same naming can appear
+// on multiple maps, each appearance being a perspectival collapse.
+// Returns null if the naming already has an appearance on this map.
+export async function placeExistingOnMap(
+	projectId: string,
+	userId: string,
+	mapId: string,
+	namingId: string,
+	mode: string = 'entity',
+	properties?: Record<string, unknown>
+) {
+	return transaction(async (client) => {
+		// Verify the naming exists and belongs to this project
+		const naming = await client.query(
+			`SELECT id, inscription FROM namings
+			 WHERE id = $1 AND project_id = $2 AND deleted_at IS NULL`,
+			[namingId, projectId]
+		);
+		if (naming.rows.length === 0) return null;
+
+		// Check if already on this map
+		const existing = await client.query(
+			`SELECT 1 FROM appearances
+			 WHERE naming_id = $1 AND perspective_id = $2`,
+			[namingId, mapId]
+		);
+		if (existing.rows.length > 0) return null;
+
+		// Create appearance on the map
+		await client.query(
+			`INSERT INTO appearances (naming_id, perspective_id, mode, properties)
+			 VALUES ($1, $2, $3, $4)`,
+			[namingId, mapId, mode, JSON.stringify(properties || {})]
+		);
+
+		return naming.rows[0];
+	});
+}
+
+// Search project namings for placement on a map.
+// Returns namings matching the query that are NOT already on this map.
+export async function searchNamingsForPlacement(
+	projectId: string,
+	mapId: string,
+	searchQuery: string,
+	limit: number = 10
+) {
+	return (
+		await query(
+			`SELECT n.id, n.inscription, n.created_at,
+			   COALESCE(
+			     (SELECT na.designation FROM naming_acts na
+			      WHERE na.naming_id = n.id AND na.designation IS NOT NULL
+			      ORDER BY na.seq DESC LIMIT 1),
+			     'cue'
+			   ) as designation,
+			   (SELECT count(*) FROM appearances a2
+			    WHERE a2.naming_id = n.id AND a2.naming_id != a2.perspective_id) as appearance_count
+			 FROM namings n
+			 WHERE n.project_id = $1
+			   AND n.deleted_at IS NULL
+			   AND LOWER(n.inscription) LIKE LOWER($3)
+			   AND NOT EXISTS (
+			     SELECT 1 FROM appearances a
+			     WHERE a.naming_id = n.id AND a.perspective_id = $2
+			   )
+			   AND NOT EXISTS (
+			     SELECT 1 FROM appearances self
+			     WHERE self.naming_id = n.id AND self.perspective_id = n.id
+			       AND self.mode = 'perspective'
+			   )
+			 ORDER BY n.seq DESC
+			 LIMIT $4`,
+			[projectId, mapId, `%${searchQuery}%`, limit]
+		)
+	).rows;
+}
+
 // Relate two elements: creates a participation (co-constitution)
 // and an appearance of the participation as 'relation' on the map.
 // Both related elements move toward characterization.
@@ -504,7 +583,21 @@ export async function getMapAppearances(mapId: string, projectId: string) {
 			           AND pa.mode = 'perspective'
 			           AND pa.naming_id != $1
 			       )
-			   ) as phase_ids
+			   ) as phase_ids,
+			   -- Cross-boundary: participations where the other endpoint is not on this map
+			   (SELECT count(DISTINCT p_out.id)
+			    FROM participations p_out
+			    JOIN namings pn_out ON pn_out.id = p_out.id AND pn_out.deleted_at IS NULL
+			    WHERE (p_out.naming_id = a.naming_id OR p_out.participant_id = a.naming_id)
+			      AND NOT EXISTS (
+			        SELECT 1 FROM appearances a_other
+			        WHERE a_other.perspective_id = $1
+			          AND a_other.naming_id = CASE
+			            WHEN p_out.naming_id = a.naming_id THEN p_out.participant_id
+			            ELSE p_out.naming_id
+			          END
+			      )
+			   )::int as outside_participation_count
 			 FROM appearances a
 			 JOIN namings n ON n.id = a.naming_id
 			 LEFT JOIN participations p ON p.id = a.naming_id
@@ -514,6 +607,48 @@ export async function getMapAppearances(mapId: string, projectId: string) {
 			   AND n.deleted_at IS NULL
 			 ORDER BY n.seq`,
 			[mapId, projectId]
+		)
+	).rows;
+}
+
+// Get details of participations where the other endpoint is outside this map.
+// Returns the outside namings with their inscriptions and designations,
+// plus the relation naming that connects them.
+export async function getOutsideParticipations(
+	mapId: string,
+	projectId: string,
+	namingId: string
+) {
+	return (
+		await query(
+			`SELECT
+			   p_out.id as relation_id,
+			   pn_out.inscription as relation_inscription,
+			   other.id as outside_naming_id,
+			   other.inscription as outside_inscription,
+			   COALESCE(
+			     (SELECT na.designation FROM naming_acts na
+			      WHERE na.naming_id = other.id AND na.designation IS NOT NULL
+			      ORDER BY na.seq DESC LIMIT 1),
+			     'cue'
+			   ) as outside_designation,
+			   (SELECT count(*) FROM appearances a2
+			    WHERE a2.naming_id = other.id AND a2.naming_id != a2.perspective_id) as outside_appearance_count
+			 FROM participations p_out
+			 JOIN namings pn_out ON pn_out.id = p_out.id AND pn_out.deleted_at IS NULL
+			 JOIN namings other ON other.id = CASE
+			   WHEN p_out.naming_id = $3 THEN p_out.participant_id
+			   ELSE p_out.naming_id
+			 END AND other.deleted_at IS NULL
+			 WHERE (p_out.naming_id = $3 OR p_out.participant_id = $3)
+			   AND other.project_id = $2
+			   AND NOT EXISTS (
+			     SELECT 1 FROM appearances a_other
+			     WHERE a_other.perspective_id = $1
+			       AND a_other.naming_id = other.id
+			   )
+			 ORDER BY other.inscription`,
+			[mapId, projectId, namingId]
 		)
 	).rows;
 }

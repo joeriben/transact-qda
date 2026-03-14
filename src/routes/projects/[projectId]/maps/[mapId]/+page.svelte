@@ -68,15 +68,22 @@
 		}
 
 		if (needsLayout) {
-			const result = await computeLayout(elements, relations, silences);
-			const merged = new Map(stored);
-			for (const [id, p] of result.positions) {
-				if (!merged.has(id)) {
-					merged.set(id, { x: p.x, y: p.y });
+			try {
+				const result = await computeLayout(elements, relations, silences);
+				const merged = new Map(stored);
+				for (const [id, p] of result.positions) {
+					if (!merged.has(id)) {
+						merged.set(id, { x: p.x, y: p.y });
+					}
 				}
+				positions = merged;
+				await saveAllPositions(merged);
+			} catch (err) {
+				// ELK layout can fail on partial perspectives (orphan edges).
+				// Fall back to stored positions; unpositioned nodes get scatter-placed.
+				console.warn('ELK layout failed, using stored positions:', err);
+				positions = stored;
 			}
-			positions = merged;
-			await saveAllPositions(merged);
 		} else {
 			positions = stored;
 		}
@@ -129,6 +136,13 @@
 	let newInscription = $state('');
 	let adding = $state(false);
 	let newPhaseLabel = $state('');
+
+	// Placement search (dual-mode add input)
+	let placementResults = $state<any[]>([]);
+	let placementOpen = $state(false);
+	let placementLoading = $state(false);
+	let placementDebounce: ReturnType<typeof setTimeout> | undefined;
+	let addInputRef = $state<HTMLInputElement | null>(null);
 	let showPhaseForm = $state(false);
 	let assigningToPhase = $state<string | null>(null);
 	let expandedPhase = $state<string | null>(null);
@@ -181,6 +195,31 @@
 		inscriptions: any[]; designations: any[]; memos: any[];
 		discussion?: any[]; aiReasoning?: string | null; aiSuggested?: boolean; aiWithdrawn?: boolean;
 	} | null>(null);
+
+	// Outside participations panel (cross-boundary signaling)
+	let outsideId = $state<string | null>(null);
+	let outsideData = $state<any[] | null>(null);
+	let outsideLoading = $state(false);
+
+	async function showOutsideParticipations(namingId: string) {
+		if (outsideId === namingId) { outsideId = null; outsideData = null; return; }
+		outsideId = namingId;
+		outsideLoading = true;
+		const res = await mapAction('getOutsideParticipations', { namingId });
+		outsideData = res.participations || [];
+		outsideLoading = false;
+	}
+
+	async function pullOntoMap(namingId: string) {
+		await mapAction('placeExisting', { namingId });
+		await reload();
+		await layoutNewNodes();
+		// Refresh outside panel if still open
+		if (outsideId) {
+			const res = await mapAction('getOutsideParticipations', { namingId: outsideId });
+			outsideData = res.participations || [];
+		}
+	}
 
 	// Cue discussion
 	let discussInput = $state('');
@@ -412,11 +451,47 @@
 	async function addElement() {
 		if (!newInscription.trim()) return;
 		adding = true;
+		closePlacementDropdown();
 		await mapAction('addElement', { inscription: newInscription.trim() });
 		newInscription = '';
 		adding = false;
 		await reload();
 		await layoutNewNodes();
+	}
+
+	function onAddInputChange(query: string) {
+		clearTimeout(placementDebounce);
+		if (query.trim().length < 2) {
+			closePlacementDropdown();
+			return;
+		}
+		placementDebounce = setTimeout(() => searchPlacement(query.trim()), 300);
+	}
+
+	async function searchPlacement(query: string) {
+		placementLoading = true;
+		const res = await mapAction('searchForPlacement', { query });
+		if (res?.results) {
+			placementResults = res.results;
+			placementOpen = placementResults.length > 0 || query.length >= 2;
+		}
+		placementLoading = false;
+	}
+
+	async function placeExistingNaming(namingId: string) {
+		closePlacementDropdown();
+		adding = true;
+		await mapAction('placeExisting', { namingId });
+		newInscription = '';
+		adding = false;
+		await reload();
+		await layoutNewNodes();
+	}
+
+	function closePlacementDropdown() {
+		placementOpen = false;
+		placementResults = [];
+		clearTimeout(placementDebounce);
 	}
 
 	// ─── Relate ───
@@ -817,6 +892,10 @@
 
 	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') {
+			if (placementOpen) {
+				closePlacementDropdown();
+				return;
+			}
 			cancelRelation();
 			cancelAct();
 			selection.clear();
@@ -846,10 +925,43 @@
 		{/if}
 
 		<div class="toolbar-actions">
-			<form class="add-form" onsubmit={e => { e.preventDefault(); addElement(); }}>
-				<input type="text" placeholder="Name something..." bind:value={newInscription} disabled={adding} />
-				<button type="submit" class="btn-primary" disabled={adding || !newInscription.trim()}>Add</button>
-			</form>
+			<!-- svelte-ignore a11y_click_events_have_key_events -->
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div class="add-form-wrapper" onclick={(e) => e.stopPropagation()}>
+				<form class="add-form" onsubmit={e => { e.preventDefault(); addElement(); }}>
+					<input type="text" placeholder="Name or search..." bind:value={newInscription} bind:this={addInputRef} disabled={adding}
+						oninput={(e) => onAddInputChange((e.target as HTMLInputElement).value)}
+						onfocus={() => { if (newInscription.trim().length >= 2) onAddInputChange(newInscription); }}
+						onblur={() => { setTimeout(() => closePlacementDropdown(), 200); }}
+					/>
+					<button type="submit" class="btn-primary" disabled={adding || !newInscription.trim()}>Add</button>
+				</form>
+				{#if placementOpen}
+					<div class="placement-dropdown">
+						{#if placementResults.length > 0}
+							{#each placementResults as result}
+								<button class="placement-item" onmousedown={(e) => { e.preventDefault(); placeExistingNaming(result.id); }}>
+									<span class="placement-inscription">{result.inscription}</span>
+									<span class="placement-badge" style="color: {designationColor(result.designation)}; border-color: {designationColor(result.designation)}">
+										{designationLabel(result.designation)}
+									</span>
+									<span class="placement-maps">{result.appearance_count} map{result.appearance_count === 1 ? '' : 's'}</span>
+								</button>
+							{/each}
+						{:else if !placementLoading}
+							<span class="placement-empty">No existing namings found</span>
+						{/if}
+						{#if placementLoading}
+							<span class="placement-loading">searching...</span>
+						{/if}
+						<div class="placement-separator"></div>
+						<button class="placement-item placement-create" onmousedown={(e) => { e.preventDefault(); addElement(); }}>
+							<span class="placement-create-label">Create new:</span>
+							<span class="placement-create-value">{newInscription.trim()}</span>
+						</button>
+					</div>
+				{/if}
+			</div>
 			<div class="view-toggle">
 				<button class="btn-view" class:active={viewMode === 'list'} onclick={() => switchView('list')}>List</button>
 				<button class="btn-view" class:active={viewMode === 'canvas'} onclick={() => switchView('canvas')}>Canvas</button>
@@ -1314,6 +1426,13 @@
 											<img class="provenance-indicator" src="/icons/question_mark.svg" alt="ungrounded" title="No grounding yet" />
 										{/if}
 										{#if listGroupBy !== 'mode'}<span class="mode-indicator" title="relation">↔</span>{/if}
+										{#if item.outside_participation_count > 0}
+											<!-- svelte-ignore a11y_click_events_have_key_events -->
+											<!-- svelte-ignore a11y_no_static_element_interactions -->
+											<span class="outside-badge" title="{item.outside_participation_count} relation(s) outside this map" onclick={() => showOutsideParticipations(item.naming_id)}>
+												+{item.outside_participation_count}
+											</span>
+										{/if}
 										<span class="rel-source">{findInscription(srcId)}</span>
 										<span class="rel-arrow">
 											{#if item.directed_from && item.directed_to}
@@ -1377,6 +1496,13 @@
 											<img class="provenance-indicator" src="/icons/question_mark.svg" alt="ungrounded" title="No grounding yet" />
 										{/if}
 										{#if listGroupBy !== 'mode'}<span class="mode-indicator" title="silence">∅</span>{/if}
+										{#if item.outside_participation_count > 0}
+											<!-- svelte-ignore a11y_click_events_have_key_events -->
+											<!-- svelte-ignore a11y_no_static_element_interactions -->
+											<span class="outside-badge" title="{item.outside_participation_count} relation(s) outside this map" onclick={() => showOutsideParticipations(item.naming_id)}>
+												+{item.outside_participation_count}
+											</span>
+										{/if}
 										<!-- svelte-ignore a11y_click_events_have_key_events -->
 										<!-- svelte-ignore a11y_no_static_element_interactions -->
 										<span class="el-inscription editable" onclick={() => showStack(item.naming_id)} ondblclick={() => ctxRename(item.naming_id)}>
@@ -1407,6 +1533,13 @@
 											<img class="provenance-indicator" src="/icons/stylus_note.svg" alt="analytical" title="Analytically grounded" />
 										{:else}
 											<img class="provenance-indicator" src="/icons/question_mark.svg" alt="ungrounded" title="No grounding yet" />
+										{/if}
+										{#if item.outside_participation_count > 0}
+											<!-- svelte-ignore a11y_click_events_have_key_events -->
+											<!-- svelte-ignore a11y_no_static_element_interactions -->
+											<span class="outside-badge" title="{item.outside_participation_count} relation(s) outside this map" onclick={() => showOutsideParticipations(item.naming_id)}>
+												+{item.outside_participation_count}
+											</span>
 										{/if}
 										{#if editingId === item.naming_id}
 											<form class="inline-rename" onsubmit={e => { e.preventDefault(); confirmRename(); }}>
@@ -1517,6 +1650,35 @@
 												</form>
 											{/if}
 										</div>
+									{/if}
+								</div>
+							{/if}
+
+							<!-- Outside participations panel (cross-boundary signaling) -->
+							{#if outsideId === item.naming_id}
+								<div class="outside-panel">
+									<div class="outside-header">
+										<span class="outside-title">Outside this perspective</span>
+										<button class="btn-link" onclick={() => { outsideId = null; outsideData = null; }}>close</button>
+									</div>
+									{#if outsideLoading}
+										<span class="outside-loading">loading...</span>
+									{:else if outsideData && outsideData.length > 0}
+										{#each outsideData as op}
+											<div class="outside-entry">
+												<span class="designation-dot-sm" style="background: {designationColor(op.outside_designation)}"></span>
+												<span class="outside-inscription">{op.outside_inscription}</span>
+												{#if op.relation_inscription}
+													<span class="outside-via">via "{op.relation_inscription}"</span>
+												{/if}
+												{#if op.outside_appearance_count > 0}
+													<span class="outside-maps" title="Appears on {op.outside_appearance_count} map(s)">{op.outside_appearance_count} map(s)</span>
+												{/if}
+												<button class="btn-xs btn-pull" onclick={() => pullOntoMap(op.outside_naming_id)} title="Place on this map">pull</button>
+											</div>
+										{/each}
+									{:else}
+										<span class="outside-empty">No outside participations</span>
 									{/if}
 								</div>
 							{/if}
@@ -1650,6 +1812,35 @@
 		padding: 0.4rem 0.6rem; color: #e1e4e8; font-size: 0.85rem; width: 200px;
 	}
 	.add-form input:focus { outline: none; border-color: #8b9cf7; }
+	.add-form-wrapper { position: relative; }
+	.placement-dropdown {
+		position: absolute; top: 100%; left: 0; right: 0;
+		margin-top: 4px; min-width: 280px;
+		background: #1e2030; border: 1px solid #3a3d4a; border-radius: 8px;
+		padding: 0.25rem 0; z-index: 300;
+		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+		max-height: 280px; overflow-y: auto;
+	}
+	.placement-item {
+		display: flex; align-items: center; gap: 0.5rem;
+		width: 100%; background: none; border: none; color: #c9cdd5;
+		padding: 0.4rem 0.75rem; font-size: 0.8rem; cursor: pointer; text-align: left;
+	}
+	.placement-item:hover { background: #2a2d3a; }
+	.placement-inscription { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.placement-badge {
+		font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.03em;
+		border: 1px solid; border-radius: 3px; padding: 0.05rem 0.3rem;
+		flex-shrink: 0;
+	}
+	.placement-maps { font-size: 0.7rem; color: #6b7280; flex-shrink: 0; }
+	.placement-separator { height: 1px; background: #2a2d3a; margin: 0.2rem 0.5rem; }
+	.placement-create { color: #8b9cf7; }
+	.placement-create:hover { background: rgba(139, 156, 247, 0.1); }
+	.placement-create-label { font-size: 0.75rem; color: #6b7280; flex-shrink: 0; }
+	.placement-create-value { font-weight: 600; }
+	.placement-empty { display: block; padding: 0.35rem 0.75rem; font-size: 0.75rem; color: #4b5563; }
+	.placement-loading { display: block; padding: 0.35rem 0.75rem; font-size: 0.75rem; color: #8b9cf7; }
 
 	/* Status bar */
 	.status-bar {
@@ -1763,6 +1954,35 @@
 	.collapsed-current { font-size: 0.7rem; color: #6b7280; font-style: italic; margin-left: 0.5rem; }
 
 	/* History panel (inline in list view) */
+	/* Outside participations (cross-boundary signaling) */
+	.outside-badge {
+		font-size: 0.65rem; font-weight: 600; color: #e8a54b; background: rgba(232, 165, 75, 0.15);
+		border: 1px solid rgba(232, 165, 75, 0.3); border-radius: 3px;
+		padding: 0 3px; cursor: pointer; flex-shrink: 0;
+	}
+	.outside-badge:hover { background: rgba(232, 165, 75, 0.25); }
+	.outside-panel {
+		background: #12141e; border: 1px solid #3a3520; border-radius: 6px;
+		padding: 0.5rem 0.75rem; margin-top: -0.1rem; margin-bottom: 0.2rem;
+	}
+	.outside-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem; }
+	.outside-title { font-size: 0.7rem; color: #e8a54b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+	.outside-loading { font-size: 0.75rem; color: #888; }
+	.outside-empty { font-size: 0.75rem; color: #666; }
+	.outside-entry {
+		display: flex; align-items: center; gap: 6px;
+		padding: 0.2rem 0; font-size: 0.8rem; border-top: 1px solid #1e2030;
+	}
+	.outside-entry:first-of-type { border-top: none; }
+	.outside-inscription { color: #e0e0e0; }
+	.outside-via { color: #888; font-size: 0.7rem; font-style: italic; }
+	.outside-maps { color: #666; font-size: 0.65rem; }
+	.btn-pull {
+		margin-left: auto; color: #e8a54b; background: rgba(232, 165, 75, 0.1);
+		border: 1px solid rgba(232, 165, 75, 0.2); padding: 1px 6px;
+	}
+	.btn-pull:hover { background: rgba(232, 165, 75, 0.2); }
+
 	.history-panel {
 		background: #0f1117; border: 1px solid #2a2d3a; border-radius: 6px;
 		padding: 0.6rem 0.75rem; margin-top: -0.1rem; margin-bottom: 0.2rem;
