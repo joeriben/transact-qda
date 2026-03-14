@@ -18,7 +18,7 @@ This is inconsistent with Situational Analysis and the transactional ontology:
 
 The designation chain from Dewey/Bentley. Every naming starts as a cue and may be elaborated:
 
-- **Cue**: A pointing gesture. "Something here." Pre-linguistic signal.
+- **Cue**: The most primitive language-behavior — already verbal, but vague and undifferentiated.
 - **Characterization**: A naming that identifies. "This is X."
 - **Specification**: A naming that determines precisely. "X in the sense of Y because Z."
 

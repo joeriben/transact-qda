@@ -29,9 +29,9 @@ Key: same naming can appear as entity, relation, silence, or perspective — dep
 
 Dewey/Bentley's naming taxonomy, implemented as **bidirectional, append-only chain**:
 
-- **Cue**: Vague signal. Something registered but not yet named.
-- **Characterization**: Provisional naming. Everyday language. Functional but loose.
-- **Specification**: Most determined. Scientific/analytical precision (never final).
+- **Cue**: The most primitive language-behavior — already verbal, but vague and undifferentiated. (The pre-linguistic, perceptive-manipulative stage is **Signal** in Dewey/Bentley's taxonomy, which precedes Cue and falls outside the naming process proper.)
+- **Characterization**: Develops out of cue through clustering of cues and growth of language. Provisional naming. Everyday language. Functional but loose.
+- **Specification**: The perfected (and ever-perfecting) stage of naming. Analytical precision (never final).
 
 "Messy vs. Ordered" is NOT a mode — it's the **aggregated designation state** of elements at a given point.
 
