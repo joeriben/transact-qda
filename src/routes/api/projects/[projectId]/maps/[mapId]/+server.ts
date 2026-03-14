@@ -5,8 +5,10 @@ import {
 	getMapStructure,
 	addElementToMap,
 	placeExistingOnMap,
+	placeMultipleOnMap,
 	searchNamingsForPlacement,
 	getOutsideParticipations,
+	getDocumentNamingsForPlacement,
 	relateElements,
 	createPhase,
 	assignToPhase,
@@ -66,6 +68,44 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			if (!searchQuery?.trim()) return json({ results: [] });
 			const results = await searchNamingsForPlacement(projectId, mapId, searchQuery.trim());
 			return json({ results });
+		}
+
+		case 'listDocumentsForImport': {
+			const { query: dbQ } = await import('$lib/server/db/index.js');
+			const docs = await dbQ(
+				`SELECT n.id, n.inscription as label,
+				   (SELECT count(DISTINCT ann.directed_from)
+				    FROM appearances ann
+				    JOIN namings code ON code.id = ann.directed_from AND code.deleted_at IS NULL
+				    WHERE ann.directed_to = n.id AND ann.valence = 'codes'
+				      AND NOT EXISTS (
+				        SELECT 1 FROM appearances a_map
+				        WHERE a_map.naming_id = code.id AND a_map.perspective_id = $2
+				      )
+				   )::int as importable_count
+				 FROM namings n
+				 JOIN document_content dc ON dc.naming_id = n.id
+				 WHERE n.project_id = $1 AND n.deleted_at IS NULL
+				 ORDER BY n.inscription`,
+				[projectId, mapId]
+			);
+			return json({ documents: docs.rows });
+		}
+
+		case 'importFromDocument': {
+			const { documentId } = body;
+			if (!documentId) return json({ error: 'documentId required' }, { status: 400 });
+			const candidates = await getDocumentNamingsForPlacement(projectId, mapId, documentId);
+			if (candidates.length === 0) return json({ placed: 0, message: 'No new namings to import' });
+			const placed = await placeMultipleOnMap(projectId, userId, mapId, candidates.map((c: any) => c.id));
+			return json({ placed, total: candidates.length });
+		}
+
+		case 'getDocumentNamings': {
+			const { documentId } = body;
+			if (!documentId) return json({ error: 'documentId required' }, { status: 400 });
+			const namings = await getDocumentNamingsForPlacement(projectId, mapId, documentId);
+			return json({ namings });
 		}
 
 		case 'getOutsideParticipations': {

@@ -196,6 +196,37 @@
 		discussion?: any[]; aiReasoning?: string | null; aiSuggested?: boolean; aiWithdrawn?: boolean;
 	} | null>(null);
 
+	// Import from document
+	let importDropdownOpen = $state(false);
+	let importDocuments = $state<any[]>([]);
+	let importLoading = $state(false);
+
+	async function openImportDropdown() {
+		if (importDropdownOpen) { importDropdownOpen = false; return; }
+		importLoading = true;
+		importDropdownOpen = true;
+		// Fetch documents + count of placeable namings per document
+		const res = await fetch(`/api/projects/${data.projectId}/maps/${data.map.id}`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ action: 'listDocumentsForImport' })
+		});
+		if (res.ok) {
+			const result = await res.json();
+			importDocuments = result.documents || [];
+		}
+		importLoading = false;
+	}
+
+	async function importFromDocument(documentId: string) {
+		importDropdownOpen = false;
+		const res = await mapAction('importFromDocument', { documentId });
+		if (res.placed > 0) {
+			await reload();
+			await layoutNewNodes();
+		}
+	}
+
 	// Outside participations panel (cross-boundary signaling)
 	let outsideId = $state<string | null>(null);
 	let outsideData = $state<any[] | null>(null);
@@ -892,6 +923,7 @@
 
 	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') {
+			if (importDropdownOpen) { importDropdownOpen = false; return; }
 			if (placementOpen) {
 				closePlacementDropdown();
 				return;
@@ -965,6 +997,31 @@
 			<div class="view-toggle">
 				<button class="btn-view" class:active={viewMode === 'list'} onclick={() => switchView('list')}>List</button>
 				<button class="btn-view" class:active={viewMode === 'canvas'} onclick={() => switchView('canvas')}>Canvas</button>
+			</div>
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div class="import-wrapper" onclick={(e) => e.stopPropagation()}>
+				<button class="btn-sm" onclick={openImportDropdown} title="Import namings from a document">Import</button>
+				{#if importDropdownOpen}
+					<div class="import-dropdown">
+						{#if importLoading}
+							<span class="import-loading">loading...</span>
+						{:else if importDocuments.length === 0}
+							<span class="import-empty">No documents in project</span>
+						{:else}
+							{#each importDocuments as doc}
+								<button class="import-item" onmousedown={(e) => { e.preventDefault(); importFromDocument(doc.id); }}
+									disabled={doc.importable_count === 0}>
+									<span class="import-doc-label">{doc.label}</span>
+									{#if doc.importable_count > 0}
+										<span class="import-doc-count">+{doc.importable_count}</span>
+									{:else}
+										<span class="import-doc-done">all placed</span>
+									{/if}
+								</button>
+							{/each}
+						{/if}
+					</div>
+				{/if}
 			</div>
 			<button class="btn-sm btn-connections" class:connections-off={!showConnections}
 				onclick={() => { showConnections = !showConnections; localStorage.setItem(`map:${data.map.id}:showConnections`, String(showConnections)); }}
@@ -1954,6 +2011,26 @@
 	.collapsed-current { font-size: 0.7rem; color: #6b7280; font-style: italic; margin-left: 0.5rem; }
 
 	/* History panel (inline in list view) */
+	/* Import from document dropdown */
+	.import-wrapper { position: relative; }
+	.import-dropdown {
+		position: absolute; top: 100%; left: 0; z-index: 300;
+		background: #1e2030; border: 1px solid #3a3d4a; border-radius: 6px;
+		min-width: 220px; max-height: 300px; overflow-y: auto;
+		box-shadow: 0 4px 12px rgba(0,0,0,0.4); margin-top: 4px;
+	}
+	.import-item {
+		display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+		width: 100%; background: none; border: none; color: #c9cdd5;
+		padding: 0.4rem 0.75rem; font-size: 0.8rem; cursor: pointer; text-align: left;
+	}
+	.import-item:hover:not(:disabled) { background: #2a2d3a; }
+	.import-item:disabled { opacity: 0.4; cursor: default; }
+	.import-doc-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.import-doc-count { color: #10b981; font-size: 0.7rem; font-weight: 600; flex-shrink: 0; }
+	.import-doc-done { color: #6b7280; font-size: 0.7rem; flex-shrink: 0; }
+	.import-loading, .import-empty { display: block; padding: 0.4rem 0.75rem; font-size: 0.75rem; color: #6b7280; }
+
 	/* Outside participations (cross-boundary signaling) */
 	.outside-badge {
 		font-size: 0.65rem; font-weight: 600; color: #e8a54b; background: rgba(232, 165, 75, 0.15);

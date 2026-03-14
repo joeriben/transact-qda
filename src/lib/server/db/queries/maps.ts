@@ -653,6 +653,52 @@ export async function getOutsideParticipations(
 	).rows;
 }
 
+// Get all namings that annotate a document but aren't yet on this map.
+// "Namings of a document" = code namings used in annotations (valence='codes').
+export async function getDocumentNamingsForPlacement(
+	projectId: string,
+	mapId: string,
+	documentId: string
+) {
+	return (
+		await query(
+			`SELECT DISTINCT code.id, code.inscription,
+			   COALESCE(
+			     (SELECT na.designation FROM naming_acts na
+			      WHERE na.naming_id = code.id AND na.designation IS NOT NULL
+			      ORDER BY na.seq DESC LIMIT 1),
+			     'cue'
+			   ) as designation
+			 FROM appearances ann
+			 JOIN namings ann_n ON ann_n.id = ann.naming_id AND ann_n.deleted_at IS NULL
+			 JOIN namings code ON code.id = ann.directed_from AND code.deleted_at IS NULL
+			 WHERE ann.directed_to = $3 AND ann.valence = 'codes'
+			   AND code.project_id = $1
+			   AND NOT EXISTS (
+			     SELECT 1 FROM appearances a_map
+			     WHERE a_map.naming_id = code.id AND a_map.perspective_id = $2
+			   )
+			 ORDER BY code.inscription`,
+			[projectId, mapId, documentId]
+		)
+	).rows;
+}
+
+// Batch-place multiple namings on a map (returns count placed).
+export async function placeMultipleOnMap(
+	projectId: string,
+	userId: string,
+	mapId: string,
+	namingIds: string[]
+) {
+	let placed = 0;
+	for (const namingId of namingIds) {
+		const result = await placeExistingOnMap(projectId, userId, mapId, namingId);
+		if (result) placed++;
+	}
+	return placed;
+}
+
 // Get phases (sub-perspectives) within a map
 export async function getMapPhases(mapId: string, projectId: string) {
 	return (
