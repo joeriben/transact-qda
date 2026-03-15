@@ -3,6 +3,10 @@ export type CollapseMode = 'entity' | 'relation' | 'constellation' | 'process' |
 
 export type MapType = 'situational' | 'social-worlds' | 'positional' | 'network';
 
+// Formation roles on Social Worlds/Arenas maps.
+// Stored as machine-readable classification in the first memo (inscription: "Formation: <role>").
+export type SwRole = 'social-world' | 'arena' | 'discourse' | 'organization';
+
 export interface User {
 	id: string;
 	username: string;

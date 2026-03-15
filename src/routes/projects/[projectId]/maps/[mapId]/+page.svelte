@@ -7,6 +7,9 @@
 	import { createSelection } from '$lib/canvas/selection.svelte.js';
 	import { computeLayout, computeRadialLayout } from '$lib/canvas/layout.js';
 	import { regionColor } from '$lib/canvas/regions.js';
+	import FormationNode from '$lib/canvas/FormationNode.svelte';
+	import { SW_ROLES } from '$lib/shared/constants.js';
+	import type { SwRole } from '$lib/shared/types/index.js';
 
 	let { data } = $props();
 
@@ -134,6 +137,7 @@
 	// Interaction state
 	let relatingFrom = $state<string | null>(null);
 	let newInscription = $state('');
+	let newSwRole = $state<SwRole>('social-world');
 	let adding = $state(false);
 	let newPhaseLabel = $state('');
 
@@ -487,7 +491,14 @@
 		if (!newInscription.trim()) return;
 		adding = true;
 		closePlacementDropdown();
-		await mapAction('addElement', { inscription: newInscription.trim() });
+		if (mapType === 'social-worlds') {
+			await mapAction('addFormation', {
+				inscription: newInscription.trim(),
+				swRole: newSwRole
+			});
+		} else {
+			await mapAction('addElement', { inscription: newInscription.trim() });
+		}
 		newInscription = '';
 		adding = false;
 		await reload();
@@ -965,7 +976,14 @@
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div class="add-form-wrapper" onclick={(e) => e.stopPropagation()}>
 				<form class="add-form" onsubmit={e => { e.preventDefault(); addElement(); }}>
-					<input type="text" placeholder="Name or search..." bind:value={newInscription} bind:this={addInputRef} disabled={adding}
+					{#if mapType === 'social-worlds'}
+						<select class="sw-role-select" bind:value={newSwRole}>
+							{#each SW_ROLES as role}
+								<option value={role}>{role}</option>
+							{/each}
+						</select>
+					{/if}
+					<input type="text" placeholder={mapType === 'social-worlds' ? 'Formation name...' : 'Name or search...'} bind:value={newInscription} bind:this={addInputRef} disabled={adding}
 						oninput={(e) => onAddInputChange((e.target as HTMLInputElement).value)}
 						onfocus={() => { if (newInscription.trim().length >= 2) onAddInputChange(newInscription); }}
 						onblur={() => { setTimeout(() => closePlacementDropdown(), 200); }}
@@ -1207,6 +1225,17 @@
 							onclick={handleNodeClick}
 							oncontextmenu={handleNodeContextMenu}
 						>
+							{#if mapType === 'social-worlds' && el.sw_role}
+								<FormationNode
+									label={el.inscription}
+									swRole={el.sw_role}
+									designation={el.designation}
+									color={designationColor(el.designation)}
+									rx={el.properties?.rx || 150}
+									ry={el.properties?.ry || 100}
+									selected={selection.isSelected(el.naming_id)}
+								/>
+							{:else}
 							<div class="map-node" class:ai-suggested={el.properties?.aiSuggested} class:ai-withdrawn={isWithdrawn(el.properties)} class:phase-member={highlightedPhase && isPhaseHighlighted(el)} class:phase-dimmed={highlightedPhase && !isPhaseHighlighted(el)} class:centered-dim={centeredConnections && !centeredConnections.has(el.naming_id)} class:centered-anchor={centeredId === el.naming_id}
 								style="{highlightedPhase && isPhaseHighlighted(el) ? `--phase-color: ${phaseColorMap.get(highlightedPhase)};` : ''}">
 								<div class="node-header">
@@ -1253,6 +1282,7 @@
 									</div>
 								{/if}
 							</div>
+							{/if}
 						</CanvasElement>
 					{/if}
 				{/each}
@@ -1873,6 +1903,12 @@
 		padding: 0.4rem 0.6rem; color: #e1e4e8; font-size: 0.85rem; width: 200px;
 	}
 	.add-form input:focus { outline: none; border-color: #8b9cf7; }
+	.sw-role-select {
+		background: #161822; border: 1px solid #2a2d3a; border-radius: 6px;
+		padding: 0.3rem 0.4rem; color: #c9cdd5; font-size: 0.75rem;
+		cursor: pointer;
+	}
+	.sw-role-select:focus { outline: none; border-color: #8b9cf7; }
 	.add-form-wrapper { position: relative; }
 	.placement-dropdown {
 		position: absolute; top: 100%; left: 0; right: 0;

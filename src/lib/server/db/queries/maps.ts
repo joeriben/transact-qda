@@ -586,6 +586,18 @@ export async function getMapAppearances(mapId: string, projectId: string) {
 			        )
 			     ), '[]'::json
 			   ) as memo_previews,
+			   -- SW/A role: extracted from first "Formation:" classification memo
+			   (SELECT substring(msw.inscription FROM 'Formation: (.+)')
+			    FROM participations psw
+			    JOIN namings pnsw ON pnsw.id = psw.id AND pnsw.deleted_at IS NULL
+			    JOIN namings msw ON msw.id = CASE WHEN psw.naming_id = a.naming_id THEN psw.participant_id ELSE psw.naming_id END
+			      AND msw.deleted_at IS NULL AND msw.id != a.naming_id
+			    JOIN memo_content mcsw ON mcsw.naming_id = msw.id
+			    WHERE (psw.naming_id = a.naming_id OR psw.participant_id = a.naming_id)
+			      AND msw.inscription LIKE 'Formation:%'
+			    ORDER BY msw.created_at ASC
+			    LIMIT 1
+			   ) as sw_role,
 			   p.naming_id as part_source_id,
 			   p.participant_id as part_target_id,
 			   ARRAY(

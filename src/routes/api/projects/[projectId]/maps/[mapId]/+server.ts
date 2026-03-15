@@ -28,6 +28,7 @@ import {
 import { createMemo, getMemosForNaming } from '$lib/server/db/queries/memos.js';
 import { runMapAgent, setAiEnabled, discussCue } from '$lib/server/ai/agent.js';
 import { saveTopologyBuffer, saveTopologySnapshot, restoreTopologySnapshot, listTopologySnapshots } from '$lib/server/db/queries/topology.js';
+import { SW_ROLE_DEFAULTS } from '$lib/shared/constants.js';
 
 export const GET: RequestHandler = async ({ params }) => {
 	const map = await getMap(params.mapId, params.projectId);
@@ -52,6 +53,20 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			const element = await addElementToMap(projectId, userId, mapId, inscription.trim(), properties);
 			// Fire AI agent asynchronously — never blocks the response
 			runMapAgent(projectId, mapId, { action: 'addElement', details: { inscription: inscription.trim() } }).catch(() => {});
+			return json(element, { status: 201 });
+		}
+
+		case 'addFormation': {
+			const { inscription, swRole, memoText, properties } = body;
+			if (!inscription?.trim()) return json({ error: 'inscription required' }, { status: 400 });
+			if (!swRole) return json({ error: 'swRole required' }, { status: 400 });
+			const defaults = SW_ROLE_DEFAULTS[swRole as keyof typeof SW_ROLE_DEFAULTS] || SW_ROLE_DEFAULTS['social-world'];
+			const element = await addElementToMap(projectId, userId, mapId, inscription.trim(),
+				{ ...defaults, ...properties });
+			// Classification memo: the naming act that establishes what formation this is
+			await createMemo(projectId, userId, `Formation: ${swRole}`,
+				memoText?.trim() || '', [element.id]);
+			runMapAgent(projectId, mapId, { action: 'addFormation', details: { inscription: inscription.trim(), swRole } }).catch(() => {});
 			return json(element, { status: 201 });
 		}
 
