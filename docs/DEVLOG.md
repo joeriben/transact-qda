@@ -223,3 +223,89 @@ Core principle: the fundamental unit is the event (naming/relating act), not the
 | Commit | Description |
 |--------|-------------|
 | `71de965` | Refactor code system: codes as derived view from maps |
+
+---
+
+## Session 10 — 2026-03-12
+
+**Focus**: Namings workspace and naming_acts unification
+
+- Renamed Codes/Grounding sidebar to **Namings** — direct map links, standalone workspace
+- Namings workspace: filter, create unplaced cues, relation proposition format
+- **Unified `naming_acts`**: merged `naming_inscriptions` + `naming_designations` into single append-only stack
+- Relation valence editing, mode switching, AI filter covers endpoints
+- Canvas zoom fix: non-passive wheel listener, +/- zoom buttons
+
+| Commit | Description |
+|--------|-------------|
+| `ff059a6` | Fix grounding dashboard: remove reflected as grounding category |
+| `e6aada0` | Rename Codes/Grounding to Namings, restructure sidebar |
+| `542d1be` | Add Namings workspace as standalone working space |
+| `2c78753` | Improve namings: relation proposition format, AI filter |
+| `036ac94` | Relation proposition format, mode switching, valence editing |
+| `06bfcfa` | Unify naming_inscriptions + naming_designations into naming_acts |
+| `b31e635` | Fix canvas zoom: non-passive wheel listener, +/- buttons |
+
+---
+
+## Session 11 — 2026-03-12
+
+**Focus**: Clarke's relational interrogation and epistemological foundations
+
+- Epistemological foundations reference doc
+- Clarke's Situational Matrix integrated into AI agent prompt
+- Enhanced Sit Map: connection toggle, scatter placement, flexible list grouping
+- **"Center on" radial layout**: pure-geometry radial layout for Clarke's relational interrogation
+- Extended Clarke critique: the unmarked, deconstructive AI questioning
+
+| Commit | Description |
+|--------|-------------|
+| `8fa878d` | Add epistemological foundations, improve relate confirmation UX |
+| `4dda55a` | Add Clarke's Situational Matrix, restructure AI agent prompt |
+| `c8b0a4f` | Enhance Sit Map: connection toggle, scatter placement, list grouping |
+| `dc3c295` | Add "Center on" radial layout for relational interrogation |
+| `46fdcf5` | Extended Clarke critique: the unmarked, deconstructive AI questioning |
+
+---
+
+## Session 12 — 2026-03-14
+
+**Focus**: Manual, CCS terminology, participations as autonomous layer
+
+- transact-qda manual documenting all features
+- Corrected CCS terminology throughout codebase
+- Clarified participations as relating-cues and autonomous structural layer
+
+| Commit | Description |
+|--------|-------------|
+| `122d424` | Add transact-qda manual and correct CCS terminology |
+| `5784884` | Clarify participations as relating-cues and autonomous structural layer |
+
+---
+
+## Session 13 — 2026-03-14
+
+**Focus**: Multi-map architecture and structural integrity
+
+- **Multi-map support**: place existing namings on multiple maps, cross-boundary signaling
+- ELK layout resilience: skip orphaned edges, try/catch in initPositions
+- Naming merge with confirmation step and auto-memo documenting absorbed naming
+- Sidebar multi-map navigation
+- **"Import from document"**: batch placement of document-grounded namings onto maps
+- **Structural integrity enforcement**: auto-add missing endpoints when relating on a map
+
+| Commit | Description |
+|--------|-------------|
+| `9cd7a63` | Add multi-map support: place existing namings, cross-boundary signaling, ELK resilience |
+| `f3f93f9` | Add naming merge and sidebar multi-map navigation |
+| `8d14821` | Add "Import from document" batch placement on maps |
+| `51ed80c` | Add merge confirmation step and auto-memo |
+| `1957623` | Enforce structural integrity: auto-add missing endpoints when relating |
+
+---
+
+## Bugfixes — 2026-03-15
+
+| Commit | Description |
+|--------|-------------|
+| `4c33c74` | Fix phase assignment in canvas mode: clicking nodes now assigns to active phase |

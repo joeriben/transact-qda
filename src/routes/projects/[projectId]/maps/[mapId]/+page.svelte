@@ -457,6 +457,10 @@
 			completeRelating(id);
 			return;
 		}
+		if (assigningToPhase) {
+			assignElement(assigningToPhase, id);
+			return;
+		}
 		selection.select(id, e.ctrlKey || e.metaKey);
 		ctxMenuId = null;
 	}
