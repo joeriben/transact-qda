@@ -62,21 +62,21 @@
 	const fillColor = $derived(style.fillOpacity > 0 ? color : 'transparent');
 	const fillOp = $derived(style.fillOpacity);
 
-	// --- Resize handle logic ---
+	// --- Resize handle logic (window-level listeners for reliability) ---
 	let resizeStart = { clientX: 0, clientY: 0, rx: 0, ry: 0 };
-	let resizeAxis: 'x' | 'y' = 'x';
+	let resizeDirection: 'e' | 'w' | 's' | 'n' = 'e';
 
-	function onResizeDown(axis: 'x' | 'y', e: PointerEvent) {
+	function onResizeDown(dir: 'e' | 'w' | 's' | 'n', e: PointerEvent) {
 		e.stopPropagation();
 		e.preventDefault();
 		isResizing = true;
-		resizeAxis = axis;
+		resizeDirection = dir;
 		resizeStart = { clientX: e.clientX, clientY: e.clientY, rx: localRx, ry: localRy };
-		(e.target as SVGElement).setPointerCapture(e.pointerId);
+		window.addEventListener('pointermove', onResizeMove);
+		window.addEventListener('pointerup', onResizeUp);
 	}
 
 	function onResizeMove(e: PointerEvent) {
-		if (!isResizing) return;
 		const dxScreen = (e.clientX - resizeStart.clientX) / zoom;
 		const dyScreen = (e.clientY - resizeStart.clientY) / zoom;
 
@@ -85,20 +85,25 @@
 		const dxLocal = dxScreen * Math.cos(rad) - dyScreen * Math.sin(rad);
 		const dyLocal = dxScreen * Math.sin(rad) + dyScreen * Math.cos(rad);
 
-		if (resizeAxis === 'x') {
+		if (resizeDirection === 'e') {
 			localRx = Math.max(40, resizeStart.rx + dxLocal);
-		} else {
+		} else if (resizeDirection === 'w') {
+			localRx = Math.max(40, resizeStart.rx - dxLocal);
+		} else if (resizeDirection === 's') {
 			localRy = Math.max(30, resizeStart.ry + dyLocal);
+		} else {
+			localRy = Math.max(30, resizeStart.ry - dyLocal);
 		}
 	}
 
-	function onResizeUp(e: PointerEvent) {
-		if (!isResizing) return;
+	function onResizeUp() {
 		isResizing = false;
+		window.removeEventListener('pointermove', onResizeMove);
+		window.removeEventListener('pointerup', onResizeUp);
 		onresizeend?.(Math.round(localRx), Math.round(localRy));
 	}
 
-	// --- Rotation handle logic ---
+	// --- Rotation handle logic (window-level listeners) ---
 	let svgEl: SVGSVGElement;
 	let rotStartAngle = 0;
 	let rotStartRotation = 0;
@@ -108,31 +113,30 @@
 		e.preventDefault();
 		isRotating = true;
 		rotStartRotation = localRotation;
-		// Compute starting angle from shape center to mouse
 		const rect = svgEl.getBoundingClientRect();
 		const centerX = rect.left + rect.width / 2;
 		const centerY = rect.top + topExtra * zoom / 2 + (rect.height - topExtra * zoom) / 2;
 		rotStartAngle = Math.atan2(e.clientX - centerX, -(e.clientY - centerY)) * 180 / Math.PI;
-		(e.target as SVGElement).setPointerCapture(e.pointerId);
+		window.addEventListener('pointermove', onRotateMove);
+		window.addEventListener('pointerup', onRotateUp);
 	}
 
 	function onRotateMove(e: PointerEvent) {
-		if (!isRotating) return;
 		const rect = svgEl.getBoundingClientRect();
 		const centerX = rect.left + rect.width / 2;
 		const centerY = rect.top + topExtra * zoom / 2 + (rect.height - topExtra * zoom) / 2;
 		const currentAngle = Math.atan2(e.clientX - centerX, -(e.clientY - centerY)) * 180 / Math.PI;
 		let newRotation = rotStartRotation + (currentAngle - rotStartAngle);
-		// Shift → snap to 15° increments
 		if (e.shiftKey) {
 			newRotation = Math.round(newRotation / 15) * 15;
 		}
 		localRotation = newRotation;
 	}
 
-	function onRotateUp(e: PointerEvent) {
-		if (!isRotating) return;
+	function onRotateUp() {
 		isRotating = false;
+		window.removeEventListener('pointermove', onRotateMove);
+		window.removeEventListener('pointerup', onRotateUp);
 		onrotateend?.(Math.round(localRotation * 10) / 10);
 	}
 </script>
@@ -202,51 +206,28 @@
 					cx={cx + localRx} cy={cy} r="6"
 					class="handle resize-handle"
 					style="cursor: ew-resize;"
-					onpointerdown={(e) => onResizeDown('x', e)}
-					onpointermove={onResizeMove}
-					onpointerup={onResizeUp}
+					onpointerdown={(e) => onResizeDown('e', e)}
 				/>
 				<!-- Resize: West -->
 				<circle
 					cx={cx - localRx} cy={cy} r="6"
 					class="handle resize-handle"
 					style="cursor: ew-resize;"
-					onpointerdown={(e) => onResizeDown('x', e)}
-					onpointermove={(e) => {
-						if (!isResizing) return;
-						// West handle: invert the delta
-						const dxScreen = (e.clientX - resizeStart.clientX) / zoom;
-						const dyScreen = (e.clientY - resizeStart.clientY) / zoom;
-						const rad = -localRotation * Math.PI / 180;
-						const dxLocal = dxScreen * Math.cos(rad) - dyScreen * Math.sin(rad);
-						localRx = Math.max(40, resizeStart.rx - dxLocal);
-					}}
-					onpointerup={onResizeUp}
+					onpointerdown={(e) => onResizeDown('w', e)}
 				/>
 				<!-- Resize: South -->
 				<circle
 					cx={cx} cy={cy + localRy} r="6"
 					class="handle resize-handle"
 					style="cursor: ns-resize;"
-					onpointerdown={(e) => onResizeDown('y', e)}
-					onpointermove={onResizeMove}
-					onpointerup={onResizeUp}
+					onpointerdown={(e) => onResizeDown('s', e)}
 				/>
 				<!-- Resize: North -->
 				<circle
 					cx={cx} cy={cy - localRy} r="6"
 					class="handle resize-handle"
 					style="cursor: ns-resize;"
-					onpointerdown={(e) => onResizeDown('y', e)}
-					onpointermove={(e) => {
-						if (!isResizing) return;
-						const dxScreen = (e.clientX - resizeStart.clientX) / zoom;
-						const dyScreen = (e.clientY - resizeStart.clientY) / zoom;
-						const rad = -localRotation * Math.PI / 180;
-						const dyLocal = dxScreen * Math.sin(rad) + dyScreen * Math.cos(rad);
-						localRy = Math.max(30, resizeStart.ry - dyLocal);
-					}}
-					onpointerup={onResizeUp}
+					onpointerdown={(e) => onResizeDown('n', e)}
 				/>
 
 				<!-- Rotation: stem + handle -->
@@ -264,8 +245,6 @@
 					class="handle rotate-handle"
 					style="cursor: grab;"
 					onpointerdown={onRotateDown}
-					onpointermove={onRotateMove}
-					onpointerup={onRotateUp}
 				/>
 			{/if}
 		</g>
