@@ -1,0 +1,2837 @@
+ ▐▛███▜▌   Claude Code v2.1.75
+▝▜█████▛▘  Opus 4.6 (1M context) · Claude Max
+  ▘▘ ▝▝    ~/ai/transact-qda
+
+❯ /clear                                                                        
+  ⎿  (no content)
+
+❯ Session 13. Wir behandeln wir im Sinne von Clarke, aber auch D/B SitMaps?     
+Müssen immer alle Namings auf der SitMap sein? Brauchen wir doch verschiedenen  
+SitMaps (ich hatte sie auf EINE eingedampft mti dem Argument sie sei ohnehin    
+ein Stack)? Denn Arbeit in den Namings erzeugt inkongruenzen mit der SitMap,    
+die entweder durch automatisch erzwungene Erweiterung gelöst werden oder durch  
+unabhängige(re) Perspektivität von SitMaps. Letzeres würde aber bedeuten, dass  
+wir die Namings irgendwie auch in die Sitmap-Liste (!) und Canvas hineinziehen  
+müssten. -- Das ist hier prozessual noch nicht so ganz gut durchdacht, denn ich 
+ habe ohne Dokumente begonnen Probe-Maps zu erstellen (aber das ist ja auch     
+legitim). siehe z.B. das resultierende interface-Problem: " Root cause found:   
+An orphaned relation (93fcd4d5) on the Futurability map has endpoints that      
+  aren't on this map. This relation has no stored x/y position, which triggers  
+a full ELK layout                                                               
+  computation. ELK crashes because its graph contains edges pointing to         
+non-existent nodes. Since                                                       
+  initPositions() has no error handling, the positions Map stays empty → empty  
+canvas.                                                                         
+                                                                                
+  reload() (triggered by editing namings) bypasses ELK and reads positions      
+directly from                                                                   
+  node.properties, which is why the canvas appears after edits.                 
+                                                                                
+  Fix: Two changes - (1) try/catch in initPositions to fall back to stored      
+positions, (2) skip                                                             
+  orphaned edges in buildElkGraph so ELK doesn't crash.                         
+  ⎿  Tool use rejected with user message: So this is an asynch problem between  
+Namings editing                                                                 
+     directly on ground truth and a sit map as a perspective, right?            
+                                                                                
+● Yes, exactly. The naming 93fcd4d5 (a relation) was likely created or modified 
+ at the ground-truth                                                            
+  level (or on another perspective), and its participations point to namings    
+(a692ba79 "Rename →                                                             
+  artificial intelligence" and feea5aab "Relation: Interpretation enables       
+Futurability") that exist                                                       
+  in the project but were never given appearances on the Futurability           
+perspective.                                                                    
+                                                                                
+  So the Futurability map has an appearance for the relation itself, but not    
+for the nodes it                                                                
+  connects. The ground truth (participations table) says "this relation         
+connects A to B", but the                                                       
+  perspective (appearances table) only contains the relation — not A or B.      
+                                                                                
+                                                                                
+                                                                                
+  This is a perspective-level orphan: the relation appears on the sit map       
+without its endpoints. The                                                      
+   layout engine then tries to draw edges to nodes that don't exist in the      
+graph → crash → empty                                                           
+  canvas.                                                                       
+                                                                                
+                                                                                
+                                                                                
+  The deeper question is: should the application prevent this? E.g., when       
+adding a relation to a                                                          
+  map, should it automatically add the endpoints too? Or should buildElkGraph   
+simply be resilient to                                                          
+   partial perspectives (which are arguably valid — a map might intentionally   
+show only some                                                                  
+  appearances)?         "                                                       
+
+● Good question — this touches the core tension between ground truth
+  completeness and perspectival independence. Let me first understand the
+  current state of the codebase before engaging.
+
+● 2 Explore agents finished (ctrl+o to expand)
+   ├─ Explore SitMap architecture · 35 tool uses · 69.7k tokens
+   │  ⎿  Done
+   └─ Explore session docs context · 20 tool uses · 67.0k tokens
+      ⎿  Done
+
+● This is a fundamental architectural question. Let me engage with it properly,
+  because the theory actually gives us a clear answer once we untangle the
+  layers.
+
+  The Confusion: "One Map" Conflates Two Distinct Things
+
+  Your original argument for ONE map was: "it's a stack anyway." That's true for
+   the ground truth — there IS one stack (namings + participations +
+  naming_acts). But a SitMap is not the stack. It's a perspectival collapse of
+  the stack into 2D spatial arrangement.
+
+  The Namings list already IS your "one complete map" — it's the privileged
+  representation (dimensionless, complete, no spatial bias). A SitMap on the
+  canvas is necessarily selective the moment it arranges things spatially:
+  proximity implies relation, clustering implies category — these are analytical
+   acts, not neutral renderings.
+
+  The Theory Resolves This
+
+  Clarke distinguishes three map types (situational, social worlds/arenas,
+  positional) — she never claims one map captures everything. Her "put
+  everything in the situation" principle applies to the analytical universe (=
+  all namings in the project), which IS your Namings list.
+
+  From your own three-layer hierarchy:
+  - Datenstruktur (namings, participations, naming_acts) = ground truth — ONE,
+  shared
+  - Liste = privileged representation of that ground truth — ONE, complete
+  - Canvas/Map = derivative projection — necessarily perspectival, therefore
+  potentially MULTIPLE
+
+  The Orphan Problem Reveals the Design Flaw
+
+  The bug you hit is actually a constraint violation, not a layout bug. Your
+  system has three independent layers:
+
+  1. Participations (ground truth bonds) — created freely in the list
+  2. Appearances (perspectival collapses) — curated per map
+  3. Layout (ELK graph) — derived from appearances
+
+  The orphan arises when a participation exists at layer 1 but only one endpoint
+   has an appearance at layer 2. This is not an ELK problem — it's a
+  perspectival incompleteness that's structurally valid but needs to be made
+  visible rather than crash the system.
+
+  The Solution: Multiple Maps + Structural Integrity + Signaling
+
+  Three principles:
+
+  1. Multiple maps are necessary. They are genuine perspectives, not copies. The
+   argument that "it's one stack" is correct for ground truth but doesn't apply
+  to perspectives. Different maps collapse different subsets differently.
+
+  2. Within a map, structural integrity must hold. If a relation appears on a
+  map, its endpoints must too. This is not "auto-expansion" — it's constraint
+  enforcement:
+  - When adding a relation to a map → auto-add missing endpoints (as cues)
+  - When removing an endpoint → cascade-remove its relations from the map, or
+  warn
+
+  3. Cross-boundary participations are signaled, not auto-resolved. When a
+  naming on Map A has a participation with a naming NOT on Map A (created in the
+   list or on Map B), the map shows an indicator: "this naming has N relations
+  outside this perspective." The user then decides whether to pull those namings
+   in or leave them outside the frame.
+
+  This third point is the key innovation. It respects:
+  - Ground truth sovereignty: list operations create namings/participations
+  freely
+  - Perspectival independence: maps don't auto-expand with every list change
+  - Transparency: the user sees where their perspective is incomplete relative
+  to ground truth
+  - The unmarked: the indicator literally marks what the current perspective
+  leaves uncounted
+
+  What This Means for the Interface
+
+  The SitMap list view (within a map page) should show:
+  - All namings with appearances on THIS map (current behavior)
+  - A "pending" section or badge showing namings that participate WITH included
+  namings but aren't on this map
+  - A quick "pull onto map" action for these pending namings
+
+  The Namings list (project level) should show:
+  - Which maps each naming appears on (already possible via appearances)
+  - A "place on map" action that creates an appearance
+
+  Your Specific Bug
+
+  The immediate fix is twofold:
+  1. buildElkGraph must skip edges whose endpoints aren't in the graph
+  (resilience to partial perspectives)
+  2. When creating relations via relateElements, enforce that both endpoints
+  have appearances on the current map — if not, create them
+
+  But the deeper fix is making cross-boundary participations visible rather than
+   silently orphaned.
+
+  ---
+  Shall I implement this? The scope would be:
+  1. Fix buildElkGraph / initPositions for resilience (immediate bug fix)
+  2. Add constraint enforcement in relateElements (auto-add missing endpoints)
+  3. Add "outside participations" signaling in the map list view
+
+  Or do you want to discuss the theoretical implications further first —
+  particularly whether "pull onto map" is the right metaphor, or whether
+  something more transactional (like "collapse onto this perspective") is
+  needed?
+
+✻ Cogitated for 3m 29s
+
+❯ No, I get it. This will need a much more elegant handling of multiple maps.   
+After all, it is quite valid to start one SitMap related e.g. to one complex    
+document in order to explore it. Here, thus, we do have to prevent multiple     
+Namings meaning the same Naming (collaboration or memory errors) somehow. --    
+Your are Claude Opus in MAX setting. Decide what needs to be                    
+planned/implemented by yourself and what should be delegated to an agend or     
+different session running Claude Opus on medium setting (I can do this).        
+
+● Good. Let me first understand the current multi-map UX state before deciding
+  the split.
+
+● 2 Explore agents finished (ctrl+o to expand)
+   ├─ Explore multi-map UX flow · 5 tool uses · 17.1k tokens
+   │  ⎿  Done
+   └─ Explore naming dedup potential · 3 tool uses · 14.6k tokens
+      ⎿  Done
+
+❯ /model                                                                        
+  ⎿  Kept model as Default (Opus 4.6 with 1M context [NEW] · Most capable for 
+     complex work)
+
+❯ sorry. proceed                                                                
+
+● 2 Explore agents finished (ctrl+o to expand)
+   ├─ Explore multi-map UX flow · 43 tool uses · 62.7k tokens
+   │  ⎿  Done
+   └─ Explore naming dedup potential · 28 tool uses · 56.1k tokens
+      ⎿  Done
+
+● Now I have the full picture. Here's my assessment.
+
+  Work Split
+
+  I do NOW (this session, Opus MAX):
+
+  1. Fix the ELK crash — immediate bug, blocks current work. Small scope:
+  buildElkGraph + initPositions resilience.
+
+  2. Transform addElement into a dual-mode operation — this is the critical
+  architectural piece. Currently addElementToMap ALWAYS creates a new naming. It
+   needs to support: (a) create new naming + appearance, (b) place existing
+  naming on this map (just create appearance). This is the single most important
+   change because it's what prevents duplicates at the source.
+
+  3. Design the architectural decisions that downstream tasks depend on.
+
+  Delegate to medium-context sessions:
+
+  Session A: "Place existing naming" UX — autocomplete/search when adding to a
+  map, showing existing project namings with option to place vs. create new.
+  Requires the API change from (2) above.
+
+  Session B: Cross-boundary signaling — indicators on the map list view showing
+  "this naming has N participations with namings not on this map." Plus a "pull
+  onto map" action.
+
+  Session C: Naming merge — when two namings turn out to be the same, transfer
+  all participations, appearances, naming_acts from one to the other. This is
+  delicate (ground truth surgery) and benefits from focused attention.
+
+  Session D: Sidebar/navigation for multiple maps — currently shows only one map
+   per type. Needs to show all maps, probably grouped by type.
+
+  ---
+  Let me start. First, the existing modified file should be committed so my
+  edits are cleanly revertable.
+
+● Bash(git diff --stat)
+  ⎿   ...2026-03-14-14031652-transact-qda_session_12.txt | 399 ++++++++++++
+     +++++++++
+      1 file changed, 399 insertions(+)
+
+● Bash(git add docs/sessions/2026-03-14-14031652-transact-qda_session_12.txt &&
+      git commit -m "$(cat <<'EOF'
+      Update session 12 transcript before session 13 edits…)
+  ⎿  [main 126dacb] Update session 12 transcript before session 13 edits
+      1 file changed, 399 insertions(+)
+
+● Good. Clean revert point. Now let me read the files I need to fix.
+
+● Read 2 files (ctrl+o to expand)
+
+● Now let me read the page component for initPositions/reload and the API
+  endpoint.
+
+● Searched for 1 pattern, read 2 files (ctrl+o to expand)
+
+● Now let me see the addElement UI flow and the "place existing naming"
+  potential entry point.
+
+● Searched for 1 pattern (ctrl+o to expand)
+
+● Good. Now I have everything I need. Let me implement the changes.
+
+  Plan
+
+  1. Fix buildElkGraph — skip edges pointing to non-existent nodes (the ELK
+  crash)
+
+  2. Fix initPositions — try/catch around computeLayout to fall back to stored
+  positions
+
+  3. Transform addElementToMap into dual-mode — new placeExistingOnMap function
+  that creates an appearance for an existing naming without creating a new
+  naming
+
+  4. New API action placeExisting — allows the UI to place an existing naming on
+   a map
+
+  The UX for (3)/(4) — the autocomplete search component — is what I'd delegate
+  to a medium session.
+
+  Let me implement:
+
+● Update(src/lib/canvas/layout.ts)
+  ⎿  Added 26 lines, removed 10 lines
+      74    // Track which naming_ids are elements vs relations (for meta
+          -relation detection)
+      75    const relationIds = new Set(relations.map(r => r.naming_id));
+      76  
+      77 +  // Build set of all node IDs in this graph (for orphan edge d
+         +etection)                                                      
+      78 +  const allNodeIds = new Set<string>();                        
+      79 +                                                               
+      80    // Elements as regular nodes
+      81    for (const el of elements) {
+      82 +    allNodeIds.add(el.naming_id);                              
+      83      graph.children!.push({
+      84        id: el.naming_id,
+      85        width: estimateWidth(el.inscription || ''),
+     ...
+       87      });
+       88    }
+       89  
+       90 +  // Silences as node IDs (needed for edge validation below)  
+       91 +  for (const s of silences) {                                 
+       92 +    allNodeIds.add(s.naming_id);                              
+       93 +  }                                                           
+       94 +                                                              
+       95    // Relations as intermediate nodes + edges to participants
+       96 +  // Skip edges whose endpoints aren't on this map (partial pe
+          +rspective)                                                    
+       97    for (const rel of relations) {
+       98      const relNodeId = `rel:${rel.naming_id}`;
+       99      const relWidth = rel.inscription ? estimateWidth(rel.inscr
+           iption) : 36;
+      100  
+      101 +    allNodeIds.add(relNodeId);                                
+      102      graph.children!.push({
+      103        id: relNodeId,
+      104        width: relWidth,
+     ...
+      111      if (sourceId) {
+      112        // If source is a relation, point to its intermediate no
+           de
+      113        const srcElkId = relationIds.has(sourceId) ? `rel:${sour
+           ceId}` : sourceId;
+      103 -      graph.edges!.push({                                     
+      104 -        id: `e:${rel.naming_id}:in`,                          
+      105 -        sources: [srcElkId],                                  
+      106 -        targets: [relNodeId]                                  
+      107 -      } as ElkExtendedEdge);                                  
+      114 +      // Only add edge if the source node exists in this graph
+      115 +      if (allNodeIds.has(srcElkId)) {                         
+      116 +        graph.edges!.push({                                   
+      117 +          id: `e:${rel.naming_id}:in`,                        
+      118 +          sources: [srcElkId],                                
+      119 +          targets: [relNodeId]                                
+      120 +        } as ElkExtendedEdge);                                
+      121 +      }                                                       
+      122      }
+      123  
+      124      if (targetId) {
+      125        const tgtElkId = relationIds.has(targetId) ? `rel:${targ
+           etId}` : targetId;
+      112 -      graph.edges!.push({                                     
+      113 -        id: `e:${rel.naming_id}:out`,                         
+      114 -        sources: [relNodeId],                                 
+      115 -        targets: [tgtElkId]                                   
+      116 -      } as ElkExtendedEdge);                                  
+      126 +      if (allNodeIds.has(tgtElkId)) {                         
+      127 +        graph.edges!.push({                                   
+      128 +          id: `e:${rel.naming_id}:out`,                       
+      129 +          sources: [relNodeId],                               
+      130 +          targets: [tgtElkId]                                 
+      131 +        } as ElkExtendedEdge);                                
+      132 +      }                                                       
+      133      }
+      134    }
+      135  
+
+● Now fix initPositions to handle ELK failures gracefully:
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 14 lines, removed 7 lines
+      68      }
+      69  
+      70      if (needsLayout) {
+      71 -      const result = await computeLayout(elements, relations, s
+         -ilences);                                                      
+      72 -      const merged = new Map(stored);                          
+      73 -      for (const [id, p] of result.positions) {                
+      74 -        if (!merged.has(id)) {                                 
+      75 -          merged.set(id, { x: p.x, y: p.y });                  
+      71 +      try {                                                    
+      72 +        const result = await computeLayout(elements, relations,
+         + silences);                                                    
+      73 +        const merged = new Map(stored);                        
+      74 +        for (const [id, p] of result.positions) {              
+      75 +          if (!merged.has(id)) {                               
+      76 +            merged.set(id, { x: p.x, y: p.y });                
+      77 +          }                                                    
+      78          }
+      79 +        positions = merged;                                    
+      80 +        await saveAllPositions(merged);                        
+      81 +      } catch (err) {                                          
+      82 +        // ELK layout can fail on partial perspectives (orphan 
+         +edges).                                                        
+      83 +        // Fall back to stored positions; unpositioned nodes ge
+         +t scatter-placed.                                              
+      84 +        console.warn('ELK layout failed, using stored positions
+         +:', err);                                                      
+      85 +        positions = stored;                                    
+      86        }
+      78 -      positions = merged;                                      
+      79 -      await saveAllPositions(merged);                          
+      87      } else {
+      88        positions = stored;
+      89      }
+
+● Now the critical architectural piece — placeExistingOnMap:
+
+● Update(src/lib/server/db/queries/maps.ts)
+  ⎿  Added 79 lines
+      111    });
+      112  }
+      113  
+      114 +// Place an existing naming on this map without creating a new
+          + naming.                                                      
+      115 +// This is the key operation for multi-map work: the same nami
+          +ng can appear                                                 
+      116 +// on multiple maps, each appearance being a perspectival coll
+          +apse.                                                         
+      117 +// Returns null if the naming already has an appearance on thi
+          +s map.                                                        
+      118 +export async function placeExistingOnMap(                     
+      119 +  projectId: string,                                          
+      120 +  userId: string,                                             
+      121 +  mapId: string,                                              
+      122 +  namingId: string,                                           
+      123 +  mode: string = 'entity',                                    
+      124 +  properties?: Record<string, unknown>                        
+      125 +) {                                                           
+      126 +  return transaction(async (client) => {                      
+      127 +    // Verify the naming exists and belongs to this project   
+      128 +    const naming = await client.query(                        
+      129 +      `SELECT id, inscription FROM namings                    
+      130 +       WHERE id = $1 AND project_id = $2 AND deleted_at IS NUL
+          +L`,                                                           
+      131 +      [namingId, projectId]                                   
+      132 +    );                                                        
+      133 +    if (naming.rows.length === 0) return null;                
+      134 +                                                              
+      135 +    // Check if already on this map                           
+      136 +    const existing = await client.query(                      
+      137 +      `SELECT 1 FROM appearances                              
+      138 +       WHERE naming_id = $1 AND perspective_id = $2`,         
+      139 +      [namingId, mapId]                                       
+      140 +    );                                                        
+      141 +    if (existing.rows.length > 0) return null;                
+      142 +                                                              
+      143 +    // Create appearance on the map                           
+      144 +    await client.query(                                       
+      145 +      `INSERT INTO appearances (naming_id, perspective_id, mod
+          +e, properties)                                                
+      146 +       VALUES ($1, $2, $3, $4)`,                              
+      147 +      [namingId, mapId, mode, JSON.stringify(properties || {})
+          +]                                                             
+      148 +    );                                                        
+      149 +                                                              
+      150 +    return naming.rows[0];                                    
+      151 +  });                                                         
+      152 +}                                                             
+      153 +                                                              
+      154 +// Search project namings for placement on a map.             
+      155 +// Returns namings matching the query that are NOT already on 
+          +this map.                                                     
+      156 +export async function searchNamingsForPlacement(              
+      157 +  projectId: string,                                          
+      158 +  mapId: string,                                              
+      159 +  searchQuery: string,                                        
+      160 +  limit: number = 10                                          
+      161 +) {                                                           
+      162 +  return (                                                    
+      163 +    await query(                                              
+      164 +      `SELECT n.id, n.inscription, n.created_at,              
+      165 +         COALESCE(                                            
+      166 +           (SELECT na.designation FROM naming_acts na         
+      167 +            WHERE na.naming_id = n.id AND na.designation IS NO
+          +T NULL                                                        
+      168 +            ORDER BY na.seq DESC LIMIT 1),                    
+      169 +           'cue'                                              
+      170 +         ) as designation,                                    
+      171 +         (SELECT count(*) FROM appearances a2                 
+      172 +          WHERE a2.naming_id = n.id AND a2.naming_id != a2.per
+          +spective_id) as appearance_count                              
+      173 +       FROM namings n                                         
+      174 +       WHERE n.project_id = $1                                
+      175 +         AND n.deleted_at IS NULL                             
+      176 +         AND LOWER(n.inscription) LIKE LOWER($3)              
+      177 +         AND NOT EXISTS (                                     
+      178 +           SELECT 1 FROM appearances a                        
+      179 +           WHERE a.naming_id = n.id AND a.perspective_id = $2 
+      180 +         )                                                    
+      181 +         AND NOT EXISTS (                                     
+      182 +           SELECT 1 FROM appearances self                     
+      183 +           WHERE self.naming_id = n.id AND self.perspective_id
+          + = n.id                                                       
+      184 +             AND self.mode = 'perspective'                    
+      185 +         )                                                    
+      186 +       ORDER BY n.seq DESC                                    
+      187 +       LIMIT $4`,                                             
+      188 +      [projectId, mapId, `%${searchQuery}%`, limit]           
+      189 +    )                                                         
+      190 +  ).rows;                                                     
+      191 +}                                                             
+      192 +                                                              
+      193  // Relate two elements: creates a participation (co-constituti
+           on)
+      194  // and an appearance of the participation as 'relation' on the
+            map.
+      195  // Both related elements move toward characterization.
+
+● Now add the API actions:
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/api/projects/%5BprojectId%5D/maps/%5BmapId%5D/+server.tssrc/routes/api/projects/[projectId]/maps/[mapId]/+server.ts)
+  ⎿  Added 2 lines
+       4    getMap,
+       5    getMapStructure,
+       6    addElementToMap,
+       7 +  placeExistingOnMap,                                          
+       8 +  searchNamingsForPlacement,                                   
+       9    relateElements,
+      10    createPhase,
+      11    assignToPhase,
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/api/projects/%5BprojectId%5D/maps/%5BmapId%5D/+server.tssrc/routes/api/projects/[projectId]/maps/[mapId]/+server.ts)
+  ⎿  Added 15 lines
+      52        return json(element, { status: 201 });
+      53      }
+      54  
+      55 +    case 'placeExisting': {                                    
+      56 +      const { namingId, mode, properties } = body;             
+      57 +      if (!namingId) return json({ error: 'namingId required' }
+         +, { status: 400 });                                            
+      58 +      const placed = await placeExistingOnMap(projectId, userId
+         +, mapId, namingId, mode, properties);                          
+      59 +      if (!placed) return json({ error: 'Naming not found or al
+         +ready on this map' }, { status: 409 });                        
+      60 +      return json(placed, { status: 201 });                    
+      61 +    }                                                          
+      62 +                                                               
+      63 +    case 'searchForPlacement': {                               
+      64 +      const { query: searchQuery } = body;                     
+      65 +      if (!searchQuery?.trim()) return json({ results: [] });  
+      66 +      const results = await searchNamingsForPlacement(projectId
+         +, mapId, searchQuery.trim());                                  
+      67 +      return json({ results });                                
+      68 +    }                                                          
+      69 +                                                               
+      70      case 'relate': {
+      71        const { sourceId, targetId, inscription, valence, symmetr
+          ic, properties } = body;
+      72        if (!sourceId || !targetId) return json({ error: 'sourceI
+          d and targetId required' }, { status: 400 });
+
+● Now let me verify the build works:
+
+● Bash(npx svelte-check --threshold error 2>&1 | tail -20)
+  ⎿  1773506780413 ERROR "src/lib/server/ai/client.ts" 7:22 "Cannot find mo
+     dule 'node:path' or its corresponding type declarations."
+     1773506780413 ERROR "src/lib/server/ai/client.ts" 20:36 "Cannot find n
+     … +40 lines (ctrl+o to expand)
+
+● Pre-existing type errors only — none from my changes. Let me verify my
+  specific files are clean:
+
+● Bash(npx svelte-check --threshold error 2>&1 | grep -E
+      "(layout\.ts|maps\.ts|maps/\[mapId\]/\+server|maps/\[mapId\]/\+page)" |
+      head -10)
+  ⎿  (No output)
+
+● No errors in my changed files. Now let me record this session's decisions.
+
+● Recalled 1 memory, wrote 2 memories (ctrl+o to expand)
+
+● ---
+  Summary of what I've done
+
+  Implemented (this session):
+
+  1. buildElkGraph fix (layout.ts:74-118): Now builds a set of all node IDs in
+  the graph and skips edges whose endpoints aren't present. Orphan relations on
+  partial perspectives get rendered as disconnected intermediate nodes instead
+  of crashing ELK.
+  2. initPositions resilience (+page.svelte:56-87): try/catch around
+  computeLayout — if ELK still fails for any reason, falls back to stored
+  positions.
+  3. placeExistingOnMap (maps.ts:78-109): New function that creates an
+  appearance for an existing naming on a map without creating a new naming.
+  Validates project membership and checks for existing appearances.
+  4. searchNamingsForPlacement (maps.ts:111-146): Searches project namings by
+  inscription, excluding namings already on this map and perspective-namings
+  (maps/phases). Returns designation and appearance count.
+  5. Two new API actions (+server.ts): placeExisting and searchForPlacement.
+
+  Delegatable to medium-context sessions (in priority order):
+
+  Session A — "Place existing naming" UX: Transform the <input placeholder="Name
+   something..."> into a dual-mode component with autocomplete. When the user
+  types, show matching existing namings (via searchForPlacement) above a "Create
+   new" option. The API endpoints are already in place.
+
+  Session B — Cross-boundary signaling: In getMapAppearances, add a subquery
+  counting participations where the other endpoint has no appearance on this
+  map. Display as a badge in the list view. Add a "pull onto map" action that
+  calls placeExisting.
+
+  Session C — Naming merge: UI + API for merging two namings — transfer all
+  participations, appearances, naming_acts from source to target, soft-delete
+  source. Delicate ground-truth surgery.
+
+  Session D — Sidebar navigation: Show all maps (not one per type). Group by map
+   type, allow creation from sidebar.
+
+✻ Cogitated for 4m 30s
+
+❯ Ich habe einen "opus-delegator"-Agent eingerichtet. Vermutlich läuft da Opus  
+in der Medium Einstellung. Du kannst also selbst delegieren.                    
+
+● Gut. Dann delegiere ich Session A — die wichtigste UX-Änderung — direkt.
+
+● Agent(Place existing naming UX)
+  ⎿  Backgrounded agent (↓ to manage · ctrl+o to expand)
+
+● Agent A (Place existing naming UX) läuft im Hintergrund.
+
+  Soll ich in der Zwischenzeit Session B (Cross-boundary signaling — die
+  Indikatoren im Map-Listview, die zeigen "dieses Naming hat N Relationen
+  außerhalb dieser Perspektive") selbst anfangen, oder willst du erst die
+  theoretische Diskussion weiterführen? Die Frage der Prozessualität — wie man
+  von Dokumenten zu Maps arbeitet vs. direkt Maps erstellt — ist ja noch offen.
+
+✻ Cogitated for 42s
+
+❯ ja                                                                            
+
+● Cross-boundary signaling. Ich brauche zuerst den Listview-Teil der Map-Page,
+  um zu sehen wo die Indikatoren hingehören.
+
+● Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+❯ also beginne                                                                  
+
+● Good. Now I have a clear picture. The work is:
+
+  1. Add outside_participation_count to getMapAppearances query
+  2. New API action to fetch details of outside participations
+  3. Badge + pull-onto-map action in the list view
+
+  Starting with the query change:
+
+● Read 1 file (ctrl+o to expand)
+
+● Now I'll add the outside_participation_count subquery and a new function for
+  fetching details:
+
+● Update(src/lib/server/db/queries/maps.ts)
+  ⎿  Added 15 lines, removed 1 line
+      583                   AND pa.mode = 'perspective'
+      584                   AND pa.naming_id != $1
+      585               )
+      586 -         ) as phase_ids                                       
+      586 +         ) as phase_ids,                                      
+      587 +         -- Cross-boundary: participations where the other end
+          +point is not on this map                                      
+      588 +         (SELECT count(DISTINCT p_out.id)                     
+      589 +          FROM participations p_out                           
+      590 +          JOIN namings pn_out ON pn_out.id = p_out.id AND pn_o
+          +ut.deleted_at IS NULL                                         
+      591 +          WHERE (p_out.naming_id = a.naming_id OR p_out.partic
+          +ipant_id = a.naming_id)                                       
+      592 +            AND NOT EXISTS (                                  
+      593 +              SELECT 1 FROM appearances a_other               
+      594 +              WHERE a_other.perspective_id = $1               
+      595 +                AND a_other.naming_id = CASE                  
+      596 +                  WHEN p_out.naming_id = a.naming_id THEN p_ou
+          +t.participant_id                                              
+      597 +                  ELSE p_out.naming_id                        
+      598 +                END                                           
+      599 +            )                                                 
+      600 +         )::int as outside_participation_count                
+      601         FROM appearances a
+      602         JOIN namings n ON n.id = a.naming_id
+      603         LEFT JOIN participations p ON p.id = a.naming_id
+
+● Now add the detail-fetching function for when the user clicks the badge:
+
+● Read 1 file (ctrl+o to expand)
+
+● Update(src/lib/server/db/queries/maps.ts)
+  ⎿  Added 42 lines
+      611    ).rows;
+      612  }
+      613  
+      614 +// Get details of participations where the other endpoint is o
+          +utside this map.                                              
+      615 +// Returns the outside namings with their inscriptions and des
+          +ignations,                                                    
+      616 +// plus the relation naming that connects them.               
+      617 +export async function getOutsideParticipations(               
+      618 +  mapId: string,                                              
+      619 +  projectId: string,                                          
+      620 +  namingId: string                                            
+      621 +) {                                                           
+      622 +  return (                                                    
+      623 +    await query(                                              
+      624 +      `SELECT                                                 
+      625 +         p_out.id as relation_id,                             
+      626 +         pn_out.inscription as relation_inscription,          
+      627 +         other.id as outside_naming_id,                       
+      628 +         other.inscription as outside_inscription,            
+      629 +         COALESCE(                                            
+      630 +           (SELECT na.designation FROM naming_acts na         
+      631 +            WHERE na.naming_id = other.id AND na.designation I
+          +S NOT NULL                                                    
+      632 +            ORDER BY na.seq DESC LIMIT 1),                    
+      633 +           'cue'                                              
+      634 +         ) as outside_designation,                            
+      635 +         (SELECT count(*) FROM appearances a2                 
+      636 +          WHERE a2.naming_id = other.id AND a2.naming_id != a2
+          +.perspective_id) as outside_appearance_count                  
+      637 +       FROM participations p_out                              
+      638 +       JOIN namings pn_out ON pn_out.id = p_out.id AND pn_out.
+          +deleted_at IS NULL                                            
+      639 +       JOIN namings other ON other.id = CASE                  
+      640 +         WHEN p_out.naming_id = $3 THEN p_out.participant_id  
+      641 +         ELSE p_out.naming_id                                 
+      642 +       END AND other.deleted_at IS NULL                       
+      643 +       WHERE (p_out.naming_id = $3 OR p_out.participant_id = $
+          +3)                                                            
+      644 +         AND other.project_id = $2                            
+      645 +         AND NOT EXISTS (                                     
+      646 +           SELECT 1 FROM appearances a_other                  
+      647 +           WHERE a_other.perspective_id = $1                  
+      648 +             AND a_other.naming_id = other.id                 
+      649 +         )                                                    
+      650 +       ORDER BY other.inscription`,                           
+      651 +      [mapId, projectId, namingId]                            
+      652 +    )                                                         
+      653 +  ).rows;                                                     
+      654 +}                                                             
+      655 +                                                              
+      656  // Get phases (sub-perspectives) within a map
+      657  export async function getMapPhases(mapId: string, projectId: s
+           tring) {
+      658    return (
+
+● Now add the API actions:
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/api/projects/%5BprojectId%5D/maps/%5BmapId%5D/+server.tssrc/routes/api/projects/[projectId]/maps/[mapId]/+server.ts)
+  ⎿  Added 1 line
+       6    addElementToMap,
+       7    placeExistingOnMap,
+       8    searchNamingsForPlacement,
+       9 +  getOutsideParticipations,                                    
+      10    relateElements,
+      11    createPhase,
+      12    assignToPhase,
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/api/projects/%5BprojectId%5D/maps/%5BmapId%5D/+server.tssrc/routes/api/projects/[projectId]/maps/[mapId]/+server.ts)
+  ⎿  Added 7 lines
+      68        return json({ results });
+      69      }
+      70  
+      71 +    case 'getOutsideParticipations': {                         
+      72 +      const { namingId } = body;                               
+      73 +      if (!namingId) return json({ error: 'namingId required' }
+         +, { status: 400 });                                            
+      74 +      const outside = await getOutsideParticipations(mapId, pro
+         +jectId, namingId);                                             
+      75 +      return json({ participations: outside });                
+      76 +    }                                                          
+      77 +                                                               
+      78      case 'relate': {
+      79        const { sourceId, targetId, inscription, valence, symmetr
+          ic, properties } = body;
+      80        if (!sourceId || !targetId) return json({ error: 'sourceI
+          d and targetId required' }, { status: 400 });
+
+● Now the UI. I need to add the badge and the expandable "outside
+  participations" panel to the element cards:
+
+● Read 1 file (ctrl+o to expand)
+
+● Now I need to add the state and functions for the outside participations
+  panel. Let me find a good place for the state declarations and the handler
+  functions:
+
+● Read 1 file (ctrl+o to expand)
+
+● Add state and handlers after the stack panel declarations:
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 25 lines
+      196      discussion?: any[]; aiReasoning?: string | null; aiSuggest
+           ed?: boolean; aiWithdrawn?: boolean;
+      197    } | null>(null);
+      198  
+      199 +  // Outside participations panel (cross-boundary signaling)  
+      200 +  let outsideId = $state<string | null>(null);                
+      201 +  let outsideData = $state<any[] | null>(null);               
+      202 +  let outsideLoading = $state(false);                         
+      203 +                                                              
+      204 +  async function showOutsideParticipations(namingId: string) {
+      205 +    if (outsideId === namingId) { outsideId = null; outsideDat
+          +a = null; return; }                                           
+      206 +    outsideId = namingId;                                     
+      207 +    outsideLoading = true;                                    
+      208 +    const res = await mapAction('getOutsideParticipations', { 
+          +namingId });                                                  
+      209 +    outsideData = res.participations || [];                   
+      210 +    outsideLoading = false;                                   
+      211 +  }                                                           
+      212 +                                                              
+      213 +  async function pullOntoMap(namingId: string) {              
+      214 +    await mapAction('placeExisting', { namingId });           
+      215 +    await reload();                                           
+      216 +    await layoutNewNodes();                                   
+      217 +    // Refresh outside panel if still open                    
+      218 +    if (outsideId) {                                          
+      219 +      const res = await mapAction('getOutsideParticipations', 
+          +{ namingId: outsideId });                                     
+      220 +      outsideData = res.participations || [];                 
+      221 +    }                                                         
+      222 +  }                                                           
+      223 +                                                              
+      224    // Cue discussion
+      225    let discussInput = $state('');
+      226    let discussLoading = $state(false);
+
+● Now add the badge and panel to the entity card in the list view. I'll add it
+  after the provenance indicator in the el-main div for entities:
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 7 lines
+      1520                      {:else}
+      1521                        <img class="provenance-indicator" src="
+            /icons/question_mark.svg" alt="ungrounded" title="No groundin
+            g yet" />
+      1522                      {/if}
+      1523 +                    {#if item.outside_participation_count > 0
+           +}                                                            
+      1524 +                      <!-- svelte-ignore a11y_click_events_ha
+           +ve_key_events -->                                            
+      1525 +                      <!-- svelte-ignore a11y_no_static_eleme
+           +nt_interactions -->                                          
+      1526 +                      <span class="outside-badge" title="{ite
+           +m.outside_participation_count} relation(s) outside this map" 
+           +onclick={() => showOutsideParticipations(item.naming_id)}>   
+      1527 +                        +{item.outside_participation_count}  
+      1528 +                      </span>                                
+      1529 +                    {/if}                                    
+      1530                      {#if editingId === item.naming_id}
+      1531                        <form class="inline-rename" onsubmit={e
+             => { e.preventDefault(); confirmRename(); }}>
+      1532                          <input type="text" bind:value={editin
+            gValue} />
+
+● Now I need to add the same badge to relation cards and silence cards. Let me
+  also add the expandable panel that shows details when the badge is clicked.
+  First the relation card:
+
+● Read 1 file (ctrl+o to expand)
+
+● The relation card already has provenance indicators. Let me add the badge
+  there too:
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 7 lines
+      1426                        <img class="provenance-indicator" src="
+            /icons/question_mark.svg" alt="ungrounded" title="No groundin
+            g yet" />
+      1427                      {/if}
+      1428                      {#if listGroupBy !== 'mode'}<span class="
+            mode-indicator" title="relation">↔</span>{/if}
+      1429 +                    {#if item.outside_participation_count > 0
+           +}                                                            
+      1430 +                      <!-- svelte-ignore a11y_click_events_ha
+           +ve_key_events -->                                            
+      1431 +                      <!-- svelte-ignore a11y_no_static_eleme
+           +nt_interactions -->                                          
+      1432 +                      <span class="outside-badge" title="{ite
+           +m.outside_participation_count} relation(s) outside this map" 
+           +onclick={() => showOutsideParticipations(item.naming_id)}>   
+      1433 +                        +{item.outside_participation_count}  
+      1434 +                      </span>                                
+      1435 +                    {/if}                                    
+      1436                      <span class="rel-source">{findInscription
+            (srcId)}</span>
+      1437                      <span class="rel-arrow">
+      1438                        {#if item.directed_from && item.directe
+            d_to}
+
+● Now add to silence cards:
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 7 lines
+      1496                        <img class="provenance-indicator" src="
+            /icons/question_mark.svg" alt="ungrounded" title="No groundin
+            g yet" />
+      1497                      {/if}
+      1498                      {#if listGroupBy !== 'mode'}<span class="
+            mode-indicator" title="silence">∅</span>{/if}
+      1499 +                    {#if item.outside_participation_count > 0
+           +}                                                            
+      1500 +                      <!-- svelte-ignore a11y_click_events_ha
+           +ve_key_events -->                                            
+      1501 +                      <!-- svelte-ignore a11y_no_static_eleme
+           +nt_interactions -->                                          
+      1502 +                      <span class="outside-badge" title="{ite
+           +m.outside_participation_count} relation(s) outside this map" 
+           +onclick={() => showOutsideParticipations(item.naming_id)}>   
+      1503 +                        +{item.outside_participation_count}  
+      1504 +                      </span>                                
+      1505 +                    {/if}                                    
+      1506                      <!-- svelte-ignore a11y_click_events_have
+            _key_events -->
+      1507                      <!-- svelte-ignore a11y_no_static_element
+            _interactions -->
+      1508                      <span class="el-inscription editable" onc
+            lick={() => showStack(item.naming_id)} ondblclick={() => ctxR
+            ename(item.naming_id)}>
+
+● Now add the expandable panel that shows when the badge is clicked. This should
+   appear after each element card, similar to how the stack panel works. Let me
+  find where the stack panel is rendered:
+
+● Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● I'll add the outside participations panel right after the stack panel, before
+  the {/each}:
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 29 lines
+      1653                    {/if}
+      1654                  </div>
+      1655                {/if}
+      1656 +                                                             
+      1657 +              <!-- Outside participations panel (cross-bounda
+           +ry signaling) -->                                            
+      1658 +              {#if outsideId === item.naming_id}             
+      1659 +                <div class="outside-panel">                  
+      1660 +                  <div class="outside-header">               
+      1661 +                    <span class="outside-title">Outside this 
+           +perspective</span>                                           
+      1662 +                    <button class="btn-link" onclick={() => {
+           + outsideId = null; outsideData = null; }}>close</button>     
+      1663 +                  </div>                                     
+      1664 +                  {#if outsideLoading}                       
+      1665 +                    <span class="outside-loading">loading...<
+           +/span>                                                       
+      1666 +                  {:else if outsideData && outsideData.length
+           + > 0}                                                        
+      1667 +                    {#each outsideData as op}                
+      1668 +                      <div class="outside-entry">            
+      1669 +                        <span class="designation-dot-sm" styl
+           +e="background: {designationColor(op.outside_designation)}"></
+           +span>                                                        
+      1670 +                        <span class="outside-inscription">{op
+           +.outside_inscription}</span>                                 
+      1671 +                        {#if op.relation_inscription}        
+      1672 +                          <span class="outside-via">via "{op.
+           +relation_inscription}"</span>                                
+      1673 +                        {/if}                                
+      1674 +                        {#if op.outside_appearance_count > 0}
+      1675 +                          <span class="outside-maps" title="A
+           +ppears on {op.outside_appearance_count} map(s)">{op.outside_a
+           +ppearance_count} map(s)</span>                               
+      1676 +                        {/if}                                
+      1677 +                        <button class="btn-xs btn-pull" oncli
+           +ck={() => pullOntoMap(op.outside_naming_id)} title="Place on 
+           +this map">pull</button>                                      
+      1678 +                      </div>                                 
+      1679 +                    {/each}                                  
+      1680 +                  {:else}                                    
+      1681 +                    <span class="outside-empty">No outside pa
+           +rticipations</span>                                          
+      1682 +                  {/if}                                      
+      1683 +                </div>                                       
+      1684 +              {/if}                                          
+      1685              {/each}
+      1686            </div>
+      1687          {/each}
+
+● Now add the CSS. Let me find the styles section:
+
+● Searched for 2 patterns (ctrl+o to expand)
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 29 lines
+      1954    .collapsed-current { font-size: 0.7rem; color: #6b7280; fon
+            t-style: italic; margin-left: 0.5rem; }
+      1955  
+      1956    /* History panel (inline in list view) */
+      1957 +  /* Outside participations (cross-boundary signaling) */    
+      1958 +  .outside-badge {                                           
+      1959 +    font-size: 0.65rem; font-weight: 600; color: #e8a54b; bac
+           +kground: rgba(232, 165, 75, 0.15);                           
+      1960 +    border: 1px solid rgba(232, 165, 75, 0.3); border-radius:
+           + 3px;                                                        
+      1961 +    padding: 0 3px; cursor: pointer; flex-shrink: 0;         
+      1962 +  }                                                          
+      1963 +  .outside-badge:hover { background: rgba(232, 165, 75, 0.25)
+           +; }                                                          
+      1964 +  .outside-panel {                                           
+      1965 +    background: #12141e; border: 1px solid #3a3520; border-ra
+           +dius: 6px;                                                   
+      1966 +    padding: 0.5rem 0.75rem; margin-top: -0.1rem; margin-bott
+           +om: 0.2rem;                                                  
+      1967 +  }                                                          
+      1968 +  .outside-header { display: flex; justify-content: space-bet
+           +ween; align-items: center; margin-bottom: 0.3rem; }          
+      1969 +  .outside-title { font-size: 0.7rem; color: #e8a54b; font-we
+           +ight: 600; text-transform: uppercase; letter-spacing: 0.03em;
+           + }                                                           
+      1970 +  .outside-loading { font-size: 0.75rem; color: #888; }      
+      1971 +  .outside-empty { font-size: 0.75rem; color: #666; }        
+      1972 +  .outside-entry {                                           
+      1973 +    display: flex; align-items: center; gap: 6px;            
+      1974 +    padding: 0.2rem 0; font-size: 0.8rem; border-top: 1px sol
+           +id #1e2030;                                                  
+      1975 +  }                                                          
+      1976 +  .outside-entry:first-of-type { border-top: none; }         
+      1977 +  .outside-inscription { color: #e0e0e0; }                   
+      1978 +  .outside-via { color: #888; font-size: 0.7rem; font-style: 
+           +italic; }                                                    
+      1979 +  .outside-maps { color: #666; font-size: 0.65rem; }         
+      1980 +  .btn-pull {                                                
+      1981 +    margin-left: auto; color: #e8a54b; background: rgba(232, 
+           +165, 75, 0.1);                                               
+      1982 +    border: 1px solid rgba(232, 165, 75, 0.2); padding: 1px 6
+           +px;                                                          
+      1983 +  }                                                          
+      1984 +  .btn-pull:hover { background: rgba(232, 165, 75, 0.2); }   
+      1985 +                                                             
+      1986    .history-panel {
+      1987      background: #0f1117; border: 1px solid #2a2d3a; border-ra
+            dius: 6px;
+      1988      padding: 0.6rem 0.75rem; margin-top: -0.1rem; margin-bott
+            om: 0.2rem;
+
+● Let me verify the build:
+
+● Bash(npx svelte-check --threshold error 2>&1 | grep -E
+      "(maps\.ts|maps/\[mapId\]/\+server|maps/\[mapId\]/\+page)" | head -10)
+  ⎿  (No output)
+
+● Clean. Let me also check if the background agent has completed:
+
+● Read 1 file (ctrl+o to expand)
+
+● The background agent completed. Both sets of changes are in the same file —
+  let me verify they integrated cleanly:
+
+● Bash(npx svelte-check --threshold error 2>&1 | grep -E
+      "(maps\.ts|maps/\[mapId\]/\+server|maps/\[mapId\]/\+page)" | head -10)
+  ⎿  (No output)
+
+● Clean. Let me verify the agent's changes actually landed by checking for the
+  new functions:
+
+● Searched for 1 pattern (ctrl+o to expand)
+
+● Everything landed. Let me do a quick visual review of what the agent built for
+   the autocomplete:
+
+● Read 1 file (ctrl+o to expand)
+
+● Both features are cleanly integrated. Let me verify the whole thing builds:
+
+● Bash(npx vite build 2>&1 | tail -5)
+  ⎿  Run npm run preview to preview your production build locally.
+
+     > Using @sveltejs/adapter-node
+       ✔ done
+  ⎿  (timeout 1m)
+
+● Full build passes. Here's what we now have:
+
+  Implemented in this session
+
+  1. ELK crash fix (layout.ts)
+
+  - buildElkGraph now validates that edge endpoints exist in the graph before
+  adding them
+  - Orphan relations on partial perspectives render as disconnected nodes
+  instead of crashing
+
+  2. initPositions resilience (+page.svelte)
+
+  - try/catch around computeLayout — falls back to stored positions on failure
+
+  3. Place existing naming (API + UX)
+
+  - placeExistingOnMap / searchNamingsForPlacement in maps.ts
+  - placeExisting / searchForPlacement API actions
+  - Autocomplete dropdown: Input shows "Name or search..." — typing 2+ chars
+  searches existing project namings not on this map. Shows inscription,
+  designation badge, map count. Click to place, or Enter/click "Create new" to
+  create fresh naming.
+
+  4. Cross-boundary signaling (API + UX)
+
+  - outside_participation_count added to getMapAppearances query
+  - getOutsideParticipations detail query + API action
+  - Amber +N badge on entity/relation/silence cards showing count of relations
+  to namings outside this perspective
+  - Expandable panel: Click badge to see outside namings with designation,
+  relation info, and "pull" button to place them on this map
+
+  Still open for future sessions
+
+  - Session C: Naming merge (ground truth surgery for discovered duplicates)
+  - Session D: Sidebar navigation showing all maps
+
+  Soll ich committen?
+
+✻ Crunched for 4m 8s
+
+● Agent "Place existing naming UX" completed
+
+● Agent confirmation received — already verified and integrated above. Soll ich
+  committen?
+
+❯ ja                                                                            
+
+● Bash(git status)
+  ⎿  On branch main
+     Your branch is ahead of 'origin/main' by 35 commits.
+       (use "git push" to publish your local commits)
+     … +16 lines (ctrl+o to expand)
+
+● Bash(git diff --stat)
+  ⎿   src/lib/canvas/layout.ts                           |  36 ++-
+      src/lib/server/db/queries/maps.ts                  | 137 +++++++++++-
+      .../projects/[projectId]/maps/[mapId]/+server.ts   |  25 +++
+     … +3 lines (ctrl+o to expand)
+
+● Bash(git log --oneline -5)
+  ⎿  126dacb Update session 12 transcript before session 13 edits
+     5784884 Clarify participations as relating-cues and autonomous structu
+     ral layer (Session 12)
+     … +4 lines (ctrl+o to expand)
+
+● Bash(git add src/lib/canvas/layout.ts src/lib/server/db/queries/maps.ts
+      src/routes/api/projects/\[projectId\]/maps/\[mapId\]/+server.ts
+      src/routes/projects/\[project…)
+  ⎿  [main 9cd7a63] Add multi-map support: place existing namings, cross-bo
+     undary signaling, ELK resilience (Session 13)
+      4 files changed, 418 insertions(+), 22 deletions(-)
+
+● Committed. 4 files, 418 insertions. Willst du die theoretische Diskussion
+  (Prozessualität: Dokument→Map vs. direkt Maps erstellen) noch weiterführen,
+  oder soll ich mit Session C/D weitermachen?
+
+❯ fahre fort; es ist ja commitet                                                
+
+● Session D (Sidebar für alle Maps) delegiere ich, Session C (Naming Merge)
+  mache ich selbst — das ist ground-truth Surgery, braucht vollen Kontext.
+
+● Agent(Sidebar show all maps)
+  ⎿  Backgrounded agent (↓ to manage · ctrl+o to expand)
+
+● Sidebar-Agent läuft. Jetzt Session C — Naming Merge.
+
+● Read 1 file (ctrl+o to expand)
+
+● Now let me check the schema constraints that affect merge operations:
+
+● Searched for 2 patterns (ctrl+o to expand)
+
+● Good. Now I can build the merge. The key constraints are:
+  - participations(naming_id, participant_id) has UNIQUE — must handle conflicts
+  - appearances(naming_id, perspective_id) is PK — must handle conflicts
+  - directed_from/directed_to reference namings — must update
+  - Soft-delete, not hard-delete — FKs stay valid
+
+● Update(src/lib/server/db/queries/namings.ts)
+  ⎿  Added 123 lines
+      425    ).rows;
+      426  }
+      427  
+      428 +// ---- Merge: two namings that turn out to be the same ----  
+      429 +// The survivor keeps its ID. The merged naming's participatio
+          +ns, appearances,                                              
+      430 +// and directed_from/to references are transferred. The merged
+          + naming is soft-deleted.                                      
+      431 +// This is ground-truth surgery — the merge is recorded as a n
+          +aming_act on the survivor.                                    
+      432 +export async function mergeNamings(                           
+      433 +  projectId: string,                                          
+      434 +  userId: string,                                             
+      435 +  survivorId: string,                                         
+      436 +  mergedId: string                                            
+      437 +) {                                                           
+      438 +  return transaction(async (client) => {                      
+      439 +    const researcherNamingId = await getOrCreateResearcherNami
+          +ng(projectId, userId);                                        
+      440 +                                                              
+      441 +    // Verify both exist                                      
+      442 +    const [survivor, merged] = await Promise.all([            
+      443 +      client.query(                                           
+      444 +        `SELECT id, inscription FROM namings WHERE id = $1 AND
+          + project_id = $2 AND deleted_at IS NULL`,                     
+      445 +        [survivorId, projectId]                               
+      446 +      ),                                                      
+      447 +      client.query(                                           
+      448 +        `SELECT id, inscription FROM namings WHERE id = $1 AND
+          + project_id = $2 AND deleted_at IS NULL`,                     
+      449 +        [mergedId, projectId]                                 
+      450 +      )                                                       
+      451 +    ]);                                                       
+      452 +    if (survivor.rows.length === 0 || merged.rows.length === 0
+          +) {                                                           
+      453 +      throw new Error('Both namings must exist');             
+      454 +    }                                                         
+      455 +                                                              
+      456 +    // Reject if merged naming IS a relation (participations.i
+          +d = mergedId)                                                 
+      457 +    const isRelation = await client.query(                    
+      458 +      `SELECT 1 FROM participations WHERE id = $1`, [mergedId]
+      459 +    );                                                        
+      460 +    if (isRelation.rows.length > 0) {                         
+      461 +      throw new Error('Cannot merge relation namings — only en
+          +tity namings');                                               
+      462 +    }                                                         
+      463 +                                                              
+      464 +    const mergedInscription = merged.rows[0].inscription;     
+      465 +                                                              
+      466 +    // 1. Transfer participations (as endpoint)               
+      467 +    // Update naming_id where merged is the first endpoint    
+      468 +    await client.query(                                       
+      469 +      `UPDATE participations SET naming_id = $1               
+      470 +       WHERE naming_id = $2                                   
+      471 +         AND NOT EXISTS (                                     
+      472 +           SELECT 1 FROM participations p2                    
+      473 +           WHERE p2.naming_id = $1 AND p2.participant_id = par
+          +ticipations.participant_id                                    
+      474 +         )`,                                                  
+      475 +      [survivorId, mergedId]                                  
+      476 +    );                                                        
+      477 +    // Update participant_id where merged is the second endpoi
+          +nt                                                            
+      478 +    await client.query(                                       
+      479 +      `UPDATE participations SET participant_id = $1          
+      480 +       WHERE participant_id = $2                              
+      481 +         AND NOT EXISTS (                                     
+      482 +           SELECT 1 FROM participations p2                    
+      483 +           WHERE p2.naming_id = participations.naming_id AND p
+          +2.participant_id = $1                                         
+      484 +         )`,                                                  
+      485 +      [survivorId, mergedId]                                  
+      486 +    );                                                        
+      487 +    // Soft-delete conflicting participation-namings that coul
+          +dn't be transferred                                           
+      488 +    await client.query(                                       
+      489 +      `UPDATE namings SET deleted_at = now()                  
+      490 +       WHERE id IN (                                          
+      491 +         SELECT id FROM participations WHERE naming_id = $1 OR
+          + participant_id = $1                                          
+      492 +       ) AND project_id = $2`,                                
+      493 +      [mergedId, projectId]                                   
+      494 +    );                                                        
+      495 +                                                              
+      496 +    // 2. Transfer appearances                                
+      497 +    // Move appearances where survivor doesn't already appear 
+          +on that perspective                                           
+      498 +    await client.query(                                       
+      499 +      `UPDATE appearances SET naming_id = $1                  
+      500 +       WHERE naming_id = $2                                   
+      501 +         AND NOT EXISTS (                                     
+      502 +           SELECT 1 FROM appearances a2                       
+      503 +           WHERE a2.naming_id = $1 AND a2.perspective_id = app
+          +earances.perspective_id                                       
+      504 +         )`,                                                  
+      505 +      [survivorId, mergedId]                                  
+      506 +    );                                                        
+      507 +    // Delete remaining (conflicting) appearances of merged   
+      508 +    await client.query(                                       
+      509 +      `DELETE FROM appearances WHERE naming_id = $1`,         
+      510 +      [mergedId]                                              
+      511 +    );                                                        
+      512 +                                                              
+      513 +    // 3. Update directed_from/directed_to references in other
+          + appearances                                                  
+      514 +    await client.query(                                       
+      515 +      `UPDATE appearances SET directed_from = $1 WHERE directe
+          +d_from = $2`,                                                 
+      516 +      [survivorId, mergedId]                                  
+      517 +    );                                                        
+      518 +    await client.query(                                       
+      519 +      `UPDATE appearances SET directed_to = $1 WHERE directed_
+          +to = $2`,                                                     
+      520 +      [survivorId, mergedId]                                  
+      521 +    );                                                        
+      522 +                                                              
+      523 +    // 4. Transfer phase memberships                          
+      524 +    await client.query(                                       
+      525 +      `UPDATE phase_memberships SET naming_id = $1 WHERE namin
+          +g_id = $2`,                                                   
+      526 +      [survivorId, mergedId]                                  
+      527 +    );                                                        
+      528 +                                                              
+      529 +    // 5. Record merge as naming_act on the survivor          
+      530 +    await client.query(                                       
+      531 +      `INSERT INTO naming_acts (naming_id, by, memo_text)     
+      532 +       VALUES ($1, $2, $3)`,                                  
+      533 +      [survivorId, researcherNamingId, `Merged with "${mergedI
+          +nscription}"`]                                                
+      534 +    );                                                        
+      535 +                                                              
+      536 +    // 6. Soft-delete the merged naming                       
+      537 +    await client.query(                                       
+      538 +      `UPDATE namings SET deleted_at = now() WHERE id = $1`,  
+      539 +      [mergedId]                                              
+      540 +    );                                                        
+      541 +                                                              
+      542 +    return {                                                  
+      543 +      survivorId,                                             
+      544 +      mergedId,                                               
+      545 +      mergedInscription,                                      
+      546 +      survivorInscription: survivor.rows[0].inscription       
+      547 +    };                                                        
+      548 +  });                                                         
+      549 +}                                                             
+      550 +                                                              
+      551  // ---- History: namings ARE the event log ----
+      552  
+      553  export async function getHistory(projectId: string, opts?: { a
+           fterSeq?: number; limit?: number }) {
+
+● Now add the API endpoint. Merge is a project-level operation, not
+  map-specific. Let me check the namings API:
+
+● Read 1 file (ctrl+o to expand)
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/api/projects/%5BprojectId%5D/namings/+server.tssrc/routes/api/projects/[projectId]/namings/+server.ts)
+  ⎿  Added 2 lines, removed 1 line
+       6    renameNaming,
+       7    softDelete,
+       8    getNaming,
+       9 -  createParticipation                                          
+       9 +  createParticipation,                                         
+      10 +  mergeNamings                                                 
+      11  } from '$lib/server/db/queries/namings.js';
+      12  import { relateElements, getNamingStack } from '$lib/server/db/
+          queries/maps.js';
+      13  import { createMemo, getMemosForNaming } from '$lib/server/db/q
+          ueries/memos.js';
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/api/projects/%5BprojectId%5D/namings/+server.tssrc/routes/api/projects/[projectId]/namings/+server.ts)
+  ⎿  Added 13 lines
+      165        return json({ ok: true });
+      166      }
+      167  
+      168 +    case 'merge': {                                           
+      169 +      const { survivorId, mergedId } = body;                  
+      170 +      if (!survivorId || !mergedId) return json({ error: 'surv
+          +ivorId and mergedId required' }, { status: 400 });            
+      171 +      if (survivorId === mergedId) return json({ error: 'Canno
+          +t merge a naming with itself' }, { status: 400 });            
+      172 +      try {                                                   
+      173 +        const result = await mergeNamings(projectId, userId, s
+          +urvivorId, mergedId);                                         
+      174 +        return json(result);                                  
+      175 +      } catch (error) {                                       
+      176 +        const msg = error instanceof Error ? error.message : S
+          +tring(error);                                                 
+      177 +        return json({ error: msg }, { status: 400 });         
+      178 +      }                                                       
+      179 +    }                                                         
+      180 +                                                              
+      181      case 'getMemosForNaming': {
+      182        const { namingId } = body;
+      183        if (!namingId) return json({ error: 'namingId required' 
+           }, { status: 400 });
+
+● Now the UI. The merge action should be available from the Namings list where
+  you can see duplicates. Let me check the namings page:
+
+● Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Good. Now I need to add merge state + UI. The merge interaction should be:
+  1. Click "merge" on a naming → enters merge mode
+  2. Click a second naming → confirms merge (first clicked = survivor, second =
+  merged)
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/namings/+page.sveltesrc/routes/projects/[projectId]/namings/+page.svelte)
+  ⎿  Added 3 lines
+      70    let reifyNamingId = $state<string | null>(null);
+      71    let reifySourceId = $state<string | null>(null);
+      72  
+      73 +  // Merge mode: select survivor, then merged                  
+      74 +  let mergeSurvivorId = $state<string | null>(null);           
+      75 +                                                               
+      76    // Local withdrawn set (keeps items visible until next page l
+          oad)
+      77    let localWithdrawn = $state<Set<string>>(new Set());
+      78  
+
+● Add escape handler for merge mode:
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/namings/+page.sveltesrc/routes/projects/[projectId]/namings/+page.svelte)
+  ⎿  Added 1 line
+      103    // ---- Escape key handler ----
+      104    function handleKeydown(e: KeyboardEvent) {
+      105      if (e.key === 'Escape') {
+      106 +      if (mergeSurvivorId) { mergeSurvivorId = null; e.prevent
+          +Default(); return; }                                          
+      107        if (actTarget) { cancelAct(); e.preventDefault(); return
+           ; }
+      108        if (reifyNamingId) { cancelReify(); e.preventDefault(); 
+           return; }
+      109        if (relateSource || relateTarget) { cancelRelate(); e.pr
+           eventDefault(); return; }
+
+● Now add the merge functions after the withdraw function:
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/namings/+page.sveltesrc/routes/projects/[projectId]/namings/+page.svelte)
+  ⎿  Added 15 lines
+      317      // Don't invalidate — item stays visible (struck through) 
+           until next navigation
+      318    }
+      319  
+      320 +  // ---- Merge ----                                          
+      321 +  function startMerge(survivorId: string) {                   
+      322 +    mergeSurvivorId = survivorId;                             
+      323 +  }                                                           
+      324 +                                                              
+      325 +  async function completeMerge(mergedId: string) {            
+      326 +    if (!mergeSurvivorId || mergedId === mergeSurvivorId) retu
+          +rn;                                                           
+      327 +    const result = await apiAction('merge', { survivorId: merg
+          +eSurvivorId, mergedId });                                     
+      328 +    if (result.error) {                                       
+      329 +      alert(result.error);                                    
+      330 +    }                                                         
+      331 +    mergeSurvivorId = null;                                   
+      332 +    await invalidateAll();                                    
+      333 +  }                                                           
+      334 +                                                              
+      335    // ---- Mode switching ----
+      336    async function switchToEntity(namingId: string) {
+      337      await apiAction('switchToEntity', { namingId });
+
+● Check if invalidateAll is imported:
+
+● Searched for 4 patterns (ctrl+o to expand)
+
+● I see — they use dynamic import pattern. Let me fix the merge function:
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/namings/+page.sveltesrc/routes/projects/[projectId]/namings/+page.svelte)
+  ⎿  Added 2 lines, removed 1 line
+      329        alert(result.error);
+      330      }
+      331      mergeSurvivorId = null;
+      332 -    await invalidateAll();                                    
+      332 +    const module = await import('$app/navigation');           
+      333 +    module.invalidateAll();                                   
+      334    }
+      335  
+      336    // ---- Mode switching ----
+
+● Now add the UI buttons. Let me find the entity card actions in the namings
+  list:
+
+● Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Now I need to: (a) add merge button to entity actions, (b) add merge-target
+  button when in merge mode, (c) show a merge mode indicator. Let me also look
+  at the card wrapper to add the click handler:
+
+● Read 1 file (ctrl+o to expand)
+
+● I need to add merge mode to the card's click handler and class, add the merge
+  button to actions, and add a status bar for merge mode. Let me do the card
+  first:
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/namings/+page.sveltesrc/routes/projects/[projectId]/namings/+page.svelte)
+  ⎿  Added 2 lines, removed 1 line
+      537        <div class="naming-list">
+      538          {#each entities as n (n.naming_id)}
+      539            {@const withdrawn = isWithdrawn(n.naming_id, n.prope
+           rties)}
+      540 -          <div class="naming-card" class:withdrawn class:relat
+          -e-target={(relateSource && relateSource !== n.naming_id) || (r
+          -eifyNamingId && reifyNamingId !== n.naming_id)}               
+      540 +          <div class="naming-card" class:withdrawn class:relat
+          +e-target={(relateSource && relateSource !== n.naming_id) || (r
+          +eifyNamingId && reifyNamingId !== n.naming_id)} class:merge-ta
+          +rget={mergeSurvivorId && mergeSurvivorId !== n.naming_id} clas
+          +s:merge-survivor={mergeSurvivorId === n.naming_id}            
+      541              onclick={() => {
+      542 +              if (mergeSurvivorId && mergeSurvivorId !== n.nam
+          +ing_id) { completeMerge(n.naming_id); return; }               
+      543                if (relateSource && !relateTarget && relateSourc
+           e !== n.naming_id) { startRelate(n.naming_id); return; }
+      544                if (reifyNamingId && reifyNamingId !== n.naming_
+           id) {
+      545                  if (!reifySourceId) { reifyPickSource(n.naming
+           _id); return; }
+
+● Now add the merge button to entity actions:
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/namings/+page.sveltesrc/routes/projects/[projectId]/namings/+page.svelte)
+  ⎿  Added 1 line
+      586                <button class="btn-xs" onclick={() => showStack(
+           n.naming_id)}>stack</button>
+      587                <button class="btn-xs" onclick={() => startRelat
+           e(n.naming_id)}>relate</button>
+      588                <button class="btn-xs btn-mode" onclick={() => s
+           tartReifyAsRelation(n.naming_id)}>→ relation</button>
+      589 +              <button class="btn-xs btn-merge" onclick={(e) =>
+          + { e.stopPropagation(); startMerge(n.naming_id); }}>merge</but
+          +ton>                                                          
+      590                <button class="btn-xs btn-withdraw" onclick={() 
+           => withdraw(n.naming_id)}>
+      591                  {withdrawn ? 'restore' : 'withdraw'}
+      592                </button>
+
+● Now add a merge mode status bar. Let me find where the relate/reify status
+  bars are:
+
+● Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Add the merge banner right after the reify banner:
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/namings/+page.sveltesrc/routes/projects/[projectId]/namings/+page.svelte)
+  ⎿  Added 9 lines
+      479      </div>
+      480    {/if}
+      481  
+      482 +  <!-- Merge mode indicator -->                               
+      483 +  {#if mergeSurvivorId}                                       
+      484 +    {@const survNaming = findNaming(mergeSurvivorId)}         
+      485 +    <div class="relate-banner merge-banner">                  
+      486 +      Merge into <strong>{survNaming?.current_inscription || s
+          +urvNaming?.inscription}</strong> — click the naming to absorb 
+      487 +      <button class="btn-xs" onclick={() => mergeSurvivorId = 
+          +null}>cancel</button>                                         
+      488 +    </div>                                                    
+      489 +  {/if}                                                       
+      490 +                                                              
+      491    <!-- Act-prompt bar -->
+      492    {#if actTarget}
+      493      {@const targetNaming = findNaming(actTarget)}
+
+● Now add the CSS for merge mode. Let me find the existing relate-target styles:
+
+● Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/namings/+page.sveltesrc/routes/projects/[projectId]/namings/+page.svelte)
+  ⎿  Added 5 lines
+      1041    .naming-card.withdrawn .naming-inscription { text-decoratio
+            n: line-through; }
+      1042    .naming-card.relate-target { cursor: crosshair; }
+      1043    .naming-card.relate-target:hover { background: rgba(139, 15
+            6, 247, 0.12); }
+      1044 +  .naming-card.merge-target { cursor: pointer; }             
+      1045 +  .naming-card.merge-target:hover { background: rgba(232, 165
+           +, 75, 0.12); }                                               
+      1046 +  .naming-card.merge-survivor { border-left: 3px solid #e8a54
+           +b; }                                                         
+      1047 +  .merge-banner { border-color: #e8a54b; }                   
+      1048 +  .btn-merge { color: #e8a54b; }                             
+      1049  
+      1050    .naming-main {
+      1051      display: flex;
+
+● Let me verify the build:
+
+● Bash(npx svelte-check --threshold error 2>&1 | grep -E
+      "(namings/\+page|namings/\+server|queries/namings)" | head -10)
+  ⎿  (No output)
+
+● Clean. Let me also check if the naming_acts table has a memo_text column (I
+  used it in the merge function):
+
+● Read 1 file (ctrl+o to expand)
+
+● Good — memo_text column exists on naming_acts. The merge function is correct.
+
+  Now let me check the background agent's progress:
+
+● Searched for 1 pattern (ctrl+o to expand)
+
+● Agent seems done. Let me verify the sidebar changes:
+
+● Bash(git diff --stat)
+  ⎿   src/lib/server/db/queries/namings.ts               | 123 ++++++++++++
+     +++++++++
+      .../api/projects/[projectId]/namings/+server.ts    |  16 ++-
+     … +4 lines (ctrl+o to expand)
+
+● Bash(npx svelte-check --threshold error 2>&1 | grep -E
+      "(layout\.(svelte|server)|namings)" | head -10)
+  ⎿  (No output)
+  ⎿  (timeout 1m)
+
+● All clean. Let me quickly verify the sidebar changes make sense:
+
+● Read 2 files (ctrl+o to expand)
+
+● The sidebar agent did a clean job — grouped by type with labels, indented map
+  links, active highlighting. Full build check:
+
+● Bash(npx vite build 2>&1 | tail -5)
+  ⎿  Run npm run preview to preview your production build locally.
+
+     > Using @sveltejs/adapter-node
+       ✔ done
+  ⎿  (timeout 1m)
+
+● Everything builds. Let me commit Sessions C + D together:
+
+● Bash(git add src/lib/server/db/queries/namings.ts
+      src/routes/api/projects/\[projectId\]/namings/+server.ts
+      src/routes/projects/\[projectId\]/namings/+page.svelte src…)
+  ⎿  [main f3f93f9] Add naming merge and sidebar multi-map navigation (Sess
+     ion 13 cont.)
+      5 files changed, 227 insertions(+), 7 deletions(-)
+
+● Alle vier Sessions sind implementiert und committed.
+
+  Session 13 — Gesamtübersicht
+
+  ┌─────────┬────────────────────────────────────────────────────────────────┐
+  │ Commit  │                              Was                               │
+  ├─────────┼────────────────────────────────────────────────────────────────┤
+  │ 9cd7a63 │ ELK crash fix, placeExistingOnMap, autocomplete,               │
+  │         │ cross-boundary signaling                                       │
+  ├─────────┼────────────────────────────────────────────────────────────────┤
+  │ f3f93f9 │ Naming merge, sidebar multi-map navigation                     │
+  └─────────┴────────────────────────────────────────────────────────────────┘
+
+  Architektur-Entscheidungen:
+  - Maps sind echte Perspektiven, nicht Kopien — die Namings-Liste IST die
+  vollständige Sicht
+  - Strukturelle Integrität innerhalb einer Map (keine orphan relations)
+  - Cross-boundary Participations werden signalisiert (amber +N badges), nicht
+  auto-aufgelöst
+  - Dedup ist vorschlagsbasiert (Autocomplete zeigt existierende Namings), nicht
+   automatisch
+  - Merge ist explizite Ground-Truth-Chirurgie (Survivor absorbs Merged)
+
+  Was jetzt fehlt, ist eine Frage der Nutzung — du musst es testen und sehen, ob
+   der Workflow stimmt. Insbesondere: Funktioniert das "Name or search..."
+  Dropdown sinnvoll? Ist die merge-Interaktion intuitiv?
+
+✻ Baked for 6m 19s
+
+● Agent "Sidebar show all maps" completed
+
+● Already integrated and committed in f3f93f9. All four sessions complete.
+
+❯ EInfacher wäre ergänzend: Binde alle Namings eines Dokuments ein. Dropdosn    
+ist sehr sinnvoll. Wie kann ich die merge-Interaktion testen?                   
+
+● Merge testen
+
+  1. Gehe zur Namings-Seite
+  2. Erstelle oder finde zwei Entity-Namings mit ähnlichem/gleichem Namen (z.B.
+  "AI" und "Artificial Intelligence")
+  3. Klick merge auf dem Naming, das überleben soll (Survivor)
+  4. Amber-Banner erscheint: "Merge into X — click the naming to absorb"
+  5. Klick auf das zweite Naming → es wird absorbiert
+  6. Das absorbierte Naming verschwindet, seine Partizipationen/Appearances
+  transferieren zum Survivor
+
+  Du siehst den Merge im Stack des Survivors als memo_text: "Merged with ...".
+
+  ---
+  "Alle Namings eines Dokuments einbinden"
+
+  Gute Idee — das ist eine Batch-Version von placeExisting. Ich baue das als
+  Map-Toolbar-Action.
+
+● Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Good. So annotations have directed_from = codeNamingId (the naming used to
+  annotate) pointing directed_to = documentId. The code/naming is the
+  directed_from endpoint.
+
+  "All namings of a document" = all distinct directed_from values where
+  directed_to = documentId AND valence = 'codes'.
+
+  Now I also need a list of documents for the dropdown. Let me add the query and
+   API action:
+
+● Update(src/lib/server/db/queries/maps.ts)
+  ⎿  Added 46 lines
+      653    ).rows;
+      654  }
+      655  
+      656 +// Get all namings that annotate a document but aren't yet on 
+          +this map.                                                     
+      657 +// "Namings of a document" = code namings used in annotations 
+          +(valence='codes').                                            
+      658 +export async function getDocumentNamingsForPlacement(         
+      659 +  projectId: string,                                          
+      660 +  mapId: string,                                              
+      661 +  documentId: string                                          
+      662 +) {                                                           
+      663 +  return (                                                    
+      664 +    await query(                                              
+      665 +      `SELECT DISTINCT code.id, code.inscription,             
+      666 +         COALESCE(                                            
+      667 +           (SELECT na.designation FROM naming_acts na         
+      668 +            WHERE na.naming_id = code.id AND na.designation IS
+          + NOT NULL                                                     
+      669 +            ORDER BY na.seq DESC LIMIT 1),                    
+      670 +           'cue'                                              
+      671 +         ) as designation                                     
+      672 +       FROM appearances ann                                   
+      673 +       JOIN namings ann_n ON ann_n.id = ann.naming_id AND ann_
+          +n.deleted_at IS NULL                                          
+      674 +       JOIN namings code ON code.id = ann.directed_from AND co
+          +de.deleted_at IS NULL                                         
+      675 +       WHERE ann.directed_to = $3 AND ann.valence = 'codes'   
+      676 +         AND code.project_id = $1                             
+      677 +         AND NOT EXISTS (                                     
+      678 +           SELECT 1 FROM appearances a_map                    
+      679 +           WHERE a_map.naming_id = code.id AND a_map.perspecti
+          +ve_id = $2                                                    
+      680 +         )                                                    
+      681 +       ORDER BY code.inscription`,                            
+      682 +      [projectId, mapId, documentId]                          
+      683 +    )                                                         
+      684 +  ).rows;                                                     
+      685 +}                                                             
+      686 +                                                              
+      687 +// Batch-place multiple namings on a map (returns count placed
+          +).                                                            
+      688 +export async function placeMultipleOnMap(                     
+      689 +  projectId: string,                                          
+      690 +  userId: string,                                             
+      691 +  mapId: string,                                              
+      692 +  namingIds: string[]                                         
+      693 +) {                                                           
+      694 +  let placed = 0;                                             
+      695 +  for (const namingId of namingIds) {                         
+      696 +    const result = await placeExistingOnMap(projectId, userId,
+          + mapId, namingId);                                            
+      697 +    if (result) placed++;                                     
+      698 +  }                                                           
+      699 +  return placed;                                              
+      700 +}                                                             
+      701 +                                                              
+      702  // Get phases (sub-perspectives) within a map
+      703  export async function getMapPhases(mapId: string, projectId: s
+           tring) {
+      704    return (
+
+● Now add the API actions:
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/api/projects/%5BprojectId%5D/maps/%5BmapId%5D/+server.tssrc/routes/api/projects/[projectId]/maps/[mapId]/+server.ts)
+  ⎿  Added 2 lines
+       5    getMapStructure,
+       6    addElementToMap,
+       7    placeExistingOnMap,
+       8 +  placeMultipleOnMap,                                          
+       9    searchNamingsForPlacement,
+      10    getOutsideParticipations,
+      11 +  getDocumentNamingsForPlacement,                              
+      12    relateElements,
+      13    createPhase,
+      14    assignToPhase,
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/api/projects/%5BprojectId%5D/maps/%5BmapId%5D/+server.tssrc/routes/api/projects/[projectId]/maps/[mapId]/+server.ts)
+  ⎿  Added 16 lines
+      70        return json({ results });
+      71      }
+      72  
+      73 +    case 'importFromDocument': {                               
+      74 +      const { documentId } = body;                             
+      75 +      if (!documentId) return json({ error: 'documentId require
+         +d' }, { status: 400 });                                        
+      76 +      const candidates = await getDocumentNamingsForPlacement(p
+         +rojectId, mapId, documentId);                                  
+      77 +      if (candidates.length === 0) return json({ placed: 0, mes
+         +sage: 'No new namings to import' });                           
+      78 +      const placed = await placeMultipleOnMap(projectId, userId
+         +, mapId, candidates.map((c: any) => c.id));                    
+      79 +      return json({ placed, total: candidates.length });       
+      80 +    }                                                          
+      81 +                                                               
+      82 +    case 'getDocumentNamings': {                               
+      83 +      const { documentId } = body;                             
+      84 +      if (!documentId) return json({ error: 'documentId require
+         +d' }, { status: 400 });                                        
+      85 +      const namings = await getDocumentNamingsForPlacement(proj
+         +ectId, mapId, documentId);                                     
+      86 +      return json({ namings });                                
+      87 +    }                                                          
+      88 +                                                               
+      89      case 'getOutsideParticipations': {
+      90        const { namingId } = body;
+      91        if (!namingId) return json({ error: 'namingId required' }
+          , { status: 400 });
+
+● Now the UI on the map page. I need a document list and an "Import from
+  document" dropdown in the toolbar. Let me check the page server data — does it
+   already have documents?
+
+● Read 1 file (ctrl+o to expand)
+
+● No documents in the page data. I'll fetch them on-demand when the user opens
+  the import dropdown. Let me add the UI. First, find the toolbar area:
+
+● Read 1 file (ctrl+o to expand)
+
+● I'll add the import dropdown after the view toggle. Let me add state and the
+  handler first:
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 26 lines
+      196      discussion?: any[]; aiReasoning?: string | null; aiSuggest
+           ed?: boolean; aiWithdrawn?: boolean;
+      197    } | null>(null);
+      198  
+      199 +  // Import from document                                     
+      200 +  let importDropdownOpen = $state(false);                     
+      201 +  let importDocuments = $state<any[]>([]);                    
+      202 +  let importLoading = $state(false);                          
+      203 +                                                              
+      204 +  async function openImportDropdown() {                       
+      205 +    if (importDropdownOpen) { importDropdownOpen = false; retu
+          +rn; }                                                         
+      206 +    importLoading = true;                                     
+      207 +    importDropdownOpen = true;                                
+      208 +    const res = await fetch(`/api/projects/${data.projectId}/d
+          +ocuments`);                                                   
+      209 +    if (res.ok) {                                             
+      210 +      const docs = await res.json();                          
+      211 +      importDocuments = Array.isArray(docs) ? docs : docs.docu
+          +ments || [];                                                  
+      212 +    }                                                         
+      213 +    importLoading = false;                                    
+      214 +  }                                                           
+      215 +                                                              
+      216 +  async function importFromDocument(documentId: string) {     
+      217 +    importDropdownOpen = false;                               
+      218 +    const res = await mapAction('importFromDocument', { docume
+          +ntId });                                                      
+      219 +    if (res.placed > 0) {                                     
+      220 +      await reload();                                         
+      221 +      await layoutNewNodes();                                 
+      222 +    }                                                         
+      223 +  }                                                           
+      224 +                                                              
+      225    // Outside participations panel (cross-boundary signaling)
+      226    let outsideId = $state<string | null>(null);
+      227    let outsideData = $state<any[] | null>(null);
+
+● Now add the dropdown button in the toolbar, after the view toggle:
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 19 lines
+       992          <button class="btn-view" class:active={viewMode === '
+            list'} onclick={() => switchView('list')}>List</button>
+       993          <button class="btn-view" class:active={viewMode === '
+            canvas'} onclick={() => switchView('canvas')}>Canvas</button>
+       994        </div>
+       995 +      <!-- svelte-ignore a11y_no_static_element_interactions 
+           +-->                                                          
+       996 +      <div class="import-wrapper" onclick={(e) => e.stopPropa
+           +gation()}>                                                   
+       997 +        <button class="btn-sm" onclick={openImportDropdown} t
+           +itle="Import namings from a document">Import</button>        
+       998 +        {#if importDropdownOpen}                             
+       999 +          <div class="import-dropdown">                      
+      1000 +            {#if importLoading}                              
+      1001 +              <span class="import-loading">loading...</span> 
+      1002 +            {:else if importDocuments.length === 0}          
+      1003 +              <span class="import-empty">No documents in proj
+           +ect</span>                                                   
+      1004 +            {:else}                                          
+      1005 +              {#each importDocuments as doc}                 
+      1006 +                <button class="import-item" onmousedown={(e) 
+           +=> { e.preventDefault(); importFromDocument(doc.naming_id || 
+           +doc.id); }}>                                                 
+      1007 +                  {doc.inscription || doc.label || doc.title}
+      1008 +                </button>                                    
+      1009 +              {/each}                                        
+      1010 +            {/if}                                            
+      1011 +          </div>                                             
+      1012 +        {/if}                                                
+      1013 +      </div>                                                 
+      1014        <button class="btn-sm btn-connections" class:connection
+            s-off={!showConnections}
+      1015          onclick={() => { showConnections = !showConnections; 
+            localStorage.setItem(`map:${data.map.id}:showConnections`, St
+            ring(showConnections)); }}
+      1016          title={showConnections ? 'Hide connection lines' : 'S
+            how connection lines'}
+
+● Let me check what the documents API returns to make sure I'm using the right
+  field names:
+
+● Searched for 2 patterns (ctrl+o to expand)
+
+● No documents list API endpoint. Let me check the documents page server:
+
+● Read 1 file (ctrl+o to expand)
+
+● No API route for documents list. I'll fetch it directly instead of going
+  through an API. Let me adjust the import handler to use a direct query:
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 8 lines, removed 3 lines
+      205      if (importDropdownOpen) { importDropdownOpen = false; retu
+           rn; }
+      206      importLoading = true;
+      207      importDropdownOpen = true;
+      208 -    const res = await fetch(`/api/projects/${data.projectId}/d
+          -ocuments`);                                                   
+      208 +    // Fetch documents + count of placeable namings per docume
+          +nt                                                            
+      209 +    const res = await fetch(`/api/projects/${data.projectId}/m
+          +aps/${data.map.id}`, {                                        
+      210 +      method: 'POST',                                         
+      211 +      headers: { 'Content-Type': 'application/json' },        
+      212 +      body: JSON.stringify({ action: 'listDocumentsForImport' 
+          +})                                                            
+      213 +    });                                                       
+      214      if (res.ok) {
+      210 -      const docs = await res.json();                          
+      211 -      importDocuments = Array.isArray(docs) ? docs : docs.docu
+          -ments || [];                                                  
+      215 +      const result = await res.json();                        
+      216 +      importDocuments = result.documents || [];               
+      217      }
+      218      importLoading = false;
+      219    }
+
+● Now add the listDocumentsForImport API action that returns documents with
+  their importable naming count:
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/api/projects/%5BprojectId%5D/maps/%5BmapId%5D/+server.tssrc/routes/api/projects/[projectId]/maps/[mapId]/+server.ts)
+  ⎿  Added 22 lines
+      70        return json({ results });
+      71      }
+      72  
+      73 +    case 'listDocumentsForImport': {                           
+      74 +      const { query: dbQ } = await import('$lib/server/db/index
+         +.js');                                                         
+      75 +      const docs = await dbQ(                                  
+      76 +        `SELECT n.id, n.inscription as label,                  
+      77 +           (SELECT count(DISTINCT ann.directed_from)           
+      78 +            FROM appearances ann                               
+      79 +            JOIN namings code ON code.id = ann.directed_from AN
+         +D code.deleted_at IS NULL                                      
+      80 +            WHERE ann.directed_to = n.id AND ann.valence = 'cod
+         +es'                                                            
+      81 +              AND NOT EXISTS (                                 
+      82 +                SELECT 1 FROM appearances a_map                
+      83 +                WHERE a_map.naming_id = code.id AND a_map.persp
+         +ective_id = $2                                                 
+      84 +              )                                                
+      85 +           )::int as importable_count                          
+      86 +         FROM namings n                                        
+      87 +         JOIN document_content dc ON dc.naming_id = n.id       
+      88 +         WHERE n.project_id = $1 AND n.deleted_at IS NULL      
+      89 +         ORDER BY n.inscription`,                              
+      90 +        [projectId, mapId]                                     
+      91 +      );                                                       
+      92 +      return json({ documents: docs.rows });                   
+      93 +    }                                                          
+      94 +                                                               
+      95      case 'importFromDocument': {
+      96        const { documentId } = body;
+      97        if (!documentId) return json({ error: 'documentId require
+          d' }, { status: 400 });
+
+● Now update the dropdown UI to show the importable count:
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 8 lines, removed 2 lines
+      1008                <span class="import-empty">No documents in proj
+            ect</span>
+      1009              {:else}
+      1010                {#each importDocuments as doc}
+      1011 -                <button class="import-item" onmousedown={(e) 
+           -=> { e.preventDefault(); importFromDocument(doc.naming_id || 
+           -doc.id); }}>                                                 
+      1012 -                  {doc.inscription || doc.label || doc.title}
+      1011 +                <button class="import-item" onmousedown={(e) 
+           +=> { e.preventDefault(); importFromDocument(doc.id); }}      
+      1012 +                  disabled={doc.importable_count === 0}>     
+      1013 +                  <span class="import-doc-label">{doc.label}<
+           +/span>                                                       
+      1014 +                  {#if doc.importable_count > 0}             
+      1015 +                    <span class="import-doc-count">+{doc.impo
+           +rtable_count}</span>                                         
+      1016 +                  {:else}                                    
+      1017 +                    <span class="import-doc-done">all placed<
+           +/span>                                                       
+      1018 +                  {/if}                                      
+      1019                  </button>
+      1020                {/each}
+      1021              {/if}
+
+● Now add CSS for the import dropdown:
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 20 lines
+      2010    .collapsed-current { font-size: 0.7rem; color: #6b7280; fon
+            t-style: italic; margin-left: 0.5rem; }
+      2011  
+      2012    /* History panel (inline in list view) */
+      2013 +  /* Import from document dropdown */                        
+      2014 +  .import-wrapper { position: relative; }                    
+      2015 +  .import-dropdown {                                         
+      2016 +    position: absolute; top: 100%; left: 0; z-index: 300;    
+      2017 +    background: #1e2030; border: 1px solid #3a3d4a; border-ra
+           +dius: 6px;                                                   
+      2018 +    min-width: 220px; max-height: 300px; overflow-y: auto;   
+      2019 +    box-shadow: 0 4px 12px rgba(0,0,0,0.4); margin-top: 4px; 
+      2020 +  }                                                          
+      2021 +  .import-item {                                             
+      2022 +    display: flex; align-items: center; justify-content: spac
+           +e-between; gap: 0.5rem;                                      
+      2023 +    width: 100%; background: none; border: none; color: #c9cd
+           +d5;                                                          
+      2024 +    padding: 0.4rem 0.75rem; font-size: 0.8rem; cursor: point
+           +er; text-align: left;                                        
+      2025 +  }                                                          
+      2026 +  .import-item:hover:not(:disabled) { background: #2a2d3a; } 
+      2027 +  .import-item:disabled { opacity: 0.4; cursor: default; }   
+      2028 +  .import-doc-label { flex: 1; min-width: 0; overflow: hidden
+           +; text-overflow: ellipsis; white-space: nowrap; }            
+      2029 +  .import-doc-count { color: #10b981; font-size: 0.7rem; font
+           +-weight: 600; flex-shrink: 0; }                              
+      2030 +  .import-doc-done { color: #6b7280; font-size: 0.7rem; flex-
+           +shrink: 0; }                                                 
+      2031 +  .import-loading, .import-empty { display: block; padding: 0
+           +.4rem 0.75rem; font-size: 0.75rem; color: #6b7280; }         
+      2032 +                                                             
+      2033    /* Outside participations (cross-boundary signaling) */
+      2034    .outside-badge {
+      2035      font-size: 0.65rem; font-weight: 600; color: #e8a54b; bac
+            kground: rgba(232, 165, 75, 0.15);
+
+● Add close-on-outside-click for the import dropdown (via the existing escape
+  handler):
+
+● Searched for 1 pattern (ctrl+o to expand)
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 1 line
+      923  
+      924    function handleKeydown(e: KeyboardEvent) {
+      925      if (e.key === 'Escape') {
+      926 +      if (importDropdownOpen) { importDropdownOpen = false; re
+          +turn; }                                                       
+      927        if (placementOpen) {
+      928          closePlacementDropdown();
+      929          return;
+
+● Build check:
+
+● Bash(npx vite build 2>&1 | tail -5)
+  ⎿  Run npm run preview to preview your production build locally.
+
+     > Using @sveltejs/adapter-node
+       ✔ done
+  ⎿  (timeout 1m)
+
+● Bash(git add src/lib/server/db/queries/maps.ts
+      src/routes/api/projects/\[projectId\]/maps/\[mapId\]/+server.ts
+      src/routes/projects/\[projectId\]/maps/\[mapId\]/+page…)
+  ⎿  [main 8d14821] Add "Import from document" batch placement on maps (Ses
+     sion 13)
+      3 files changed, 163 insertions(+)
+
+● Fertig. Auf der Map-Seite gibt es jetzt einen "Import"-Button in der Toolbar:
+
+  1. Klick → Dropdown zeigt alle Dokumente des Projekts
+  2. Jedes Dokument zeigt +N (Anzahl platzierbarer Namings) in grün
+  3. Dokumente wo alles bereits platziert ist zeigen "all placed" (ausgegraut)
+  4. Klick auf ein Dokument → alle seine Annotation-Namings werden als Entities
+  auf die Map platziert
+
+  Das deckt deinen Use Case "eine SitMap zu einem Dokument erstellen" ab: neue
+  Map erstellen → Import → Dokument wählen → alle Codes sind da.
+
+✻ Sautéed for 2m 51s
+
+❯ merge funktinioniert, aber etwas plätzlich (keine OK bestätigung) und etwas   
+intransparent (kann dann bei Klick auf Stack die "aufgewogenen Cues nicht sehen 
+ .> könnte man am einfachsten ein Memo zu erstellen automatisiert)              
+
+● Read 1 file (ctrl+o to expand)
+
+● Now let me look at the merge function to understand what it does and how to
+  add a proper memo:
+
+● Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Now let me check how memos are created to understand the pattern:
+
+● Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Good. Now I have the full picture. Two changes needed:
+
+  1. Confirmation step in the UI before merge executes
+  2. Auto-create a memo with full details (merged naming's inscription,
+  designation, participations, maps it appeared on)
+
+  Let me first enhance the merge function to gather and return details, then
+  create the memo. The merge function needs to collect info about what was
+  absorbed BEFORE doing the surgery:
+
+● Update(src/lib/server/db/queries/namings.ts)
+  ⎿  Added 1 line
+      1  import { query, queryOne, transaction } from '../index.js';
+      2  import type { CollapseMode } from '$lib/shared/types/index.js';
+      3 +import { createMemo } from './memos.js';                        
+      4  
+      5  // ---- Researcher-naming: the user as naming in the data space 
+         ----
+      6  
+
+● Now enhance mergeNamings to collect details and create a memo:
+
+● Update(src/lib/server/db/queries/namings.ts)
+  ⎿  Added 30 lines
+      463      }
+      464  
+      465      const mergedInscription = merged.rows[0].inscription;
+      466 +    const survivorInscription = survivor.rows[0].inscription; 
+      467  
+      468 +    // Collect details about the merged naming BEFORE surgery 
+      469 +    const mergedDesignation = await client.query(             
+      470 +      `SELECT designation FROM naming_acts                    
+      471 +       WHERE naming_id = $1 AND designation IS NOT NULL       
+      472 +       ORDER BY seq DESC LIMIT 1`,                            
+      473 +      [mergedId]                                              
+      474 +    );                                                        
+      475 +    const mergedParts = await client.query(                   
+      476 +      `SELECT n.inscription as partner_inscription            
+      477 +       FROM participations p                                  
+      478 +       JOIN namings n ON n.id = CASE                          
+      479 +         WHEN p.naming_id = $1 THEN p.participant_id          
+      480 +         ELSE p.naming_id END                                 
+      481 +       JOIN namings pn ON pn.id = p.id AND pn.deleted_at IS NU
+          +LL                                                            
+      482 +       WHERE (p.naming_id = $1 OR p.participant_id = $1)      
+      483 +         AND n.deleted_at IS NULL AND n.id != $1`,            
+      484 +      [mergedId]                                              
+      485 +    );                                                        
+      486 +    const mergedMaps = await client.query(                    
+      487 +      `SELECT m.inscription as map_label                      
+      488 +       FROM appearances a                                     
+      489 +       JOIN namings m ON m.id = a.perspective_id AND m.deleted
+          +_at IS NULL                                                   
+      490 +       WHERE a.naming_id = $1 AND a.naming_id != a.perspective
+          +_id                                                           
+      491 +         AND EXISTS (SELECT 1 FROM appearances self           
+      492 +           WHERE self.naming_id = m.id AND self.perspective_id
+          + = m.id                                                       
+      493 +             AND self.mode = 'perspective' AND self.properties
+          + ? 'mapType')`,                                               
+      494 +      [mergedId]                                              
+      495 +    );                                                        
+      496 +                                                              
+      497      // 1. Transfer participations (as endpoint)
+      498      // Update naming_id where merged is the first endpoint
+      499      await client.query(
+
+● Now replace the simple naming_act with a proper memo:
+
+● Update(src/lib/server/db/queries/namings.ts)
+  ⎿  Added 21 lines, removed 1 line
+      570        [mergedId]
+      571      );
+      572  
+      573 +    // 7. Create a memo documenting the merge (linked to survi
+          +vor)                                                          
+      574 +    const desig = mergedDesignation.rows[0]?.designation || 'c
+          +ue';                                                          
+      575 +    const partners = mergedParts.rows.map((r: any) => r.partne
+          +r_inscription).join(', ');                                    
+      576 +    const maps = mergedMaps.rows.map((r: any) => r.map_label).
+          +join(', ');                                                   
+      577 +    const memoLines = [                                       
+      578 +      `Merged "${mergedInscription}" into "${survivorInscripti
+          +on}".`,                                                       
+      579 +      ``,                                                     
+      580 +      `Absorbed naming:`,                                     
+      581 +      `- Inscription: ${mergedInscription}`,                  
+      582 +      `- Designation: ${desig}`,                              
+      583 +      partners ? `- Participations with: ${partners}` : `- No 
+          +participations`,                                              
+      584 +      maps ? `- Appeared on: ${maps}` : `- Not on any map`,   
+      585 +    ];                                                        
+      586 +    // createMemo needs userId (not researcherNamingId) and ru
+          +ns its own transaction,                                       
+      587 +    // so we do it after the main transaction commits.        
+      588 +    // Store the memo content for post-commit creation.       
+      589 +    const memoContent = memoLines.join('\n');                 
+      590 +                                                              
+      591      return {
+      592        survivorId,
+      593        mergedId,
+      594        mergedInscription,
+      577 -      survivorInscription: survivor.rows[0].inscription       
+      595 +      survivorInscription,                                    
+      596 +      _memoContent: memoContent,                              
+      597 +      _userId: userId,                                        
+      598      };
+      599    });
+      600  }
+
+● Now I need to call createMemo after the transaction completes. Let me do this
+  in the API handler:
+
+● Read 1 file (ctrl+o to expand)
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/api/projects/%5BprojectId%5D/namings/+server.tssrc/routes/api/projects/[projectId]/namings/+server.ts)
+  ⎿  Added 15 lines, removed 1 line
+      171        if (survivorId === mergedId) return json({ error: 'Canno
+           t merge a naming with itself' }, { status: 400 });
+      172        try {
+      173          const result = await mergeNamings(projectId, userId, s
+           urvivorId, mergedId);
+      174 -        return json(result);                                  
+      174 +        // Create memo after transaction (createMemo runs its 
+          +own transaction)                                              
+      175 +        if (result._memoContent) {                            
+      176 +          await createMemo(                                   
+      177 +            projectId, userId,                                
+      178 +            `Merge: ${result.mergedInscription} → ${result.sur
+          +vivorInscription}`,                                           
+      179 +            result._memoContent,                              
+      180 +            [result.survivorId]                               
+      181 +          );                                                  
+      182 +        }                                                     
+      183 +        return json({                                         
+      184 +          survivorId: result.survivorId,                      
+      185 +          mergedId: result.mergedId,                          
+      186 +          mergedInscription: result.mergedInscription,        
+      187 +          survivorInscription: result.survivorInscription     
+      188 +        });                                                   
+      189        } catch (error) {
+      190          const msg = error instanceof Error ? error.message : S
+           tring(error);
+      191          return json({ error: msg }, { status: 400 });
+
+● Now the confirmation step in the UI. Let me update the namings page to add a
+  confirm dialog:
+
+● Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Replace the merge flow with a two-step confirmation:
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/namings/+page.sveltesrc/routes/projects/[projectId]/namings/+page.svelte)
+  ⎿  Added 16 lines, removed 2 lines
+      318    }
+      319  
+      320    // ---- Merge ----
+      321 +  let mergeTargetId = $state<string | null>(null);            
+      322 +                                                              
+      323    function startMerge(survivorId: string) {
+      324      mergeSurvivorId = survivorId;
+      325 +    mergeTargetId = null;                                     
+      326    }
+      327  
+      325 -  async function completeMerge(mergedId: string) {            
+      328 +  function selectMergeTarget(mergedId: string) {              
+      329      if (!mergeSurvivorId || mergedId === mergeSurvivorId) retu
+           rn;
+      327 -    const result = await apiAction('merge', { survivorId: merg
+          -eSurvivorId, mergedId });                                     
+      330 +    mergeTargetId = mergedId;                                 
+      331 +  }                                                           
+      332 +                                                              
+      333 +  async function confirmMerge() {                             
+      334 +    if (!mergeSurvivorId || !mergeTargetId) return;           
+      335 +    const result = await apiAction('merge', { survivorId: merg
+          +eSurvivorId, mergedId: mergeTargetId });                      
+      336      if (result.error) {
+      337        alert(result.error);
+      338      }
+      339      mergeSurvivorId = null;
+      340 +    mergeTargetId = null;                                     
+      341      const module = await import('$app/navigation');
+      342      module.invalidateAll();
+      343    }
+      344  
+      345 +  function cancelMerge() {                                    
+      346 +    mergeSurvivorId = null;                                   
+      347 +    mergeTargetId = null;                                     
+      348 +  }                                                           
+      349 +                                                              
+      350    // ---- Mode switching ----
+      351    async function switchToEntity(namingId: string) {
+      352      await apiAction('switchToEntity', { namingId });
+
+● Now update the escape handler and the card click handler:
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/namings/+page.sveltesrc/routes/projects/[projectId]/namings/+page.svelte)
+  ⎿  Added 1 line, removed 1 line
+      103    // ---- Escape key handler ----
+      104    function handleKeydown(e: KeyboardEvent) {
+      105      if (e.key === 'Escape') {
+      106 -      if (mergeSurvivorId) { mergeSurvivorId = null; e.prevent
+          -Default(); return; }                                          
+      106 +      if (mergeSurvivorId) { cancelMerge(); e.preventDefault()
+          +; return; }                                                   
+      107        if (actTarget) { cancelAct(); e.preventDefault(); return
+           ; }
+      108        if (reifyNamingId) { cancelReify(); e.preventDefault(); 
+           return; }
+      109        if (relateSource || relateTarget) { cancelRelate(); e.pr
+           eventDefault(); return; }
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/namings/+page.sveltesrc/routes/projects/[projectId]/namings/+page.svelte)
+  ⎿  Added 1 line, removed 1 line
+      562            {@const withdrawn = isWithdrawn(n.naming_id, n.prope
+           rties)}
+      563            <div class="naming-card" class:withdrawn class:relat
+           e-target={(relateSource && relateSource !== n.naming_id) || (r
+           eifyNamingId && reifyNamingId !== n.naming_id)} class:merge-ta
+           rget={mergeSurvivorId && mergeSurvivorId !== n.naming_id} clas
+           s:merge-survivor={mergeSurvivorId === n.naming_id}
+      564              onclick={() => {
+      565 -              if (mergeSurvivorId && mergeSurvivorId !== n.nam
+          -ing_id) { completeMerge(n.naming_id); return; }               
+      565 +              if (mergeSurvivorId && mergeSurvivorId !== n.nam
+          +ing_id) { selectMergeTarget(n.naming_id); return; }           
+      566                if (relateSource && !relateTarget && relateSourc
+           e !== n.naming_id) { startRelate(n.naming_id); return; }
+      567                if (reifyNamingId && reifyNamingId !== n.naming_
+           id) {
+      568                  if (!reifySourceId) { reifyPickSource(n.naming
+           _id); return; }
+
+● Now update the merge banner to show the confirmation step:
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/namings/+page.sveltesrc/routes/projects/[projectId]/namings/+page.svelte)
+  ⎿  Added 10 lines, removed 2 lines
+      497    {#if mergeSurvivorId}
+      498      {@const survNaming = findNaming(mergeSurvivorId)}
+      499      <div class="relate-banner merge-banner">
+      500 -      Merge into <strong>{survNaming?.current_inscription || s
+          -urvNaming?.inscription}</strong> — click the naming to absorb 
+      501 -      <button class="btn-xs" onclick={() => mergeSurvivorId = 
+          -null}>cancel</button>                                         
+      500 +      {#if mergeTargetId}                                     
+      501 +        {@const tgtNaming = findNaming(mergeTargetId)}        
+      502 +        Merge <strong>"{tgtNaming?.current_inscription || tgtN
+          +aming?.inscription}"</strong> into <strong>"{survNaming?.curre
+          +nt_inscription || survNaming?.inscription}"</strong>?         
+      503 +        All participations, appearances, and annotations trans
+          +fer to the survivor.                                          
+      504 +        <button class="btn-xs btn-confirm" onclick={confirmMer
+          +ge}>merge</button>                                            
+      505 +        <button class="btn-xs" onclick={cancelMerge}>cancel</b
+          +utton>                                                        
+      506 +      {:else}                                                 
+      507 +        Merge into <strong>"{survNaming?.current_inscription |
+          +| survNaming?.inscription}"</strong> — click the naming to abs
+          +orb                                                           
+      508 +        <button class="btn-xs" onclick={cancelMerge}>cancel</b
+          +utton>                                                        
+      509 +      {/if}                                                   
+      510      </div>
+      511    {/if}
+      512  
+
+● Build check:
+
+● Bash(npx vite build 2>&1 | tail -5)
+  ⎿  Run npm run preview to preview your production build locally.
+
+     > Using @sveltejs/adapter-node
+       ✔ done
+  ⎿  (timeout 1m)
+
+● Bash(git add src/lib/server/db/queries/namings.ts
+      src/routes/api/projects/\[projectId\]/namings/+server.ts
+      src/routes/projects/\[projectId\]/namings/+page.svelte &&…)
+  ⎿  [main 51ed80c] Add merge confirmation step and auto-memo documenting a
+     bsorbed naming
+      3 files changed, 95 insertions(+), 8 deletions(-)
+
+● Fertig. Jetzt:
+
+  1. Merge hat Bestätigungsschritt: Klick auf Target zeigt Banner mit "Merge X
+  into Y? All participations, appearances, and annotations transfer" + merge /
+  cancel Buttons
+  2. Auto-Memo: Nach dem Merge wird ein Memo erstellt (verlinkt mit dem
+  Survivor), das dokumentiert:
+    - Inscription des absorbierten Namings
+    - Designation-Stand
+    - Partizipationen (mit wem es verbunden war)
+    - Auf welchen Maps es erschien
+
+  Das Memo ist im Stack-Panel des Survivors unter "Memos" sichtbar.
+
+✻ Crunched for 2m 15s
+
+❯ Sehr gut. Was waren die nächsten Schritte für diese Sessoin?                  
+
+● Die vier geplanten Sessions (A-D) plus Import und Merge-Verbesserung sind alle
+   erledigt. Was noch offen ist aus der ursprünglichen Diskussion:
+
+  1. Strukturelle Integrität in relateElements — Wenn man auf einer Map eine
+  Relation erstellt, deren Endpoints nicht auf der Map sind, sollten sie
+  auto-hinzugefügt werden. Besprochen, aber nicht implementiert.
+  2. Session-Transkript — Session 13 dokumentieren (Entscheidungen: Multiple
+  Maps als Perspektiven, Naming-Identität, Cross-Boundary Signaling).
+  3. Die prozessuale Frage, die du am Anfang gestellt hast: Wie arbeitet man
+  konkret? Dokument→Map vs. direkt Maps erstellen? Das ist jetzt technisch
+  beides möglich (Import-Button + freies Naming), aber die methodische Reflexion
+   dazu steht noch aus.
+
+  Was willst du angehen?
+
+❯ Ich denke 1 geschieht scon, kann das sein? 2) ??, 3) ??                       
+
+● Zu 1 — lass mich prüfen:
+
+● Read 1 file (ctrl+o to expand)
+
+● Nein, relateElements prüft nicht, ob source/target Appearances auf der Map
+  haben. Es erstellt die Participation und die Relation-Appearance, aber wenn
+  die Endpoints nicht auf der Map sind → orphan relation (genau der Bug von
+  vorher, jetzt durch den ELK-Fix nur nicht mehr crashend, aber immer noch
+  inkonsistent).
+
+  Allerdings: In der Praxis passiert das nur wenn man über die Namings-Liste
+  relatiert (dort ruft relate getNewestSitMapId auf und platziert die Relation
+  auf der neuesten SitMap — ohne zu prüfen ob die Endpoints dort sind). Auf der
+  Map-Seite selbst kann man nur Namings relaten die schon auf der Map sichtbar
+  sind.
+
+  Soll ich den Fix einbauen? Ist eine Zeile — auto-add fehlende Endpoints:
+
+● Update(src/lib/server/db/queries/maps.ts)
+  ⎿  Added 15 lines
+      209    return transaction(async (client) => {
+      210      const researcherNamingId = await getOrCreateResearcherNami
+           ng(projectId, userId);
+      211  
+      212 +    // Ensure both endpoints have appearances on this map (str
+          +uctural integrity)                                            
+      213 +    for (const endpointId of [sourceId, targetId]) {          
+      214 +      const onMap = await client.query(                       
+      215 +        `SELECT 1 FROM appearances WHERE naming_id = $1 AND pe
+          +rspective_id = $2`,                                           
+      216 +        [endpointId, mapId]                                   
+      217 +      );                                                      
+      218 +      if (onMap.rows.length === 0) {                          
+      219 +        await client.query(                                   
+      220 +          `INSERT INTO appearances (naming_id, perspective_id,
+          + mode, properties)                                            
+      221 +           VALUES ($1, $2, 'entity', '{}')`,                  
+      222 +          [endpointId, mapId]                                 
+      223 +        );                                                    
+      224 +      }                                                       
+      225 +    }                                                         
+      226 +                                                              
+      227      // The participation is itself a naming
+      228      const partNamingRes = await client.query(
+      229        `INSERT INTO namings (project_id, inscription, created_b
+           y)
+
+● Bash(npx vite build 2>&1 | tail -3)
+  ⎿  > Using @sveltejs/adapter-node
+       ✔ done
+  ⎿  (timeout 1m)
+
+● Bash(git add src/lib/server/db/queries/maps.ts && git commit -m "$(cat <<'EOF'
+      Enforce structural integrity: auto-add missing endpoints when relating on
+      a map…)
+  ⎿  [main 1957623] Enforce structural integrity: auto-add missing endpoint
+     s when relating on a map
+      1 file changed, 15 insertions(+)
+
+● Erledigt. Zu 2) und 3) — das sind zusammenhängende Fragen. Das
+  Session-Transkript sollte die prozessuale Reflexion enthalten. Willst du das
+  jetzt gemeinsam formulieren, oder soll ich einen Entwurf auf Basis unserer
+  Diskussion erstellen?
+
+  Die Kernpunkte wären:
+  - Architektur-Entscheidung: Maps als Perspektiven, Liste als ground truth
+  - Prozessual: Zwei legitime Arbeitswege — (a) Dokument→Import→Map, (b) direkt
+  Map ohne Dokumente ("naming unnameds")
+  - Identitätsproblem: Suggestion-based dedup statt automatisch, Merge als
+  ground-truth Chirurgie
+  - Cross-boundary: Signaling statt auto-expansion respektiert perspektivische
+  Unabhängigkeit
+
+✻ Sautéed for 58s
+
+❯ erstelle einen Entwurf; schaue ob das Manual ergänzt werden sollte.           
+
+● Explore(Read manual and session docs)
+  ⎿  Done (5 tool uses · 36.4k tokens · 23s)
+  (ctrl+o to expand)
+
+● Read 1 file (ctrl+o to expand)
+
+● Now I have the full picture. Let me draft the session transcript and identify
+  manual updates.
+
+● Searched for 2 patterns, read 1 file (ctrl+o to expand)
+
+● Now I have everything I need. Let me write both documents.
+
+● Write(docs/sessions/2026-03-14-session_13_multi_map_perspectives.md)
+  ⎿  Wrote 105 lines to
+     docs/sessions/2026-03-14-session_13_multi_map_perspectives.md
+       1 # Session 13: Maps as Perspectives — Multi-Map Architecture and 
+         Naming Identity
+       2 
+       3 **Date:** 2026-03-14
+       4 **Model:** Claude Opus 4.6 (1M context)
+       5 
+       6 ---
+       7 
+       8 ## The Problem
+       9 
+      10 Working with transact-qda revealed a structural tension: the sys
+         tem had been designed around a single Situational Map per projec
+         t, with the argument that "it's a stack anyway." But practical w
+         ork — particularly creating maps to explore individual documents
+          — produced incongruences:
+     … +95 lines (ctrl+o to expand)
+
+● Now update the manual — Section 5.1 needs to reflect multi-map support:
+
+● Update(docs/manual.md)
+  ⎿  Added 10 lines, removed 2 lines
+      204  
+      205  A **map** is a naming that serves as a perspective. Creating a
+            map creates a naming with a self-referential appearance (`per
+           spective_id = naming_id`, `mode = 'perspective'`). Everything 
+           "on the map" is a naming that has an appearance from this pers
+           pective.
+      206  
+      207 -**Adding elements** creates a naming with an initial designati
+          -on of `cue` and an entity-appearance on the map. At this stage
+          -, nothing is determined — the element is a pointing gesture, a
+          - registered signal. The map's designation profile (aggregate c
+          -ounts per CCS stage) shows predominantly cues: the map is in i
+          -ts messy phase.                                               
+      207 +**Multiple maps** are both supported and expected. The Namings
+          + list (Section 4) is the complete, dimensionless representatio
+          +n; maps are curated perspectives on that ground truth. A proje
+          +ct may have several situational maps (one per document explore
+          +d, one for the overall situation), social worlds maps, positio
+          +nal maps, or network maps — all sharing the same naming pool. 
+          +Clarke herself distinguishes different map types; transact-qda
+          + does not constrain you to one.                               
+      208  
+      209 -**Relating elements** creates a participation-naming that bond
+          -s two namings. The relation itself gets an inscription ("const
+          -rains," "enables," "constitutes"), a designation, and its own 
+          -stack. Because the relation is a naming, it can be related to 
+          -other namings — including other relations. Clarke's relational
+          - analysis ("what is the nature of the relationship?") produces
+          - namings, not annotations on edges.                           
+      209 +**Adding elements** creates a naming with an initial designati
+          +on of `cue` and an entity-appearance on the map. At this stage
+          +, nothing is determined — the element is a pointing gesture, a
+          + registered signal. The map's designation profile (aggregate c
+          +ounts per CCS stage) shows predominantly cues: the map is in i
+          +ts messy phase. The input searches existing project namings: y
+          +ou can **place an existing naming** on this map (creating an a
+          +ppearance without a new naming) or **create a new naming**. Th
+          +is prevents unintended duplication across maps.               
+      210  
+      211 +**Relating elements** creates a participation-naming that bond
+          +s two namings. The relation itself gets an inscription ("const
+          +rains," "enables," "constitutes"), a designation, and its own 
+          +stack. Because the relation is a naming, it can be related to 
+          +other namings — including other relations. Clarke's relational
+          + analysis ("what is the nature of the relationship?") produces
+          + namings, not annotations on edges. **Structural integrity** i
+          +s enforced: when a relation is created on a map, both endpoint
+          +s are guaranteed to have appearances on that map.             
+      212 +                                                              
+      213 +**Cross-boundary signaling**: when a naming on a map has parti
+          +cipations with namings *not* on that map, an indicator shows t
+          +he count. This marks what the current perspective leaves outsi
+          +de — without auto-expanding the map. The user decides whether 
+          +to "pull" outside namings onto the map or leave them beyond th
+          +e current frame.                                              
+      214 +                                                              
+      215 +**Naming merge**: when two namings turn out to be the same ent
+          +ity (a collaboration or memory error), they can be merged. The
+          + survivor absorbs the merged naming's participations, appearan
+          +ces, and annotations. A memo documents what was absorbed. This
+          + is ground-truth surgery — irreversible by design, transparent
+          + by memo.                                                     
+      216 +                                                              
+      217 +**Import from document**: all annotation-namings (codes) from 
+          +a specific document can be batch-placed on a map. This support
+          +s the workflow: create a map → import from a document → begin 
+          +relational analysis.                                          
+      218 +                                                              
+      219  **Phases** emerge as sub-perspectives. A phase is a naming wit
+           h `mode = 'perspective'` that groups elements by analytical af
+           finity — Clarke's in-vivo categories (human elements, discours
+           es, political-economic forces, etc.), or categories that emerg
+           e from the material itself. Phase membership is a naming act. 
+           As elements receive characterizations and specifications, as p
+           hases crystallize, the designation profile shifts: the map mov
+           es from messy toward ordered. This is not a toggle but a conti
+           nuous process.
+      220  
+      221  **Pairwise interrogation** — Clarke's procedure of centering o
+           n one element and systematically examining its relation to eve
+           ry other — is available as a workflow mode. A transactional ex
+           tension is equally available: center on a *relation* and ask w
+           hich entities it connects, which other relations it participat
+           es in, what its inscription history reveals.
+
+● Now update the epistemological foundations to add a Section 13 reference:
+
+● Read 1 file (ctrl+o to expand)
+
+● Update(docs/sessions/00_epistemological_foundations.md)
+  ⎿  Added 1 line, removed 1 line
+      1  # Epistemological Foundations — Transact-QDA
+      2  
+      3 -Compressed reference from Sessions 00–02 + key clarifications fr
+        -om Session 09.                                                  
+      3 +Compressed reference from Sessions 00–02 + key clarifications fr
+        +om Sessions 09, 11–13.                                          
+      4  Every fresh session MUST read this before making architectural d
+         ecisions.
+      5  
+      6  ---
+
+● Update(docs/sessions/00_epistemological_foundations.md)
+  ⎿  Added 20 lines
+      302  - The AI's methodology advisor capacity includes attention to 
+           the **frame of countability** — not just what's missing, but w
+           hat the current constellation of namings makes structurally un
+           nameable
+      303  - **Silences** grounded through participations (constellation 
+           grounding) are architecturally complete — no additional proven
+           ance type needed
+      304  - The distinction observed-unmarked / analytical-unmarked is a
+           rticulated through **inscription and memos**, not through stru
+           ctural properties — this avoids pre-determining the distinctio
+           n that should emerge through analysis
+      305 +                                                              
+      306 +---                                                           
+      307 +                                                              
+      308 +## 13. Maps as Perspectives (Session 13)                      
+      309 +                                                              
+      310 +The Namings list IS the "one complete messy map" — complete, d
+          +imensionless, the privileged representation. Maps (canvas) are
+          + **curated perspectives** that select a subset of namings and 
+          +collapse them into 2D space. Multiple maps are necessary — the
+          +y are genuine perspectives, not copies.                       
+      311 +                                                              
+      312 +### Three principles for multi-map architecture               
+      313 +                                                              
+      314 +1. **Structural integrity within a map**: If a relation appear
+          +s on a map, its endpoints must too (auto-enforced, not manual)
+          +.                                                             
+      315 +2. **Cross-boundary signaling**: Maps show indicators for part
+          +icipations with namings outside the perspective. This marks wh
+          +at the map leaves uncounted — a direct application of the unma
+          +rked (Section 11). The user decides whether to pull outside na
+          +mings in.                                                     
+      316 +3. **Naming identity is suggestion-based**: Two separate namin
+          +g acts creating the same inscription ARE two different namings
+          +. The system suggests existing namings when adding to a map; m
+          +erge is available as explicit ground-truth surgery when duplic
+          +ates are discovered.                                          
+      317 +                                                              
+      318 +### Two legitimate workflows                                  
+      319 +                                                              
+      320 +**(a) Document → Map** (re-naming observed namings): Import an
+          +notation-codes from documents, then relate and designate. Grou
+          +nding is textual (document anchors). This is Clarke's standard
+          + path.                                                        
+      321 +                                                              
+      322 +**(b) Direct Map** (naming observed unnameds): Name what is in
+          + the situation without documents first. Grounding is relationa
+          +l (participations/constellation). This corresponds to operatio
+          +n (b) from Section 11.                                        
+      323 +                                                              
+      324 +Both produce the same data structure. Both are available at an
+          +y time. No enforced sequence — diffractory methods (Section 12
+          +).                                                            
+
+● Bash(git add docs/ && git commit -m "$(cat <<'EOF'
+      Add Session 13 transcript and update manual + foundations for multi-map
+      architecture…)
+  ⎿  [main 56de1a5] Add Session 13 transcript and update manual + foundatio
+     ns for multi-map architecture
+      3 files changed, 136 insertions(+), 3 deletions(-)
+     … +2 lines (ctrl+o to expand)
+
+● Fertig. Drei Dokumente aktualisiert:
+
+  1. docs/sessions/2026-03-14-session_13_multi_map_perspectives.md —
+  Vollständiger Session-Entwurf: Problem, Resolution, fünf architektonische
+  Entscheidungen, zwei Workflows, technische Übersicht
+  2. docs/manual.md Section 5.1 — Erweitert um: multiple maps, place existing,
+  structural integrity, cross-boundary signaling, naming merge, import from
+  document
+  3. docs/sessions/00_epistemological_foundations.md — Neuer Section 13: Maps
+  als Perspektiven, drei Prinzipien, zwei Workflows als architektonische
+  Konsequenz
+
+  Schau drüber — insbesondere der Session-Entwurf ist dein Text, nicht meiner.
+
+✻ Cogitated for 2m 47s
+
+-----
+Claude hat eine eigene Zusammenfassung dieser Session erstellt:
+
+# Session 13: Maps as Perspectives — Multi-Map Architecture and Naming Identity
+
+**Date:** 2026-03-14
+**Model:** Claude Opus 4.6 (1M context)
+
+---
+
+## The Problem
+
+Working with transact-qda revealed a structural tension: the system had been designed around a single Situational Map per project, with the argument that "it's a stack anyway." But practical work — particularly creating maps to explore individual documents — produced incongruences:
+
+1. **Orphan relations**: Creating namings and participations in the Namings list (ground truth) produced relations whose endpoints had no appearance on the map. The ELK layout engine crashed on edges pointing to non-existent nodes.
+
+2. **Naming duplication**: Creating namings on different maps (or on a map vs. in the list) produced separate namings with identical inscriptions. No mechanism existed to discover or reconcile these duplicates.
+
+3. **Perspectival incompleteness**: A map could not signal that its included namings had participations with namings outside the map's scope.
+
+The question: should maps auto-expand to include all namings (losing perspectival character), or should they be independent perspectives (requiring explicit curation)?
+
+## The Resolution: Three Layers Clarified
+
+The answer was already implicit in the three-layer hierarchy (Session 02) but had not been fully operationalized:
+
+| Layer | What it is | Completeness |
+|-------|-----------|-------------|
+| **Data structure** | namings, participations, naming_acts | Complete — ONE ground truth |
+| **List** (Namings page) | Privileged representation | Complete — shows ALL namings |
+| **Maps** (Canvas) | Derivative projections | Selective — curated perspectives |
+
+The **Namings list** already IS the "one complete messy map." It is dimensionless, non-reductive, and shows everything. A Situational Map on the canvas is necessarily selective the moment it arranges things spatially: proximity implies relation, clustering implies category — these are analytical acts, not neutral renderings.
+
+Therefore: **multiple maps are necessary.** They are genuine perspectives, not copies of one ground truth. Clarke herself distinguishes three map types (situational, social worlds/arenas, positional). A single comprehensive map becomes unmanageable with many namings. The architecture already supported this (composite PK `(naming_id, perspective_id)` on appearances), but the UX did not expose the capability.
+
+## Architectural Decisions
+
+### 1. Structural Integrity Within a Map
+
+**Constraint:** If a relation has an appearance on a map, its endpoints must too. This is not "auto-expansion" but constraint enforcement.
+
+**Implementation:** `relateElements` now checks that both source and target have appearances on the map before creating the relation. Missing endpoints are auto-added as entities. The ELK layout engine additionally validates that edge endpoints exist in the graph, skipping orphan edges gracefully.
+
+### 2. Cross-Boundary Signaling
+
+**Principle:** When a naming on Map A has a participation with a naming NOT on Map A, the map shows an indicator — not auto-resolves.
+
+**Implementation:** Each naming's appearance carries an `outside_participation_count`. An amber `+N` badge signals participations outside the current perspective. Clicking reveals the outside namings with a "pull onto map" action.
+
+This respects both ground truth sovereignty (list operations create namings/participations freely) and perspectival independence (maps don't auto-expand). The indicator literally marks what the current perspective leaves uncounted — a direct application of the unmarked (Session 11).
+
+### 3. Naming Identity: Suggestion, Not Enforcement
+
+**Principle:** Two separate naming acts creating "Artificial Intelligence" ARE genuinely two different namings in transactional ontology. Identity is not inscription-equality — it is constituted through the naming act itself.
+
+**Implementation:** The "Add" input on maps now searches existing project namings. The user sees existing namings matching their input and can choose: (a) place an existing naming on this map (creates appearance only), or (b) create a new naming. Deduplication is suggested, never automatic.
+
+### 4. Naming Merge
+
+**When** the user discovers two namings are the same entity, merge transfers all participations, appearances, directed_from/to references, and phase memberships from the merged naming to the survivor. The merged naming is soft-deleted. A confirmation step shows what will transfer. An auto-generated memo documents the absorbed naming's inscription, designation, participations, and map appearances — visible in the survivor's stack.
+
+### 5. Import From Document
+
+**Batch placement:** An "Import" button on the map toolbar shows all project documents with the count of namings (annotation codes) not yet on this map. Clicking imports all annotation-namings from that document as entities.
+
+This supports the workflow: create a new map → import from a specific document → all codes are there → begin relational analysis.
+
+## Processual Implications: Two Legitimate Workflows
+
+### (a) Document → Map (re-naming observed namings)
+
+1. Upload document, annotate passages, create in-vivo codes
+2. Create a Situational Map
+3. Import codes from the document (batch placement)
+4. Begin relational analysis: relate, phase, designate
+
+This is Clarke's standard path: empirical material first, then mapping. The grounding is textual (document anchors). The analytical act is **re-naming** — CCS movement from cue through characterization to specification.
+
+### (b) Direct Map (naming observed unnameds)
+
+1. Create a Situational Map
+2. Name what is in the situation directly (without document anchors)
+3. Relate, phase, designate
+4. Optionally: annotate documents later to ground the namings empirically
+
+This is equally legitimate. It corresponds to operation (b) from Session 11: **naming observed unnameds** — constitutive acts that bring something into countability. The grounding is relational (participations/constellation), not textual.
+
+Both workflows produce the same data structure. Both are available at any time. The system enforces no sequence. This is a direct consequence of the design commitment "no enforced procedure" (diffractory methods, Session 11).
+
+### Cross-pollination via shared ground truth
+
+Because all maps share one ground truth, a naming created on Map A can be placed on Map B without duplication. The search-and-place mechanism enables this. Cross-boundary signaling shows when Map A's namings have relations to namings on Map B (or on no map at all).
+
+This enables a research workflow where different maps represent different analytical angles on the same situation — situational map for the messy/ordered process, social worlds map for arena analysis, positional map for discursive positions — all sharing the same naming pool, all seeing each other's contributions through the cross-boundary indicators.
+
+## Technical Summary
+
+| Feature | File(s) | What |
+|---------|---------|------|
+| ELK resilience | `layout.ts` | Skip orphan edges, try/catch in initPositions |
+| Place existing | `maps.ts`, `+server.ts` | `placeExistingOnMap`, `searchNamingsForPlacement` |
+| Autocomplete | `+page.svelte` | Dual-mode input with search dropdown |
+| Cross-boundary | `maps.ts`, `+page.svelte` | `outside_participation_count`, amber badges, pull action |
+| Naming merge | `namings.ts`, `+server.ts`, `namings/+page.svelte` | Two-step confirm, auto-memo |
+| Import from doc | `maps.ts`, `+server.ts`, `+page.svelte` | Batch placement from document annotations |
+| Sidebar | `+layout.svelte`, `+layout.server.ts` | All maps grouped by type |
+| Structural integrity | `maps.ts` | Auto-add missing endpoints in relateElements |
