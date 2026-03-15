@@ -8,6 +8,7 @@
 	import { computeLayout, computeRadialLayout } from '$lib/canvas/layout.js';
 	import { regionColor } from '$lib/canvas/regions.js';
 	import FormationNode from '$lib/canvas/FormationNode.svelte';
+	import { computeSpatialRelations, type Formation } from '$lib/canvas/geometry.js';
 	import { SW_ROLES } from '$lib/shared/constants.js';
 	import type { SwRole } from '$lib/shared/types/index.js';
 
@@ -446,13 +447,121 @@
 		}
 	}
 
+	// ─── Spatial relation sync (SW/A maps) ───
+
+	let spatialSyncPending = false;
+
+	async function syncSpatialRelations() {
+		if (mapType !== 'social-worlds' || centeredId) return;
+		if (spatialSyncPending) return; // debounce concurrent calls
+		spatialSyncPending = true;
+
+		try {
+			// Build formation geometries from current state
+			const formations: Formation[] = [];
+			const plainElements: Array<{ id: string; x: number; y: number }> = [];
+
+			for (const el of elements) {
+				const pos = positions.get(el.naming_id);
+				if (!pos) continue;
+
+				if (el.sw_role) {
+					formations.push({
+						id: el.naming_id,
+						x: pos.x,
+						y: pos.y,
+						rx: el.properties?.rx || 150,
+						ry: el.properties?.ry || 100,
+						rotation: el.properties?.rotation || 0,
+						swRole: el.sw_role,
+					});
+				} else {
+					plainElements.push({ id: el.naming_id, x: pos.x, y: pos.y });
+				}
+			}
+
+			if (formations.length === 0) return;
+
+			// Compute current spatial state
+			const computed = computeSpatialRelations(plainElements, formations);
+
+			// Build sets for diff: existing spatially derived relations
+			const existingContains = new Map<string, string>(); // "sourceId:targetId" → relationId
+			const existingOverlaps = new Map<string, string>(); // "a:b" (sorted) → relationId
+			for (const rel of relations) {
+				if (!rel.properties?.spatiallyDerived || isWithdrawn(rel.properties)) continue;
+				if (rel.valence === 'contains' && rel.directed_from && rel.directed_to) {
+					existingContains.set(`${rel.directed_from}:${rel.directed_to}`, rel.naming_id);
+				} else if (rel.valence === 'overlaps') {
+					const src = rel.part_source_id;
+					const tgt = rel.part_target_id;
+					if (src && tgt) {
+						const key = [src, tgt].sort().join(':');
+						existingOverlaps.set(key, rel.naming_id);
+					}
+				}
+			}
+
+			// Diff: what to add and remove
+			const toAdd: Array<{ sourceId: string; targetId: string; valence: string; symmetric: boolean }> = [];
+			const toRemove: string[] = [];
+			const computedContains = new Set<string>();
+			const computedOverlaps = new Set<string>();
+
+			// Element-in-formation containment
+			for (const { elementId, formationId } of computed.elementInFormation) {
+				const key = `${formationId}:${elementId}`;
+				computedContains.add(key);
+				if (!existingContains.has(key)) {
+					toAdd.push({ sourceId: formationId, targetId: elementId, valence: 'contains', symmetric: false });
+				}
+			}
+
+			// Formation-in-formation containment
+			for (const { innerId, outerId } of computed.formationInFormation) {
+				const key = `${outerId}:${innerId}`;
+				computedContains.add(key);
+				if (!existingContains.has(key)) {
+					toAdd.push({ sourceId: outerId, targetId: innerId, valence: 'contains', symmetric: false });
+				}
+			}
+
+			// Formation overlaps
+			for (const { formationA, formationB } of computed.formationOverlaps) {
+				const key = [formationA, formationB].sort().join(':');
+				computedOverlaps.add(key);
+				if (!existingOverlaps.has(key)) {
+					toAdd.push({ sourceId: formationA, targetId: formationB, valence: 'overlaps', symmetric: true });
+				}
+			}
+
+			// Stale contains → withdraw
+			for (const [key, relId] of existingContains) {
+				if (!computedContains.has(key)) toRemove.push(relId);
+			}
+
+			// Stale overlaps → withdraw
+			for (const [key, relId] of existingOverlaps) {
+				if (!computedOverlaps.has(key)) toRemove.push(relId);
+			}
+
+			// Only sync if there are changes
+			if (toAdd.length > 0 || toRemove.length > 0) {
+				await mapAction('syncSpatialRelations', { add: toAdd, remove: toRemove });
+				await reload();
+			}
+		} finally {
+			spatialSyncPending = false;
+		}
+	}
+
 	// ─── Node interactions ───
 
 	function handleNodeDragEnd(id: string, x: number, y: number) {
 		positions = new Map(positions).set(id, { x, y });
 		// Don't persist positions during radial center-on view (transient layout)
 		if (!centeredId) {
-			mapAction('updatePosition', { namingId: id, x, y });
+			mapAction('updatePosition', { namingId: id, x, y }).then(() => syncSpatialRelations());
 		}
 	}
 
@@ -1183,8 +1292,9 @@
 		<div class="canvas-container" style="{viewMode !== 'canvas' ? 'display: none;' : ''}">
 			<InfiniteCanvas {viewport} oncanvasclick={handleCanvasClick}>
 				<!-- Connections: draw edges between elements and their relation nodes -->
+				<!-- Skip spatially derived relations (contains/overlaps) — the spatial arrangement IS the visual -->
 				{#if showConnections}
-				{#each relations as rel}
+				{#each relations.filter((r: any) => !r.properties?.spatiallyDerived) as rel}
 					{@const srcId = rel.directed_from || rel.part_source_id}
 					{@const tgtId = rel.directed_to || rel.part_target_id}
 					{@const isDirected = !!(rel.directed_from && rel.directed_to)}
@@ -1239,10 +1349,12 @@
 									onresizeend={async (newRx, newRy) => {
 										await mapAction('updateProperties', { namingId: el.naming_id, properties: { rx: newRx, ry: newRy } });
 										await reload();
+										syncSpatialRelations();
 									}}
 									onrotateend={async (newRotation) => {
 										await mapAction('updateProperties', { namingId: el.naming_id, properties: { rotation: newRotation } });
 										await reload();
+										syncSpatialRelations();
 									}}
 								/>
 							{:else}
@@ -1297,8 +1409,8 @@
 					{/if}
 				{/each}
 
-				<!-- Relation nodes (first-class, smaller) -->
-				{#each relations as rel}
+				<!-- Relation nodes (first-class, smaller) — skip spatially derived -->
+				{#each relations.filter((r: any) => !r.properties?.spatiallyDerived) as rel}
 					{@const pos = positions.get(rel.naming_id)}
 					{#if pos && !isHiddenByFilter(rel)}
 						<CanvasElement

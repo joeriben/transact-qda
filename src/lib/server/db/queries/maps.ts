@@ -638,6 +638,16 @@ export async function getMapAppearances(mapId: string, projectId: string) {
 	).rows;
 }
 
+// Withdraw (soft-delete) a relation's appearance on a map.
+// Used by spatial relation sync to remove stale containment/overlap relations.
+export async function withdrawRelation(namingId: string, mapId: string) {
+	return query(
+		`UPDATE appearances SET properties = properties || '{"withdrawn": true}'::jsonb, updated_at = now()
+		 WHERE naming_id = $1 AND perspective_id = $2 AND mode = 'relation'`,
+		[namingId, mapId]
+	);
+}
+
 // Get details of participations where the other endpoint is outside this map.
 // Returns the outside namings with their inscriptions and designations,
 // plus the relation naming that connects them.

@@ -10,6 +10,7 @@ import {
 	getOutsideParticipations,
 	getDocumentNamingsForPlacement,
 	relateElements,
+	withdrawRelation,
 	createPhase,
 	assignToPhase,
 	removeFromPhase,
@@ -284,6 +285,34 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			if (!namingId) return json({ error: 'namingId required' }, { status: 400 });
 			const memos = await getMemosForNaming(namingId, projectId);
 			return json({ memos });
+		}
+
+		case 'syncSpatialRelations': {
+			const { add, remove } = body;
+			const results = { added: 0, removed: 0 };
+
+			// Remove stale spatial relations (withdraw, not hard-delete)
+			if (remove && Array.isArray(remove)) {
+				for (const relId of remove) {
+					await withdrawRelation(relId, mapId);
+					results.removed++;
+				}
+			}
+
+			// Add new spatial relations
+			if (add && Array.isArray(add)) {
+				for (const rel of add) {
+					await relateElements(projectId, userId, mapId, rel.sourceId, rel.targetId, {
+						valence: rel.valence,
+						symmetric: rel.symmetric || false,
+						properties: { spatiallyDerived: true },
+					});
+					results.added++;
+				}
+			}
+
+			// No AI agent trigger — spatial sync is high-frequency
+			return json(results);
 		}
 
 		case 'updatePosition': {
