@@ -304,6 +304,33 @@ Core principle: the fundamental unit is the event (naming/relating act), not the
 
 ---
 
+## Session 14 — 2026-03-15
+
+**Focus**: Social Worlds/Arenas Maps — epistemological foundations and initial rendering
+
+- Epistemological deep dive into Clarke's SW/A maps (Session 14 transcript):
+  - Social Worlds as universes of discourse (Strauss/Shibutani), not institutional containers
+  - Arenas as dispositif configurations (Foucault), not neutral interaction zones
+  - Resolved dual discourse question (Gasterstädt): Straussian and Foucauldian discourse must be held in productive tension
+  - SW/A maps make stabilizations, conflict structures, and dispositival configurations visible
+  - Discourses are constitutive forces, not mere elements
+- **Formation classification via memo**: machine-readable `Formation: <role>` in first memo inscription — the analytical judgment "this IS a social world" is itself a naming act, not a structural type
+- **Four formation roles** with distinct visual signatures per Clarke:
+  - Social World: dotted ellipse
+  - Arena: dashed ellipse (gestrichelt)
+  - Organization: dashed rectangle
+  - Discourse: solid ellipse, semi-transparent fill
+- `addFormation` API action: creates element + classification memo with default size per role
+- `getMapAppearances` extracts `sw_role` from first linked "Formation:" memo
+- `FormationNode.svelte`: SVG component rendering inside existing `CanvasElement` (reuses drag/click logic)
+- SW/A-specific add-form with role selector dropdown
+
+| Commit | Description |
+|--------|-------------|
+| `f0fa562` | Add Social Worlds/Arenas map rendering with formation types |
+
+---
+
 ## Bugfixes — 2026-03-15
 
 | Commit | Description |
