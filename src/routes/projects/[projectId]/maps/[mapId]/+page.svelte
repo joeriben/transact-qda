@@ -1233,7 +1233,17 @@
 									color={designationColor(el.designation)}
 									rx={el.properties?.rx || 150}
 									ry={el.properties?.ry || 100}
+									rotation={el.properties?.rotation || 0}
 									selected={selection.isSelected(el.naming_id)}
+									zoom={viewport.zoom}
+									onresizeend={async (newRx, newRy) => {
+										await mapAction('updateProperties', { namingId: el.naming_id, properties: { rx: newRx, ry: newRy } });
+										await reload();
+									}}
+									onrotateend={async (newRotation) => {
+										await mapAction('updateProperties', { namingId: el.naming_id, properties: { rotation: newRotation } });
+										await reload();
+									}}
 								/>
 							{:else}
 							<div class="map-node" class:ai-suggested={el.properties?.aiSuggested} class:ai-withdrawn={isWithdrawn(el.properties)} class:phase-member={highlightedPhase && isPhaseHighlighted(el)} class:phase-dimmed={highlightedPhase && !isPhaseHighlighted(el)} class:centered-dim={centeredConnections && !centeredConnections.has(el.naming_id)} class:centered-anchor={centeredId === el.naming_id}

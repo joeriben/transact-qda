@@ -299,6 +299,19 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			return json({ ok: true });
 		}
 
+		case 'updateProperties': {
+			const { namingId, properties } = body;
+			if (!namingId || !properties || typeof properties !== 'object') return json({ error: 'namingId and properties object required' }, { status: 400 });
+			await import('$lib/server/db/index.js').then(({ query }) =>
+				query(
+					`UPDATE appearances SET properties = COALESCE(properties, '{}'::jsonb) || $1::jsonb, updated_at = now()
+					 WHERE naming_id = $2 AND perspective_id = $3`,
+					[JSON.stringify(properties), namingId, mapId]
+				)
+			);
+			return json({ ok: true });
+		}
+
 		case 'updatePositions': {
 			const { positions } = body;
 			if (!positions || !Array.isArray(positions)) return json({ error: 'positions array required' }, { status: 400 });
