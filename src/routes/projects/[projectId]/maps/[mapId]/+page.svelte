@@ -450,10 +450,14 @@
 	// ─── Spatial relation sync (SW/A maps) ───
 
 	let spatialSyncPending = false;
+	let spatialSyncQueued = false;
 
 	async function syncSpatialRelations() {
 		if (mapType !== 'social-worlds' || centeredId) return;
-		if (spatialSyncPending) return; // debounce concurrent calls
+		if (spatialSyncPending) {
+			spatialSyncQueued = true; // re-run after current sync completes
+			return;
+		}
 		spatialSyncPending = true;
 
 		try {
@@ -552,6 +556,11 @@
 			}
 		} finally {
 			spatialSyncPending = false;
+			// If another sync was requested while we were running, re-run with latest state
+			if (spatialSyncQueued) {
+				spatialSyncQueued = false;
+				syncSpatialRelations();
+			}
 		}
 	}
 
