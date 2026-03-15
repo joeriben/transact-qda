@@ -62,25 +62,48 @@
 	const fillColor = $derived(style.fillOpacity > 0 ? color : 'transparent');
 	const fillOp = $derived(style.fillOpacity);
 
-	// --- Resize handle logic (window-level listeners for reliability) ---
+	// --- Svelte action: attach native pointerdown to SVG elements (bypasses Svelte 5 delegation) ---
+	function resizeHandle(node: SVGElement, dir: 'e' | 'w' | 's' | 'n') {
+		function handler(e: PointerEvent) {
+			e.stopPropagation();
+			e.stopImmediatePropagation();
+			e.preventDefault();
+			isResizing = true;
+			resizeDirection = dir;
+			resizeStart = { clientX: e.clientX, clientY: e.clientY, rx: localRx, ry: localRy };
+			window.addEventListener('pointermove', onResizeMove);
+			window.addEventListener('pointerup', onResizeUp);
+		}
+		node.addEventListener('pointerdown', handler, { capture: true });
+		return { destroy() { node.removeEventListener('pointerdown', handler, { capture: true }); } };
+	}
+
+	function rotateHandle(node: SVGElement) {
+		function handler(e: PointerEvent) {
+			e.stopPropagation();
+			e.stopImmediatePropagation();
+			e.preventDefault();
+			isRotating = true;
+			rotStartRotation = localRotation;
+			const rect = svgEl.getBoundingClientRect();
+			const centerX = rect.left + rect.width / 2;
+			const centerY = rect.top + topExtra * zoom / 2 + (rect.height - topExtra * zoom) / 2;
+			rotStartAngle = Math.atan2(e.clientX - centerX, -(e.clientY - centerY)) * 180 / Math.PI;
+			window.addEventListener('pointermove', onRotateMove);
+			window.addEventListener('pointerup', onRotateUp);
+		}
+		node.addEventListener('pointerdown', handler, { capture: true });
+		return { destroy() { node.removeEventListener('pointerdown', handler, { capture: true }); } };
+	}
+
+	// --- Resize logic ---
 	let resizeStart = { clientX: 0, clientY: 0, rx: 0, ry: 0 };
 	let resizeDirection: 'e' | 'w' | 's' | 'n' = 'e';
-
-	function onResizeDown(dir: 'e' | 'w' | 's' | 'n', e: PointerEvent) {
-		e.stopPropagation();
-		e.preventDefault();
-		isResizing = true;
-		resizeDirection = dir;
-		resizeStart = { clientX: e.clientX, clientY: e.clientY, rx: localRx, ry: localRy };
-		window.addEventListener('pointermove', onResizeMove);
-		window.addEventListener('pointerup', onResizeUp);
-	}
 
 	function onResizeMove(e: PointerEvent) {
 		const dxScreen = (e.clientX - resizeStart.clientX) / zoom;
 		const dyScreen = (e.clientY - resizeStart.clientY) / zoom;
 
-		// Rotate delta into shape-local coordinates
 		const rad = -localRotation * Math.PI / 180;
 		const dxLocal = dxScreen * Math.cos(rad) - dyScreen * Math.sin(rad);
 		const dyLocal = dxScreen * Math.sin(rad) + dyScreen * Math.cos(rad);
@@ -103,23 +126,10 @@
 		onresizeend?.(Math.round(localRx), Math.round(localRy));
 	}
 
-	// --- Rotation handle logic (window-level listeners) ---
+	// --- Rotation logic ---
 	let svgEl: SVGSVGElement;
 	let rotStartAngle = 0;
 	let rotStartRotation = 0;
-
-	function onRotateDown(e: PointerEvent) {
-		e.stopPropagation();
-		e.preventDefault();
-		isRotating = true;
-		rotStartRotation = localRotation;
-		const rect = svgEl.getBoundingClientRect();
-		const centerX = rect.left + rect.width / 2;
-		const centerY = rect.top + topExtra * zoom / 2 + (rect.height - topExtra * zoom) / 2;
-		rotStartAngle = Math.atan2(e.clientX - centerX, -(e.clientY - centerY)) * 180 / Math.PI;
-		window.addEventListener('pointermove', onRotateMove);
-		window.addEventListener('pointerup', onRotateUp);
-	}
 
 	function onRotateMove(e: PointerEvent) {
 		const rect = svgEl.getBoundingClientRect();
@@ -206,28 +216,28 @@
 					cx={cx + localRx} cy={cy} r="6"
 					class="handle resize-handle"
 					style="cursor: ew-resize;"
-					onpointerdown={(e) => onResizeDown('e', e)}
+					use:resizeHandle={'e'}
 				/>
 				<!-- Resize: West -->
 				<circle
 					cx={cx - localRx} cy={cy} r="6"
 					class="handle resize-handle"
 					style="cursor: ew-resize;"
-					onpointerdown={(e) => onResizeDown('w', e)}
+					use:resizeHandle={'w'}
 				/>
 				<!-- Resize: South -->
 				<circle
 					cx={cx} cy={cy + localRy} r="6"
 					class="handle resize-handle"
 					style="cursor: ns-resize;"
-					onpointerdown={(e) => onResizeDown('s', e)}
+					use:resizeHandle={'s'}
 				/>
 				<!-- Resize: North -->
 				<circle
 					cx={cx} cy={cy - localRy} r="6"
 					class="handle resize-handle"
 					style="cursor: ns-resize;"
-					onpointerdown={(e) => onResizeDown('n', e)}
+					use:resizeHandle={'n'}
 				/>
 
 				<!-- Rotation: stem + handle -->
@@ -244,7 +254,7 @@
 					r="7"
 					class="handle rotate-handle"
 					style="cursor: grab;"
-					onpointerdown={onRotateDown}
+					use:rotateHandle
 				/>
 			{/if}
 		</g>
