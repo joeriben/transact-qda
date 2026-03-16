@@ -19,7 +19,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 	);
 
 	return {
-		projects: result.rows.map((r) => ({
+		projects: result.rows.map((r: typeof result.rows[number]) => ({
 			id: r.id,
 			name: r.name,
 			description: r.description,

@@ -120,11 +120,6 @@
 		color: #fff;
 	}
 
-	.badge {
-		font-size: 0.75rem;
-		color: #6b7280;
-	}
-
 	.project-content {
 		flex: 1;
 		padding: 2rem;

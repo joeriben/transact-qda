@@ -1,0 +1,582 @@
+import { getContext, setContext } from 'svelte';
+import { regionColor } from '$lib/canvas/regions.js';
+import type { SwRole } from '$lib/shared/types/index.js';
+
+const MAP_STATE_KEY = Symbol('mapState');
+
+export type StackData = {
+	inscriptions: any[];
+	designations: any[];
+	memos: any[];
+	discussion?: any[];
+	aiReasoning?: string | null;
+	aiSuggested?: boolean;
+	aiWithdrawn?: boolean;
+};
+
+export type MemoPanelData = {
+	id: string;
+	title: string;
+	content: string;
+	linkedIds: string[];
+	authorId: string;
+};
+
+export type MapState = ReturnType<typeof createMapState>;
+
+export function createMapState(
+	initialData: any,
+	viewport: { x: number; y: number; zoom: number },
+) {
+	// ─── Core data ───
+	let elements = $state<any[]>(initialData.elements);
+	let relations = $state<any[]>(initialData.relations);
+	let silences = $state<any[]>(initialData.silences);
+	let phases = $state<any[]>(initialData.phases);
+	let designationProfile = $state<any[]>(initialData.designationProfile);
+
+	// ─── Derived ───
+	const mapType = $derived(initialData.map.properties?.mapType || 'situational');
+	const allItems = $derived([...elements, ...relations, ...silences]);
+	const phaseColorMap = $derived(
+		new Map(phases.map((p: any, i: number) => [p.id, regionColor(i)]))
+	);
+
+	const DECLINED_PHASE = '__declined__';
+	const declinedCount = $derived(
+		allItems.filter((n: any) => isWithdrawn(n.properties)).length
+	);
+
+	// ─── Shared interaction state ───
+	let stackId = $state<string | null>(null);
+	let stackData = $state<StackData | null>(null);
+	let editingId = $state<string | null>(null);
+	let editingValue = $state('');
+	let relatingFrom = $state<string | null>(null);
+	let relatingTo = $state<string | null>(null);
+
+	// Naming act prompt
+	let actTarget = $state<string | null>(null);
+	let actType = $state<'rename' | 'designate' | 'relate'>('rename');
+	let actNewValue = $state('');
+	let actMemo = $state('');
+	let actLinkedIds = $state<string[]>([]);
+	let showActLinks = $state(false);
+	let actExistingMemos = $state<any[]>([]);
+
+	// Phases
+	let assigningToPhase = $state<string | null>(null);
+	let highlightedPhase = $state<string | null>(null);
+	const isDeclinedFilter = $derived(highlightedPhase === DECLINED_PHASE);
+
+	// AI
+	let aiEnabled = $state(true);
+	let aiNotification = $state<string | null>(null);
+	let aiNotificationTimeout: ReturnType<typeof setTimeout> | undefined;
+
+	// Memo panel
+	let memoPanel = $state<MemoPanelData | null>(null);
+
+	// Outside participations
+	let outsideId = $state<string | null>(null);
+	let outsideData = $state<any[] | null>(null);
+	let outsideLoading = $state(false);
+
+	// Discussion (stack panel local)
+	let discussInput = $state('');
+	let discussLoading = $state(false);
+	let memoDiscussInput = $state('');
+	let memoDiscussLoading = $state(false);
+	let memoDiscussTarget = $state<string | null>(null);
+
+	// Phase sidebar state
+	let showPhaseForm = $state(false);
+	let newPhaseLabel = $state('');
+	let expandedPhase = $state<string | null>(null);
+	let phaseContents = $state<any[]>([]);
+
+	// ─── Helpers ───
+
+	function isWithdrawn(props: any): boolean {
+		return props?.withdrawn === true || props?.aiWithdrawn === true;
+	}
+
+	function isHiddenByFilter(node: any): boolean {
+		return isDeclinedFilter && isWithdrawn(node.properties);
+	}
+
+	function isPhaseHighlighted(node: any): boolean {
+		if (!highlightedPhase) return false;
+		return node.phase_ids?.includes(highlightedPhase) ?? false;
+	}
+
+	function connectionOpacity(rel: any, srcNode: any, tgtNode: any): number {
+		if (isDeclinedFilter && isWithdrawn(rel.properties)) return 0;
+		if (isDeclinedFilter && (isWithdrawn(srcNode?.properties) || isWithdrawn(tgtNode?.properties))) return 0;
+		if (isWithdrawn(rel.properties)) return 0.2;
+		return 1;
+	}
+
+	function designationColor(d: string | undefined) {
+		if (d === 'specification') return '#10b981';
+		if (d === 'characterization') return '#f59e0b';
+		return '#6b7280';
+	}
+
+	function designationLabel(d: string | undefined) {
+		if (d === 'specification') return 'spec';
+		if (d === 'characterization') return 'char';
+		return 'cue';
+	}
+
+	function findNode(namingId: string) {
+		return allItems.find((n: any) => n.naming_id === namingId);
+	}
+
+	function findInscription(namingId: string): string {
+		if (!namingId) return '?';
+		const node = findNode(namingId);
+		if (!node) return '?';
+		if (node.inscription) return node.inscription;
+		if (node.mode === 'relation') {
+			const src = findInscription(node.directed_from || node.part_source_id);
+			const tgt = findInscription(node.directed_to || node.part_target_id);
+			return `(${src} -> ${tgt})`;
+		}
+		return '?';
+	}
+
+	function estimateNodeWidth(node: any): number {
+		if (!node) return 100;
+		if (node.mode === 'relation') {
+			return node.inscription ? Math.max(100, Math.min(220, node.inscription.length * 8 + 40)) : 36;
+		}
+		return Math.max(100, Math.min(220, (node.inscription?.length || 5) * 8 + 40));
+	}
+
+	// ─── API ───
+
+	async function mapAction(action: string, body: Record<string, unknown> = {}) {
+		const res = await fetch(`/api/projects/${initialData.projectId}/maps/${initialData.map.id}`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ action, ...body })
+		});
+		if (!res.ok) return null;
+		return res.json();
+	}
+
+	async function reload() {
+		const res = await fetch(`/api/projects/${initialData.projectId}/maps/${initialData.map.id}`);
+		if (!res.ok) return;
+		const fresh = await res.json();
+		elements = fresh.elements;
+		relations = fresh.relations;
+		silences = fresh.silences;
+		phases = fresh.phases;
+		designationProfile = fresh.designationProfile;
+	}
+
+	// ─── Shared actions ───
+
+	async function showStack(namingId: string) {
+		if (stackId === namingId) { stackId = null; stackData = null; return; }
+		stackId = namingId;
+		stackData = await mapAction('getStack', { namingId });
+	}
+
+	async function submitAct() {
+		if (!actTarget) return;
+		if (actType === 'rename') {
+			await mapAction('rename', { namingId: actTarget, inscription: actNewValue, memoText: actMemo.trim() || undefined, linkedNamingIds: actLinkedIds.length > 0 ? actLinkedIds : undefined });
+		} else if (actType === 'designate') {
+			await mapAction('designate', { namingId: actTarget, designation: actNewValue, memoText: actMemo.trim() || undefined, linkedNamingIds: actLinkedIds.length > 0 ? actLinkedIds : undefined });
+		} else if (actType === 'relate') {
+			const links = [actTarget, ...actLinkedIds];
+			await fetch(`/api/projects/${initialData.projectId}/memos`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					label: `Relation: ${actNewValue || '(unnamed)'}`,
+					content: actMemo.trim(),
+					linkedElementIds: links
+				})
+			});
+		}
+		cancelAct();
+		await reload();
+	}
+
+	async function skipAct() {
+		if (!actTarget) return;
+		if (actType === 'rename') {
+			await mapAction('rename', { namingId: actTarget, inscription: actNewValue });
+		} else if (actType === 'designate') {
+			await mapAction('designate', { namingId: actTarget, designation: actNewValue });
+		}
+		cancelAct();
+		await reload();
+	}
+
+	async function loadActMemos(namingId: string) {
+		const res = await mapAction('getMemosForNaming', { namingId });
+		actExistingMemos = res?.memos || [];
+	}
+
+	function cancelAct() {
+		actTarget = null;
+		actMemo = '';
+		actLinkedIds = [];
+		showActLinks = false;
+		actExistingMemos = [];
+	}
+
+	function toggleActLink(namingId: string) {
+		if (actLinkedIds.includes(namingId)) {
+			actLinkedIds = actLinkedIds.filter(id => id !== namingId);
+		} else {
+			actLinkedIds = [...actLinkedIds, namingId];
+		}
+	}
+
+	function confirmRename() {
+		if (!editingId || !editingValue.trim()) return;
+		actTarget = editingId;
+		actType = 'rename';
+		actNewValue = editingValue.trim();
+		actMemo = '';
+		loadActMemos(editingId);
+		editingId = null;
+		editingValue = '';
+	}
+
+	function startDesignation(namingId: string, designation: string) {
+		actTarget = namingId;
+		actType = 'designate';
+		actNewValue = designation;
+		actMemo = '';
+		actLinkedIds = [];
+		showActLinks = false;
+		loadActMemos(namingId);
+	}
+
+	function startRelating(fromId: string) {
+		relatingFrom = fromId;
+	}
+
+	function completeRelating(toId: string) {
+		if (!relatingFrom || relatingFrom === toId) return;
+		relatingTo = toId;
+	}
+
+	async function submitRelation(relInscription: string, relValence: string, relDirected: boolean) {
+		if (!relatingFrom || !relatingTo) return;
+		const result = await mapAction('relate', {
+			sourceId: relatingFrom,
+			targetId: relatingTo,
+			inscription: relInscription.trim() || undefined,
+			valence: relValence.trim() || undefined,
+			symmetric: !relDirected
+		});
+		const relationId = result?.id;
+		relatingFrom = null;
+		relatingTo = null;
+		await reload();
+		if (relationId) {
+			actTarget = relationId;
+			actType = 'relate';
+			actNewValue = relInscription.trim() || relValence.trim() || '';
+			actMemo = '';
+			actLinkedIds = [];
+			showActLinks = false;
+			loadActMemos(relationId);
+		}
+	}
+
+	function cancelRelation() {
+		relatingFrom = null;
+		relatingTo = null;
+	}
+
+	async function toggleWithdraw(namingId: string, currentlyWithdrawn: boolean) {
+		await mapAction('withdraw', { namingId, withdrawn: !currentlyWithdrawn });
+		await reload();
+	}
+
+	// AI
+	function showAiNotification(text: string) {
+		aiNotification = text;
+		clearTimeout(aiNotificationTimeout);
+		aiNotificationTimeout = setTimeout(() => { aiNotification = null; }, 4000);
+	}
+
+	async function toggleAi() {
+		const next = !aiEnabled;
+		await mapAction('toggleAi', { enabled: next });
+		aiEnabled = next;
+	}
+
+	async function requestAnalysis() {
+		await mapAction('requestAnalysis');
+		showAiNotification('AI analysis requested');
+	}
+
+	// Discussion
+	async function submitDiscussion() {
+		if (!stackId || !discussInput.trim() || discussLoading) return;
+		discussLoading = true;
+		try {
+			const result = await mapAction('discussCue', { namingId: stackId, message: discussInput.trim() });
+			if (!result) { showAiNotification('Discussion failed (server error)'); return; }
+			discussInput = '';
+			const freshStack = await mapAction('getStack', { namingId: stackId });
+			if (freshStack) stackData = freshStack;
+			await reload();
+		} catch {
+			showAiNotification('Discussion failed');
+		} finally {
+			discussLoading = false;
+		}
+	}
+
+	async function submitMemoDiscussion(memoId: string) {
+		if (!memoDiscussInput.trim() || memoDiscussLoading) return;
+		memoDiscussLoading = true;
+		try {
+			const result = await mapAction('discussMemo', { memoId, message: memoDiscussInput.trim() });
+			if (!result) { showAiNotification('Memo discussion failed'); return; }
+			memoDiscussInput = '';
+			if (stackId) {
+				const freshStack = await mapAction('getStack', { namingId: stackId });
+				if (freshStack) stackData = freshStack;
+			}
+		} catch {
+			showAiNotification('Memo discussion failed');
+		} finally {
+			memoDiscussLoading = false;
+		}
+	}
+
+	function dismissMemoPanel() {
+		memoPanel = null;
+	}
+
+	// Outside participations
+	async function showOutsideParticipations(namingId: string) {
+		if (outsideId === namingId) { outsideId = null; outsideData = null; return; }
+		outsideId = namingId;
+		outsideLoading = true;
+		const res = await mapAction('getOutsideParticipations', { namingId });
+		outsideData = res.participations || [];
+		outsideLoading = false;
+	}
+
+	async function pullOntoMap(namingId: string) {
+		await mapAction('placeExisting', { namingId });
+		await reload();
+		if (outsideId) {
+			const res = await mapAction('getOutsideParticipations', { namingId: outsideId });
+			outsideData = res.participations || [];
+		}
+	}
+
+	// Phases
+	async function addPhase() {
+		if (!newPhaseLabel.trim()) return;
+		await mapAction('createPhase', { inscription: newPhaseLabel.trim() });
+		newPhaseLabel = '';
+		showPhaseForm = false;
+		await reload();
+	}
+
+	async function assignElement(phaseId: string, namingId: string) {
+		await mapAction('assignToPhase', { phaseId, namingId });
+		await reload();
+		if (expandedPhase === phaseId) {
+			const res = await fetch(`/api/projects/${initialData.projectId}/maps/${phaseId}`);
+			if (res.ok) {
+				const fresh = await res.json();
+				phaseContents = [...(fresh.elements || []), ...(fresh.relations || []), ...(fresh.silences || [])];
+			}
+		}
+	}
+
+	async function removeElementFromPhase(phaseId: string, namingId: string) {
+		await mapAction('removeFromPhase', { phaseId, namingId });
+		await reload();
+		if (expandedPhase === phaseId) {
+			const res = await fetch(`/api/projects/${initialData.projectId}/maps/${phaseId}`);
+			if (res.ok) {
+				const fresh = await res.json();
+				phaseContents = [...(fresh.elements || []), ...(fresh.relations || []), ...(fresh.silences || [])];
+			}
+		}
+	}
+
+	async function togglePhase(phaseId: string) {
+		if (expandedPhase === phaseId) {
+			expandedPhase = null;
+			phaseContents = [];
+		} else {
+			expandedPhase = phaseId;
+			const res = await fetch(`/api/projects/${initialData.projectId}/maps/${phaseId}`);
+			if (res.ok) {
+				const fresh = await res.json();
+				phaseContents = [...(fresh.elements || []), ...(fresh.relations || []), ...(fresh.silences || [])];
+			}
+		}
+	}
+
+	// Perspectival collapse
+	async function pinToLayer(namingId: string, seq: number) {
+		await mapAction('setCollapse', { namingId, collapseAt: seq });
+		await reload();
+	}
+
+	async function unpinLayer(namingId: string) {
+		await mapAction('setCollapse', { namingId, collapseAt: null });
+		await reload();
+	}
+
+	// ─── Sync data from page props ───
+	function syncData(data: any) {
+		elements = data.elements;
+		relations = data.relations;
+		silences = data.silences;
+		phases = data.phases;
+		designationProfile = data.designationProfile;
+	}
+
+	return {
+		// Data (getters)
+		get elements() { return elements; },
+		get relations() { return relations; },
+		get silences() { return silences; },
+		get phases() { return phases; },
+		get designationProfile() { return designationProfile; },
+		get mapType() { return mapType; },
+		get allItems() { return allItems; },
+		get phaseColorMap() { return phaseColorMap; },
+		get declinedCount() { return declinedCount; },
+		get isDeclinedFilter() { return isDeclinedFilter; },
+		DECLINED_PHASE,
+
+		// Interaction state (getters/setters)
+		get stackId() { return stackId; },
+		set stackId(v) { stackId = v; },
+		get stackData() { return stackData; },
+		set stackData(v) { stackData = v; },
+		get editingId() { return editingId; },
+		set editingId(v) { editingId = v; },
+		get editingValue() { return editingValue; },
+		set editingValue(v) { editingValue = v; },
+		get relatingFrom() { return relatingFrom; },
+		set relatingFrom(v) { relatingFrom = v; },
+		get relatingTo() { return relatingTo; },
+		set relatingTo(v) { relatingTo = v; },
+		get actTarget() { return actTarget; },
+		set actTarget(v) { actTarget = v; },
+		get actType() { return actType; },
+		set actType(v) { actType = v; },
+		get actNewValue() { return actNewValue; },
+		set actNewValue(v) { actNewValue = v; },
+		get actMemo() { return actMemo; },
+		set actMemo(v) { actMemo = v; },
+		get actLinkedIds() { return actLinkedIds; },
+		set actLinkedIds(v) { actLinkedIds = v; },
+		get showActLinks() { return showActLinks; },
+		set showActLinks(v) { showActLinks = v; },
+		get actExistingMemos() { return actExistingMemos; },
+		get assigningToPhase() { return assigningToPhase; },
+		set assigningToPhase(v) { assigningToPhase = v; },
+		get highlightedPhase() { return highlightedPhase; },
+		set highlightedPhase(v) { highlightedPhase = v; },
+		get aiEnabled() { return aiEnabled; },
+		get aiNotification() { return aiNotification; },
+		set aiNotification(v) { aiNotification = v; },
+		get memoPanel() { return memoPanel; },
+		set memoPanel(v) { memoPanel = v; },
+		get outsideId() { return outsideId; },
+		set outsideId(v) { outsideId = v; },
+		get outsideData() { return outsideData; },
+		set outsideData(v) { outsideData = v; },
+		get outsideLoading() { return outsideLoading; },
+
+		// Discussion state
+		get discussInput() { return discussInput; },
+		set discussInput(v) { discussInput = v; },
+		get discussLoading() { return discussLoading; },
+		get memoDiscussInput() { return memoDiscussInput; },
+		set memoDiscussInput(v) { memoDiscussInput = v; },
+		get memoDiscussLoading() { return memoDiscussLoading; },
+		get memoDiscussTarget() { return memoDiscussTarget; },
+		set memoDiscussTarget(v) { memoDiscussTarget = v; },
+
+		// Phase sidebar state
+		get showPhaseForm() { return showPhaseForm; },
+		set showPhaseForm(v) { showPhaseForm = v; },
+		get newPhaseLabel() { return newPhaseLabel; },
+		set newPhaseLabel(v) { newPhaseLabel = v; },
+		get expandedPhase() { return expandedPhase; },
+		get phaseContents() { return phaseContents; },
+
+		// Helpers
+		isWithdrawn,
+		isHiddenByFilter,
+		isPhaseHighlighted,
+		connectionOpacity,
+		designationColor,
+		designationLabel,
+		findNode,
+		findInscription,
+		estimateNodeWidth,
+
+		// API
+		mapAction,
+		reload,
+		syncData,
+
+		// Actions
+		showStack,
+		submitAct,
+		skipAct,
+		loadActMemos,
+		cancelAct,
+		toggleActLink,
+		confirmRename,
+		startDesignation,
+		startRelating,
+		completeRelating,
+		submitRelation,
+		cancelRelation,
+		toggleWithdraw,
+		showAiNotification,
+		toggleAi,
+		requestAnalysis,
+		submitDiscussion,
+		submitMemoDiscussion,
+		dismissMemoPanel,
+		showOutsideParticipations,
+		pullOntoMap,
+		addPhase,
+		assignElement,
+		removeElementFromPhase,
+		togglePhase,
+		pinToLayer,
+		unpinLayer,
+
+		// Data needed for API URLs
+		projectId: initialData.projectId,
+		mapId: initialData.map.id,
+		mapLabel: initialData.map.label,
+		mapProperties: initialData.map.properties,
+	};
+}
+
+export function setMapState(state: MapState) {
+	setContext(MAP_STATE_KEY, state);
+}
+
+export function getMapState(): MapState {
+	return getContext<MapState>(MAP_STATE_KEY);
+}

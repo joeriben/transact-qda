@@ -5,8 +5,9 @@ export async function extractText(buffer: Buffer, mimeType: string): Promise<str
 
 	if (mimeType === 'application/pdf') {
 		try {
-			const pdfParse = await import('pdf-parse');
-			const data = await pdfParse.default(buffer);
+			const pdfParse = (await import('pdf-parse')) as any;
+			const parseFn = pdfParse.default || pdfParse;
+			const data = await parseFn(buffer);
 			return data.text;
 		} catch {
 			return '[PDF text extraction failed]';

@@ -8,7 +8,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 	if (token) {
 		const session = await validateSession(token);
 		if (session) {
-			event.locals.user = session.user;
+			event.locals.user = { ...session.user, role: session.user.role as 'admin' | 'user' };
 			event.locals.sessionId = session.sessionId;
 		} else {
 			event.cookies.delete(SESSION_COOKIE, { path: '/' });

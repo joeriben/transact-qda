@@ -191,9 +191,9 @@ function collectEdges(parent: ElkNode, offsetX: number, offsetY: number): Layout
 
 // Main entry point: compute layout for map data
 export async function computeLayout(
-	elements: LayoutNode[],
-	relations: LayoutNode[],
-	silences: LayoutNode[],
+	elements: LayoutNode[] | any[],
+	relations: LayoutNode[] | any[],
+	silences: LayoutNode[] | any[],
 	algorithm: 'layered' | 'stress' | 'force' = 'stress'
 ): Promise<LayoutResult> {
 	if (elements.length === 0 && relations.length === 0 && silences.length === 0) {
@@ -230,9 +230,9 @@ export async function computeLayout(
 // Pure geometry — no ELK, synchronous, deterministic.
 export function computeRadialLayout(
 	centerId: string,
-	elements: LayoutNode[],
-	relations: LayoutNode[],
-	silences: LayoutNode[]
+	elements: LayoutNode[] | any[],
+	relations: LayoutNode[] | any[],
+	silences: LayoutNode[] | any[]
 ): Map<string, { x: number; y: number }> {
 	const positions = new Map<string, { x: number; y: number }>();
 

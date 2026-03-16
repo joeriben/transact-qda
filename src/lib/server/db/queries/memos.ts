@@ -96,7 +96,13 @@ export async function getMemosByProject(projectId: string) {
 }
 
 export async function getMemo(memoId: string, projectId: string) {
-	const memo = await queryOne(
+	const memo = await queryOne<{
+		id: string;
+		label: string;
+		created_at: string;
+		content: string;
+		format: string;
+	}>(
 		`SELECT n.id, n.inscription as label, n.created_at,
 		        mc.content, mc.format
 		 FROM namings n

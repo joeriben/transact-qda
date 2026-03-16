@@ -328,7 +328,7 @@
 						{#each { length: lineCount } as _, i}
 							<div class="margin-line">
 								{#if marginMap.has(i)}
-									{@const ma = marginMap.get(i)}
+									{@const ma = marginMap.get(i)!}
 									<!-- svelte-ignore a11y_no_static_element_interactions -->
 									<span
 										class="margin-label"
@@ -731,7 +731,6 @@
 
 	.count { color: #6b7280; }
 	.empty { font-size: 0.8rem; color: #6b7280; }
-	.empty a { color: #8b9cf7; }
 
 	.annotation-card {
 		background: #1e2030;

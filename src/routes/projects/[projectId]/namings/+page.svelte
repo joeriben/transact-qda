@@ -1127,7 +1127,6 @@
 	.btn-xs:hover { border-color: #4b5060; color: #e1e4e8; }
 	.btn-confirm { border-color: #8b9cf7; color: #8b9cf7; font-weight: 600; }
 	.btn-confirm:hover { background: rgba(139, 156, 247, 0.12); color: #e1e4e8; }
-	.btn-icon { width: 14px; height: 14px; opacity: 0.5; display: block; }
 	.btn-withdraw { border-color: #6b7280; color: #6b7280; font-size: 0.65rem; }
 	.btn-withdraw:hover { background: rgba(107, 114, 128, 0.1); }
 	.btn-mode { border-color: #8b9cf7; color: #8b9cf7; font-size: 0.65rem; opacity: 0.6; }

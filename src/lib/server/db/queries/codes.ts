@@ -34,7 +34,15 @@ export async function getOrCreateGroundingWorkspace(projectId: string, userId: s
  * Prefers map appearances over grounding workspace for color/source info.
  */
 export async function getAnnotationCandidates(projectId: string) {
-	const result = await query(
+	const result = await query<{
+		id: string;
+		label: string;
+		color: string | null;
+		source_map_id: string | null;
+		source_map_label: string | null;
+		is_orphan: boolean;
+		has_document_anchor: boolean;
+	}>(
 		`SELECT DISTINCT ON (n.id)
 		        n.id,
 		        n.inscription as label,

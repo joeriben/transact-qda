@@ -365,7 +365,24 @@ export async function getDesignationHistory(namingId: string) {
 
 export async function getAllProjectNamings(projectId: string) {
 	return (
-		await query(
+		await query<{
+			naming_id: string;
+			inscription: string;
+			created_at: string;
+			seq: string;
+			designation: string | null;
+			current_inscription: string | null;
+			has_document_anchor: boolean;
+			has_memo_link: boolean;
+			mode: string | null;
+			directed_from: string | null;
+			directed_to: string | null;
+			source_inscription: string | null;
+			target_inscription: string | null;
+			valence: string | null;
+			properties: Record<string, any> | null;
+			appears_on_maps: { id: string; label: string }[] | null;
+		}>(
 			`SELECT n.id as naming_id, n.inscription, n.created_at, n.seq,
 			   -- Current designation (latest non-NULL in stack)
 			   (SELECT na.designation FROM naming_acts na
