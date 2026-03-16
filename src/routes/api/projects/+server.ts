@@ -5,13 +5,221 @@ import { projectSchema } from '$lib/shared/validation.js';
 
 export const POST: RequestHandler = async ({ request, locals }) => {
 	const body = await request.json();
+	const userId = locals.user!.id;
+
+	// Save As (duplicate project)
+	if (body.action === 'duplicate') {
+		const { sourceProjectId, name } = body;
+		if (!sourceProjectId) return json({ error: 'sourceProjectId required' }, { status: 400 });
+
+		const project = await transaction(async (client) => {
+			// Get source project
+			const src = (await client.query(
+				`SELECT name, description FROM projects WHERE id = $1`, [sourceProjectId]
+			)).rows[0];
+			if (!src) throw new Error('Source project not found');
+
+			// Create new project
+			const newName = name || `${src.name} (copy)`;
+			const pRes = await client.query(
+				`INSERT INTO projects (name, description, created_by)
+				 VALUES ($1, $2, $3) RETURNING id, name, description, created_at`,
+				[newName, src.description, userId]
+			);
+			const newProjectId = pRes.rows[0].id;
+
+			await client.query(
+				`INSERT INTO project_members (project_id, user_id, role) VALUES ($1, $2, 'owner')`,
+				[newProjectId, userId]
+			);
+
+			// Copy all namings, build old→new ID map
+			const srcNamings = (await client.query(
+				`SELECT id, inscription, created_by, created_at FROM namings
+				 WHERE project_id = $1 AND deleted_at IS NULL`,
+				[sourceProjectId]
+			)).rows;
+
+			const idMap = new Map<string, string>();
+			for (const n of srcNamings) {
+				const r = await client.query(
+					`INSERT INTO namings (project_id, inscription, created_by)
+					 VALUES ($1, $2, $3) RETURNING id`,
+					[newProjectId, n.inscription, n.created_by]
+				);
+				idMap.set(n.id, r.rows[0].id);
+			}
+
+			// Helper: remap a naming ID. Throws if a non-null ID is missing from the map.
+			const remap = (id: string | null): string | null => {
+				if (!id) return null;
+				const mapped = idMap.get(id);
+				if (!mapped) throw new Error(`Integrity error: naming ${id} not found in project copy map`);
+				return mapped;
+			};
+
+			// Copy appearances (remap all naming ID references)
+			const apps = (await client.query(
+				`SELECT a.naming_id, a.perspective_id, a.mode, a.directed_from, a.directed_to, a.valence, a.properties
+				 FROM appearances a
+				 JOIN namings n ON n.id = a.naming_id
+				 WHERE n.project_id = $1 AND n.deleted_at IS NULL`,
+				[sourceProjectId]
+			)).rows;
+
+			for (const a of apps) {
+				const newNamingId = remap(a.naming_id);
+				const newPerspId = remap(a.perspective_id);
+				await client.query(
+					`INSERT INTO appearances (naming_id, perspective_id, mode, directed_from, directed_to, valence, properties)
+					 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+					[newNamingId, newPerspId, a.mode, remap(a.directed_from), remap(a.directed_to), a.valence, a.properties]
+				);
+			}
+
+			// Copy naming_acts (remap naming_id, by, linked_naming_ids)
+			const acts = (await client.query(
+				`SELECT na.naming_id, na.by, na.inscription, na.designation, na.mode, na.valence, na.memo_text, na.linked_naming_ids
+				 FROM naming_acts na
+				 JOIN namings n ON n.id = na.naming_id
+				 WHERE n.project_id = $1 AND n.deleted_at IS NULL
+				 ORDER BY na.seq`,
+				[sourceProjectId]
+			)).rows;
+
+			for (const act of acts) {
+				const newNamingId = remap(act.naming_id);
+				const newBy = remap(act.by);
+				const newLinked = act.linked_naming_ids
+					? act.linked_naming_ids.map((id: string) => remap(id)).filter(Boolean)
+					: null;
+				await client.query(
+					`INSERT INTO naming_acts (naming_id, by, inscription, designation, mode, valence, memo_text, linked_naming_ids)
+					 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+					[newNamingId, newBy, act.inscription, act.designation, act.mode, act.valence, act.memo_text, newLinked]
+				);
+			}
+
+			// Copy participations
+			const parts = (await client.query(
+				`SELECT p.id, p.naming_id, p.participant_id
+				 FROM participations p
+				 JOIN namings n ON n.id = p.naming_id
+				 WHERE n.project_id = $1 AND n.deleted_at IS NULL`,
+				[sourceProjectId]
+			)).rows;
+
+			for (const p of parts) {
+				const newId = remap(p.id);
+				const newNamingId = remap(p.naming_id);
+				const newPartId = remap(p.participant_id);
+				await client.query(
+					`INSERT INTO participations (id, naming_id, participant_id) VALUES ($1, $2, $3)`,
+					[newId, newNamingId, newPartId]
+				);
+			}
+
+			// Copy memo_content
+			const memos = (await client.query(
+				`SELECT mc.naming_id, mc.content, mc.format
+				 FROM memo_content mc
+				 JOIN namings n ON n.id = mc.naming_id
+				 WHERE n.project_id = $1 AND n.deleted_at IS NULL`,
+				[sourceProjectId]
+			)).rows;
+
+			for (const m of memos) {
+				await client.query(
+					`INSERT INTO memo_content (naming_id, content, format) VALUES ($1, $2, $3)`,
+					[remap(m.naming_id), m.content, m.format]
+				);
+			}
+
+			// Copy document_content
+			const docs = (await client.query(
+				`SELECT dc.naming_id, dc.full_text, dc.file_path, dc.mime_type, dc.file_size, dc.thumbnail_path
+				 FROM document_content dc
+				 JOIN namings n ON n.id = dc.naming_id
+				 WHERE n.project_id = $1 AND n.deleted_at IS NULL`,
+				[sourceProjectId]
+			)).rows;
+
+			for (const d of docs) {
+				await client.query(
+					`INSERT INTO document_content (naming_id, full_text, file_path, mime_type, file_size, thumbnail_path)
+					 VALUES ($1, $2, $3, $4, $5, $6)`,
+					[remap(d.naming_id), d.full_text, d.file_path, d.mime_type, d.file_size, d.thumbnail_path]
+				);
+			}
+
+			// Copy phase_memberships
+			const pms = (await client.query(
+				`SELECT pm.phase_id, pm.naming_id, pm.action, pm.mode, pm.by, pm.properties
+				 FROM phase_memberships pm
+				 JOIN namings n ON n.id = pm.naming_id
+				 WHERE n.project_id = $1 AND n.deleted_at IS NULL`,
+				[sourceProjectId]
+			)).rows;
+
+			for (const pm of pms) {
+				await client.query(
+					`INSERT INTO phase_memberships (phase_id, naming_id, action, mode, by, properties)
+					 VALUES ($1, $2, $3, $4, $5, $6)`,
+					[remap(pm.phase_id), remap(pm.naming_id), pm.action, pm.mode, remap(pm.by), pm.properties]
+				);
+			}
+
+			// Copy topology_snapshots
+			const topos = (await client.query(
+				`SELECT ts.map_id, ts.seq, ts.label, ts.positions
+				 FROM topology_snapshots ts
+				 JOIN namings n ON n.id = ts.map_id
+				 WHERE n.project_id = $1 AND n.deleted_at IS NULL`,
+				[sourceProjectId]
+			)).rows;
+
+			for (const t of topos) {
+				// Remap position keys (soft: skip stale IDs from deleted namings)
+				const newPositions: Record<string, unknown> = {};
+				if (t.positions && typeof t.positions === 'object') {
+					for (const [oldId, pos] of Object.entries(t.positions)) {
+						const mapped = idMap.get(oldId);
+						if (mapped) newPositions[mapped] = pos;
+					}
+				}
+				await client.query(
+					`INSERT INTO topology_snapshots (map_id, seq, label, positions)
+					 VALUES ($1, $2, $3, $4)`,
+					[remap(t.map_id), t.seq, t.label, JSON.stringify(newPositions)]
+				);
+			}
+
+			// Post-copy validation: count rows in source vs target
+			const srcCount = (await client.query(
+				`SELECT COUNT(*) FROM namings WHERE project_id = $1 AND deleted_at IS NULL`,
+				[sourceProjectId]
+			)).rows[0].count;
+			const tgtCount = (await client.query(
+				`SELECT COUNT(*) FROM namings WHERE project_id = $1 AND deleted_at IS NULL`,
+				[newProjectId]
+			)).rows[0].count;
+			if (srcCount !== tgtCount) {
+				throw new Error(`Integrity check failed: source has ${srcCount} namings, copy has ${tgtCount}`);
+			}
+
+			return pRes.rows[0];
+		});
+
+		return json(project, { status: 201 });
+	}
+
+	// Regular create
 	const parsed = projectSchema.safeParse(body);
 	if (!parsed.success) {
 		return json({ error: 'Invalid input' }, { status: 400 });
 	}
 
 	const { name, description } = parsed.data;
-	const userId = locals.user!.id;
 
 	const project = await transaction(async (client) => {
 		const res = await client.query(

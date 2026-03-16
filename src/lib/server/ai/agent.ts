@@ -2,13 +2,14 @@
 // Every tool call produces namings in the data space — the AI is a co-analyst.
 
 import { chat, getModel } from './client.js';
-import { getMapStructure, getMap, addElementToMap, relateElements, createPhase, assignToPhase } from '../db/queries/maps.js';
+import { getMapStructure, getMap, addElementToMap, relateElements, createPhase, assignToPhase, getCrossMapParticipations } from '../db/queries/maps.js';
 import { getOrCreateAiNaming, logAiInteraction } from '../db/queries/ai.js';
 import { createMemo } from '../db/queries/memos.js';
 import { getMemosByProject } from '../db/queries/memos.js';
 import { emit } from './sse.js';
-import { SYSTEM_PROMPT, DISCUSSION_SYSTEM_PROMPT, buildContextMessage, buildDiscussionMessage, type MapContext, type TriggerEvent, type DiscussionContext } from './prompts.js';
-import { AI_TOOLS, DISCUSSION_TOOLS, type SuggestElementInput, type SuggestRelationInput, type IdentifySilenceInput, type WriteMemoInput, type CreatePhaseInput, type RewriteCueInput, type RespondInput, type WithdrawCueInput } from './tools.js';
+import { SYSTEM_PROMPT, SWA_SUPPLEMENT, DISCUSSION_SYSTEM_PROMPT, buildContextMessage, buildDiscussionMessage, type MapContext, type TriggerEvent, type DiscussionContext } from './prompts.js';
+import { AI_TOOLS, SUGGEST_FORMATION_TOOL, DISCUSSION_TOOLS, type SuggestElementInput, type SuggestRelationInput, type IdentifySilenceInput, type WriteMemoInput, type CreatePhaseInput, type SuggestFormationInput, type RewriteCueInput, type RespondInput, type WithdrawCueInput } from './tools.js';
+import { SW_ROLE_DEFAULTS } from '$lib/shared/constants.js';
 import { query } from '../db/index.js';
 
 // Check if AI is enabled for a map (also respects readOnly)
@@ -98,15 +99,48 @@ async function buildMapContext(mapId: string, projectId: string): Promise<MapCon
 		content: m.content || ''
 	}));
 
+	const mapType = map?.properties?.mapType || 'situational';
+	const isSwa = mapType === 'social-worlds';
+
+	// SW/A: cross-map participations and spatial relations
+	let crossMapParticipations: MapContext['crossMapParticipations'];
+	let spatialRelations: MapContext['spatialRelations'];
+
+	if (isSwa) {
+		const crossRows = await getCrossMapParticipations(mapId, projectId);
+		if (crossRows.length > 0) {
+			crossMapParticipations = crossRows.map((r: any) => ({
+				localId: r.local_id,
+				localInscription: r.local_inscription,
+				outsideId: r.outside_id,
+				outsideInscription: r.outside_inscription,
+				outsideMapLabel: r.outside_map_label,
+			}));
+		}
+
+		// Extract spatial relations from spatiallyDerived relations
+		const spatial = structure.relations
+			.filter((r: any) => r.properties?.spatiallyDerived && !r.properties?.withdrawn)
+			.map((r: any) => ({
+				type: (r.valence === 'contains' ? 'contains' : 'overlaps') as 'contains' | 'overlaps',
+				formationA: r.directed_from || r.part_source_id || '',
+				formationB: r.directed_to || r.part_target_id || '',
+			}));
+		if (spatial.length > 0) {
+			spatialRelations = spatial;
+		}
+	}
+
 	return {
 		mapLabel: map?.label || '',
-		mapType: map?.properties?.mapType || 'situational',
+		mapType,
 		elements: structure.elements.map((el: any) => ({
 			id: el.naming_id,
 			inscription: el.inscription,
 			designation: el.designation || 'cue',
 			mode: el.mode,
 			provenance: el.has_document_anchor ? 'empirical' as const : el.has_memo_link ? 'analytical' as const : 'ungrounded' as const,
+			swRole: el.sw_role || undefined,
 			aiSuggested: el.properties?.aiSuggested || false,
 			aiWithdrawn: el.properties?.aiWithdrawn || el.properties?.withdrawn || false,
 			discussionSummary: discussionMap.get(el.naming_id)
@@ -128,7 +162,9 @@ async function buildMapContext(mapId: string, projectId: string): Promise<MapCon
 			designation: d.designation,
 			count: parseInt(d.count) || 0
 		})),
-		recentMemos
+		recentMemos,
+		crossMapParticipations,
+		spatialRelations,
 	};
 }
 
@@ -183,6 +219,28 @@ async function executeTool(
 				}
 				emit(mapId, 'ai:phase', { phase, elementIds: element_ids, reasoning });
 				return { success: true, result: { id: phase.id, inscription, elementCount: element_ids.length } };
+			}
+
+			case 'suggest_formation': {
+				// Guard: only on SW/A maps
+				const mapRow = await query(
+					`SELECT a.properties FROM appearances a
+					 WHERE a.naming_id = $1 AND a.perspective_id = $1 AND a.mode = 'perspective'`,
+					[mapId]
+				);
+				if (mapRow.rows[0]?.properties?.mapType !== 'social-worlds') {
+					return { success: false, result: 'suggest_formation is only available on social-worlds maps' };
+				}
+				const { inscription, sw_role, reasoning } = input as unknown as SuggestFormationInput;
+				const defaults = SW_ROLE_DEFAULTS[sw_role] || SW_ROLE_DEFAULTS['social-world'];
+				const element = await addElementToAiMap(projectId, aiNamingId, mapId, inscription, {
+					...defaults, aiReasoning: reasoning
+				});
+				// Classification memo: mirrors the addFormation API action
+				await createMemo(projectId, '00000000-0000-0000-0000-000000000000',
+					`Formation: ${sw_role}`, reasoning, [element.id]);
+				emit(mapId, 'ai:formation', { element, swRole: sw_role, reasoning });
+				return { success: true, result: { id: element.id, inscription, swRole: sw_role } };
 			}
 
 			default:
@@ -357,11 +415,15 @@ export async function runMapAgent(
 	const context = await buildMapContext(mapId, projectId);
 	const contextMessage = buildContextMessage(context, triggerEvent);
 
+	const isSwaMap = context.mapType === 'social-worlds';
+	const systemPrompt = isSwaMap ? SYSTEM_PROMPT + '\n\n' + SWA_SUPPLEMENT : SYSTEM_PROMPT;
+	const tools = isSwaMap ? [...AI_TOOLS, SUGGEST_FORMATION_TOOL] : AI_TOOLS;
+
 	try {
 		const response = await chat({
-			system: SYSTEM_PROMPT,
+			system: systemPrompt,
 			maxTokens: 2048,
-			tools: AI_TOOLS,
+			tools,
 			messages: [
 				{ role: 'user', content: contextMessage }
 			]
@@ -392,7 +454,7 @@ export async function runMapAgent(
 			response.tokensUsed
 		);
 	} catch (error) {
-		console.error('[AI Agent] Error:', error instanceof Error ? error.message : error);
+		console.error('[AI Agent] Error:', error instanceof Error ? error.stack || error.message : error);
 		// Don't throw — AI failures should never break the researcher's workflow
 	}
 }

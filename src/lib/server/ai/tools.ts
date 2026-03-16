@@ -127,6 +127,39 @@ export const AI_TOOLS: ToolDef[] = [
 	}
 ];
 
+// ── SW/A-specific tools ──
+
+export const SUGGEST_FORMATION_TOOL: ToolDef = {
+	name: 'suggest_formation',
+	description:
+		'Suggest a new formation (social world, arena, discourse, or organization) for the SW/A map. Formations are universes of discourse or sites of contestation — mesolevel social organization, not just groups of elements.',
+	input_schema: {
+		type: 'object' as const,
+		properties: {
+			inscription: {
+				type: 'string',
+				description: 'The name/label for the suggested formation'
+			},
+			sw_role: {
+				type: 'string',
+				enum: ['social-world', 'arena', 'discourse', 'organization'],
+				description: 'The formation role: social-world (universe of discourse), arena (site of contestation), discourse (discursive formation), organization (formal structure)'
+			},
+			reasoning: {
+				type: 'string',
+				description: 'Analytical justification for why this formation exists in the situation'
+			}
+		},
+		required: ['inscription', 'sw_role', 'reasoning']
+	}
+};
+
+export interface SuggestFormationInput {
+	inscription: string;
+	sw_role: 'social-world' | 'arena' | 'discourse' | 'organization';
+	reasoning: string;
+}
+
 // ── Discussion tools: used when a researcher discusses an AI-generated cue ──
 
 export const DISCUSSION_TOOLS: ToolDef[] = [

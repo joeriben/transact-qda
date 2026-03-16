@@ -903,6 +903,44 @@ export async function getMapDesignationProfile(mapId: string, projectId: string)
 	).rows;
 }
 
+// Get cross-map participations for SW/A maps: find elements on this map
+// that participate with elements on situational maps (cross-boundary context).
+export async function getCrossMapParticipations(mapId: string, projectId: string) {
+	return (
+		await query(
+			`SELECT
+			   local_n.id as local_id,
+			   local_n.inscription as local_inscription,
+			   outside_n.id as outside_id,
+			   outside_n.inscription as outside_inscription,
+			   map_n.inscription as outside_map_label
+			 FROM appearances a_local
+			 JOIN namings local_n ON local_n.id = a_local.naming_id AND local_n.deleted_at IS NULL
+			 JOIN participations p ON p.naming_id = a_local.naming_id OR p.participant_id = a_local.naming_id
+			 JOIN namings pn ON pn.id = p.id AND pn.deleted_at IS NULL
+			 JOIN namings outside_n ON outside_n.id = CASE
+			   WHEN p.naming_id = a_local.naming_id THEN p.participant_id
+			   ELSE p.naming_id
+			 END AND outside_n.deleted_at IS NULL AND outside_n.project_id = $2
+			 JOIN appearances a_outside ON a_outside.naming_id = outside_n.id
+			   AND a_outside.perspective_id != $1
+			   AND a_outside.naming_id != a_outside.perspective_id
+			 JOIN appearances a_map ON a_map.naming_id = a_outside.perspective_id
+			   AND a_map.perspective_id = a_outside.perspective_id
+			   AND a_map.mode = 'perspective'
+			   AND (a_map.properties->>'mapType') = 'situational'
+			 JOIN namings map_n ON map_n.id = a_outside.perspective_id AND map_n.deleted_at IS NULL
+			 WHERE a_local.perspective_id = $1
+			   AND a_local.naming_id != $1
+			   AND a_local.mode != 'perspective'
+			   AND local_n.project_id = $2
+			 ORDER BY local_n.inscription, outside_n.inscription
+			 LIMIT 30`,
+			[mapId, projectId]
+		)
+	).rows;
+}
+
 // Get the full structure of a map: elements, relations, phases, designations
 export async function getMapStructure(mapId: string, projectId: string) {
 	const [appearances, phases, designationProfile] = await Promise.all([

@@ -1,9 +1,22 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
+
 	let { data } = $props();
 	let showCreate = $state(false);
 	let name = $state('');
 	let description = $state('');
 	let creating = $state(false);
+
+	// Context menu
+	let ctxMenuId = $state<string | null>(null);
+	let ctxMenuPos = $state({ x: 0, y: 0 });
+	let ctxProject = $derived(data.projects.find((p: any) => p.id === ctxMenuId));
+
+	function onCardContext(projectId: string, e: MouseEvent) {
+		e.preventDefault();
+		ctxMenuId = projectId;
+		ctxMenuPos = { x: e.clientX, y: e.clientY };
+	}
 
 	async function createProject() {
 		if (!name.trim()) return;
@@ -18,9 +31,26 @@
 		}
 		creating = false;
 	}
+
+	async function saveProjectAs(projectId: string) {
+		const project = data.projects.find((p: any) => p.id === projectId);
+		const newName = prompt('Save project as:', project ? `${project.name} (copy)` : 'Copy');
+		if (newName === null) { ctxMenuId = null; return; }
+		ctxMenuId = null;
+		const res = await fetch('/api/projects', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ action: 'duplicate', sourceProjectId: projectId, name: newName.trim() || undefined })
+		});
+		if (res.ok) {
+			window.location.reload();
+		}
+	}
 </script>
 
-<div class="projects-page">
+<!-- svelte-ignore a11y_click_events_have_key_events -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div class="projects-page" onclick={() => { ctxMenuId = null; }}>
 	<div class="header">
 		<h1>Projects</h1>
 		<button class="btn-primary" onclick={() => showCreate = !showCreate}>
@@ -41,14 +71,28 @@
 	{:else}
 		<div class="project-grid">
 			{#each data.projects as project}
-				<a href="/projects/{project.id}" class="project-card">
+				<div class="project-card" role="button" tabindex="0"
+					onclick={() => goto(`/projects/${project.id}`)}
+					oncontextmenu={(e) => onCardContext(project.id, e)}
+					onkeydown={(e) => { if (e.key === 'Enter') goto(`/projects/${project.id}`); }}>
 					<h2>{project.name}</h2>
 					{#if project.description}
 						<p>{project.description}</p>
 					{/if}
 					<span class="meta">{project.role}</span>
-				</a>
+				</div>
 			{/each}
+		</div>
+	{/if}
+
+	{#if ctxMenuId && ctxProject}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class="context-menu" style="left: {ctxMenuPos.x}px; top: {ctxMenuPos.y}px;"
+			onclick={(e) => e.stopPropagation()}>
+			<div class="ctx-header">{ctxProject.name}</div>
+			<button class="ctx-item" onclick={() => saveProjectAs(ctxMenuId!)}>
+				Save As...
+			</button>
 		</div>
 	{/if}
 </div>
@@ -129,11 +173,13 @@
 		padding: 1.25rem;
 		display: block;
 		transition: border-color 0.15s;
+		cursor: pointer;
 	}
 	.project-card:hover {
 		border-color: #8b9cf7;
 		color: #e1e4e8;
 	}
+	.project-card:focus-visible { outline: 2px solid #8b9cf7; outline-offset: 2px; }
 
 	.project-card h2 {
 		font-size: 1.05rem;
@@ -154,4 +200,34 @@
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 	}
+
+	.context-menu {
+		position: fixed;
+		background: #1a1c2e;
+		border: 1px solid #2a2d3a;
+		border-radius: 8px;
+		padding: 0.35rem 0;
+		min-width: 160px;
+		z-index: 1000;
+		box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+	}
+
+	.ctx-header {
+		padding: 0.4rem 0.75rem;
+		font-size: 0.75rem;
+		color: #6b7280;
+		border-bottom: 1px solid #2a2d3a;
+		margin-bottom: 0.2rem;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		max-width: 200px;
+	}
+
+	.ctx-item {
+		display: block; width: 100%; text-align: left;
+		padding: 0.4rem 0.75rem; font-size: 0.85rem;
+		background: none; border: none; color: #e1e4e8; cursor: pointer;
+	}
+	.ctx-item:hover { background: #2a2d3a; }
 </style>

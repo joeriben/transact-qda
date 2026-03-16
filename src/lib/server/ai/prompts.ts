@@ -128,6 +128,51 @@ CONSTRAINTS:
 - Do not repeat suggestions the researcher has already rejected or that were withdrawn
 - If the map is very early (few elements), focus on questions and silences rather than relations`;
 
+// SW/A-specific supplement — appended to SYSTEM_PROMPT for social-worlds maps
+import { CLARKE_SW_QUESTIONS, CLARKE_ARENA_QUESTIONS, ANALYTICAL_DEEPENING } from '$lib/shared/constants.js';
+
+export const SWA_SUPPLEMENT = `
+═══════════════════════════════════════
+SOCIAL WORLDS / ARENAS MAP SUPPLEMENT
+═══════════════════════════════════════
+
+You are now working on a Social Worlds/Arenas (SW/A) map. This is fundamentally different from a situational map.
+
+SITUATIONAL MAP: "What is in the situation?" — flat ontology, everything on one plane.
+SW/A MAP: "How is the situation organized, stabilized, contested?" — mesolevel social organization.
+
+FORMATIONS:
+Formations are NOT just "groups of elements." They are universes of discourse (Strauss), dispositif configurations (Foucault), performatively constituted through ongoing activity. A social world exists because actors DO it — commit to shared activities, produce discourse, maintain boundaries.
+
+FORMATION ROLES AND THEIR MEANING:
+- [social-world] (dashed ellipse): A universe of discourse — shared activity, commitment, identity. Ask: who does this work? What holds them together?
+- [arena] (long-dashed ellipse): A site of contestation where multiple worlds meet over shared issues. Ask: what is at stake? Who is fighting over what?
+- [discourse] (filled ellipse): A discursive formation — a system of statements that produces objects, subjects, concepts. Ask: what does this discourse make sayable/unsayable?
+- [organization] (dashed rectangle): A formal organization that may host, constrain, or enable worlds and arenas. Ask: how does organizational structure shape participation?
+
+SPATIAL SEMANTICS:
+- Containment (element inside formation) = membership/participation in that world
+- Formation-in-formation = nesting (e.g., a discourse operating within an arena)
+- Overlap between formations = contested or shared boundary territory
+
+CLARKE'S 14 SOCIAL WORLD QUESTIONS:
+${CLARKE_SW_QUESTIONS.map((q, i) => `${i + 1}. ${q}`).join('\n')}
+
+CLARKE'S 11 ARENA QUESTIONS:
+${CLARKE_ARENA_QUESTIONS.map((q, i) => `${i + 1}. ${q}`).join('\n')}
+
+ANALYTICAL DEEPENING (use context-sensitively, not as a checklist):
+${ANALYTICAL_DEEPENING.map(d => `- ${d.label}: ${d.question}`).join('\n')}
+
+YOUR APPROACH ON SW/A MAPS:
+- Use suggest_formation (NOT suggest_element) when proposing new social worlds, arenas, discourses, or organizations
+- Use suggest_element for entities that are NOT formations (individual actors, technologies, issues placed within formations)
+- When the researcher adds a formation, respond with questions that deepen understanding of that formation's role — draw from Clarke's questions above
+- Attend to RELATIONS BETWEEN formations: where do worlds meet? What arenas emerge from their intersection?
+- The 5 deepening moments are analytical lenses, not sequential steps — use whichever is most productive for the current state of the map
+- When cross-map context is available, note which SitMap elements constitute or participate in the formations
+`;
+
 export const DISCUSSION_SYSTEM_PROMPT = `You are a co-analyst in a qualitative research project using Situational Analysis (Adele Clarke), working within a transactional ontology (Dewey/Bentley).
 
 A researcher is discussing one of your earlier cue suggestions. A cue is the earliest stage of naming (Dewey/Bentley): something registered but not yet fully articulated.
@@ -195,6 +240,7 @@ export interface MapContext {
 		designation: string;
 		mode: string;
 		provenance: 'empirical' | 'analytical' | 'ungrounded';
+		swRole?: string;
 		aiSuggested?: boolean;
 		aiWithdrawn?: boolean;
 		discussionSummary?: string;
@@ -232,6 +278,18 @@ export interface MapContext {
 		label: string;
 		content: string;
 	}>;
+	crossMapParticipations?: Array<{
+		localId: string;
+		localInscription: string;
+		outsideId: string;
+		outsideInscription: string;
+		outsideMapLabel: string;
+	}>;
+	spatialRelations?: Array<{
+		type: 'contains' | 'overlaps';
+		formationA: string;
+		formationB: string;
+	}>;
 }
 
 export function buildContextMessage(ctx: MapContext, triggerEvent: TriggerEvent): string {
@@ -252,7 +310,8 @@ export function buildContextMessage(ctx: MapContext, triggerEvent: TriggerEvent)
 			const prov = el.provenance === 'empirical' ? ' 📄' : el.provenance === 'analytical' ? ' 📝' : ' ∅';
 			const withdrawn = el.aiWithdrawn ? ' [WITHDRAWN]' : '';
 			const ai = el.aiSuggested && !el.aiWithdrawn ? ' [AI]' : '';
-			parts.push(`  [${el.designation}]${prov}${ai}${withdrawn} "${el.inscription}" (id: ${el.id})`);
+			const roleTag = el.swRole ? ` [${el.swRole}]` : '';
+			parts.push(`  [${el.designation}]${prov}${ai}${withdrawn}${roleTag} "${el.inscription}" (id: ${el.id})`);
 			if (el.discussionSummary) {
 				parts.push(`    Discussion: ${el.discussionSummary}`);
 			}
@@ -308,6 +367,29 @@ export function buildContextMessage(ctx: MapContext, triggerEvent: TriggerEvent)
 		}
 	}
 
+	// SW/A: Spatial structure (containment/overlap derived from canvas layout)
+	if (ctx.spatialRelations && ctx.spatialRelations.length > 0) {
+		parts.push('\nSPATIAL STRUCTURE:');
+		const elementMap = new Map(ctx.elements.map(e => [e.id, e.inscription]));
+		for (const sr of ctx.spatialRelations) {
+			const a = elementMap.get(sr.formationA) || '?';
+			const b = elementMap.get(sr.formationB) || '?';
+			if (sr.type === 'contains') {
+				parts.push(`  "${a}" contains "${b}"`);
+			} else {
+				parts.push(`  "${a}" overlaps "${b}"`);
+			}
+		}
+	}
+
+	// SW/A: Cross-map context (SitMap elements connected to formations)
+	if (ctx.crossMapParticipations && ctx.crossMapParticipations.length > 0) {
+		parts.push('\nCROSS-MAP CONTEXT:');
+		for (const cp of ctx.crossMapParticipations) {
+			parts.push(`  "${cp.localInscription}" ↔ "${cp.outsideInscription}" (from map "${cp.outsideMapLabel}")`);
+		}
+	}
+
 	// Trigger event
 	parts.push(`\nTRIGGER: ${describeTrigger(triggerEvent)}`);
 
@@ -323,6 +405,8 @@ function describeTrigger(event: TriggerEvent): string {
 	switch (event.action) {
 		case 'addElement':
 			return `Researcher added element "${event.details.inscription}"`;
+		case 'addFormation':
+			return `Researcher created formation "${event.details.inscription}" (role: ${event.details.swRole})`;
 		case 'relate':
 			return `Researcher created a relation between "${event.details.sourceInscription}" and "${event.details.targetInscription}"${event.details.inscription ? ` labeled "${event.details.inscription}"` : ''}`;
 		case 'designate':

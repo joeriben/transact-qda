@@ -808,7 +808,6 @@ Rachel Washburn.epub'
 
 ========================================================================
 
-2. HÄLFTE DIESER SESSION nach /clear
 
 ========================================================================
 
@@ -3432,3 +3431,669 @@ UNterstützgunssturktur zu überführen, die z.B. auch gute Memos provoziert.
    die Memo-Unterstützungsstruktur mit den 5 Vertiefungsprompts.
 
 ✻ Brewed for 2m 17s
+
+=====================================================
+
+3. TEIL DIESER SESSION nach /clear: Implementation
+
+=====================================================
+
+ ▐▛███▜▌   Claude Code v2.1.75
+▝▜█████▛▘  Opus 4.6 (1M context) · Claude Max
+  ▘▘ ▝▝    ~/ai/transact-qda
+
+❯ /clear                                                                        
+  ⎿  (no content)
+
+❯ Wir fahren fort mit der Umsetzung der Planungen aus Session 14.               
+
+● Let me check the Session 14 transcript and current project state.
+
+● 2 Explore agents finished (ctrl+o to expand)
+   ├─ Find Session 14 docs · 14 tool uses · 32.2k tokens
+   │  ⎿  Done
+   └─ Check project memory files · 6 tool uses · 14.9k tokens
+      ⎿  Done
+
+● Good. Session 14 established the epistemological foundation for Social
+  Worlds/Arenas Maps. The implementation direction has two tracks:
+
+  1. Visual: Ellipses/regions instead of boxes, dashed lines (porous
+  boundaries), map-type drives rendering
+  2. Analytical support: Clarke's memo questions (14 per SW, 11 per Arena), 5
+  deepening prompts, memo-as-naming-act
+
+  Let me first understand the current codebase before we start.
+
+● Explore(Explore codebase architecture)
+  ⎿  Done (37 tool uses · 93.0k tokens · 2m 14s)
+  (ctrl+o to expand)
+
+● Good overview. The codebase is well-prepared — mapType is already stored and
+  plumbed through, but all map types currently render identically. Before I
+  start making changes, let me check the working tree.
+
+● Bash(git status)
+  ⎿  On branch main
+     Your branch is ahead of 'origin/main' by 43 commits.
+       (use "git push" to publish your local commits)
+     … +7 lines (ctrl+o to expand)
+
+● Working tree is clean. Let me look at the key rendering components to plan the
+   implementation precisely.
+
+● Searched for 3 patterns, read 5 files (ctrl+o to expand)
+
+● Now I have a clear picture of the codebase. Let me read the page server to
+  understand data loading and then look at the map creation flow.
+
+● Searched for 1 pattern, read 4 files (ctrl+o to expand)
+
+● I have a full picture of the codebase now. Here's where we stand:
+
+  Already in place:
+  - mapType: 'social-worlds' stored in appearance properties
+  - CanvasRegion.svelte exists with basic ellipse/dashed-border rendering (but
+  non-interactive)
+  - CollapseMode includes unused 'constellation' and 'process' modes
+  - mapType is derived and available in the page component (line 279)
+  - AI agent receives mapType in context (line 101)
+
+  What needs to be built (from Session 14):
+
+  Track 1 — Visual (Canvas)
+  - Make CanvasRegion interactive (drag, click, context menu — currently static
+  SVG)
+  - Map-type-aware rendering: when mapType === 'social-worlds', entities render
+  as ellipses not boxes
+  - Distinguish SW/Arena/Discourse visually (size, border style, color)
+  - Porous boundaries (dashed lines already in CanvasRegion)
+
+  Track 2 — Analytical Support
+  - Clarke's memo questions (14 per SW, 11 per Arena)
+  - 5 deepening prompts (stabilization, conflict, dispositif, discursive
+  constitution, cross-map)
+  - Memo-as-naming-act integration
+  - AI prompts differentiated by map type
+
+  Architectural question before I start: On SW/A maps, how should we distinguish
+   Social Worlds from Arenas from Discourses? Two options:
+
+  1. Via appearance mode: Use constellation for Social Worlds, process for
+  Discourses, and introduce a new mode for Arenas — clean ontological mapping
+  2. Via properties: Keep mode as entity but add properties.swRole: 
+  'social-world' | 'arena' | 'discourse' — simpler, no schema changes
+
+  Option 1 is more consistent with the transactional ontology (the mode IS how
+  the naming appears from this perspective). Option 2 is less invasive.
+
+  Which do you prefer, and shall I start with the visual track?
+
+✻ Sautéed for 5m 9s
+
+❯ via Memo. If a Naming is a naming of an entity we call SW, we mark this in    
+the Naming's first Memo.                                                        
+  ⎿  Interrupted · What should Claude do instead?
+
+❯ Alternatively, but this would be less consistent, create a new type (entity,  
+relation, sw ...) -> but IMHO wrong.                                            
+
+● Understood — and I agree, new types would be wrong. The analytical judgment
+  "this is a social world" is itself a naming act, documented in a memo. The
+  naming has no intrinsic kind.
+
+  So the approach becomes:
+
+  1. Map-type drives rendering: On a social-worlds map, ALL entities render as
+  ellipses with dashed (porous) borders — because that's what a SW/A map IS as a
+   perspective
+  2. Size is UX parameter: properties.rx, properties.ry (like x, y) — the
+  researcher sizes ellipses to show containment, overlap, relative weight
+  3. Analytical classification lives in memos: "This is a social world
+  because..." / "This is an arena where X and Y collide because..." — this IS
+  the naming act, it shifts the CCS gradient
+  4. No new modes or types — consistent with the ontology
+
+  The canvas doesn't need to know "SW vs Arena" — the researcher expresses that
+  through spatial arrangement (containment = arena wrapping SWs) and through
+  memos.
+
+  Shall I start implementing? First step would be making CanvasRegion
+  interactive (drag, resize, click) and switching to ellipse rendering when
+  mapType === 'social-worlds'.
+
+❯ Well. the memo #1  has to be machine readable, because, as you are well       
+arware I hope, SW and A adn Discoureses are plotted differently on these maps.  
+
+● Right — Discourses get plotted differently than Social Worlds, Arenas are
+  containing regions. The visual rendering needs to know which is which.
+
+  So: the first memo establishes a machine-readable classification that drives
+  rendering, but the classification itself remains an analytical judgment (a
+  naming act), not a structural type. Something like a structured first memo
+  with a swRole field:
+
+  swRole: 'social-world' | 'arena' | 'discourse'
+
+  This keeps the ontology clean — no new modes — while giving the canvas what it
+   needs to render correctly (ellipse vs containing region vs however discourses
+   are plotted).
+
+  Before I design the memo structure, let me make sure I understand the visual
+  distinctions Clarke prescribes:
+
+  - Social Worlds: ellipses, dashed borders (porous), sized by significance
+  - Arenas: larger containing ellipses that encompass colliding SWs
+  - Discourses: how are these visually distinct? Lines/flows? Different shape?
+  Or also ellipses but styled differently?
+
+❯ SW can cross between Arenas. DO not make the same Mistakes as session 14.1    
+please. Arenas are gestrichelt, SW are dotted, ORGANIZATIONS are gestrichelt    
+rectangulars, discourses have solid lines, but transparent 50% (or grey).       
+
+● Clear. Let me make sure I have this right:
+
+  ┌──────────────┬───────────┬──────────────────────┬────────────────────────┐
+  │  Formation   │   Shape   │        Border        │          Fill          │
+  ├──────────────┼───────────┼──────────────────────┼────────────────────────┤
+  │ Social World │ Ellipse   │ dotted               │ —                      │
+  ├──────────────┼───────────┼──────────────────────┼────────────────────────┤
+  │ Arena        │ Ellipse   │ dashed (gestrichelt) │ —                      │
+  ├──────────────┼───────────┼──────────────────────┼────────────────────────┤
+  │ Organization │ Rectangle │ dashed (gestrichelt) │ —                      │
+  ├──────────────┼───────────┼──────────────────────┼────────────────────────┤
+  │ Discourse    │ Ellipse   │ solid                │ 50% transparent / grey │
+  └──────────────┴───────────┴──────────────────────┴────────────────────────┘
+
+  And critically: SWs can cross between Arenas — they are NOT contained by
+  Arenas. Arenas are collision zones, not containers. The spatial overlap is
+  meaningful but not hierarchical.
+
+  So swRole: 'social-world' | 'arena' | 'discourse' | 'organization' — four
+  roles driving four distinct visual renderings.
+
+  Shall I proceed with implementation?
+
+❯ yes                                                                           
+
+● Right. Four formations, four visual signatures — machine-readable from the
+  first memo.
+
+  Let me read the core query and memo files before starting.
+
+● Searched for 1 pattern, read 3 files (ctrl+o to expand)
+
+● Let me check one more thing — where the add element UI lives in the page.
+
+● Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Good. I have the full picture. Let me now implement systematically. I'll use a
+   plan to track the steps.
+
+● Update(src/lib/shared/types/index.ts)
+  ⎿  Added 4 lines
+       3  
+       4  export type MapType = 'situational' | 'social-worlds' | 'positi
+          onal' | 'network';
+       5  
+       6 +// Formation roles on Social Worlds/Arenas maps.               
+       7 +// Stored as machine-readable classification in the first memo 
+         +(inscription: "Formation: <role>").                            
+       8 +export type SwRole = 'social-world' | 'arena' | 'discourse' | '
+         +organization';                                                 
+       9 +                                                               
+      10  export interface User {
+      11    id: string;
+      12    username: string;
+
+● Update(src/lib/shared/constants.ts)
+  ⎿  Added 18 lines
+       1  export const SESSION_COOKIE = 'tqda_session';
+       2  export const MAP_TYPES = ['situational', 'social-worlds', 'posi
+          tional', 'network'] as const;
+       3  export const COLLAPSE_MODES = ['entity', 'relation', 'constella
+          tion', 'process', 'silence', 'perspective'] as const;
+       4 +                                                               
+       5 +export const SW_ROLES = ['social-world', 'arena', 'discourse', 
+         +'organization'] as const;                                      
+       6 +                                                               
+       7 +// Visual styles per formation role on SW/A maps               
+       8 +export const SW_ROLE_STYLES = {                                
+       9 +  'social-world': { shape: 'ellipse' as const, dashArray: '3 3'
+         +, fillOpacity: 0 },                                            
+      10 +  'arena':        { shape: 'ellipse' as const, dashArray: '8 4'
+         +, fillOpacity: 0 },                                            
+      11 +  'organization': { shape: 'rect'    as const, dashArray: '8 4'
+         +, fillOpacity: 0 },                                            
+      12 +  'discourse':    { shape: 'ellipse' as const, dashArray: '',  
+         +  fillOpacity: 0.15 },                                         
+      13 +} as const;                                                    
+      14 +                                                               
+      15 +// Default ellipse/rect radii per formation role               
+      16 +export const SW_ROLE_DEFAULTS = {                              
+      17 +  'social-world': { rx: 140, ry: 90 },                         
+      18 +  'arena':        { rx: 240, ry: 170 },                        
+      19 +  'organization': { rx: 130, ry: 80 },                         
+      20 +  'discourse':    { rx: 160, ry: 100 },                        
+      21 +} as const;                                                    
+
+● Now the query. I need to add the sw_role subquery to getMapAppearances. It
+  extracts the role from the first memo whose inscription starts with
+  "Formation:".
+
+● Update(src/lib/server/db/queries/maps.ts)
+  ⎿  Added 12 lines
+      586                )
+      587             ), '[]'::json
+      588           ) as memo_previews,
+      589 +         -- SW/A role: extracted from first "Formation:" class
+          +ification memo                                                
+      590 +         (SELECT substring(msw.inscription FROM 'Formation: (.
+          ++)')                                                          
+      591 +          FROM participations psw                             
+      592 +          JOIN namings pnsw ON pnsw.id = psw.id AND pnsw.delet
+          +ed_at IS NULL                                                 
+      593 +          JOIN namings msw ON msw.id = CASE WHEN psw.naming_id
+          + = a.naming_id THEN psw.participant_id ELSE psw.naming_id END 
+      594 +            AND msw.deleted_at IS NULL AND msw.id != a.naming_
+          +id                                                            
+      595 +          JOIN memo_content mcsw ON mcsw.naming_id = msw.id   
+      596 +          WHERE (psw.naming_id = a.naming_id OR psw.participan
+          +t_id = a.naming_id)                                           
+      597 +            AND msw.inscription LIKE 'Formation:%'            
+      598 +          ORDER BY msw.created_at ASC                         
+      599 +          LIMIT 1                                             
+      600 +         ) as sw_role,                                        
+      601           p.naming_id as part_source_id,
+      602           p.participant_id as part_target_id,
+      603           ARRAY(
+
+● Now the FormationNode component — renders inside CanvasElement, uses SVG for
+  the four visual styles.
+
+● Write(src/lib/canvas/FormationNode.svelte)
+  ⎿  Wrote 113 lines to src/lib/canvas/FormationNode.svelte
+       1 <script lang="ts">
+       2        import type { SwRole } from '$lib/shared/types/index.js';
+       3        import { SW_ROLE_STYLES } from '$lib/shared/constants.js';
+       4 
+       5        let {
+       6                label = '',
+       7                swRole = 'social-world' as SwRole,
+       8                designation = 'cue',
+       9                color = '#8b9cf7',
+      10                rx = 150,
+     … +103 lines (ctrl+o to expand)
+
+● Now the addFormation API action. It reuses addElementToMap and creates the
+  classification memo.
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/api/projects/%5BprojectId%5D/maps/%5BmapId%5D/+server.tssrc/routes/api/projects/[projectId]/maps/[mapId]/+server.ts)
+  ⎿  Added 1 line
+      28  import { createMemo, getMemosForNaming } from '$lib/server/db/q
+          ueries/memos.js';
+      29  import { runMapAgent, setAiEnabled, discussCue } from '$lib/ser
+          ver/ai/agent.js';
+      30  import { saveTopologyBuffer, saveTopologySnapshot, restoreTopol
+          ogySnapshot, listTopologySnapshots } from '$lib/server/db/queri
+          es/topology.js';
+      31 +import { SW_ROLE_DEFAULTS } from '$lib/shared/constants.js';   
+      32  
+      33  export const GET: RequestHandler = async ({ params }) => {
+      34    const map = await getMap(params.mapId, params.projectId);
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/api/projects/%5BprojectId%5D/maps/%5BmapId%5D/+server.tssrc/routes/api/projects/[projectId]/maps/[mapId]/+server.ts)
+  ⎿  Added 14 lines
+      56        return json(element, { status: 201 });
+      57      }
+      58  
+      59 +    case 'addFormation': {                                     
+      60 +      const { inscription, swRole, memoText, properties } = bod
+         +y;                                                             
+      61 +      if (!inscription?.trim()) return json({ error: 'inscripti
+         +on required' }, { status: 400 });                              
+      62 +      if (!swRole) return json({ error: 'swRole required' }, { 
+         +status: 400 });                                                
+      63 +      const defaults = SW_ROLE_DEFAULTS[swRole as keyof typeof 
+         +SW_ROLE_DEFAULTS] || SW_ROLE_DEFAULTS['social-world'];         
+      64 +      const element = await addElementToMap(projectId, userId, 
+         +mapId, inscription.trim(),                                     
+      65 +        { ...defaults, ...properties });                       
+      66 +      // Classification memo: the naming act that establishes w
+         +hat formation this is                                          
+      67 +      await createMemo(projectId, userId, `Formation: ${swRole}
+         +`,                                                             
+      68 +        memoText?.trim() || '', [element.id]);                 
+      69 +      runMapAgent(projectId, mapId, { action: 'addFormation', d
+         +etails: { inscription: inscription.trim(), swRole } }).catch(()
+         + => {});                                                       
+      70 +      return json(element, { status: 201 });                   
+      71 +    }                                                          
+      72 +                                                               
+      73      case 'placeExisting': {
+      74        const { namingId, mode, properties } = body;
+      75        if (!namingId) return json({ error: 'namingId required' }
+          , { status: 400 });
+
+● Now the page. I need to: (1) import FormationNode, (2) add swRole selector to
+  add-form for SW/A maps, (3) modify the addElement function for SW/A, (4)
+  render formations in canvas mode. Let me re-read the relevant sections.
+
+● Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Good. Now let me make all the page changes.
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 3 lines
+       7    import { createSelection } from '$lib/canvas/selection.svelte
+          .js';
+       8    import { computeLayout, computeRadialLayout } from '$lib/canv
+          as/layout.js';
+       9    import { regionColor } from '$lib/canvas/regions.js';
+      10 +  import FormationNode from '$lib/canvas/FormationNode.svelte';
+      11 +  import { SW_ROLES } from '$lib/shared/constants.js';         
+      12 +  import type { SwRole } from '$lib/shared/types/index.js';    
+      13  
+      14    let { data } = $props();
+      15  
+
+● Add swRole state variable near the other interaction state:
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 1 line
+      137    // Interaction state
+      138    let relatingFrom = $state<string | null>(null);
+      139    let newInscription = $state('');
+      140 +  let newSwRole = $state<SwRole>('social-world');             
+      141    let adding = $state(false);
+      142    let newPhaseLabel = $state('');
+      143  
+
+● Modify addElement to use addFormation for SW/A maps:
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 8 lines, removed 1 line
+      491      if (!newInscription.trim()) return;
+      492      adding = true;
+      493      closePlacementDropdown();
+      494 -    await mapAction('addElement', { inscription: newInscriptio
+          -n.trim() });                                                  
+      494 +    if (mapType === 'social-worlds') {                        
+      495 +      await mapAction('addFormation', {                       
+      496 +        inscription: newInscription.trim(),                   
+      497 +        swRole: newSwRole                                     
+      498 +      });                                                     
+      499 +    } else {                                                  
+      500 +      await mapAction('addElement', { inscription: newInscript
+          +ion.trim() });                                                
+      501 +    }                                                         
+      502      newInscription = '';
+      503      adding = false;
+      504      await reload();
+
+● Now add the swRole selector to the add-form when on SW/A maps:
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 8 lines, removed 1 line
+      976        <!-- svelte-ignore a11y_no_static_element_interactions -
+           ->
+      977        <div class="add-form-wrapper" onclick={(e) => e.stopProp
+           agation()}>
+      978          <form class="add-form" onsubmit={e => { e.preventDefau
+           lt(); addElement(); }}>
+      979 -          <input type="text" placeholder="Name or search..." b
+          -ind:value={newInscription} bind:this={addInputRef} disabled={a
+          -dding}                                                        
+      979 +          {#if mapType === 'social-worlds'}                   
+      980 +            <select class="sw-role-select" bind:value={newSwRo
+          +le}>                                                          
+      981 +              {#each SW_ROLES as role}                        
+      982 +                <option value={role}>{role}</option>          
+      983 +              {/each}                                         
+      984 +            </select>                                         
+      985 +          {/if}                                               
+      986 +          <input type="text" placeholder={mapType === 'social-
+          +worlds' ? 'Formation name...' : 'Name or search...'} bind:valu
+          +e={newInscription} bind:this={addInputRef} disabled={adding}  
+      987              oninput={(e) => onAddInputChange((e.target as HTML
+           InputElement).value)}
+      988              onfocus={() => { if (newInscription.trim().length 
+           >= 2) onAddInputChange(newInscription); }}
+      989              onblur={() => { setTimeout(() => closePlacementDro
+           pdown(), 200); }}
+
+● Now the key part — canvas rendering. When mapType === 'social-worlds', render
+  elements using FormationNode instead of the regular box node. Let me re-read
+  the current element rendering to get the exact context:
+
+● Read 1 file (ctrl+o to expand)
+
+● Now I'll replace the element rendering section with a conditional that uses
+  FormationNode for SW/A maps:
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 12 lines
+      1225                onclick={handleNodeClick}
+      1226                oncontextmenu={handleNodeContextMenu}
+      1227              >
+      1228 +              {#if mapType === 'social-worlds' && el.sw_role}
+      1229 +                <FormationNode                               
+      1230 +                  label={el.inscription}                     
+      1231 +                  swRole={el.sw_role}                        
+      1232 +                  designation={el.designation}               
+      1233 +                  color={designationColor(el.designation)}   
+      1234 +                  rx={el.properties?.rx || 150}              
+      1235 +                  ry={el.properties?.ry || 100}              
+      1236 +                  selected={selection.isSelected(el.naming_id
+           +)}                                                           
+      1237 +                />                                           
+      1238 +              {:else}                                        
+      1239                <div class="map-node" class:ai-suggested={el.pr
+            operties?.aiSuggested} class:ai-withdrawn={isWithdrawn(el.pro
+            perties)} class:phase-member={highlightedPhase && isPhaseHigh
+            lighted(el)} class:phase-dimmed={highlightedPhase && !isPhase
+            Highlighted(el)} class:centered-dim={centeredConnections && !
+            centeredConnections.has(el.naming_id)} class:centered-anchor=
+            {centeredId === el.naming_id}
+      1240                  style="{highlightedPhase && isPhaseHighlighte
+            d(el) ? `--phase-color: ${phaseColorMap.get(highlightedPhase)
+            };` : ''}">
+      1241                  <div class="node-header">
+     ...
+      1282                    </div>
+      1283                  {/if}
+      1284                </div>
+      1285 +              {/if}                                          
+      1286              </CanvasElement>
+      1287            {/if}
+      1288          {/each}
+
+● Now add CSS for the swRole selector. Let me find the end of the style section
+  to add it.
+
+● Searched for 1 pattern (ctrl+o to expand)
+
+● Update(ile:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/maps/%5BmapId%5D/+page.sveltesrc/routes/projects/[projectId]/maps/[mapId]/+page.svelte)
+  ⎿  Added 6 lines
+      1903      padding: 0.4rem 0.6rem; color: #e1e4e8; font-size: 0.85re
+            m; width: 200px;
+      1904    }
+      1905    .add-form input:focus { outline: none; border-color: #8b9cf
+            7; }
+      1906 +  .sw-role-select {                                          
+      1907 +    background: #161822; border: 1px solid #2a2d3a; border-ra
+           +dius: 6px;                                                   
+      1908 +    padding: 0.3rem 0.4rem; color: #c9cdd5; font-size: 0.75re
+           +m;                                                           
+      1909 +    cursor: pointer;                                         
+      1910 +  }                                                          
+      1911 +  .sw-role-select:focus { outline: none; border-color: #8b9cf
+           +7; }                                                         
+      1912    .add-form-wrapper { position: relative; }
+      1913    .placement-dropdown {
+      1914      position: absolute; top: 100%; left: 0; right: 0;
+
+● Now let me build and check for errors.
+
+● Bash(npx svelte-check --threshold error 2>&1 | head -60)
+  ⎿  1773604380719 START "/home/joerissen/ai/transact-qda"
+     1773604380720 ERROR "src/lib/server/db/index.ts" 1:16 "Could not find
+     a declaration file for module 'pg'. '/home/joerissen/ai/transact-qda/n
+     … +56 lines (ctrl+o to expand)
+
+● All 24 errors are pre-existing (missing @types/node, etc.) — none from my
+  changes. Let me also verify the dev server builds correctly.
+
+● Bash(npx vite build 2>&1 | tail -15)
+  ⎿  .svelte-kit/output/server/remote-entry.js
+                                                  19.03 kB
+     .svelte-kit/output/server/entries/pages/projects/_projectId_/namings/_
+     … +15 lines (ctrl+o to expand)
+  ⎿  (timeout 1m)
+
+● Build succeeds. Let me update the task and verify the full data flow works by
+  checking the query one more time.
+
+● Build passes. Here's what was implemented:
+
+  Types (shared/types/index.ts): SwRole = 'social-world' | 'arena' | 'discourse'
+   | 'organization'
+
+  Constants (shared/constants.ts): SW_ROLES, SW_ROLE_STYLES (shape + dashArray +
+   fillOpacity per role), SW_ROLE_DEFAULTS (default rx/ry per role)
+
+  Query (maps.ts:getMapAppearances): New subquery extracts sw_role from the
+  first linked memo whose inscription matches Formation: <role> —
+  machine-readable classification, epistemically grounded in a naming act
+
+  API (+server.ts): New addFormation action — creates naming via addElementToMap
+   with default size properties, then creates the classification memo
+  (inscription: "Formation: social-world", content: user reasoning)
+
+  Component (FormationNode.svelte): SVG rendering with four visual styles:
+  - Social World: dotted ellipse
+  - Arena: dashed ellipse (larger default)
+  - Organization: dashed rectangle
+  - Discourse: solid ellipse with 15% fill opacity
+
+  Page (+page.svelte):
+  - swRole dropdown in add-form when mapType === 'social-worlds'
+  - addElement() routes to addFormation for SW/A maps
+  - Canvas conditionally renders FormationNode inside CanvasElement when sw_role
+   is present
+
+  The CanvasElement handles all drag/click/contextmenu — FormationNode is purely
+   visual. Resize (rx/ry adjustment) is not yet implemented but the properties
+  are stored and ready.
+
+  Shall I start the dev server so you can test, or continue with the next track
+  (analytical support / deepening prompts)?
+
+✻ Cooked for 7m 45s
+
+❯ commit                                                                        
+
+● Bash(git status)
+  ⎿  On branch main
+     Your branch is ahead of 'origin/main' by 43 commits.
+       (use "git push" to publish your local commits)
+     … +18 lines (ctrl+o to expand)
+
+● Bash(git diff)
+  ⎿  diff --git a/src/lib/server/db/queries/maps.ts b/src/lib/server/db/que
+     ries/maps.ts
+     index 9a89e41..007b4e5 100644
+     … +129 lines (ctrl+o to expand)
+
+● Bash(git log --oneline -5)
+  ⎿  6f9ce52 Replace Claude-generated session doc with verbatim dialog tran
+     scripts (Sessions 13+14)
+     b30f42d Fix phase assignment in canvas mode: clicking nodes now assign
+     … +7 lines (ctrl+o to expand)
+
+● Bash(git add src/lib/shared/types/index.ts src/lib/shared/constants.ts
+      src/lib/server/db/queries/maps.ts src/lib/canvas/FormationNode.svelte
+      src/routes/api/projects/…)
+  ⎿  (No output)
+
+● Bash(git commit -m "$(cat <<'EOF'
+      Add Social Worlds/Arenas map rendering with formation types…)
+  ⎿  [main f0fa562] Add Social Worlds/Arenas map rendering with formation t
+     ypes
+      6 files changed, 200 insertions(+), 2 deletions(-)
+      create mode 100644 src/lib/canvas/FormationNode.svelte
+
+● Bash(git status)
+  ⎿  On branch main
+     Your branch is ahead of 'origin/main' by 44 commits.
+       (use "git push" to publish your local commits)
+     … +7 lines (ctrl+o to expand)
+
+● Committed as f0fa562. Working tree clean.
+
+✻ Churned for 36s
+
+❯ -> devlog of course, too                                                      
+
+● Read 1 file (ctrl+o to expand)
+
+● Update(docs/DEVLOG.md)
+  ⎿  Added 27 lines
+      304  
+      305  ---
+      306  
+      307 +## Session 14 — 2026-03-15                                    
+      308 +                                                              
+      309 +**Focus**: Social Worlds/Arenas Maps — epistemological foundat
+          +ions and initial rendering                                    
+      310 +                                                              
+      311 +- Epistemological deep dive into Clarke's SW/A maps (Session 1
+          +4 transcript):                                                
+      312 +  - Social Worlds as universes of discourse (Strauss/Shibutani
+          +), not institutional containers                               
+      313 +  - Arenas as dispositif configurations (Foucault), not neutra
+          +l interaction zones                                           
+      314 +  - Resolved dual discourse question (Gasterstädt): Straussian
+          + and Foucauldian discourse must be held in productive tension 
+      315 +  - SW/A maps make stabilizations, conflict structures, and di
+          +spositival configurations visible                             
+      316 +  - Discourses are constitutive forces, not mere elements     
+      317 +- **Formation classification via memo**: machine-readable `For
+          +mation: <role>` in first memo inscription — the analytical jud
+          +gment "this IS a social world" is itself a naming act, not a s
+          +tructural type                                                
+      318 +- **Four formation roles** with distinct visual signatures per
+          + Clarke:                                                      
+      319 +  - Social World: dotted ellipse                              
+      320 +  - Arena: dashed ellipse (gestrichelt)                       
+      321 +  - Organization: dashed rectangle                            
+      322 +  - Discourse: solid ellipse, semi-transparent fill           
+      323 +- `addFormation` API action: creates element + classification 
+          +memo with default size per role                               
+      324 +- `getMapAppearances` extracts `sw_role` from first linked "Fo
+          +rmation:" memo                                                
+      325 +- `FormationNode.svelte`: SVG component rendering inside exist
+          +ing `CanvasElement` (reuses drag/click logic)                 
+      326 +- SW/A-specific add-form with role selector dropdown          
+      327 +                                                              
+      328 +| Commit | Description |                                      
+      329 +|--------|-------------|                                      
+      330 +| `f0fa562` | Add Social Worlds/Arenas map rendering with form
+          +ation types |                                                 
+      331 +                                                              
+      332 +---                                                           
+      333 +                                                              
+      334  ## Bugfixes — 2026-03-15
+      335  
+      336  | Commit | Description |
+
+● Bash(git add docs/DEVLOG.md && git commit -m "$(cat <<'EOF'
+      Update DEVLOG with Session 14: SW/A maps epistemology and formation
+      rendering…)
+  ⎿  [main 6d19492] Update DEVLOG with Session 14: SW/A maps epistemology a
+     nd formation rendering
+      1 file changed, 27 insertions(+)
+
+● Done — 6d19492.
+
+✻ Cogitated for 37s
