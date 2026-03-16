@@ -45,6 +45,110 @@ export async function createMap(
 	});
 }
 
+export async function duplicateMap(
+	projectId: string,
+	userId: string,
+	sourceMapId: string,
+	newLabel: string
+) {
+	return transaction(async (client) => {
+		const researcherNamingId = await getOrCreateResearcherNaming(projectId, userId);
+
+		// 1. Get source map's perspective appearance (for mapType + properties)
+		const srcApp = (await client.query(
+			`SELECT properties FROM appearances
+			 WHERE naming_id = $1 AND perspective_id = $1 AND mode = 'perspective'`,
+			[sourceMapId]
+		)).rows[0];
+		if (!srcApp) throw new Error('Source map not found');
+
+		// 2. Create new map naming
+		const mapRes = await client.query(
+			`INSERT INTO namings (project_id, inscription, created_by)
+			 VALUES ($1, $2, $3) RETURNING *`,
+			[projectId, newLabel, userId]
+		);
+		const newMapId = mapRes.rows[0].id;
+
+		// 3. Self-referential perspective appearance (copies mapType etc.)
+		await client.query(
+			`INSERT INTO appearances (naming_id, perspective_id, mode, properties)
+			 VALUES ($1, $1, 'perspective', $2)`,
+			[newMapId, JSON.stringify(srcApp.properties)]
+		);
+
+		// 4. Initial naming act
+		await client.query(
+			`INSERT INTO naming_acts (naming_id, designation, by)
+			 VALUES ($1, 'cue', $2)`,
+			[newMapId, researcherNamingId]
+		);
+
+		// 5. Copy all non-perspective appearances (elements, relations, silences, etc.)
+		await client.query(
+			`INSERT INTO appearances (naming_id, perspective_id, mode, directed_from, directed_to, valence, properties)
+			 SELECT naming_id, $2, mode, directed_from, directed_to, valence, properties
+			 FROM appearances
+			 WHERE perspective_id = $1
+			   AND naming_id != $1
+			   AND mode != 'perspective'`,
+			[sourceMapId, newMapId]
+		);
+
+		// 6. Copy phases (sub-perspectives): each phase is its own naming
+		const srcPhases = (await client.query(
+			`SELECT a.naming_id, n.inscription, a.properties
+			 FROM appearances a
+			 JOIN namings n ON n.id = a.naming_id
+			 WHERE a.perspective_id = $1 AND a.mode = 'perspective'
+			   AND a.naming_id != $1 AND n.deleted_at IS NULL`,
+			[sourceMapId]
+		)).rows;
+
+		for (const phase of srcPhases) {
+			// Create new phase naming
+			const phaseRes = await client.query(
+				`INSERT INTO namings (project_id, inscription, created_by)
+				 VALUES ($1, $2, $3) RETURNING id`,
+				[projectId, phase.inscription, userId]
+			);
+			const newPhaseId = phaseRes.rows[0].id;
+
+			// Phase appears on the new map as a sub-perspective
+			await client.query(
+				`INSERT INTO appearances (naming_id, perspective_id, mode, properties)
+				 VALUES ($1, $2, 'perspective', $3)`,
+				[newPhaseId, newMapId, JSON.stringify(phase.properties || {})]
+			);
+
+			// Phase's self-referential appearance
+			await client.query(
+				`INSERT INTO appearances (naming_id, perspective_id, mode, properties)
+				 VALUES ($1, $1, 'perspective', '{}')`,
+				[newPhaseId]
+			);
+
+			// Initial naming act for the phase
+			await client.query(
+				`INSERT INTO naming_acts (naming_id, designation, by)
+				 VALUES ($1, 'cue', $2)`,
+				[newPhaseId, researcherNamingId]
+			);
+
+			// Copy phase memberships: elements that appear in this phase
+			await client.query(
+				`INSERT INTO appearances (naming_id, perspective_id, mode, properties)
+				 SELECT naming_id, $2, mode, properties
+				 FROM appearances
+				 WHERE perspective_id = $1 AND naming_id != $1`,
+				[phase.naming_id, newPhaseId]
+			);
+		}
+
+		return { ...mapRes.rows[0], properties: srcApp.properties };
+	});
+}
+
 export async function getMapsByProject(projectId: string) {
 	return (
 		await query(

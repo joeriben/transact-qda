@@ -12,6 +12,21 @@
 		'network': 'Network Map'
 	};
 
+	// Context menu state
+	let ctxMenuId = $state<string | null>(null);
+	let ctxMenuPos = $state({ x: 0, y: 0 });
+	let ctxMap = $derived(data.maps.find((m: any) => m.id === ctxMenuId));
+
+	function handleContextMenu(mapId: string, e: MouseEvent) {
+		e.preventDefault();
+		ctxMenuId = mapId;
+		ctxMenuPos = { x: e.clientX, y: e.clientY };
+	}
+
+	function closeCtxMenu() {
+		ctxMenuId = null;
+	}
+
 	async function createMap() {
 		if (!newLabel.trim()) return;
 		creating = true;
@@ -26,9 +41,24 @@
 		}
 		creating = false;
 	}
+
+	async function duplicateMap(mapId: string, mapLabel: string) {
+		ctxMenuId = null;
+		const res = await fetch(`/api/projects/${data.projectId}/maps`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ action: 'duplicate', sourceMapId: mapId, label: `Copy of ${mapLabel}` })
+		});
+		if (res.ok) {
+			const map = await res.json();
+			window.location.href = `/projects/${data.projectId}/maps/${map.id}`;
+		}
+	}
 </script>
 
-<div class="maps-page">
+<!-- svelte-ignore a11y_click_events_have_key_events -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div class="maps-page" onclick={closeCtxMenu}>
 	<div class="header">
 		<h1>Maps</h1>
 		<button class="btn-primary" onclick={() => showCreate = !showCreate}>
@@ -54,12 +84,23 @@
 	{:else}
 		<div class="map-grid">
 			{#each data.maps as map}
-				<a href="/projects/{data.projectId}/maps/{map.id}" class="map-card">
+				<a href="/projects/{data.projectId}/maps/{map.id}" class="map-card"
+					oncontextmenu={(e) => handleContextMenu(map.id, e)}>
 					<div class="map-type">{mapTypeLabels[map.properties?.mapType] || map.properties?.mapType}</div>
 					<h3>{map.label}</h3>
 					<span class="meta">{new Date(map.created_at).toLocaleDateString()}</span>
 				</a>
 			{/each}
+		</div>
+	{/if}
+
+	{#if ctxMenuId && ctxMap}
+		<div class="context-menu" style="left: {ctxMenuPos.x}px; top: {ctxMenuPos.y}px;"
+			onclick={(e) => e.stopPropagation()}>
+			<div class="ctx-header">{ctxMap.label}</div>
+			<button class="ctx-item" onclick={() => duplicateMap(ctxMenuId!, ctxMap!.label)}>
+				Duplicate
+			</button>
 		</div>
 	{/if}
 </div>
@@ -106,4 +147,34 @@
 	}
 	.map-card h3 { font-size: 1rem; font-weight: 600; color: #e1e4e8; margin-bottom: 0.5rem; }
 	.meta { font-size: 0.75rem; color: #6b7280; }
+
+	.context-menu {
+		position: fixed;
+		background: #1a1c2e;
+		border: 1px solid #2a2d3a;
+		border-radius: 8px;
+		padding: 0.35rem 0;
+		min-width: 160px;
+		z-index: 1000;
+		box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+	}
+
+	.ctx-header {
+		padding: 0.4rem 0.75rem;
+		font-size: 0.75rem;
+		color: #6b7280;
+		border-bottom: 1px solid #2a2d3a;
+		margin-bottom: 0.2rem;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		max-width: 200px;
+	}
+
+	.ctx-item {
+		display: block; width: 100%; text-align: left;
+		padding: 0.4rem 0.75rem; font-size: 0.85rem;
+		background: none; border: none; color: #e1e4e8; cursor: pointer;
+	}
+	.ctx-item:hover { background: #2a2d3a; }
 </style>
