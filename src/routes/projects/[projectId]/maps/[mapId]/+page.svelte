@@ -363,18 +363,14 @@
 					ms.reload();
 				} else if (event.type?.startsWith('ai:')) {
 					ms.showAiNotification(`AI: ${event.type.split(':')[1]}`);
-					ms.reload();
+					ms.reload().then(() => layoutNewNodes());
 				}
 			} catch { /* ignore */ }
 		});
 		return () => evtSource.close();
 	});
 
-	// Reload also re-lays out new nodes
-	const originalReload = ms.reload.bind(ms);
-	// We override reload to also do layoutNewNodes — but only from toolbar add actions.
-	// The toolbar calls ms.reload() after adding; we patch it to also layout.
-	// Actually, layoutNewNodes is called explicitly where needed. No patch needed.
+	// layoutNewNodes is called explicitly after SSE and toolbar add actions.
 
 	// ─── List grouping ───
 
