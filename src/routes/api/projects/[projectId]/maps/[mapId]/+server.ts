@@ -27,7 +27,7 @@ import {
 	getNaming
 } from '$lib/server/db/queries/namings.js';
 import { createMemo, getMemosForNaming } from '$lib/server/db/queries/memos.js';
-import { runMapAgent, setAiEnabled, discussCue } from '$lib/server/ai/agent.js';
+import { runMapAgent, setAiEnabled, discussCue, discussMemo } from '$lib/server/ai/agent.js';
 import { saveTopologyBuffer, saveTopologySnapshot, restoreTopologySnapshot, listTopologySnapshots } from '$lib/server/db/queries/topology.js';
 import { SW_ROLE_DEFAULTS } from '$lib/shared/constants.js';
 
@@ -284,6 +284,18 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			if (!namingId || !message?.trim()) return json({ error: 'namingId and message required' }, { status: 400 });
 			try {
 				const result = await discussCue(projectId, mapId, namingId, message.trim(), userId);
+				return json(result);
+			} catch (error) {
+				const msg = error instanceof Error ? error.message : String(error);
+				return json({ error: msg }, { status: 500 });
+			}
+		}
+
+		case 'discussMemo': {
+			const { memoId, message } = body;
+			if (!memoId || !message?.trim()) return json({ error: 'memoId and message required' }, { status: 400 });
+			try {
+				const result = await discussMemo(projectId, mapId, memoId, message.trim(), userId);
 				return json(result);
 			} catch (error) {
 				const msg = error instanceof Error ? error.message : String(error);

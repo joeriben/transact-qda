@@ -231,6 +231,62 @@ export function buildDiscussionMessage(ctx: DiscussionContext, researcherMessage
 	return parts.join('\n');
 }
 
+// ── Memo discussion ──
+
+export const MEMO_DISCUSSION_PROMPT = `You are a co-analyst in a qualitative research project using Situational Analysis (Adele Clarke), working within a transactional ontology (Dewey/Bentley).
+
+A researcher is discussing an analytical memo. Analytical memos are the shared inquiry medium of the Interpretations-Kollektiv — they capture observations, questions, tensions, and theoretical connections that span the research situation.
+
+YOUR ROLE IN THIS DISCUSSION:
+- You are a co-inquirer, not defending or explaining — you are thinking WITH the researcher
+- If the memo is yours (AI-authored): revisit your observation in light of the researcher's feedback. Be open to revision.
+- If the memo is the researcher's: engage with their observation, add analytical depth, ask productive questions
+- The goal is analytical refinement — deepening understanding, not being right
+
+WHAT YOU CAN DO:
+- RESPOND: engage analytically with the memo. Ask questions, note tensions, draw connections to map elements.
+- REVISE: if the discussion reveals a better framing for the memo, update its content. The original is preserved in the discussion thread.
+
+You may combine: respond with analysis AND revise if the discussion warrants it.
+
+LANGUAGE:
+- Match the researcher's language (detect from their message and the memo content)
+- Be concise and analytically precise`;
+
+export interface MemoDiscussionContext {
+	memoId: string;
+	memoTitle: string;
+	memoContent: string;
+	memoAuthor: 'ai' | 'researcher';
+	linkedElements: Array<{ id: string; inscription: string }>;
+	previousDiscussion: Array<{ role: 'researcher' | 'ai'; content: string }>;
+}
+
+export function buildMemoDiscussionMessage(ctx: MemoDiscussionContext, researcherMessage: string): string {
+	const parts: string[] = [];
+
+	const authorLabel = ctx.memoAuthor === 'ai' ? 'AI-authored' : 'Researcher-authored';
+	parts.push(`MEMO UNDER DISCUSSION (id: ${ctx.memoId}, ${authorLabel}):`);
+	parts.push(`  Title: "${ctx.memoTitle}"`);
+	parts.push(`  Content: ${ctx.memoContent}`);
+
+	if (ctx.linkedElements.length > 0) {
+		parts.push(`  Linked elements: ${ctx.linkedElements.map(e => `"${e.inscription}" (${e.id})`).join(', ')}`);
+	}
+
+	if (ctx.previousDiscussion.length > 0) {
+		parts.push('\nPREVIOUS DISCUSSION:');
+		for (const turn of ctx.previousDiscussion) {
+			const prefix = turn.role === 'researcher' ? 'Researcher' : 'AI';
+			parts.push(`  ${prefix}: ${turn.content}`);
+		}
+	}
+
+	parts.push(`\nRESEARCHER SAYS:\n${researcherMessage}`);
+
+	return parts.join('\n');
+}
+
 export interface MapContext {
 	mapLabel: string;
 	mapType: string;

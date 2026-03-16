@@ -613,15 +613,40 @@ export async function getNamingStack(namingId: string) {
 	]);
 
 	const ai = aiMeta.rows[0];
+	const AI_SYSTEM_UUID = '00000000-0000-0000-0000-000000000000';
+
 	// Separate discussion memos from regular memos
 	const allMemos = memos.rows;
 	const discussion = allMemos.filter((m: any) => m.label?.startsWith('Discussion:'));
 	const regularMemos = allMemos.filter((m: any) => !m.label?.startsWith('Discussion:'));
 
+	// Enrich memos with provenance
+	const enrichedMemos = regularMemos.map((m: any) => ({
+		id: m.id,
+		label: m.label,
+		content: m.content,
+		created_at: m.created_at,
+		authorId: m.created_by,
+		isAiAuthored: m.created_by === AI_SYSTEM_UUID,
+	}));
+
+	// Memo discussion entries (linked via participations, label prefix "MemoDiscussion:")
+	const memoDiscussions = allMemos
+		.filter((m: any) => m.label?.startsWith('MemoDiscussion:'))
+		.map((m: any) => ({
+			id: m.id,
+			role: m.created_by === AI_SYSTEM_UUID ? 'ai' as const : 'researcher' as const,
+			type: m.label?.includes(': researcher') ? 'researcher'
+				: m.label?.includes(': revise') ? 'revise'
+				: 'response',
+			content: m.content,
+			created_at: m.created_at,
+		}));
+
 	return {
 		inscriptions: inscriptions.rows,
 		designations: designations.rows,
-		memos: regularMemos,
+		memos: enrichedMemos,
 		discussion: discussion.map((m: any) => ({
 			id: m.id,
 			role: m.label === 'Discussion: researcher' ? 'researcher' : 'ai',
@@ -629,6 +654,7 @@ export async function getNamingStack(namingId: string) {
 			content: m.content,
 			created_at: m.created_at
 		})),
+		memoDiscussions,
 		aiReasoning: ai?.ai_reasoning || null,
 		aiSuggested: ai?.ai_suggested || false,
 		aiWithdrawn: ai?.is_withdrawn || false

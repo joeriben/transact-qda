@@ -258,3 +258,47 @@ export interface CreatePhaseInput {
 	element_ids: string[];
 	reasoning: string;
 }
+
+// ── Memo discussion tools: used when a researcher discusses any analytical memo ──
+
+export const MEMO_DISCUSSION_TOOLS: ToolDef[] = [
+	{
+		name: 'respond',
+		description:
+			'Respond to the researcher\'s message about this memo. Your response becomes a new discussion entry linked to the memo.',
+		input_schema: {
+			type: 'object' as const,
+			properties: {
+				content: {
+					type: 'string',
+					description: 'Your response to the researcher'
+				}
+			},
+			required: ['content']
+		}
+	},
+	{
+		name: 'revise_memo',
+		description:
+			'Revise the memo content based on the discussion. Use this when the discussion reveals a better framing, corrects an error, or deepens the observation. The original memo is preserved — the revision updates the content.',
+		input_schema: {
+			type: 'object' as const,
+			properties: {
+				revised_content: {
+					type: 'string',
+					description: 'The revised memo content'
+				},
+				reasoning: {
+					type: 'string',
+					description: 'Why this revision improves the memo'
+				}
+			},
+			required: ['revised_content', 'reasoning']
+		}
+	}
+];
+
+export interface ReviseMemoInput {
+	revised_content: string;
+	reasoning: string;
+}

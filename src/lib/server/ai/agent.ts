@@ -4,11 +4,11 @@
 import { chat, getModel } from './client.js';
 import { getMapStructure, getMap, addElementToMap, relateElements, createPhase, assignToPhase, getCrossMapParticipations } from '../db/queries/maps.js';
 import { getOrCreateAiNaming, logAiInteraction } from '../db/queries/ai.js';
-import { createMemo } from '../db/queries/memos.js';
+import { createMemo, updateMemoContent } from '../db/queries/memos.js';
 import { getMemosByProject } from '../db/queries/memos.js';
 import { emit } from './sse.js';
-import { SYSTEM_PROMPT, SWA_SUPPLEMENT, DISCUSSION_SYSTEM_PROMPT, buildContextMessage, buildDiscussionMessage, type MapContext, type TriggerEvent, type DiscussionContext } from './prompts.js';
-import { AI_TOOLS, SUGGEST_FORMATION_TOOL, DISCUSSION_TOOLS, type SuggestElementInput, type SuggestRelationInput, type IdentifySilenceInput, type WriteMemoInput, type CreatePhaseInput, type SuggestFormationInput, type RewriteCueInput, type RespondInput, type WithdrawCueInput } from './tools.js';
+import { SYSTEM_PROMPT, SWA_SUPPLEMENT, DISCUSSION_SYSTEM_PROMPT, MEMO_DISCUSSION_PROMPT, buildContextMessage, buildDiscussionMessage, buildMemoDiscussionMessage, type MapContext, type TriggerEvent, type DiscussionContext, type MemoDiscussionContext } from './prompts.js';
+import { AI_TOOLS, SUGGEST_FORMATION_TOOL, DISCUSSION_TOOLS, MEMO_DISCUSSION_TOOLS, type SuggestElementInput, type SuggestRelationInput, type IdentifySilenceInput, type WriteMemoInput, type CreatePhaseInput, type SuggestFormationInput, type RewriteCueInput, type RespondInput, type WithdrawCueInput, type ReviseMemoInput } from './tools.js';
 import { SW_ROLE_DEFAULTS } from '$lib/shared/constants.js';
 import { query } from '../db/index.js';
 
@@ -206,7 +206,13 @@ async function executeTool(
 				const { title, content, linked_element_ids } = input as unknown as WriteMemoInput;
 				// Create memo with AI as author — use a system user placeholder
 				const memo = await createMemo(projectId, '00000000-0000-0000-0000-000000000000', `AI: ${title}`, content, linked_element_ids || []);
-				emit(mapId, 'ai:memo', { memo, title, content });
+				emit(mapId, 'ai:memo', {
+					memo,
+					title,
+					content,
+					linkedIds: linked_element_ids || [],
+					authorId: '00000000-0000-0000-0000-000000000000'
+				});
 				return { success: true, result: { id: memo.id, title } };
 			}
 
@@ -628,6 +634,159 @@ export async function discussCue(
 	);
 
 	// Build response text for frontend
+	const aiResponseText = actions
+		.filter(a => a.type === 'respond')
+		.map(a => (a.detail as { content: string }).content)
+		.join('\n\n') || responseText;
+
+	return { response: aiResponseText, actions };
+}
+
+// Discuss an analytical memo: researcher sends a message, AI responds
+export async function discussMemo(
+	projectId: string,
+	mapId: string,
+	memoId: string,
+	researcherMessage: string,
+	userId?: string
+): Promise<{ response: string; actions: Array<{ type: string; detail: unknown }> }> {
+	const model = getModel();
+	const aiNamingId = await getOrCreateAiNaming(projectId, model);
+
+	// Get the memo and its content
+	const memoRow = await query(
+		`SELECT n.id, n.inscription as label, mc.content, n.created_by
+		 FROM namings n
+		 JOIN memo_content mc ON mc.naming_id = n.id
+		 WHERE n.id = $1 AND n.project_id = $2 AND n.deleted_at IS NULL`,
+		[memoId, projectId]
+	);
+	if (memoRow.rows.length === 0) throw new Error('Memo not found');
+	const memo = memoRow.rows[0];
+
+	const AI_SYSTEM_UUID = '00000000-0000-0000-0000-000000000000';
+	const memoAuthor = memo.created_by === AI_SYSTEM_UUID ? 'ai' as const : 'researcher' as const;
+
+	// Get linked elements (via participations)
+	const linkedRows = await query(
+		`SELECT t.id, t.inscription
+		 FROM participations p
+		 JOIN namings pn ON pn.id = p.id AND pn.deleted_at IS NULL
+		 JOIN namings t ON t.id = CASE WHEN p.naming_id = $1 THEN p.participant_id ELSE p.naming_id END
+		   AND t.deleted_at IS NULL AND t.id != $1
+		 WHERE (p.naming_id = $1 OR p.participant_id = $1)`,
+		[memoId]
+	);
+	// Filter out other memos (those with memo_content) to get map elements only
+	const linkedElementRows = await query(
+		`SELECT n.id, n.inscription
+		 FROM unnest($1::uuid[]) AS uid(id)
+		 JOIN namings n ON n.id = uid.id
+		 WHERE NOT EXISTS (SELECT 1 FROM memo_content mc WHERE mc.naming_id = n.id)`,
+		[linkedRows.rows.map((r: any) => r.id)]
+	);
+	const linkedElements = linkedElementRows.rows.map((r: any) => ({ id: r.id, inscription: r.inscription }));
+
+	// Get previous discussion entries for this memo
+	const prevDiscussion = await query(
+		`SELECT DISTINCT m.id, m.inscription as label, mc.content, m.created_by, m.created_at
+		 FROM participations p
+		 JOIN namings m ON m.id = CASE WHEN p.naming_id = $1 THEN p.participant_id ELSE p.naming_id END
+		 JOIN memo_content mc ON mc.naming_id = m.id
+		 WHERE (p.naming_id = $1 OR p.participant_id = $1)
+		   AND m.deleted_at IS NULL
+		   AND m.id != $1
+		   AND m.inscription LIKE 'MemoDiscussion:%'
+		 ORDER BY m.created_at ASC
+		 LIMIT 30`,
+		[memoId]
+	);
+
+	const previousDiscussion: MemoDiscussionContext['previousDiscussion'] = [];
+	for (const entry of prevDiscussion.rows) {
+		const role = entry.created_by === AI_SYSTEM_UUID ? 'ai' as const : 'researcher' as const;
+		previousDiscussion.push({ role, content: entry.content });
+	}
+
+	const discussionCtx: MemoDiscussionContext = {
+		memoId,
+		memoTitle: memo.label,
+		memoContent: memo.content,
+		memoAuthor,
+		linkedElements,
+		previousDiscussion
+	};
+
+	const contextMessage = buildMemoDiscussionMessage(discussionCtx, researcherMessage);
+
+	// Save researcher's message as a discussion entry BEFORE calling AI
+	await createMemo(projectId, userId || AI_SYSTEM_UUID,
+		`MemoDiscussion: researcher`, researcherMessage, [memoId]);
+
+	let response;
+	try {
+		response = await chat({
+			system: MEMO_DISCUSSION_PROMPT,
+			maxTokens: 1024,
+			tools: MEMO_DISCUSSION_TOOLS,
+			messages: [
+				{ role: 'user', content: contextMessage }
+			]
+		});
+	} catch (error) {
+		const errMsg = error instanceof Error ? error.message : String(error);
+		await createMemo(projectId, AI_SYSTEM_UUID,
+			`MemoDiscussion: response`, `(AI could not respond: ${errMsg})`, [memoId]);
+		return { response: `AI could not respond: ${errMsg}`, actions: [] };
+	}
+
+	// Execute discussion tool calls
+	const actions: Array<{ type: string; detail: unknown }> = [];
+	let responseText = response.text;
+
+	for (const tc of response.toolCalls) {
+		switch (tc.name) {
+			case 'respond': {
+				const { content } = tc.input as unknown as RespondInput;
+				if (!content?.trim()) break;
+				await createMemo(projectId, AI_SYSTEM_UUID,
+					`MemoDiscussion: response`, content, [memoId]);
+				actions.push({ type: 'respond', detail: { content } });
+				break;
+			}
+			case 'revise_memo': {
+				const { revised_content, reasoning } = tc.input as unknown as ReviseMemoInput;
+				if (!revised_content?.trim()) break;
+				// Update memo content
+				await updateMemoContent(memoId, revised_content);
+				// Log the revision as a discussion entry
+				await createMemo(projectId, AI_SYSTEM_UUID,
+					`MemoDiscussion: revise`, reasoning || revised_content, [memoId]);
+				actions.push({ type: 'revise', detail: { revised_content, reasoning } });
+				emit(mapId, 'ai:memo-revised', { memoId, revised_content, reasoning });
+				break;
+			}
+		}
+	}
+
+	// If AI responded with text but no respond tool call, save it
+	if (responseText && !actions.some(a => a.type === 'respond')) {
+		await createMemo(projectId, AI_SYSTEM_UUID,
+			`MemoDiscussion: response`, responseText, [memoId]);
+		actions.push({ type: 'respond', detail: { content: responseText } });
+	}
+
+	// Log the interaction
+	await logAiInteraction(
+		projectId,
+		aiNamingId,
+		'memo-discussion',
+		model,
+		{ mapId, memoId, researcherMessage },
+		{ actions, text: responseText, stopReason: response.stopReason },
+		response.tokensUsed
+	);
+
 	const aiResponseText = actions
 		.filter(a => a.type === 'respond')
 		.map(a => (a.detail as { content: string }).content)

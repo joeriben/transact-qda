@@ -302,18 +302,42 @@
 	let discussInput = $state('');
 	let discussLoading = $state(false);
 
+	// Memo discussion (any memo, not just AI cues)
+	let memoDiscussInput = $state('');
+	let memoDiscussLoading = $state(false);
+	let memoDiscussTarget = $state<string | null>(null);
+
+	// Memo panel: shows when AI writes a new memo
+	let memoPanel = $state<{
+		id: string;
+		title: string;
+		content: string;
+		linkedIds: string[];
+		authorId: string;
+	} | null>(null);
+
 	// AI
 	let aiEnabled = $state(true);
 	let aiNotification = $state<string | null>(null);
 	let aiNotificationTimeout: ReturnType<typeof setTimeout> | undefined;
 
-	// SSE
+	// SSE — differentiate ai:memo from other events
 	$effect(() => {
 		const evtSource = new EventSource(`/api/projects/${data.projectId}/maps/${data.map.id}/events`);
 		evtSource.addEventListener('message', (e) => {
 			try {
 				const event = JSON.parse(e.data);
-				if (event.type?.startsWith('ai:')) {
+				if (event.type === 'ai:memo') {
+					const p = event.payload;
+					memoPanel = {
+						id: p.memo?.id || '',
+						title: p.title || '',
+						content: p.content || '',
+						linkedIds: p.linkedIds || [],
+						authorId: p.authorId || ''
+					};
+					reload();
+				} else if (event.type?.startsWith('ai:')) {
 					showAiNotification(`AI: ${event.type.split(':')[1]}`);
 					reload();
 				}
@@ -980,6 +1004,37 @@
 		}
 	}
 
+	// ─── Memo discussion ───
+
+	async function submitMemoDiscussion(memoId: string) {
+		if (!memoDiscussInput.trim() || memoDiscussLoading) return;
+		memoDiscussLoading = true;
+		try {
+			const result = await mapAction('discussMemo', { memoId, message: memoDiscussInput.trim() });
+			if (!result) { showAiNotification('Memo discussion failed'); return; }
+			memoDiscussInput = '';
+			// Refresh stack to show new discussion entries
+			if (stackId) {
+				const freshStack = await mapAction('getStack', { namingId: stackId });
+				if (freshStack) stackData = freshStack;
+			}
+		} catch (e) {
+			showAiNotification('Memo discussion failed');
+		} finally {
+			memoDiscussLoading = false;
+		}
+	}
+
+	function dismissMemoPanel() {
+		memoPanel = null;
+	}
+
+	function openMemoInStack(memoId: string) {
+		// Find any element linked to this memo and open its stack
+		// For now, dismiss the panel — the memo is accessible via the stack
+		memoPanel = null;
+	}
+
 	// ─── Auto layout ───
 
 	async function runAutoLayout() {
@@ -1259,6 +1314,32 @@
 
 	{#if aiNotification}
 		<div class="ai-notification">{aiNotification}</div>
+	{/if}
+
+	<!-- Memo panel: shows when AI writes an analytical memo -->
+	{#if memoPanel}
+		<div class="memo-panel">
+			<div class="memo-panel-header">
+				<span class="memo-panel-author">AI</span>
+				<span class="memo-panel-title">{memoPanel.title}</span>
+				<button class="btn-link" onclick={dismissMemoPanel}>dismiss</button>
+			</div>
+			<div class="memo-panel-content">{memoPanel.content}</div>
+			{#if memoPanel.linkedIds.length > 0}
+				<div class="memo-panel-links">
+					{#each memoPanel.linkedIds as lid}
+						{@const linkedNode = findNode(lid)}
+						{#if linkedNode}
+							<!-- svelte-ignore a11y_click_events_have_key_events -->
+							<!-- svelte-ignore a11y_no_static_element_interactions -->
+							<span class="memo-panel-chip" onclick={() => showStack(lid)}>
+								{linkedNode.inscription}
+							</span>
+						{/if}
+					{/each}
+				</div>
+			{/if}
+		</div>
 	{/if}
 
 	<!-- Naming act prompt (shared, always visible) -->
@@ -1591,10 +1672,25 @@
 						<div class="history-section">
 							<span class="history-label">Memos ({stackData.memos.length})</span>
 							{#each stackData.memos as memo}
-								<div class="memo-entry">
-									<span class="memo-label">{memo.label}</span>
+								<div class="memo-entry" class:memo-ai={memo.isAiAuthored}>
+									<div class="memo-entry-header">
+										<span class="memo-author-badge" class:badge-ai={memo.isAiAuthored}>
+											{memo.isAiAuthored ? 'AI' : 'R'}
+										</span>
+										<span class="memo-label">{memo.label}</span>
+										<span class="he-date">{new Date(memo.created_at).toLocaleString()}</span>
+									</div>
 									<span class="memo-content">{memo.content}</span>
-									<span class="he-date">{new Date(memo.created_at).toLocaleString()}</span>
+									{#if memoDiscussTarget === memo.id}
+										<form class="discuss-form" onsubmit={e => { e.preventDefault(); submitMemoDiscussion(memo.id); }}>
+											<input type="text" placeholder="Discuss this memo..." bind:value={memoDiscussInput} disabled={memoDiscussLoading} />
+											<button type="submit" class="btn-xs" disabled={memoDiscussLoading || !memoDiscussInput.trim()}>
+												{memoDiscussLoading ? '...' : 'send'}
+											</button>
+										</form>
+									{:else}
+										<button class="btn-xs btn-discuss" onclick={() => { memoDiscussTarget = memo.id; memoDiscussInput = ''; }}>discuss</button>
+									{/if}
 								</div>
 							{/each}
 						</div>
@@ -1856,10 +1952,25 @@
 										<div class="history-section">
 											<span class="history-label">Memos ({stackData.memos.length})</span>
 											{#each stackData.memos as memo}
-												<div class="memo-entry">
-													<span class="memo-label">{memo.label}</span>
+												<div class="memo-entry" class:memo-ai={memo.isAiAuthored}>
+													<div class="memo-entry-header">
+														<span class="memo-author-badge" class:badge-ai={memo.isAiAuthored}>
+															{memo.isAiAuthored ? 'AI' : 'R'}
+														</span>
+														<span class="memo-label">{memo.label}</span>
+														<span class="he-date">{new Date(memo.created_at).toLocaleString()}</span>
+													</div>
 													<span class="memo-content">{memo.content}</span>
-													<span class="he-date">{new Date(memo.created_at).toLocaleString()}</span>
+													{#if memoDiscussTarget === memo.id}
+														<form class="discuss-form" onsubmit={e => { e.preventDefault(); submitMemoDiscussion(memo.id); }}>
+															<input type="text" placeholder="Discuss this memo..." bind:value={memoDiscussInput} disabled={memoDiscussLoading} />
+															<button type="submit" class="btn-xs" disabled={memoDiscussLoading || !memoDiscussInput.trim()}>
+																{memoDiscussLoading ? '...' : 'send'}
+															</button>
+														</form>
+													{:else}
+														<button class="btn-xs btn-discuss" onclick={() => { memoDiscussTarget = memo.id; memoDiscussInput = ''; }}>discuss</button>
+													{/if}
 												</div>
 											{/each}
 										</div>
@@ -2713,4 +2824,58 @@
 	.topo-entry:last-child { border-bottom: none; }
 	.topo-label { color: #f59e0b; flex: 1; }
 	.topo-meta { color: #4b5563; font-size: 0.7rem; }
+
+	/* ── Memo panel (shows on ai:memo SSE) ── */
+	.memo-panel {
+		position: fixed; bottom: 1.5rem; right: 240px; z-index: 110;
+		width: 400px; max-height: 340px;
+		background: #1a1d2e; border: 1px solid #3a3d5a; border-radius: 10px;
+		padding: 0.8rem 1rem;
+		box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+		overflow-y: auto;
+	}
+	.memo-panel-header {
+		display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;
+	}
+	.memo-panel-author {
+		font-size: 0.65rem; font-weight: 700; text-transform: uppercase;
+		background: rgba(139, 156, 247, 0.15); color: #8b9cf7;
+		padding: 0.1rem 0.4rem; border-radius: 3px;
+	}
+	.memo-panel-title {
+		font-size: 0.85rem; font-weight: 600; color: #e1e4e8; flex: 1;
+	}
+	.memo-panel-content {
+		font-size: 0.8rem; color: #c9cdd5; line-height: 1.5;
+		white-space: pre-wrap;
+	}
+	.memo-panel-links {
+		display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.5rem;
+	}
+	.memo-panel-chip {
+		font-size: 0.7rem; color: #8b9cf7;
+		background: rgba(139, 156, 247, 0.1); border: 1px solid rgba(139, 156, 247, 0.2);
+		padding: 0.15rem 0.5rem; border-radius: 4px; cursor: pointer;
+	}
+	.memo-panel-chip:hover { background: rgba(139, 156, 247, 0.2); }
+
+	/* ── Memo provenance in stack panel ── */
+	.memo-entry-header {
+		display: flex; align-items: center; gap: 0.4rem;
+	}
+	.memo-author-badge {
+		font-size: 0.6rem; font-weight: 700; text-transform: uppercase;
+		background: rgba(107, 114, 128, 0.2); color: #9ca3af;
+		padding: 0.05rem 0.3rem; border-radius: 3px; flex-shrink: 0;
+	}
+	.memo-author-badge.badge-ai {
+		background: rgba(139, 156, 247, 0.15); color: #8b9cf7;
+	}
+	.memo-entry.memo-ai {
+		border-left: 2px solid rgba(139, 156, 247, 0.3);
+		padding-left: 0.4rem;
+	}
+	.btn-discuss {
+		margin-top: 0.25rem; color: #8b9cf7; font-size: 0.7rem;
+	}
 </style>
