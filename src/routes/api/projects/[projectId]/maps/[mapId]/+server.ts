@@ -47,6 +47,17 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const { projectId, mapId } = params;
 	const userId = locals.user!.id;
 
+	// Read-only maps: reject all mutations except read-only queries
+	const readOnlyActions = ['getStack', 'getHistory', 'getOutsideParticipations', 'getMemosForNaming',
+		'searchForPlacement', 'listDocumentsForImport', 'getDocumentNamings', 'listTopologySnapshots',
+		'getPhaseMembershipHistory'];
+	if (!readOnlyActions.includes(action)) {
+		const map = await getMap(mapId, projectId);
+		if (map?.properties?.readOnly) {
+			return json({ error: 'This map is read-only (template). Copy the project to make changes.' }, { status: 403 });
+		}
+	}
+
 	switch (action) {
 		case 'addElement': {
 			const { inscription, properties } = body;
