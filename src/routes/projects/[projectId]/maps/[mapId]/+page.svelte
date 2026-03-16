@@ -1973,7 +1973,7 @@
 						<span class="phase-label clickable" onclick={() => { highlightedPhase = isDeclinedFilter ? null : DECLINED_PHASE; }}>Declined</span>
 						<span class="phase-count">{declinedCount}</span>
 					</div>
-					<span class="declined-hint">{isDeclinedFilter ? 'showing' : 'click to hide'}</span>
+					<span class="declined-hint">{isDeclinedFilter ? 'hidden' : 'click to hide'}</span>
 				</div>
 			{/if}
 
