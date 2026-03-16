@@ -620,7 +620,41 @@ export async function getNamingStack(namingId: string) {
 	const discussion = allMemos.filter((m: any) => m.label?.startsWith('Discussion:'));
 	const regularMemos = allMemos.filter((m: any) => !m.label?.startsWith('Discussion:'));
 
-	// Enrich memos with provenance
+	// Enrich memos with provenance + per-memo discussion threads
+	// Discussion entries are linked to the MEMO (not the element), so we need
+	// a second-level participation query for each memo that has discussions.
+	const memoIds = regularMemos.map((m: any) => m.id);
+	let memoDiscussionMap = new Map<string, any[]>();
+	if (memoIds.length > 0) {
+		const discRows = await query(
+			`SELECT DISTINCT d.id, d.inscription as label, dc.content, d.created_at, d.created_by,
+			        CASE WHEN p.naming_id = ANY($1::uuid[]) THEN p.naming_id ELSE p.participant_id END as parent_memo_id
+			 FROM participations p
+			 JOIN namings pn ON pn.id = p.id AND pn.deleted_at IS NULL
+			 JOIN namings d ON d.id = CASE WHEN p.naming_id = ANY($1::uuid[]) THEN p.participant_id ELSE p.naming_id END
+			 JOIN memo_content dc ON dc.naming_id = d.id
+			 WHERE (p.naming_id = ANY($1::uuid[]) OR p.participant_id = ANY($1::uuid[]))
+			   AND d.deleted_at IS NULL
+			   AND NOT (d.id = ANY($1::uuid[]))
+			   AND d.inscription LIKE 'MemoDiscussion:%'
+			 ORDER BY d.created_at ASC`,
+			[memoIds]
+		);
+		for (const row of discRows.rows) {
+			const parentId = row.parent_memo_id;
+			if (!memoDiscussionMap.has(parentId)) memoDiscussionMap.set(parentId, []);
+			memoDiscussionMap.get(parentId)!.push({
+				id: row.id,
+				role: row.created_by === AI_SYSTEM_UUID ? 'ai' as const : 'researcher' as const,
+				type: row.label?.includes(': researcher') ? 'researcher'
+					: row.label?.includes(': revise') ? 'revise'
+					: 'response',
+				content: row.content,
+				created_at: row.created_at,
+			});
+		}
+	}
+
 	const enrichedMemos = regularMemos.map((m: any) => ({
 		id: m.id,
 		label: m.label,
@@ -629,20 +663,8 @@ export async function getNamingStack(namingId: string) {
 		authorId: m.created_by,
 		isAiAuthored: m.created_by === AI_SYSTEM_UUID,
 		status: m.status || 'active',
+		discussion: memoDiscussionMap.get(m.id) || [],
 	}));
-
-	// Memo discussion entries (linked via participations, label prefix "MemoDiscussion:")
-	const memoDiscussions = allMemos
-		.filter((m: any) => m.label?.startsWith('MemoDiscussion:'))
-		.map((m: any) => ({
-			id: m.id,
-			role: m.created_by === AI_SYSTEM_UUID ? 'ai' as const : 'researcher' as const,
-			type: m.label?.includes(': researcher') ? 'researcher'
-				: m.label?.includes(': revise') ? 'revise'
-				: 'response',
-			content: m.content,
-			created_at: m.created_at,
-		}));
 
 	return {
 		inscriptions: inscriptions.rows,
@@ -655,7 +677,6 @@ export async function getNamingStack(namingId: string) {
 			content: m.content,
 			created_at: m.created_at
 		})),
-		memoDiscussions,
 		aiReasoning: ai?.ai_reasoning || null,
 		aiSuggested: ai?.ai_suggested || false,
 		aiWithdrawn: ai?.is_withdrawn || false

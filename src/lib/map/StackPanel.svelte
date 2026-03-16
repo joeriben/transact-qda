@@ -64,6 +64,16 @@
 							<span class="he-date">{new Date(memo.created_at).toLocaleString()}</span>
 						</div>
 						<span class="memo-content">{memo.content}</span>
+						{#if memo.discussion?.length > 0}
+							<div class="discussion-thread">
+								{#each memo.discussion as turn}
+									<div class="discussion-turn" class:turn-researcher={turn.role === 'researcher'} class:turn-ai={turn.role === 'ai'}>
+										<span class="turn-role">{turn.role === 'researcher' ? 'You' : 'AI'}{turn.type === 'revise' ? ' (revised)' : ''}</span>
+										<span class="turn-content">{turn.content}</span>
+									</div>
+								{/each}
+							</div>
+						{/if}
 						<div class="memo-actions">
 							{#if memo.status === 'presented' || memo.status === 'discussed'}
 								<button class="btn-xs" onclick={() => ms.updateMemoStatus(memo.id, 'acknowledged')}>ack</button>
