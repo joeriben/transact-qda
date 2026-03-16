@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
+
 	let { data } = $props();
 	let showCreate = $state(false);
 	let newLabel = $state('');
@@ -12,24 +14,19 @@
 		'network': 'Network Map'
 	};
 
-	// Context menu state
+	// Context menu
 	let ctxMenuId = $state<string | null>(null);
 	let ctxMenuPos = $state({ x: 0, y: 0 });
 	let ctxMap = $derived(data.maps.find((m: any) => m.id === ctxMenuId));
 
-	function mapCardCtx(node: HTMLElement, mapId: string) {
-		function handler(e: MouseEvent) {
-			e.preventDefault();
-			e.stopPropagation();
-			ctxMenuId = mapId;
-			ctxMenuPos = { x: e.clientX, y: e.clientY };
-		}
-		node.addEventListener('contextmenu', handler);
-		return { destroy() { node.removeEventListener('contextmenu', handler); } };
+	function openMap(mapId: string) {
+		goto(`/projects/${data.projectId}/maps/${mapId}`);
 	}
 
-	function closeCtxMenu() {
-		ctxMenuId = null;
+	function onCardContext(mapId: string, e: MouseEvent) {
+		e.preventDefault();
+		ctxMenuId = mapId;
+		ctxMenuPos = { x: e.clientX, y: e.clientY };
 	}
 
 	async function createMap() {
@@ -42,7 +39,7 @@
 		});
 		if (res.ok) {
 			const map = await res.json();
-			window.location.href = `/projects/${data.projectId}/maps/${map.id}`;
+			goto(`/projects/${data.projectId}/maps/${map.id}`);
 		}
 		creating = false;
 	}
@@ -56,14 +53,14 @@
 		});
 		if (res.ok) {
 			const map = await res.json();
-			window.location.href = `/projects/${data.projectId}/maps/${map.id}`;
+			goto(`/projects/${data.projectId}/maps/${map.id}`);
 		}
 	}
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="maps-page" onclick={closeCtxMenu}>
+<div class="maps-page" onclick={() => { ctxMenuId = null; }}>
 	<div class="header">
 		<h1>Maps</h1>
 		<button class="btn-primary" onclick={() => showCreate = !showCreate}>
@@ -89,17 +86,20 @@
 	{:else}
 		<div class="map-grid">
 			{#each data.maps as map}
-				<a href="/projects/{data.projectId}/maps/{map.id}" class="map-card"
-					use:mapCardCtx={map.id}>
+				<div class="map-card" role="button" tabindex="0"
+					onclick={() => openMap(map.id)}
+					oncontextmenu={(e) => onCardContext(map.id, e)}
+					onkeydown={(e) => { if (e.key === 'Enter') openMap(map.id); }}>
 					<div class="map-type">{mapTypeLabels[map.properties?.mapType] || map.properties?.mapType}</div>
 					<h3>{map.label}</h3>
 					<span class="meta">{new Date(map.created_at).toLocaleDateString()}</span>
-				</a>
+				</div>
 			{/each}
 		</div>
 	{/if}
 
 	{#if ctxMenuId && ctxMap}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div class="context-menu" style="left: {ctxMenuPos.x}px; top: {ctxMenuPos.y}px;"
 			onclick={(e) => e.stopPropagation()}>
 			<div class="ctx-header">{ctxMap.label}</div>
@@ -142,9 +142,10 @@
 
 	.map-card {
 		background: #161822; border: 1px solid #2a2d3a; border-radius: 8px;
-		padding: 1.25rem; display: block; transition: border-color 0.15s;
+		padding: 1.25rem; cursor: pointer; transition: border-color 0.15s;
 	}
-	.map-card:hover { border-color: #8b9cf7; color: #e1e4e8; }
+	.map-card:hover { border-color: #8b9cf7; }
+	.map-card:focus-visible { outline: 2px solid #8b9cf7; outline-offset: 2px; }
 
 	.map-type {
 		font-size: 0.7rem; color: #8b9cf7; text-transform: uppercase; letter-spacing: 0.05em;
