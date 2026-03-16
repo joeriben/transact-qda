@@ -296,7 +296,9 @@ export async function searchNamingsForPlacement(
 
 // Relate two elements: creates a participation (co-constitution)
 // and an appearance of the participation as 'relation' on the map.
-// Both related elements move toward characterization.
+// Both related elements move toward characterization — unless skipDesignationAdvance
+// is set (for AI suggestions and spatially derived relations, which are not
+// positive analytical acts by the researcher).
 export async function relateElements(
 	projectId: string,
 	userId: string,
@@ -308,6 +310,7 @@ export async function relateElements(
 		valence?: string;
 		symmetric?: boolean;
 		properties?: Record<string, unknown>;
+		skipDesignationAdvance?: boolean;
 	}
 ) {
 	return transaction(async (client) => {
@@ -378,19 +381,23 @@ export async function relateElements(
 		);
 
 		// Relating is an act of determination: the related elements
-		// advance from cue toward characterization (if they aren't already beyond it)
-		for (const elementId of [sourceId, targetId]) {
-			const current = await client.query(
-				`SELECT designation FROM naming_acts
-				 WHERE naming_id = $1 AND designation IS NOT NULL ORDER BY seq DESC LIMIT 1`,
-				[elementId]
-			);
-			if (current.rows[0]?.designation === 'cue') {
-				await client.query(
-					`INSERT INTO naming_acts (naming_id, designation, by)
-					 VALUES ($1, 'characterization', $2)`,
-					[elementId, researcherNamingId]
+		// advance from cue toward characterization (if they aren't already beyond it).
+		// Skip for non-researcher relations (AI suggestions, spatial derivation) —
+		// a provisional/automatic relation is not a positive analytical act.
+		if (!opts?.skipDesignationAdvance) {
+			for (const elementId of [sourceId, targetId]) {
+				const current = await client.query(
+					`SELECT designation FROM naming_acts
+					 WHERE naming_id = $1 AND designation IS NOT NULL ORDER BY seq DESC LIMIT 1`,
+					[elementId]
 				);
+				if (current.rows[0]?.designation === 'cue') {
+					await client.query(
+						`INSERT INTO naming_acts (naming_id, designation, by)
+						 VALUES ($1, 'characterization', $2)`,
+						[elementId, researcherNamingId]
+					);
+				}
 			}
 		}
 

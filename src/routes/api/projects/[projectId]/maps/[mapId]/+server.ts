@@ -306,6 +306,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 						valence: rel.valence,
 						symmetric: rel.symmetric || false,
 						properties: { spatiallyDerived: true },
+						skipDesignationAdvance: true,
 					});
 					results.added++;
 				}
