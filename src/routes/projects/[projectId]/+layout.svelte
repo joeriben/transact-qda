@@ -10,12 +10,11 @@
 	const pathname = $derived($page.url.pathname);
 
 	const mapTypeLabels: Record<string, string> = {
-		situational: 'Situational Maps',
-		'social-worlds': 'Social Worlds Maps',
-		positional: 'Positional Maps',
-		network: 'Network Maps'
+		situational: 'Sit Map',
+		'social-worlds': 'SW/A Map',
+		positional: 'Pos Map'
 	};
-	const mapTypeOrder = ['situational', 'social-worlds', 'positional', 'network'];
+	const mapTypeOrder = ['situational', 'social-worlds', 'positional'];
 </script>
 
 <div class="project-layout">
@@ -26,6 +25,10 @@
 		{/if}
 
 		<nav>
+			<a href="{base}/documents" class:active={pathname.startsWith(`${base}/documents`)}>Documents</a>
+			<a href="{base}/namings" class:active={pathname.startsWith(`${base}/namings`)}>Namings</a>
+			<a href="{base}/memos" class:active={pathname.startsWith(`${base}/memos`)}>Memos</a>
+
 			{#each mapTypeOrder as type}
 				{#if mapsByType[type]?.length}
 					<span class="map-group-label">{mapTypeLabels[type]}</span>
@@ -38,10 +41,8 @@
 					{/each}
 				{/if}
 			{/each}
-			<a href="{base}/namings">Namings</a>
-			<a href="{base}/documents">Documents</a>
-			<a href="{base}/memos">Memos</a>
-			<a href="{base}/members">Members</a>
+
+			<a href="{base}/members" class:active={pathname.startsWith(`${base}/members`)}>Members</a>
 		</nav>
 	</div>
 
