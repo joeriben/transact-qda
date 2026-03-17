@@ -218,8 +218,10 @@
 				onclick={() => onsetdisplaymode('full')}
 				title="Full view: entities + relations + connections">Full</button>
 		</div>
-		<button class="btn-sm" onclick={onrunautolayout} title="Re-compute layout"
-			disabled={viewMode !== 'canvas'} style="{viewMode !== 'canvas' ? 'opacity: 0.3;' : ''}">Layout</button>
+		{#if ms.mapType !== 'positional'}
+			<button class="btn-sm" onclick={onrunautolayout} title="Re-compute layout"
+				disabled={viewMode !== 'canvas'} style="{viewMode !== 'canvas' ? 'opacity: 0.3;' : ''}">Layout</button>
+		{/if}
 		<button class="btn-sm" onclick={onopentopo}
 			title="Topology snapshots"
 			disabled={viewMode !== 'canvas'} style="{viewMode !== 'canvas' ? 'opacity: 0.3;' : ''}">Topo</button>

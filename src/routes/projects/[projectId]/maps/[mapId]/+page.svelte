@@ -47,7 +47,7 @@
 		if (w <= 0 || h <= 0) return;
 		// Canvas bounds: include axis labels + gradient indicators outside the axes
 		viewport.fitBounds(
-			{ minX: -200, minY: -POS_AXIS_LEN - 60, maxX: POS_AXIS_LEN + 60, maxY: 160 },
+			{ minX: -100, minY: -POS_AXIS_LEN - 40, maxX: POS_AXIS_LEN + 40, maxY: 80 },
 			w, h, 30
 		);
 	}
@@ -290,6 +290,11 @@
 	// ─── Canvas interactions ───
 
 	function handleNodeDragEnd(id: string, x: number, y: number) {
+		// Positional maps: clamp to the axis quadrant (X: 0–POS_AXIS_LEN, Y: -POS_AXIS_LEN–0)
+		if (ms.mapType === 'positional') {
+			x = Math.max(10, Math.min(POS_AXIS_LEN - 10, x));
+			y = Math.max(-POS_AXIS_LEN + 10, Math.min(-10, y));
+		}
 		positions = new Map(positions).set(id, { x, y });
 		if (!centeredId) ms.mapAction('updatePosition', { namingId: id, x, y }).then(() => syncSpatialRelations());
 	}
@@ -561,23 +566,23 @@
 						<line x1={OX - 5} y1={OY - AL + 8} x2={OX} y2={OY - AL} stroke="#3a3d4a" stroke-width="2" />
 						<line x1={OX + 5} y1={OY - AL + 8} x2={OX} y2={OY - AL} stroke="#3a3d4a" stroke-width="2" />
 						<!-- X axis gradient: --- near origin, +++ at end -->
-						<text x={OX + 10} y={OY + 50} fill="#6b7280" font-size="36" font-family="monospace">- - -</text>
-						<text x={OX + AL - 120} y={OY + 50} fill="#6b7280" font-size="36" font-family="monospace">+ + +</text>
+						<text x={OX + 6} y={OY + 24} fill="#6b7280" font-size="16" font-family="monospace">- - -</text>
+						<text x={OX + AL - 60} y={OY + 24} fill="#6b7280" font-size="16" font-family="monospace">+ + +</text>
 						<!-- Y axis gradient: --- near origin, +++ at top -->
-						<text x={OX - 20} y={OY - 14} fill="#6b7280" font-size="36" font-family="monospace" text-anchor="end">- - -</text>
-						<text x={OX - 20} y={OY - AL + 40} fill="#6b7280" font-size="36" font-family="monospace" text-anchor="end">+ + +</text>
+						<text x={OX - 10} y={OY - 8} fill="#6b7280" font-size="16" font-family="monospace" text-anchor="end">- - -</text>
+						<text x={OX - 10} y={OY - AL + 18} fill="#6b7280" font-size="16" font-family="monospace" text-anchor="end">+ + +</text>
 					</svg>
 					<!-- Axis labels as interactive divs -->
 					{#if axisX}
 						<!-- svelte-ignore a11y_click_events_have_key_events -->
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
-						<div class="pos-axis-label pos-axis-x" style="position:absolute; left:{AL / 2}px; top:38px; white-space:nowrap; transform:translateX(-50%);"
+						<div class="pos-axis-label pos-axis-x" style="position:absolute; left:{AL / 2}px; top:28px; white-space:nowrap; transform:translateX(-50%);"
 							onclick={() => { if (ms.editingId !== axisX.naming_id) { ms.editingId = axisX.naming_id; ms.editingValue = axisX.inscription; } }}>
 							{#if ms.editingId === axisX.naming_id}
 								<!-- svelte-ignore a11y_click_events_have_key_events -->
 								<!-- svelte-ignore a11y_no_static_element_interactions -->
 								<form class="inline-rename" onclick={(e) => e.stopPropagation()} onsubmit={e => { e.preventDefault(); ms.confirmRename(); }}>
-									<input type="text" bind:value={ms.editingValue} style="width:360px; font-size:1.3rem;" />
+									<input type="text" bind:value={ms.editingValue} style="width:280px;" />
 									<button type="submit" class="btn-xs">ok</button>
 								</form>
 							{:else}
@@ -590,9 +595,9 @@
 							<!-- Y-axis edit form: horizontal, floated left of axis -->
 							<!-- svelte-ignore a11y_click_events_have_key_events -->
 							<!-- svelte-ignore a11y_no_static_element_interactions -->
-							<form class="inline-rename" style="position:absolute; left:-420px; top:{-AL / 2 - 20}px; white-space:nowrap;"
+							<form class="inline-rename" style="position:absolute; left:-320px; top:{-AL / 2 - 10}px; white-space:nowrap;"
 								onclick={(e) => e.stopPropagation()} onsubmit={e => { e.preventDefault(); ms.confirmRename(); }}>
-								<input type="text" bind:value={ms.editingValue} style="width:360px; font-size:28px;" />
+								<input type="text" bind:value={ms.editingValue} style="width:280px;" />
 								<button type="submit" class="btn-xs">ok</button>
 								<button type="button" class="btn-xs" onclick={() => ms.editingId = null}>×</button>
 							</form>
@@ -601,7 +606,7 @@
 							<!-- svelte-ignore a11y_click_events_have_key_events -->
 							<!-- svelte-ignore a11y_no_static_element_interactions -->
 							<div class="pos-axis-label pos-axis-y"
-								style="position:absolute; left:-80px; top:{-AL}px; height:{AL}px; writing-mode:vertical-rl; transform:rotate(180deg); display:flex; align-items:center; justify-content:center;"
+								style="position:absolute; left:-50px; top:{-AL}px; height:{AL}px; writing-mode:vertical-rl; transform:rotate(180deg); display:flex; align-items:center; justify-content:center;"
 								onclick={() => { ms.editingId = axisY.naming_id; ms.editingValue = axisY.inscription; }}>
 								{axisY.inscription}
 							</div>
@@ -892,8 +897,8 @@
 
 	/* Positional Map axis labels */
 	.pos-axis-label {
-		font-size: 28px; color: #8b8fa3; cursor: pointer;
-		padding: 0.3rem 0.6rem; border-radius: 4px; font-weight: 500;
+		font-size: 14px; color: #8b8fa3; cursor: pointer;
+		padding: 0.2rem 0.4rem; border-radius: 4px; font-weight: 500;
 	}
 	.pos-axis-label:hover { color: #e1e4e8; background: rgba(139, 156, 247, 0.1); }
 	.memo-badge {
