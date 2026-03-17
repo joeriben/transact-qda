@@ -6,11 +6,13 @@
 		viewport = createViewport(),
 		oncanvasclick,
 		oncanvascontextmenu,
+		onreset,
 		children
 	}: {
 		viewport?: ReturnType<typeof createViewport>;
 		oncanvasclick?: (x: number, y: number) => void;
 		oncanvascontextmenu?: (e: MouseEvent) => void;
+		onreset?: () => void;
 		children: Snippet;
 	} = $props();
 
@@ -99,7 +101,7 @@
 		<button onclick={() => viewport.zoomAt(0.8, containerEl.clientWidth / 2 / viewport.zoom, containerEl.clientHeight / 2 / viewport.zoom)}>−</button>
 		<span class="zoom-label">{Math.round(viewport.zoom * 100)}%</span>
 		<button onclick={() => viewport.zoomAt(1.25, containerEl.clientWidth / 2 / viewport.zoom, containerEl.clientHeight / 2 / viewport.zoom)}>+</button>
-		<button onclick={() => viewport.reset()}>Reset</button>
+		<button onclick={() => { if (onreset) onreset(); else viewport.reset(); }}>Reset</button>
 	</div>
 </div>
 

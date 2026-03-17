@@ -35,14 +35,29 @@
 
 	let viewMode = $state<'canvas' | 'list'>('list');
 	let canvasContainerEl = $state<HTMLDivElement | null>(null);
+	let posMapFitted = false;
 
-	// Positional maps: set initial viewport so origin is at bottom-left
-	$effect(() => {
-		if (ms.mapType !== 'positional' || !canvasContainerEl) return;
+	const POS_AXIS_LEN = 1600;
+
+	// Fit positional map: origin at bottom-left, zoom to show full axis extent
+	function fitPosMap() {
+		if (!canvasContainerEl) return;
+		const w = canvasContainerEl.clientWidth;
 		const h = canvasContainerEl.clientHeight;
-		if (h > 0 && viewport.x === 0 && viewport.y === 0) {
-			viewport.x = 60;
-			viewport.y = h - 80;
+		if (w <= 0 || h <= 0) return;
+		// Canvas bounds: X from 0 to POS_AXIS_LEN, Y from -POS_AXIS_LEN to 0
+		viewport.fitBounds(
+			{ minX: -40, minY: -POS_AXIS_LEN - 40, maxX: POS_AXIS_LEN + 40, maxY: 80 },
+			w, h, 40
+		);
+	}
+
+	// Auto-fit when switching to canvas view on positional maps
+	$effect(() => {
+		if (ms.mapType !== 'positional' || viewMode !== 'canvas' || !canvasContainerEl) return;
+		if (!posMapFitted) {
+			// Small delay to let the container render at full size
+			requestAnimationFrame(() => { fitPosMap(); posMapFitted = true; });
 		}
 	});
 	let displayMode = $state<'entities' | 'relations' | 'full'>('full');
@@ -506,7 +521,8 @@
 	<div class="map-workspace">
 		<!-- Canvas -->
 		<div class="canvas-container" bind:this={canvasContainerEl} style="{viewMode !== 'canvas' ? 'display: none;' : ''}">
-			<InfiniteCanvas {viewport} oncanvasclick={handleCanvasClick} oncanvascontextmenu={handleCanvasContextMenu}>
+			<InfiniteCanvas {viewport} oncanvasclick={handleCanvasClick} oncanvascontextmenu={handleCanvasContextMenu}
+				onreset={ms.mapType === 'positional' ? fitPosMap : undefined}>
 				{#if displayMode === 'full'}
 				{#each ms.relations.filter((r: any) => !r.properties?.spatiallyDerived) as rel}
 					{@const srcId = rel.directed_from || rel.part_source_id}

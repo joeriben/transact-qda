@@ -39,6 +39,22 @@ export function createViewport(opts?: { minZoom?: number; maxZoom?: number }) {
 		zoom = 1;
 	}
 
+	// Fit a canvas bounding box into the container with padding
+	function fitBounds(
+		bounds: { minX: number; minY: number; maxX: number; maxY: number },
+		containerW: number, containerH: number,
+		padding = 60
+	) {
+		const bw = bounds.maxX - bounds.minX;
+		const bh = bounds.maxY - bounds.minY;
+		if (bw <= 0 || bh <= 0 || containerW <= 0 || containerH <= 0) return;
+		const scaleX = (containerW - padding * 2) / bw;
+		const scaleY = (containerH - padding * 2) / bh;
+		zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, Math.min(scaleX, scaleY)));
+		x = (padding / zoom) - bounds.minX;
+		y = (padding / zoom) - bounds.minY;
+	}
+
 	return {
 		get x() { return x; },
 		get y() { return y; },
@@ -50,6 +66,7 @@ export function createViewport(opts?: { minZoom?: number; maxZoom?: number }) {
 		zoomAt,
 		screenToCanvas,
 		canvasToScreen,
-		reset
+		reset,
+		fitBounds
 	};
 }
