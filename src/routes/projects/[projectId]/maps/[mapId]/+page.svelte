@@ -45,10 +45,10 @@
 		const w = canvasContainerEl.clientWidth;
 		const h = canvasContainerEl.clientHeight;
 		if (w <= 0 || h <= 0) return;
-		// Canvas bounds: X from 0 to POS_AXIS_LEN, Y from -POS_AXIS_LEN to 0
+		// Canvas bounds: include axis labels + gradient indicators outside the axes
 		viewport.fitBounds(
-			{ minX: -40, minY: -POS_AXIS_LEN - 40, maxX: POS_AXIS_LEN + 40, maxY: 80 },
-			w, h, 40
+			{ minX: -200, minY: -POS_AXIS_LEN - 60, maxX: POS_AXIS_LEN + 60, maxY: 160 },
+			w, h, 30
 		);
 	}
 
@@ -561,17 +561,17 @@
 						<line x1={OX - 5} y1={OY - AL + 8} x2={OX} y2={OY - AL} stroke="#3a3d4a" stroke-width="2" />
 						<line x1={OX + 5} y1={OY - AL + 8} x2={OX} y2={OY - AL} stroke="#3a3d4a" stroke-width="2" />
 						<!-- X axis gradient: --- near origin, +++ at end -->
-						<text x={OX + 6} y={OY + 36} fill="#6b7280" font-size="24" font-family="monospace">- - -</text>
-						<text x={OX + AL - 90} y={OY + 36} fill="#6b7280" font-size="24" font-family="monospace">+ + +</text>
+						<text x={OX + 10} y={OY + 50} fill="#6b7280" font-size="36" font-family="monospace">- - -</text>
+						<text x={OX + AL - 120} y={OY + 50} fill="#6b7280" font-size="36" font-family="monospace">+ + +</text>
 						<!-- Y axis gradient: --- near origin, +++ at top -->
-						<text x={OX - 14} y={OY - 12} fill="#6b7280" font-size="24" font-family="monospace" text-anchor="end">- - -</text>
-						<text x={OX - 14} y={OY - AL + 28} fill="#6b7280" font-size="24" font-family="monospace" text-anchor="end">+ + +</text>
+						<text x={OX - 20} y={OY - 14} fill="#6b7280" font-size="36" font-family="monospace" text-anchor="end">- - -</text>
+						<text x={OX - 20} y={OY - AL + 40} fill="#6b7280" font-size="36" font-family="monospace" text-anchor="end">+ + +</text>
 					</svg>
 					<!-- Axis labels as interactive divs -->
 					{#if axisX}
 						<!-- svelte-ignore a11y_click_events_have_key_events -->
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
-						<div class="pos-axis-label pos-axis-x" style="position:absolute; left:{AL / 2}px; top:36px; white-space:nowrap; transform:translateX(-50%);"
+						<div class="pos-axis-label pos-axis-x" style="position:absolute; left:{AL / 2}px; top:80px; white-space:nowrap; transform:translateX(-50%);"
 							onclick={() => { if (ms.editingId !== axisX.naming_id) { ms.editingId = axisX.naming_id; ms.editingValue = axisX.inscription; } }}>
 							{#if ms.editingId === axisX.naming_id}
 								<!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -588,19 +588,23 @@
 					{#if axisY}
 						<!-- svelte-ignore a11y_click_events_have_key_events -->
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
-						<div class="pos-axis-label pos-axis-y" style="position:absolute; left:-60px; top:{-AL / 2 - 10}px; white-space:nowrap; transform:rotate(-90deg);"
+						<div class="pos-axis-label pos-axis-y" style="position:absolute; left:-140px; top:{-AL / 2 - 10}px; white-space:nowrap; transform:rotate(-90deg);"
 							onclick={() => { if (ms.editingId !== axisY.naming_id) { ms.editingId = axisY.naming_id; ms.editingValue = axisY.inscription; } }}>
-							{#if ms.editingId === axisY.naming_id}
-								<!-- svelte-ignore a11y_click_events_have_key_events -->
-								<!-- svelte-ignore a11y_no_static_element_interactions -->
-								<form class="inline-rename" onclick={(e) => e.stopPropagation()} onsubmit={e => { e.preventDefault(); ms.confirmRename(); }}>
-									<input type="text" bind:value={ms.editingValue} style="width:360px; font-size:1.3rem;" />
-									<button type="submit" class="btn-xs">ok</button>
-								</form>
-							{:else}
+							{#if ms.editingId !== axisY.naming_id}
 								{axisY.inscription}
 							{/if}
 						</div>
+						<!-- Y-axis edit form: rendered outside the rotated container so text input is horizontal -->
+						{#if ms.editingId === axisY.naming_id}
+							<!-- svelte-ignore a11y_click_events_have_key_events -->
+							<!-- svelte-ignore a11y_no_static_element_interactions -->
+							<form class="inline-rename pos-axis-y-edit" style="position:absolute; left:-40px; top:{-AL / 2 - 10}px;"
+								onclick={(e) => e.stopPropagation()} onsubmit={e => { e.preventDefault(); ms.confirmRename(); }}>
+								<input type="text" bind:value={ms.editingValue} style="width:360px; font-size:1.3rem;" />
+								<button type="submit" class="btn-xs">ok</button>
+								<button type="button" class="btn-xs" onclick={() => ms.editingId = null}>×</button>
+							</form>
+						{/if}
 					{/if}
 				{/if}
 
@@ -924,7 +928,7 @@
 
 	/* Positional Map axis labels */
 	.pos-axis-label {
-		font-size: 1.4rem; color: #8b8fa3; cursor: pointer;
+		font-size: 28px; color: #8b8fa3; cursor: pointer;
 		padding: 0.3rem 0.6rem; border-radius: 4px; font-weight: 500;
 	}
 	.pos-axis-label:hover { color: #e1e4e8; background: rgba(139, 156, 247, 0.1); }
