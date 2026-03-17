@@ -92,6 +92,12 @@ export function createMapState(
 	let clarkeFormQuestion = $state('');
 	let clarkeFormContent = $state('');
 
+	// Memo creation from map
+	let memoCreateOpen = $state(false);
+	let memoCreateTitle = $state('');
+	let memoCreateContent = $state('');
+	let memoCreateLinkedIds = $state<string[]>([]);
+
 	// Phase sidebar state
 	let showPhaseForm = $state(false);
 	let newPhaseLabel = $state('');
@@ -404,6 +410,83 @@ export function createMapState(
 		memoPanel = null;
 	}
 
+	function openMemoCreate(linkedIds: string[] = []) {
+		memoCreateLinkedIds = linkedIds;
+		memoCreateTitle = '';
+		memoCreateContent = '';
+		memoCreateOpen = true;
+	}
+
+	async function createMapMemo() {
+		if (!memoCreateTitle.trim()) return;
+		await fetch(`/api/projects/${initialData.projectId}/memos`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				label: memoCreateTitle.trim(),
+				content: memoCreateContent.trim(),
+				linkedElementIds: memoCreateLinkedIds
+			})
+		});
+		memoCreateOpen = false;
+		memoCreateTitle = '';
+		memoCreateContent = '';
+		memoCreateLinkedIds = [];
+		await reload();
+	}
+
+	function cancelMemoCreate() {
+		memoCreateOpen = false;
+		memoCreateTitle = '';
+		memoCreateContent = '';
+		memoCreateLinkedIds = [];
+	}
+
+	// Memo-to-memo linking
+	let memoLinkTarget = $state<string | null>(null);
+	let memoLinkSearch = $state('');
+	let memoLinkResults = $state<any[]>([]);
+	let memoLinkLoading = $state(false);
+
+	async function searchMemosForLink(query: string) {
+		if (query.trim().length < 2) { memoLinkResults = []; return; }
+		memoLinkLoading = true;
+		const res = await fetch(`/api/projects/${initialData.projectId}/memos`);
+		if (res.ok) {
+			const all = await res.json();
+			const q = query.toLowerCase();
+			memoLinkResults = all
+				.filter((m: any) => m.id !== memoLinkTarget && (m.inscription?.toLowerCase().includes(q) || m.content?.toLowerCase().includes(q)))
+				.slice(0, 8);
+		}
+		memoLinkLoading = false;
+	}
+
+	async function linkMemoToMemo(sourceMemoId: string, targetMemoId: string) {
+		await fetch(`/api/projects/${initialData.projectId}/memos`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				label: 'Link: memo reference',
+				content: '',
+				linkedElementIds: [sourceMemoId, targetMemoId]
+			})
+		});
+		memoLinkTarget = null;
+		memoLinkSearch = '';
+		memoLinkResults = [];
+		if (stackId) {
+			const freshStack = await mapAction('getStack', { namingId: stackId });
+			if (freshStack) stackData = freshStack;
+		}
+	}
+
+	function cancelMemoLink() {
+		memoLinkTarget = null;
+		memoLinkSearch = '';
+		memoLinkResults = [];
+	}
+
 	// Outside participations
 	async function showOutsideParticipations(namingId: string) {
 		if (outsideId === namingId) { outsideId = null; outsideData = null; return; }
@@ -561,6 +644,24 @@ export function createMapState(
 		get clarkeFormContent() { return clarkeFormContent; },
 		set clarkeFormContent(v) { clarkeFormContent = v; },
 
+		// Memo creation
+		get memoCreateOpen() { return memoCreateOpen; },
+		set memoCreateOpen(v) { memoCreateOpen = v; },
+		get memoCreateTitle() { return memoCreateTitle; },
+		set memoCreateTitle(v) { memoCreateTitle = v; },
+		get memoCreateContent() { return memoCreateContent; },
+		set memoCreateContent(v) { memoCreateContent = v; },
+		get memoCreateLinkedIds() { return memoCreateLinkedIds; },
+		set memoCreateLinkedIds(v) { memoCreateLinkedIds = v; },
+
+		// Memo-to-memo linking
+		get memoLinkTarget() { return memoLinkTarget; },
+		set memoLinkTarget(v) { memoLinkTarget = v; },
+		get memoLinkSearch() { return memoLinkSearch; },
+		set memoLinkSearch(v) { memoLinkSearch = v; },
+		get memoLinkResults() { return memoLinkResults; },
+		get memoLinkLoading() { return memoLinkLoading; },
+
 		// Phase sidebar state
 		get showPhaseForm() { return showPhaseForm; },
 		set showPhaseForm(v) { showPhaseForm = v; },
@@ -608,6 +709,12 @@ export function createMapState(
 		promoteMemo,
 		createClarkeQuestionMemo,
 		dismissMemoPanel,
+		openMemoCreate,
+		createMapMemo,
+		cancelMemoCreate,
+		searchMemosForLink,
+		linkMemoToMemo,
+		cancelMemoLink,
 		showOutsideParticipations,
 		pullOntoMap,
 		addPhase,

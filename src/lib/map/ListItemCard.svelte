@@ -20,6 +20,9 @@
 			{:else}
 				<img class="provenance-indicator" src="/icons/question_mark.svg" alt="ungrounded" title="No grounding yet" />
 			{/if}
+			{#if item.memo_previews?.length > 0}
+				<span class="memo-count" title="{item.memo_previews.length} memo(s)">{item.memo_previews.length}</span>
+			{/if}
 			{#if listGroupBy !== 'mode'}<span class="mode-indicator" title="relation">↔</span>{/if}
 			{#if item.outside_participation_count > 0}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -90,6 +93,9 @@
 			{:else}
 				<img class="provenance-indicator" src="/icons/question_mark.svg" alt="ungrounded" title="No grounding yet" />
 			{/if}
+			{#if item.memo_previews?.length > 0}
+				<span class="memo-count" title="{item.memo_previews.length} memo(s)">{item.memo_previews.length}</span>
+			{/if}
 			{#if listGroupBy !== 'mode'}<span class="mode-indicator" title="silence">∅</span>{/if}
 			{#if item.outside_participation_count > 0}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -128,6 +134,9 @@
 				<img class="provenance-indicator" src="/icons/stylus_note.svg" alt="analytical" title="Analytically grounded" />
 			{:else}
 				<img class="provenance-indicator" src="/icons/question_mark.svg" alt="ungrounded" title="No grounding yet" />
+			{/if}
+			{#if item.memo_previews?.length > 0}
+				<span class="memo-count" title="{item.memo_previews.length} memo(s)">{item.memo_previews.length}</span>
 			{/if}
 			{#if item.outside_participation_count > 0}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -195,6 +204,12 @@
 	}
 	.designation-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 	.provenance-indicator { width: 14px; height: 14px; flex-shrink: 0; opacity: 0.5; cursor: default; }
+	.memo-count {
+		font-size: 0.6rem; font-weight: 700; color: #f59e0b; background: rgba(245, 158, 11, 0.15);
+		border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 8px;
+		padding: 0 3px; min-width: 14px; height: 14px; line-height: 14px;
+		text-align: center; flex-shrink: 0;
+	}
 	.collapsed-indicator { width: 12px; height: 12px; flex-shrink: 0; margin-right: 0.2rem; opacity: 0.7; }
 	.collapsed-current { font-size: 0.7rem; color: #6b7280; font-style: italic; margin-left: 0.5rem; }
 	.mode-indicator { font-size: 0.7rem; color: #6b7280; flex-shrink: 0; width: 16px; text-align: center; }

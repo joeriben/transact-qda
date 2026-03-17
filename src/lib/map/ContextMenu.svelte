@@ -43,6 +43,7 @@
 		{ms.relatingFrom ? 'Connect here' : 'Relate...'}
 	</button>
 	<button class="ctx-item" onclick={() => { ms.showStack(namingId); onclose(); }}>Stack</button>
+	<button class="ctx-item" onclick={() => { ms.openMemoCreate([namingId]); onclose(); }}>Write memo</button>
 	<button class="ctx-item" onclick={() => { oncenter(namingId); onclose(); }}>
 		Center
 	</button>

@@ -400,6 +400,40 @@ Core principle: the fundamental unit is the event (naming/relating act), not the
 
 ---
 
+## Session 18 — 2026-03-17
+
+**Focus**: Memo system Stages 3+4 — canvas integration & researcher memo enhancement
+
+**Stage 3: Canvas Integration**
+- **Memo count badge** on canvas nodes (amber pill in node-header) and FormationNode (SVG circle at top-right). Click opens stack panel.
+- **AI memos included** in `memo_previews`: removed exclusion filter in `getMapAppearances()`, added `isAi` + `status` fields to JSON. AI memos with lifecycle status (presented/discussed) are now visible.
+- **Improved tooltip**: min-width 280px, provenance badge (AI/R) per entry, status indicator, 150-char truncation, max 4 entries, "open stack" link at bottom.
+- **List view memo count**: amber badge next to provenance icon in all three card types (entity, relation, silence). Ground-truth principle: list shows everything canvas shows.
+
+**Stage 4: Researcher Memo Enhancement**
+- **Map-context memo creation** via three entry points:
+  - Right-click element → "Write memo" (linked to element)
+  - Right-click empty canvas → "Write memo (this map)" (linked to map naming) or "Write free memo" (unlinked)
+  - Toolbar button rejected after user feedback: "Memo" is a different logical level than Layout/Topo/AI operations
+- **MemoCreateForm.svelte**: floating form with title, textarea, linked-element chips, backdrop dismiss
+- **Memo-to-memo linking** in StackPanel: "link" button per memo → search dropdown → creates participation between two memos (analytical threads)
+
+**Design decision**: No toolbar memo button. Memo creation is always contextual (right-click on element or empty canvas), never a toolbar-level operation. The toolbar is for map operations; memos are analytical actions.
+
+**Files**: `maps.ts` (query), `+page.svelte` (badges + tooltip + canvas ctx menu), `FormationNode.svelte` (SVG badge), `ListItemCard.svelte` (list badge), `InfiniteCanvas.svelte` (context menu callback), `mapState.svelte.ts` (state + actions), `MemoCreateForm.svelte` (new), `ContextMenu.svelte` ("Write memo"), `StackPanel.svelte` (memo-to-memo link)
+
+---
+
+## Design Decision — 2026-03-17: SQLite-per-project rejected
+
+**Evaluated**: One SQLite file per project for data portability (export = copy file, import = place file, sharing = send one file).
+
+**Rejected because**: SQLite's write-locking model does not support concurrent multiuser access or parallel AI agent operations. A single writer lock blocks all other writes — incompatible with the architecture where researcher and AI agent write simultaneously.
+
+**Consequence**: PostgreSQL remains the database. Data portability will be achieved via **QDPX (QDA-XML, ISO standard)** import/export instead (see Issue #5).
+
+---
+
 ## Bugfixes — 2026-03-15
 
 | Commit | Description |

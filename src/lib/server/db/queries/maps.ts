@@ -729,20 +729,20 @@ export async function getMapAppearances(mapId: string, projectId: string) {
 			     JOIN namings mn ON mn.id = mc.naming_id AND mn.deleted_at IS NULL
 			     WHERE mp.naming_id = a.naming_id OR mp.participant_id = a.naming_id
 			   ) as has_memo_link,
-			   -- Memo previews (non-AI memos only, for hover tooltips)
+			   -- Memo previews (all memos incl. AI, for hover tooltips + badges)
 			   COALESCE(
-			     (SELECT json_agg(json_build_object('label', msub.inscription, 'content', mcsub.content) ORDER BY msub.created_at DESC)
+			     (SELECT json_agg(json_build_object(
+			        'label', msub.inscription,
+			        'content', mcsub.content,
+			        'isAi', msub.created_by = '00000000-0000-0000-0000-000000000000',
+			        'status', mcsub.status
+			      ) ORDER BY msub.created_at DESC)
 			      FROM participations psub
 			      JOIN namings pnsub ON pnsub.id = psub.id AND pnsub.deleted_at IS NULL
 			      JOIN namings msub ON msub.id = CASE WHEN psub.naming_id = a.naming_id THEN psub.participant_id ELSE psub.naming_id END
 			        AND msub.deleted_at IS NULL AND msub.id != a.naming_id
 			      JOIN memo_content mcsub ON mcsub.naming_id = msub.id
 			      WHERE (psub.naming_id = a.naming_id OR psub.participant_id = a.naming_id)
-			        AND NOT EXISTS (
-			          SELECT 1 FROM appearances aisub
-			          WHERE aisub.naming_id = msub.id
-			            AND aisub.properties->>'aiSuggested' = 'true'
-			        )
 			     ), '[]'::json
 			   ) as memo_previews,
 			   -- SW/A role: extracted from first "Formation:" classification memo

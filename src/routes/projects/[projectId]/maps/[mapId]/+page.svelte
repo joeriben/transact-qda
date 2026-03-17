@@ -21,6 +21,7 @@
 	import PhasesSidebar from '$lib/map/PhasesSidebar.svelte';
 	import ListItemCard from '$lib/map/ListItemCard.svelte';
 	import OutsidePanel from '$lib/map/OutsidePanel.svelte';
+	import MemoCreateForm from '$lib/map/MemoCreateForm.svelte';
 
 	let { data } = $props();
 
@@ -272,8 +273,17 @@
 	function handleCanvasClick() {
 		selection.clear();
 		ctxMenuId = null;
+		canvasCtxMenu = null;
 		ms.highlightedPhase = null;
 		if (ms.relatingFrom) ms.relatingFrom = null;
+	}
+
+	// Canvas-level context menu (right-click on empty space)
+	let canvasCtxMenu = $state<{ x: number; y: number } | null>(null);
+
+	function handleCanvasContextMenu(e: MouseEvent) {
+		ctxMenuId = null;
+		canvasCtxMenu = { x: e.clientX, y: e.clientY };
 	}
 
 	function ctxRename(id: string) {
@@ -419,8 +429,10 @@
 			if (toolbarRef?.closeDropdowns()) return;
 			ms.cancelRelation();
 			ms.cancelAct();
+			ms.cancelMemoCreate();
 			selection.clear();
 			ctxMenuId = null;
+			canvasCtxMenu = null;
 			ms.editingId = null;
 			ms.assigningToPhase = null;
 			ms.highlightedPhase = null;
@@ -462,13 +474,14 @@
 	{/if}
 
 	<MemoPanel />
+	<MemoCreateForm />
 	<NamingActPrompt />
 	<RelationForm />
 
 	<div class="map-workspace">
 		<!-- Canvas -->
 		<div class="canvas-container" style="{viewMode !== 'canvas' ? 'display: none;' : ''}">
-			<InfiniteCanvas {viewport} oncanvasclick={handleCanvasClick}>
+			<InfiniteCanvas {viewport} oncanvasclick={handleCanvasClick} oncanvascontextmenu={handleCanvasContextMenu}>
 				{#if displayMode === 'full'}
 				{#each ms.relations.filter((r: any) => !r.properties?.spatiallyDerived) as rel}
 					{@const srcId = rel.directed_from || rel.part_source_id}
@@ -509,6 +522,7 @@
 									swRole={el.sw_role}
 									designation={el.designation}
 									color={ms.designationColor(el.designation)}
+									memoCount={el.memo_previews?.length || 0}
 									rx={el.properties?.rx || 150}
 									ry={el.properties?.ry || 100}
 									rotation={el.properties?.rotation || 0}
@@ -537,6 +551,13 @@
 										<img class="prov-icon" src="/icons/question_mark.svg" alt="ungrounded" title="No grounding" />
 									{/if}
 									<span class="node-designation">{ms.designationLabel(el.designation)}</span>
+									{#if el.memo_previews?.length > 0}
+										<!-- svelte-ignore a11y_click_events_have_key_events -->
+										<!-- svelte-ignore a11y_no_static_element_interactions -->
+										<span class="memo-badge" title="{el.memo_previews.length} memo(s)" onclick={(e) => { e.stopPropagation(); ms.showStack(el.naming_id); }}>
+											{el.memo_previews.length}
+										</span>
+									{/if}
 									{#if el.phase_ids?.length}
 										<span class="phase-dots">
 											{#each el.phase_ids as pid}
@@ -559,15 +580,24 @@
 								{/if}
 								{#if el.memo_previews?.length}
 									<div class="memo-tooltip">
-										{#each el.memo_previews.slice(0, 3) as mp}
+										{#each el.memo_previews.slice(0, 4) as mp}
 											<div class="memo-tip-entry">
-												<span class="memo-tip-label">{mp.label}</span>
-												{#if mp.content}<span class="memo-tip-content">{mp.content.slice(0, 120)}{mp.content.length > 120 ? '…' : ''}</span>{/if}
+												<div class="memo-tip-header">
+													<span class="memo-tip-provenance" class:tip-ai={mp.isAi}>{mp.isAi ? 'AI' : 'R'}</span>
+													<span class="memo-tip-label">{mp.label}</span>
+													{#if mp.status && mp.status !== 'active'}
+														<span class="memo-tip-status tip-status-{mp.status}">{mp.status}</span>
+													{/if}
+												</div>
+												{#if mp.content}<span class="memo-tip-content">{mp.content.slice(0, 150)}{mp.content.length > 150 ? '…' : ''}</span>{/if}
 											</div>
 										{/each}
-										{#if el.memo_previews.length > 3}
-											<span class="memo-tip-more">+{el.memo_previews.length - 3} more</span>
+										{#if el.memo_previews.length > 4}
+											<span class="memo-tip-more">+{el.memo_previews.length - 4} more</span>
 										{/if}
+										<!-- svelte-ignore a11y_click_events_have_key_events -->
+										<!-- svelte-ignore a11y_no_static_element_interactions -->
+										<span class="memo-tip-open" onclick={(e) => { e.stopPropagation(); ms.showStack(el.naming_id); }}>open stack</span>
 									</div>
 								{/if}
 							</div>
@@ -641,6 +671,17 @@
 					oncenter={centerOn}
 					onrename={ctxRename}
 				/>
+			{/if}
+
+			{#if canvasCtxMenu}
+				<!-- svelte-ignore a11y_click_events_have_key_events -->
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div class="canvas-context-menu" style="left: {canvasCtxMenu.x}px; top: {canvasCtxMenu.y}px;"
+					onclick={(e) => e.stopPropagation()}>
+					<div class="ctx-header">{ms.mapLabel}</div>
+					<button class="ctx-item" onclick={() => { ms.openMemoCreate([ms.mapId]); canvasCtxMenu = null; }}>Write memo (this map)</button>
+					<button class="ctx-item" onclick={() => { ms.openMemoCreate([]); canvasCtxMenu = null; }}>Write free memo</button>
+				</div>
 			{/if}
 
 			{#if ms.stackId}
@@ -734,18 +775,64 @@
 		border: 2px solid var(--el-color, #8b9cf7); border-radius: 8px;
 		padding: 0.4rem 0.6rem; min-width: 80px; max-width: 220px;
 	}
+	.memo-badge {
+		font-size: 0.6rem; font-weight: 700; color: #f59e0b; background: rgba(245, 158, 11, 0.15);
+		border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 8px;
+		padding: 0 4px; min-width: 16px; height: 16px; line-height: 16px;
+		text-align: center; cursor: pointer; flex-shrink: 0; margin-left: auto;
+	}
+	.memo-badge:hover { background: rgba(245, 158, 11, 0.25); }
 	.memo-tooltip {
 		display: none; position: absolute; top: 100%; left: 0; margin-top: 4px;
-		min-width: 200px; max-width: 280px;
+		min-width: 280px; max-width: 320px;
 		background: #1e2030; border: 1px solid #2a2d3a; border-radius: 6px;
 		padding: 0.5rem; z-index: 50; box-shadow: 0 4px 12px rgba(0,0,0,0.5);
 	}
 	.map-node:hover > .memo-tooltip { display: block; }
-	.memo-tip-entry { padding: 0.2rem 0; border-bottom: 1px solid #161822; }
+	.memo-tip-entry { padding: 0.25rem 0; border-bottom: 1px solid #161822; }
 	.memo-tip-entry:last-child { border-bottom: none; }
-	.memo-tip-label { font-size: 0.7rem; color: #f59e0b; display: block; }
+	.memo-tip-header { display: flex; align-items: center; gap: 0.3rem; }
+	.memo-tip-provenance {
+		font-size: 0.55rem; font-weight: 700; text-transform: uppercase;
+		background: rgba(107, 114, 128, 0.2); color: #9ca3af;
+		padding: 0 0.2rem; border-radius: 2px; flex-shrink: 0;
+	}
+	.memo-tip-provenance.tip-ai { background: rgba(139, 156, 247, 0.15); color: #8b9cf7; }
+	.memo-tip-label { font-size: 0.7rem; color: #f59e0b; }
+	.memo-tip-status {
+		font-size: 0.55rem; font-weight: 600; text-transform: uppercase;
+		padding: 0 0.2rem; border-radius: 2px; flex-shrink: 0; margin-left: auto;
+	}
+	.tip-status-presented { background: rgba(139, 156, 247, 0.15); color: #8b9cf7; }
+	.tip-status-discussed { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+	.tip-status-acknowledged { background: rgba(16, 185, 129, 0.15); color: #10b981; }
+	.tip-status-dismissed { background: rgba(107, 114, 128, 0.15); color: #6b7280; }
 	.memo-tip-content { font-size: 0.75rem; color: #a0a4b0; display: block; margin-top: 0.1rem; }
 	.memo-tip-more { font-size: 0.7rem; color: #6b7280; margin-top: 0.2rem; display: block; }
+	.memo-tip-open {
+		font-size: 0.68rem; color: #8b9cf7; cursor: pointer; display: block;
+		margin-top: 0.3rem; padding-top: 0.2rem; border-top: 1px solid #2a2d3a;
+	}
+	.memo-tip-open:hover { text-decoration: underline; }
+
+	/* Canvas context menu (empty space right-click) */
+	.canvas-context-menu {
+		position: fixed; z-index: 200;
+		background: #1e2030; border: 1px solid #3a3d4a; border-radius: 8px;
+		padding: 0.35rem 0; min-width: 180px;
+		box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+	}
+	.canvas-context-menu .ctx-header {
+		padding: 0.3rem 0.75rem; font-size: 0.75rem; color: #6b7280;
+		border-bottom: 1px solid #2a2d3a; margin-bottom: 0.2rem;
+		overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+	}
+	.canvas-context-menu .ctx-item {
+		display: flex; align-items: center; gap: 0.4rem;
+		width: 100%; background: none; border: none; color: #c9cdd5;
+		padding: 0.35rem 0.75rem; font-size: 0.8rem; cursor: pointer; text-align: left;
+	}
+	.canvas-context-menu .ctx-item:hover { background: #2a2d3a; }
 	.map-node.ai-suggested { border-style: dashed; border-color: rgba(139, 156, 247, 0.5); background: rgba(139, 156, 247, 0.04); }
 	.map-node.ai-withdrawn { opacity: 0.3; border-color: rgba(139, 156, 247, 0.2); }
 	.map-node.phase-dimmed { opacity: 0.85; transition: opacity 0.3s; }

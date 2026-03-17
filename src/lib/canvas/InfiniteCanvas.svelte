@@ -5,10 +5,12 @@
 	let {
 		viewport = createViewport(),
 		oncanvasclick,
+		oncanvascontextmenu,
 		children
 	}: {
 		viewport?: ReturnType<typeof createViewport>;
 		oncanvasclick?: (x: number, y: number) => void;
+		oncanvascontextmenu?: (e: MouseEvent) => void;
 		children: Snippet;
 	} = $props();
 
@@ -66,6 +68,13 @@
 			oncanvasclick?.(pos.x, pos.y);
 		}
 	}
+
+	function onContextMenu(e: MouseEvent) {
+		if (e.target === containerEl || (e.target as HTMLElement).classList.contains('canvas-layer')) {
+			e.preventDefault();
+			oncanvascontextmenu?.(e);
+		}
+	}
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -76,6 +85,7 @@
 	onpointermove={onPointerMove}
 	onpointerup={onPointerUp}
 	onclick={onClick}
+	oncontextmenu={onContextMenu}
 	style="cursor: {isPanning ? 'grabbing' : 'default'}"
 >
 	<div

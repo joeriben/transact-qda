@@ -83,6 +83,26 @@
 							{#if memo.status === 'dismissed'}
 								<button class="btn-xs" onclick={() => ms.updateMemoStatus(memo.id, 'presented')}>restore</button>
 							{/if}
+							{#if ms.memoLinkTarget === memo.id}
+								<div class="memo-link-search">
+									<input type="text" placeholder="Search memos to link..." bind:value={ms.memoLinkSearch}
+										oninput={() => ms.searchMemosForLink(ms.memoLinkSearch)} />
+									<button class="btn-xs" onclick={() => ms.cancelMemoLink()}>×</button>
+									{#if ms.memoLinkResults.length > 0}
+										<div class="memo-link-results">
+											{#each ms.memoLinkResults as result}
+												<button class="memo-link-item" onclick={() => ms.linkMemoToMemo(memo.id, result.id)}>
+													{result.inscription}
+												</button>
+											{/each}
+										</div>
+									{:else if ms.memoLinkSearch.length >= 2 && !ms.memoLinkLoading}
+										<span class="memo-link-empty">no memos found</span>
+									{/if}
+								</div>
+							{:else if memo.status !== 'dismissed'}
+								<button class="btn-xs btn-link-memo" onclick={() => { ms.memoLinkTarget = memo.id; ms.memoLinkSearch = ''; }}>link</button>
+							{/if}
 							{#if ms.memoDiscussTarget === memo.id}
 								<form class="discuss-form" onsubmit={e => { e.preventDefault(); ms.submitMemoDiscussion(memo.id); }}>
 									<input type="text" placeholder="Discuss this memo..." bind:value={ms.memoDiscussInput} disabled={ms.memoDiscussLoading} />
@@ -297,6 +317,28 @@
 	.discuss-form button:hover:not(:disabled) { background: rgba(139, 156, 247, 0.1); }
 	.discuss-form button:disabled { opacity: 0.4; }
 	.btn-discuss { margin-top: 0.25rem; color: #8b9cf7; font-size: 0.7rem; }
+	.btn-link-memo { color: #f59e0b; border-color: rgba(245, 158, 11, 0.3); font-size: 0.65rem; }
+	.btn-link-memo:hover { background: rgba(245, 158, 11, 0.1); }
+	.memo-link-search {
+		width: 100%; margin-top: 0.25rem;
+	}
+	.memo-link-search input {
+		width: 100%; background: #0f1117; border: 1px solid #2a2d3a;
+		border-radius: 4px; padding: 0.25rem 0.4rem;
+		color: #c9cdd5; font-size: 0.72rem;
+	}
+	.memo-link-search input:focus { border-color: #f59e0b; outline: none; }
+	.memo-link-results {
+		margin-top: 0.2rem; background: #161822; border: 1px solid #2a2d3a;
+		border-radius: 4px; max-height: 120px; overflow-y: auto;
+	}
+	.memo-link-item {
+		display: block; width: 100%; background: none; border: none; color: #c9cdd5;
+		padding: 0.25rem 0.4rem; font-size: 0.72rem; cursor: pointer; text-align: left;
+		overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+	}
+	.memo-link-item:hover { background: #2a2d3a; }
+	.memo-link-empty { font-size: 0.68rem; color: #4b5563; display: block; margin-top: 0.2rem; }
 
 	/* Analytical questions */
 	.analytical-questions details { cursor: pointer; }

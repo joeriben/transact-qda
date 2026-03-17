@@ -13,6 +13,7 @@
 		selected = false,
 		withdrawn = false,
 		zoom = 1,
+		memoCount = 0,
 		onresizeend,
 		onrotateend,
 	}: {
@@ -26,6 +27,7 @@
 		selected?: boolean;
 		withdrawn?: boolean;
 		zoom?: number;
+		memoCount?: number;
 		onresizeend?: (rx: number, ry: number) => void;
 		onrotateend?: (rotation: number) => void;
 	} = $props();
@@ -221,6 +223,26 @@
 				opacity="0.6"
 				style="pointer-events: none;"
 			>{desigLabel}</text>
+
+			<!-- Memo count badge (top-right) -->
+			{#if memoCount > 0}
+				<circle
+					cx={cx + localRx - 8} cy={cy - localRy + 8}
+					r="10"
+					fill="rgba(245, 158, 11, 0.2)"
+					stroke="#f59e0b"
+					stroke-width="1"
+					style="pointer-events: none;"
+				/>
+				<text
+					x={cx + localRx - 8} y={cy - localRy + 12}
+					text-anchor="middle"
+					fill="#f59e0b"
+					font-size="10"
+					font-weight="700"
+					style="pointer-events: none;"
+				>{memoCount}</text>
+			{/if}
 
 			<!-- Handles (only when selected) -->
 			{#if selected}
