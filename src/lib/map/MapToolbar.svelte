@@ -40,6 +40,7 @@
 	// Import
 	let importDropdownOpen = $state(false);
 	let importDocuments = $state<any[]>([]);
+	let importDocNets = $state<any[]>([]);
 	let importLoading = $state(false);
 
 	async function addElement() {
@@ -94,14 +95,24 @@
 		if (importDropdownOpen) { importDropdownOpen = false; return; }
 		importLoading = true;
 		importDropdownOpen = true;
-		const res = await ms.mapAction('listDocumentsForImport');
-		if (res) importDocuments = res.documents || [];
+		const [docsRes, dnRes] = await Promise.all([
+			ms.mapAction('listDocumentsForImport'),
+			ms.mapAction('listDocNetsForImport')
+		]);
+		if (docsRes) importDocuments = docsRes.documents || [];
+		if (dnRes) importDocNets = dnRes.docnets || [];
 		importLoading = false;
 	}
 
 	async function importFromDocument(documentId: string) {
 		importDropdownOpen = false;
 		const res = await ms.mapAction('importFromDocument', { documentId });
+		if (res?.placed > 0) await ms.reload();
+	}
+
+	async function importFromDocNet(docnetId: string) {
+		importDropdownOpen = false;
+		const res = await ms.mapAction('importFromDocNet', { docnetId });
 		if (res?.placed > 0) await ms.reload();
 	}
 
@@ -189,20 +200,41 @@
 				<div class="import-dropdown">
 					{#if importLoading}
 						<span class="import-loading">loading...</span>
-					{:else if importDocuments.length === 0}
-						<span class="import-empty">No documents in project</span>
 					{:else}
-						{#each importDocuments as doc}
-							<button class="import-item" onmousedown={(e) => { e.preventDefault(); importFromDocument(doc.id); }}
-								disabled={doc.importable_count === 0}>
-								<span class="import-doc-label">{doc.label}</span>
-								{#if doc.importable_count > 0}
-									<span class="import-doc-count">+{doc.importable_count}</span>
-								{:else}
-									<span class="import-doc-done">all placed</span>
-								{/if}
-							</button>
-						{/each}
+						{#if importDocNets.length > 0}
+							<span class="import-section-label">DocNets</span>
+							{#each importDocNets as dn}
+								<button class="import-item" onmousedown={(e) => { e.preventDefault(); importFromDocNet(dn.id); }}
+									disabled={dn.importable_count === 0}>
+									<span class="import-doc-label">{dn.label}</span>
+									{#if dn.importable_count > 0}
+										<span class="import-doc-count">+{dn.importable_count}</span>
+									{:else}
+										<span class="import-doc-done">all placed</span>
+									{/if}
+								</button>
+							{/each}
+						{/if}
+						{#if importDocuments.length > 0}
+							{#if importDocNets.length > 0}
+								<div class="import-separator"></div>
+							{/if}
+							<span class="import-section-label">Documents</span>
+							{#each importDocuments as doc}
+								<button class="import-item" onmousedown={(e) => { e.preventDefault(); importFromDocument(doc.id); }}
+									disabled={doc.importable_count === 0}>
+									<span class="import-doc-label">{doc.label}</span>
+									{#if doc.importable_count > 0}
+										<span class="import-doc-count">+{doc.importable_count}</span>
+									{:else}
+										<span class="import-doc-done">all placed</span>
+									{/if}
+								</button>
+							{/each}
+						{/if}
+						{#if importDocuments.length === 0 && importDocNets.length === 0}
+							<span class="import-empty">No documents or DocNets in project</span>
+						{/if}
 					{/if}
 				</div>
 			{/if}
@@ -333,6 +365,11 @@
 	.import-doc-count { color: #10b981; font-size: 0.7rem; font-weight: 600; flex-shrink: 0; }
 	.import-doc-done { color: #6b7280; font-size: 0.7rem; flex-shrink: 0; }
 	.import-loading, .import-empty { display: block; padding: 0.4rem 0.75rem; font-size: 0.75rem; color: #6b7280; }
+	.import-section-label {
+		display: block; padding: 0.25rem 0.75rem; font-size: 0.65rem;
+		color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em;
+	}
+	.import-separator { height: 1px; background: #2a2d3a; margin: 0.2rem 0.5rem; }
 
 	/* Buttons */
 	.btn-primary {

@@ -27,6 +27,7 @@ import {
 	getNaming
 } from '$lib/server/db/queries/namings.js';
 import { createMemo, getMemosForNaming, updateMemoStatus, promoteMemoToNaming } from '$lib/server/db/queries/memos.js';
+import { getDocNetsByProject, getDocNetGroundedNamings } from '$lib/server/db/queries/docnets.js';
 import { runMapAgent, setAiEnabled, discussCue, discussMemo } from '$lib/server/ai/agent.js';
 import { saveTopologyBuffer, saveTopologySnapshot, restoreTopologySnapshot, listTopologySnapshots } from '$lib/server/db/queries/topology.js';
 import { SW_ROLE_DEFAULTS } from '$lib/shared/constants.js';
@@ -126,6 +127,44 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			if (candidates.length === 0) return json({ placed: 0, message: 'No new namings to import' });
 			const placed = await placeMultipleOnMap(projectId, userId, mapId, candidates.map((c: any) => c.id));
 			return json({ placed, total: candidates.length });
+		}
+
+		case 'listDocNetsForImport': {
+			const docnets = await getDocNetsByProject(projectId);
+			// For each docnet, count how many grounded namings are NOT yet on this map
+			const enriched = await Promise.all(docnets.map(async (dn: any) => {
+				const grounded = await getDocNetGroundedNamings(dn.id, projectId);
+				const { query: dbQ } = await import('$lib/server/db/index.js');
+				let importableCount = 0;
+				for (const g of grounded) {
+					const onMap = await dbQ(
+						`SELECT 1 FROM appearances WHERE naming_id = $1 AND perspective_id = $2 LIMIT 1`,
+						[g.id, mapId]
+					);
+					if (onMap.rows.length === 0) importableCount++;
+				}
+				return { id: dn.id, label: dn.label, document_count: dn.document_count, importable_count: importableCount };
+			}));
+			return json({ docnets: enriched });
+		}
+
+		case 'importFromDocNet': {
+			const { docnetId } = body;
+			if (!docnetId) return json({ error: 'docnetId required' }, { status: 400 });
+			const grounded = await getDocNetGroundedNamings(docnetId, projectId);
+			// Filter to only those not already on this map
+			const { query: dbQ } = await import('$lib/server/db/index.js');
+			const toPlace: string[] = [];
+			for (const g of grounded) {
+				const onMap = await dbQ(
+					`SELECT 1 FROM appearances WHERE naming_id = $1 AND perspective_id = $2 LIMIT 1`,
+					[g.id, mapId]
+				);
+				if (onMap.rows.length === 0) toPlace.push(g.id);
+			}
+			if (toPlace.length === 0) return json({ placed: 0, message: 'No new namings to import' });
+			const placed = await placeMultipleOnMap(projectId, userId, mapId, toPlace);
+			return json({ placed, total: toPlace.length });
 		}
 
 		case 'getDocumentNamings': {
