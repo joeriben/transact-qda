@@ -7,8 +7,8 @@ import { getOrCreateAiNaming, logAiInteraction } from '../db/queries/ai.js';
 import { createMemo, updateMemoContent } from '../db/queries/memos.js';
 import { getMemosByProject } from '../db/queries/memos.js';
 import { emit } from './sse.js';
-import { SYSTEM_PROMPT, SWA_SUPPLEMENT, DISCUSSION_SYSTEM_PROMPT, MEMO_DISCUSSION_PROMPT, buildContextMessage, buildDiscussionMessage, buildMemoDiscussionMessage, type MapContext, type TriggerEvent, type DiscussionContext, type MemoDiscussionContext } from './prompts.js';
-import { AI_TOOLS, SUGGEST_FORMATION_TOOL, DISCUSSION_TOOLS, MEMO_DISCUSSION_TOOLS, type SuggestElementInput, type SuggestRelationInput, type IdentifySilenceInput, type WriteMemoInput, type CreatePhaseInput, type SuggestFormationInput, type RewriteCueInput, type RespondInput, type WithdrawCueInput, type ReviseMemoInput } from './tools.js';
+import { SYSTEM_PROMPT, SWA_SUPPLEMENT, POSITIONAL_SUPPLEMENT, DISCUSSION_SYSTEM_PROMPT, MEMO_DISCUSSION_PROMPT, buildContextMessage, buildDiscussionMessage, buildMemoDiscussionMessage, type MapContext, type TriggerEvent, type DiscussionContext, type MemoDiscussionContext } from './prompts.js';
+import { AI_TOOLS, SUGGEST_FORMATION_TOOL, POSITIONAL_TOOLS, DISCUSSION_TOOLS, MEMO_DISCUSSION_TOOLS, type SuggestElementInput, type SuggestRelationInput, type IdentifySilenceInput, type WriteMemoInput, type CreatePhaseInput, type SuggestFormationInput, type SuggestPositionInput, type SuggestAxisRefinementInput, type IdentifyEmptyRegionInput, type RewriteCueInput, type RespondInput, type WithdrawCueInput, type ReviseMemoInput } from './tools.js';
 import { SW_ROLE_DEFAULTS } from '$lib/shared/constants.js';
 import { query } from '../db/index.js';
 
@@ -131,6 +131,44 @@ async function buildMapContext(mapId: string, projectId: string): Promise<MapCon
 		}
 	}
 
+	// Positional map: axes, coordinates, quadrant analysis
+	const isPositional = mapType === 'positional';
+	let posAxes: MapContext['axes'];
+	let positionCoordinates: MapContext['positionCoordinates'];
+	let quadrantAnalysis: MapContext['quadrantAnalysis'];
+
+	if (isPositional && structure.axes) {
+		posAxes = structure.axes.map((ax: any) => ({
+			id: ax.naming_id,
+			inscription: ax.inscription,
+			designation: ax.designation || 'cue',
+			dimension: ax.properties?.axisDimension || 'x',
+		}));
+
+		positionCoordinates = structure.elements
+			.filter((el: any) => el.properties?.x != null)
+			.map((el: any) => ({
+				id: el.naming_id,
+				inscription: el.inscription,
+				x: Math.round(el.properties.x),
+				y: Math.round(Math.abs(el.properties.y || 0)),
+				absent: !!el.properties.absent,
+				designation: el.designation || 'cue',
+			}));
+
+		const MID = 400;
+		const q1: string[] = [], q2: string[] = [], q3: string[] = [], q4: string[] = [];
+		for (const pos of positionCoordinates) {
+			const highX = pos.x >= MID;
+			const highY = pos.y >= MID;
+			if (highX && highY) q1.push(pos.inscription);
+			else if (!highX && highY) q2.push(pos.inscription);
+			else if (!highX && !highY) q3.push(pos.inscription);
+			else q4.push(pos.inscription);
+		}
+		quadrantAnalysis = { q1, q2, q3, q4 };
+	}
+
 	return {
 		mapLabel: map?.label || '',
 		mapType,
@@ -165,6 +203,9 @@ async function buildMapContext(mapId: string, projectId: string): Promise<MapCon
 		recentMemos,
 		crossMapParticipations,
 		spatialRelations,
+		axes: posAxes,
+		positionCoordinates,
+		quadrantAnalysis,
 	};
 }
 
@@ -247,6 +288,46 @@ async function executeTool(
 					`Formation: ${sw_role}`, reasoning, [element.id]);
 				emit(mapId, 'ai:formation', { element, swRole: sw_role, reasoning });
 				return { success: true, result: { id: element.id, inscription, swRole: sw_role } };
+			}
+
+			case 'suggest_position': {
+				const { inscription, x, y, absent, reasoning } = input as unknown as SuggestPositionInput;
+				const element = await addElementToAiMap(projectId, aiNamingId, mapId, inscription, {
+					x: Math.max(0, Math.min(800, x)),
+					y: -Math.max(0, Math.min(800, y)), // negate for storage convention
+					absent: absent || false,
+					aiReasoning: reasoning
+				});
+				emit(mapId, 'ai:element', { element, reasoning });
+				return { success: true, result: { id: element.id, inscription, x, y, absent } };
+			}
+
+			case 'suggest_axis_refinement': {
+				const { axis_id, new_inscription, reasoning } = input as unknown as SuggestAxisRefinementInput;
+				// Memo-only: do NOT rename the axis — researcher decides
+				const memoContent = `${reasoning}\n\nSuggested label: "${new_inscription}"`;
+				const memo = await createMemo(projectId, '00000000-0000-0000-0000-000000000000',
+					`AI: Axis refinement`, memoContent, [axis_id]);
+				emit(mapId, 'ai:memo', {
+					memo,
+					title: 'AI: Axis refinement',
+					content: memoContent,
+					linkedIds: [axis_id],
+					authorId: '00000000-0000-0000-0000-000000000000'
+				});
+				return { success: true, result: { axisId: axis_id, suggestedLabel: new_inscription } };
+			}
+
+			case 'identify_empty_region': {
+				const { inscription, x, y, reasoning } = input as unknown as IdentifyEmptyRegionInput;
+				const element = await addElementToAiMap(projectId, aiNamingId, mapId, inscription, {
+					x: Math.max(0, Math.min(800, x)),
+					y: -Math.max(0, Math.min(800, y)),
+					absent: true,
+					aiReasoning: reasoning
+				});
+				emit(mapId, 'ai:element', { element, reasoning });
+				return { success: true, result: { id: element.id, inscription, x, y } };
 			}
 
 			default:
@@ -419,11 +500,21 @@ export async function runMapAgent(
 	const model = getModel();
 	const aiNamingId = await getOrCreateAiNaming(projectId, model);
 	const context = await buildMapContext(mapId, projectId);
-	const contextMessage = buildContextMessage(context, triggerEvent);
 
 	const isSwaMap = context.mapType === 'social-worlds';
-	const systemPrompt = isSwaMap ? SYSTEM_PROMPT + '\n\n' + SWA_SUPPLEMENT : SYSTEM_PROMPT;
-	const tools = isSwaMap ? [...AI_TOOLS, SUGGEST_FORMATION_TOOL] : AI_TOOLS;
+	const isPositionalMap = context.mapType === 'positional';
+
+	// Positional maps: only respond to explicit analysis requests
+	if (isPositionalMap && triggerEvent.action !== 'requestAnalysis') return;
+
+	const contextMessage = buildContextMessage(context, triggerEvent);
+
+	const systemPrompt = isSwaMap ? SYSTEM_PROMPT + '\n\n' + SWA_SUPPLEMENT
+		: isPositionalMap ? SYSTEM_PROMPT + '\n\n' + POSITIONAL_SUPPLEMENT
+		: SYSTEM_PROMPT;
+	const tools = isSwaMap ? [...AI_TOOLS, SUGGEST_FORMATION_TOOL]
+		: isPositionalMap ? [...AI_TOOLS, ...POSITIONAL_TOOLS]
+		: AI_TOOLS;
 
 	try {
 		const response = await chat({

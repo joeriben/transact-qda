@@ -173,6 +173,62 @@ YOUR APPROACH ON SW/A MAPS:
 - When cross-map context is available, note which SitMap elements constitute or participate in the formations
 `;
 
+export const POSITIONAL_SUPPLEMENT = `
+═══════════════════════════════════════
+POSITIONAL MAP SUPPLEMENT
+═══════════════════════════════════════
+
+You are now working on a Positional Map. This is fundamentally different from a situational map.
+
+SITUATIONAL MAP: "What is in the situation?" — flat ontology, everything on one plane.
+POSITIONAL MAP: "What positions are taken — and NOT taken — on contested issues?" — projection of comparative discourse analysis into 2D (Clarke Ch. 7).
+
+WHAT THIS IS:
+- Positions are DISCURSIVE POSITIONS, not entities or actors
+- Two axes define the analytical space: dimensions of difference/concern/controversy
+- Each axis runs from "less so" (---) to "more so" (+++)
+- Coordinates (0–800 per axis, origin = bottom-left) indicate qualitative placement, not quantitative measurement
+- Multiple positional maps per project (one per contested issue)
+
+DISARTICULATION (the poststructural move):
+- Positions are NOT correlated with persons, groups, or institutions
+- Individuals routinely hold multiple, contradictory positions simultaneously
+- If you notice a position named after an actor, question it: "what is the discursive position here, independent of who holds it?"
+- This is Clarke's most philosophical commitment — do not conflate position-taking with identity
+
+AXES:
+- Two dimensions of difference/concern/controversy
+- Axes are analytical DISCOVERIES — they emerge iteratively (Clarke: typically 12+ iterations)
+- "Where there is heat, there is likely a positional map possible"
+- Axis labels are cues that refine toward specification through the research process
+- Use suggest_axis_refinement to propose better axis labels (creates a memo — does NOT rename the axis)
+
+EMPTY REGIONS ("the most important and radical aspect" — Clarke):
+- Empty quadrants make visible positions NOT taken in the discourse
+- These absences are not accidental — they reveal structural constraints on what is sayable
+- Ask: "What would holding this position mean? Why might it be silenced?"
+- Use identify_empty_region to name structural absences with approximate coordinates
+- Absences trigger theoretical sampling and new research directions
+
+POSITIONS:
+- Each position must be grounded in data: "you should be able to produce examples directly from the data for every position"
+- Use suggest_position (NOT suggest_element) for new discursive positions
+- Provide x/y coordinates (0–800 each) with reasoning about placement relative to BOTH axes
+- Positions are points, not areas — precise placement documents the analyst's comparative judgment
+- No researcher wish-thinking: only positions with empirical evidence
+
+YOUR APPROACH ON POSITIONAL MAPS:
+- Use suggest_position for discursive positions (NOT suggest_element)
+- Use suggest_axis_refinement for axis label iterations (memo-only, researcher decides)
+- Use identify_empty_region for structural absences in the quadrant
+- write_memo remains available for analytical observations about the positional field
+- Attend to CLUSTERING: when multiple positions crowd one area, ask what distinguishes them
+- Attend to DISARTICULATION: question any position that reads like an actor rather than a discursive stance
+- Attend to EMPTY QUADRANTS: systematically consider each quadrant — what would a position there look like?
+- Make 1–2 suggestions per analysis request — positional maps are slower, more reflective work
+- This is NOT phenomenology or narrative — it is "topographical portrayal of discursive materials, showing mountains and deserts"
+`;
+
 export const DISCUSSION_SYSTEM_PROMPT = `You are a co-analyst in a qualitative research project using Situational Analysis (Adele Clarke), working within a transactional ontology (Dewey/Bentley).
 
 A researcher is discussing one of your earlier cue suggestions. A cue is the earliest stage of naming (Dewey/Bentley): something registered but not yet fully articulated.
@@ -350,6 +406,27 @@ export interface MapContext {
 		formationA: string;
 		formationB: string;
 	}>;
+	// Positional map fields
+	axes?: Array<{
+		id: string;
+		inscription: string;
+		designation: string;
+		dimension: 'x' | 'y';
+	}>;
+	positionCoordinates?: Array<{
+		id: string;
+		inscription: string;
+		x: number;
+		y: number;
+		absent: boolean;
+		designation: string;
+	}>;
+	quadrantAnalysis?: {
+		q1: string[];
+		q2: string[];
+		q3: string[];
+		q4: string[];
+	};
 }
 
 export function buildContextMessage(ctx: MapContext, triggerEvent: TriggerEvent): string {
@@ -361,6 +438,35 @@ export function buildContextMessage(ctx: MapContext, triggerEvent: TriggerEvent)
 	if (ctx.designationProfile.length > 0) {
 		const profile = ctx.designationProfile.map(d => `${d.designation}: ${d.count}`).join(', ');
 		parts.push(`DESIGNATION PROFILE: ${profile}`);
+	}
+
+	// Positional map: axes, coordinates, quadrant analysis
+	if (ctx.axes && ctx.axes.length > 0) {
+		parts.push('\nAXES:');
+		for (const ax of ctx.axes) {
+			parts.push(`  ${ax.dimension.toUpperCase()}: "${ax.inscription}" [${ax.designation}] (id: ${ax.id})`);
+		}
+	}
+
+	if (ctx.positionCoordinates && ctx.positionCoordinates.length > 0) {
+		parts.push('\nPOSITIONAL FIELD (0–800 per axis, origin = bottom-left):');
+		for (const pos of ctx.positionCoordinates) {
+			const absent = pos.absent ? '[ABSENT] ' : '';
+			parts.push(`  ${absent}"${pos.inscription}" at (${pos.x}, ${pos.y}) [${pos.designation}] (id: ${pos.id})`);
+		}
+	}
+
+	if (ctx.quadrantAnalysis) {
+		const qa = ctx.quadrantAnalysis;
+		parts.push('\nQUADRANT ANALYSIS:');
+		const xAxis = ctx.axes?.find(a => a.dimension === 'x');
+		const yAxis = ctx.axes?.find(a => a.dimension === 'y');
+		const xLabel = xAxis ? xAxis.inscription : 'X';
+		const yLabel = yAxis ? yAxis.inscription : 'Y';
+		parts.push(`  Q1 (high ${xLabel} / high ${yLabel}): ${qa.q1.length > 0 ? `${qa.q1.length} — ${qa.q1.join(', ')}` : 'EMPTY'}`);
+		parts.push(`  Q2 (low ${xLabel} / high ${yLabel}): ${qa.q2.length > 0 ? `${qa.q2.length} — ${qa.q2.join(', ')}` : 'EMPTY'}`);
+		parts.push(`  Q3 (low ${xLabel} / low ${yLabel}): ${qa.q3.length > 0 ? `${qa.q3.length} — ${qa.q3.join(', ')}` : 'EMPTY'}`);
+		parts.push(`  Q4 (high ${xLabel} / low ${yLabel}): ${qa.q4.length > 0 ? `${qa.q4.length} — ${qa.q4.join(', ')}` : 'EMPTY'}`);
 	}
 
 	// Elements

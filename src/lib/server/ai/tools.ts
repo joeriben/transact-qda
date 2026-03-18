@@ -302,3 +302,110 @@ export interface ReviseMemoInput {
 	revised_content: string;
 	reasoning: string;
 }
+
+// ── Positional map tools ──
+
+export const POSITIONAL_TOOLS: ToolDef[] = [
+	{
+		name: 'suggest_position',
+		description:
+			'Suggest a discursive position for the positional map. Provide x/y coordinates (0–800 each, bottom-left origin) and reasoning about placement relative to both axes. Positions are NOT actors — they are stances taken on contested issues.',
+		input_schema: {
+			type: 'object' as const,
+			properties: {
+				inscription: {
+					type: 'string',
+					description: 'The discursive position label'
+				},
+				x: {
+					type: 'number',
+					description: 'X-axis position (0 = less so, 800 = more so)'
+				},
+				y: {
+					type: 'number',
+					description: 'Y-axis position (0 = less so, 800 = more so)'
+				},
+				absent: {
+					type: 'boolean',
+					description: 'True if this is an absence — a position NOT taken in the data'
+				},
+				reasoning: {
+					type: 'string',
+					description: 'Why this position exists (or is absent) and why it belongs at these coordinates relative to both axes'
+				}
+			},
+			required: ['inscription', 'x', 'y', 'reasoning']
+		}
+	},
+	{
+		name: 'suggest_axis_refinement',
+		description:
+			'Suggest a refinement of an axis label. Axes iterate — Clarke reports 12+ iterations are typical. This creates a memo with your suggestion; the researcher decides whether to rename. Do NOT use this to correct — use it to sharpen the analytical dimension.',
+		input_schema: {
+			type: 'object' as const,
+			properties: {
+				axis_id: {
+					type: 'string',
+					description: 'ID of the axis to refine'
+				},
+				new_inscription: {
+					type: 'string',
+					description: 'Suggested refined axis label'
+				},
+				reasoning: {
+					type: 'string',
+					description: 'Why this refinement better captures the dimension of difference'
+				}
+			},
+			required: ['axis_id', 'new_inscription', 'reasoning']
+		}
+	},
+	{
+		name: 'identify_empty_region',
+		description:
+			'Identify an empty region in the positional field — a position that is structurally absent from the discourse. This is Clarke\'s "most important and radical aspect" of positional maps. Name what is NOT being said and where it would be located.',
+		input_schema: {
+			type: 'object' as const,
+			properties: {
+				inscription: {
+					type: 'string',
+					description: 'What position is absent from this region of the field'
+				},
+				x: {
+					type: 'number',
+					description: 'Approximate X-coordinate of the empty region (0–800)'
+				},
+				y: {
+					type: 'number',
+					description: 'Approximate Y-coordinate of the empty region (0–800)'
+				},
+				reasoning: {
+					type: 'string',
+					description: 'Why this absence is notable — what would holding this position mean, and why might it be silenced?'
+				}
+			},
+			required: ['inscription', 'x', 'y', 'reasoning']
+		}
+	}
+];
+
+export interface SuggestPositionInput {
+	inscription: string;
+	x: number;
+	y: number;
+	absent?: boolean;
+	reasoning: string;
+}
+
+export interface SuggestAxisRefinementInput {
+	axis_id: string;
+	new_inscription: string;
+	reasoning: string;
+}
+
+export interface IdentifyEmptyRegionInput {
+	inscription: string;
+	x: number;
+	y: number;
+	reasoning: string;
+}

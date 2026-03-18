@@ -124,7 +124,7 @@
 	</div>
 {:else}
 	<!-- Entity (element) -->
-	<div class="element-card" class:ai-suggested={item.properties?.aiSuggested === true} class:ai-withdrawn={ms.isWithdrawn(item.properties)} title={item.properties?.aiReasoning || ''}>
+	<div class="element-card" class:ai-suggested={item.properties?.aiSuggested === true} class:ai-withdrawn={ms.isWithdrawn(item.properties)} class:pos-absent={ms.mapType === 'positional' && item.properties?.absent} title={item.properties?.aiReasoning || ''}>
 		<div class="el-main">
 			{#if item.is_collapsed}<img class="collapsed-indicator" src="/icons/keep.svg" alt="pinned" title="Pinned to specific layer" />{/if}
 			<span class="designation-dot" style="background: {ms.designationColor(item.designation)}" title={ms.designationLabel(item.designation)}></span>
@@ -137,6 +137,12 @@
 			{/if}
 			{#if item.memo_previews?.length > 0}
 				<span class="memo-count" title="{item.memo_previews.length} memo(s)">{item.memo_previews.length}</span>
+			{/if}
+			{#if ms.mapType === 'positional' && item.properties?.isAxis}
+				<span class="pos-axis-badge">{item.properties.axisDimension === 'x' ? 'X' : 'Y'}-axis</span>
+			{/if}
+			{#if ms.mapType === 'positional' && item.properties?.absent}
+				<span class="pos-absent-badge">absent</span>
 			{/if}
 			{#if item.outside_participation_count > 0}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -157,6 +163,9 @@
 				<span class="el-inscription editable" onclick={() => ms.showStack(item.naming_id)} ondblclick={() => { ms.editingId = item.naming_id; ms.editingValue = item.inscription || ''; }}>
 					{item.inscription}
 				</span>
+				{#if ms.mapType === 'positional' && !item.properties?.isAxis && item.properties?.x != null}
+					<span class="pos-coord">({item.properties.x}, {Math.abs(item.properties.y || 0)})</span>
+				{/if}
 				{#if item.is_collapsed && item.current_inscription && item.current_inscription !== item.inscription}
 					<span class="collapsed-current">currently: {item.current_inscription}</span>
 				{/if}
@@ -244,4 +253,17 @@
 	.btn-withdraw:hover { background: rgba(107, 114, 128, 0.1); }
 	.btn-relate { border-color: #f59e0b; color: #f59e0b; }
 	.btn-phase { border-color: #10b981; color: #10b981; }
+	.pos-coord { font-size: 0.65rem; color: #6b7280; margin-left: 0.4rem; font-family: monospace; }
+	.pos-axis-badge {
+		font-size: 0.6rem; font-weight: 600; color: #8b9cf7; background: rgba(139, 156, 247, 0.12);
+		border: 1px solid rgba(139, 156, 247, 0.3); border-radius: 3px;
+		padding: 0 3px; flex-shrink: 0;
+	}
+	.pos-absent-badge {
+		font-size: 0.6rem; font-weight: 600; color: #9ca3af; background: rgba(156, 163, 175, 0.1);
+		border: 1px dashed rgba(156, 163, 175, 0.4); border-radius: 3px;
+		padding: 0 3px; font-style: italic; flex-shrink: 0;
+	}
+	.pos-absent { border-style: dashed; opacity: 0.7; }
+	.pos-absent :global(.el-inscription) { font-style: italic; color: #9ca3af; }
 </style>
