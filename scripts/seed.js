@@ -238,7 +238,55 @@ async function seedClarkeDemoProject(client, userId) {
 		await createFormation(client, projectId, userId, researcherId, swaMapId, inscription, swRole, props);
 	}
 
-	console.log('  Clarke demo project complete (2 maps, read-only).');
+	// ────────────────────────────────────────────────
+	// Fig. 7.1: Abstract Positional Map
+	// Clarke et al. 2018, Ch. 7
+	// ────────────────────────────────────────────────
+	const posMapId = await createMap(client, projectId, userId, researcherId,
+		'Abstract Positional Map (Fig. 7.1)', 'positional');
+	console.log('  Seeding Fig. 7.1 (Positional Map)...');
+
+	// Axes — generic discursive dimensions per Clarke's abstract example
+	const axisX = await createNaming(client, projectId, userId, researcherId,
+		'Position on Issue X', 'characterization');
+	await placeOnMap(client, axisX, posMapId, 'entity', { isAxis: true, axisDimension: 'x' });
+
+	const axisY = await createNaming(client, projectId, userId, researcherId,
+		'Position on Issue Y', 'characterization');
+	await placeOnMap(client, axisY, posMapId, 'entity', { isAxis: true, axisDimension: 'y' });
+
+	// Positions — scattered across the field (0–800 per axis, y stored as negative)
+	// Clarke's abstract map shows positions A–H in different regions
+	const positions = [
+		// Q1: high X / high Y — multiple positions, some clustered
+		['Position A', { x: 620, y: -650, designation: 'characterization' }],
+		['Position B', { x: 700, y: -720, designation: 'characterization' }],
+		['Position C', { x: 580, y: -580, designation: 'characterization' }],
+		// Q2: low X / high Y — sparse
+		['Position D', { x: 150, y: -680, designation: 'characterization' }],
+		// Q3: low X / low Y — empty (silence!)
+		// Q4: high X / low Y — some positions
+		['Position E', { x: 650, y: -200, designation: 'characterization' }],
+		['Position F', { x: 550, y: -120, designation: 'characterization' }],
+		// Middle region
+		['Position G', { x: 380, y: -420, designation: 'characterization' }],
+		['Position H', { x: 280, y: -350, designation: 'cue' }],
+	];
+
+	for (const [inscription, props] of positions) {
+		const posId = await createNaming(client, projectId, userId, researcherId,
+			inscription, props.designation);
+		await placeOnMap(client, posId, posMapId, 'entity', { x: props.x, y: props.y });
+	}
+
+	// Absent position — Q3 is empty, mark the structural silence
+	const absenceId = await createNaming(client, projectId, userId, researcherId,
+		'Missing Position in Data', 'cue');
+	await placeOnMap(client, absenceId, posMapId, 'entity', {
+		x: 150, y: -150, absent: true
+	});
+
+	console.log('  Clarke demo project complete (3 maps, read-only).');
 }
 
 seed().catch((e) => {
