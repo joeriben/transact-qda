@@ -61,7 +61,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		case 'getStack': {
 			const { namingId } = body;
 			if (!namingId) return json({ error: 'namingId required' }, { status: 400 });
-			const stack = await getNamingStack(namingId);
+			const stack = await getNamingStack(namingId, projectId);
 			return json(stack);
 		}
 

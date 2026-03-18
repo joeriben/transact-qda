@@ -1,6 +1,7 @@
 import { query, queryOne, transaction } from '../index.js';
 import type { MapType, DesignationStage } from '$lib/shared/types/index.js';
 import { getOrCreateResearcherNaming } from './namings.js';
+import { getAnnotationsByCode } from './codes.js';
 
 // A map IS a naming that serves as a perspective.
 // Everything "on the map" has an appearance from this perspective.
@@ -589,7 +590,7 @@ export async function setCollapse(
 
 // Get the full stack of a naming: all inscription and designation layers.
 // This is not "history" — it IS the naming's constitution.
-export async function getNamingStack(namingId: string) {
+export async function getNamingStack(namingId: string, projectId?: string) {
 	const [inscriptions, designations, memos, aiMeta] = await Promise.all([
 		query(
 			`SELECT na.seq, na.inscription, na.created_at, n.inscription as by_inscription
@@ -687,10 +688,14 @@ export async function getNamingStack(namingId: string) {
 		discussion: memoDiscussionMap.get(m.id) || [],
 	}));
 
+	// Fetch document annotations (material) for this naming
+	const annotations = projectId ? await getAnnotationsByCode(projectId, namingId) : [];
+
 	return {
 		inscriptions: inscriptions.rows,
 		designations: designations.rows,
 		memos: enrichedMemos,
+		annotations,
 		discussion: discussion.map((m: any) => ({
 			id: m.id,
 			role: m.label === 'Discussion: researcher' ? 'researcher' : 'ai',

@@ -8,6 +8,7 @@ export type StackData = {
 	inscriptions: any[];
 	designations: any[];
 	memos: any[];
+	annotations?: any[];
 	discussion?: any[];
 	aiReasoning?: string | null;
 	aiSuggested?: boolean;

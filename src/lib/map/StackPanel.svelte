@@ -7,6 +7,21 @@
 	const ms = getMapState();
 
 	const stackNode = $derived(mode === 'floating' ? ms.findNode(ms.stackId!) : item);
+
+	// Group annotations by document for the Material section
+	const annotationsByDoc = $derived.by(() => {
+		const anns = ms.stackData?.annotations;
+		if (!anns?.length) return [];
+		const grouped = new Map<string, { docId: string; docLabel: string; passages: any[] }>();
+		for (const a of anns) {
+			const key = a.document_id;
+			if (!grouped.has(key)) {
+				grouped.set(key, { docId: key, docLabel: a.document_label, passages: [] });
+			}
+			grouped.get(key)!.passages.push(a);
+		}
+		return [...grouped.values()];
+	});
 </script>
 
 {#if ms.stackId && ms.stackData}
@@ -114,6 +129,23 @@
 								<button class="btn-xs btn-discuss" onclick={() => { ms.memoDiscussTarget = memo.id; ms.memoDiscussInput = ''; }}>discuss</button>
 							{/if}
 						</div>
+					</div>
+				{/each}
+			</div>
+		{/if}
+		{#if annotationsByDoc.length > 0}
+			<div class="history-section material-section">
+				<span class="history-label">Material ({ms.stackData.annotations?.length})</span>
+				{#each annotationsByDoc as group}
+					<div class="material-doc-group">
+						<a class="material-doc-label" href="/projects/{ms.projectId}/documents/{group.docId}">
+							{group.docLabel}
+						</a>
+						{#each group.passages as p}
+							<div class="material-passage">
+								<span class="material-text">{p.properties?.anchor?.text || '(no text)'}</span>
+							</div>
+						{/each}
 					</div>
 				{/each}
 			</div>
@@ -280,6 +312,29 @@
 	.btn-unpin { border-color: #f59e0b; color: #f59e0b; margin-bottom: 0.4rem; }
 	.btn-unpin:hover { background: rgba(245, 158, 11, 0.1); }
 	.pinned-layer { background: rgba(245, 158, 11, 0.1); border-radius: 3px; padding: 0.1rem 0.3rem; }
+
+	/* Material (document passages) */
+	.material-section {
+		border-top: 1px solid rgba(16, 185, 129, 0.2);
+		padding-top: 0.4rem; margin-top: 0.3rem;
+	}
+	.material-doc-group { margin-bottom: 0.35rem; }
+	.material-doc-group:last-child { margin-bottom: 0; }
+	.material-doc-label {
+		font-size: 0.7rem; color: #10b981; display: block;
+		margin-bottom: 0.15rem; text-decoration: none;
+	}
+	.material-doc-label:hover { text-decoration: underline; }
+	.material-passage {
+		padding: 0.2rem 0.4rem; margin: 0.1rem 0;
+		background: rgba(16, 185, 129, 0.04);
+		border-left: 2px solid rgba(16, 185, 129, 0.2);
+		border-radius: 3px;
+	}
+	.material-text {
+		font-size: 0.72rem; color: #c9cdd5; display: block;
+		white-space: pre-wrap; max-height: 3.5em; overflow-y: auto;
+	}
 
 	/* AI discussion */
 	.ai-discussion-section {
