@@ -613,7 +613,7 @@
 							<!-- Y-axis edit form: horizontal, floated left of axis -->
 							<!-- svelte-ignore a11y_click_events_have_key_events -->
 							<!-- svelte-ignore a11y_no_static_element_interactions -->
-							<form class="inline-rename" style="position:absolute; left:-320px; top:{-AL / 2 - 10}px; white-space:nowrap;"
+							<form class="inline-rename" style="position:absolute; left:30px; top:{-AL / 2 - 10}px; white-space:nowrap; z-index:10;"
 								onclick={(e) => e.stopPropagation()} onsubmit={e => { e.preventDefault(); ms.confirmRename(); }}>
 								<input type="text" bind:value={ms.editingValue} style="width:280px;" />
 								<button type="submit" class="btn-xs">ok</button>
