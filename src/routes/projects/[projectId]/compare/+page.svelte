@@ -8,8 +8,13 @@
 	let sourceA = $state(data.comparison?.sourceA || '');
 	let sourceB = $state(data.comparison?.sourceB || '');
 
-	const sourcesA = $derived(typeA === 'docnet' ? data.docnets : data.documents);
-	const sourcesB = $derived(typeB === 'docnet' ? data.docnets : data.documents);
+	function sourcesFor(type: string) {
+		if (type === 'docnet') return data.docnets;
+		if (type === 'map') return data.maps;
+		return data.documents;
+	}
+	const sourcesA = $derived(sourcesFor(typeA));
+	const sourcesB = $derived(sourcesFor(typeB));
 
 	function compare() {
 		if (!sourceA || !sourceB) return;
@@ -17,8 +22,7 @@
 	}
 
 	function labelFor(type: string, id: string) {
-		const list = type === 'docnet' ? data.docnets : data.documents;
-		return list.find((s: any) => s.id === id)?.label || id;
+		return sourcesFor(type).find((s: any) => s.id === id)?.label || id;
 	}
 
 	const c = $derived(data.comparison);
@@ -34,6 +38,7 @@
 				<select bind:value={typeA} onchange={() => sourceA = ''}>
 					<option value="docnet">DocNet</option>
 					<option value="document">Document</option>
+					<option value="map">Map</option>
 				</select>
 				<select bind:value={sourceA}>
 					<option value="">— select —</option>

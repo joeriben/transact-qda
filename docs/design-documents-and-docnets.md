@@ -97,6 +97,7 @@ The researcher chooses the approach that fits their analytical question. Approac
 3. **DocNet CRUD** — create DocNet (naming), add/remove document participations. UI in document list or dedicated page.
 4. **DocNet → SitMap generation** — "import all namings from this DocNet's documents onto a map." Extends existing import-from-document.
 5. **Comparative List View** — DocNet A vs. DocNet B: shared/unique namings, frequencies.
-6. **Comparative Map View** — side-by-side maps or DocNet-as-Phase on one map.
-7. **New import formats** — SRT/VTT, HTML — as research needs demand.
-8. **Optional tokenization** — parser for transcription systems, `tokens` column, concordance queries. Deferred until empirical need.
+6. **Comparative Map View** — compare element lists of two maps (or DocNets, documents) side by side with shared/unique marking. Implemented as extension of the /compare page with `map` as source type.
+7. **Documents/DocNets as Phases** — **Open methodological question.** Both individual documents and DocNets should be usable as phases on SitMaps, so that a map can show "these elements came from this document/DocNet." This relates Phases (grouping by analytical affinity) to Provenance (grouping by source). The methodological question is: what does it mean for a document or DocNet to function as a phase? Is provenance an analytical category in the same sense as Clarke's in-vivo categories? This needs reflection before implementation.
+8. **New import formats** — SRT/VTT, HTML — as research needs demand.
+9. **Optional tokenization** — parser for transcription systems, `tokens` column, concordance queries. Deferred until empirical need.
