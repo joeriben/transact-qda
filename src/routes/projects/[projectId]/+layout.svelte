@@ -42,6 +42,7 @@
 				{/if}
 			{/each}
 
+			<a href="{base}/compare" class:active={pathname.startsWith(`${base}/compare`)}>Compare</a>
 			<a href="{base}/members" class:active={pathname.startsWith(`${base}/members`)}>Members</a>
 		</nav>
 	</div>
