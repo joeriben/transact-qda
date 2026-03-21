@@ -45,8 +45,7 @@
 			<a href="{base}/compare" class:active={pathname.startsWith(`${base}/compare`)}>Compare</a>
 			<a href="{base}/members" class:active={pathname.startsWith(`${base}/members`)}>Members</a>
 
-			<span class="map-group-label">Data</span>
-			<a href="/api/projects/{p.id}/export" class="export-link" download>Export (.qdpx)</a>
+			<a href="/projects" class="back-link">← Projects</a>
 		</nav>
 	</div>
 
@@ -59,8 +58,7 @@
 	.project-layout {
 		display: flex;
 		gap: 0;
-		height: calc(100vh - 4rem);
-		margin: -2rem;
+		height: 100%;
 	}
 
 	.project-sidebar {
@@ -125,13 +123,15 @@
 		color: #fff;
 	}
 
-	.export-link {
+	.back-link {
 		font-size: 0.78rem;
-		color: #10b981 !important;
-		opacity: 0.8;
+		color: #6b7280 !important;
+		margin-top: 0.5rem;
+		padding-top: 0.5rem;
+		border-top: 1px solid #2a2d3a;
 	}
-	.export-link:hover {
-		opacity: 1;
+	.back-link:hover {
+		color: #a5b4fc !important;
 	}
 
 	.project-content {

@@ -133,6 +133,7 @@
 <style>
 	.projects-page {
 		max-width: 900px;
+		padding: 2rem;
 	}
 
 	.header {
