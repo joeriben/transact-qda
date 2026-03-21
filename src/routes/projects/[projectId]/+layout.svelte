@@ -44,6 +44,9 @@
 
 			<a href="{base}/compare" class:active={pathname.startsWith(`${base}/compare`)}>Compare</a>
 			<a href="{base}/members" class:active={pathname.startsWith(`${base}/members`)}>Members</a>
+
+			<span class="map-group-label">Data</span>
+			<a href="/api/projects/{p.id}/export" class="export-link" download>Export (.qdpx)</a>
 		</nav>
 	</div>
 
@@ -120,6 +123,15 @@
 	.active {
 		background: #1e2030;
 		color: #fff;
+	}
+
+	.export-link {
+		font-size: 0.78rem;
+		color: #10b981 !important;
+		opacity: 0.8;
+	}
+	.export-link:hover {
+		opacity: 1;
 	}
 
 	.project-content {
