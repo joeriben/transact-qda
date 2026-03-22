@@ -67,6 +67,24 @@
 		}
 	}
 
+	async function duplicateProject(projectId: string, projectName: string) {
+		const newName = prompt('Save project as:', `${projectName} (copy)`);
+		if (newName === null) return;
+		syncing = true;
+		const res = await fetch('/api/projects', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ action: 'duplicate', sourceProjectId: projectId, name: newName.trim() || undefined })
+		});
+		if (res.ok) {
+			syncMessage = `Duplicated "${projectName}"`;
+			await invalidateAll();
+		} else {
+			syncMessage = 'Duplicate failed';
+		}
+		syncing = false;
+	}
+
 	async function createProject() {
 		if (!name.trim()) return;
 		creating = true;
@@ -195,6 +213,10 @@
 						<button class="action-btn" title="Save to directory"
 							onclick={() => exportProject(project.id)} disabled={syncing}>
 							💾
+						</button>
+						<button class="action-btn" title="Duplicate"
+							onclick={() => duplicateProject(project.id, project.name)} disabled={syncing}>
+							📋
 						</button>
 						<button class="action-btn" title="Unload from database"
 							onclick={() => unloadProject(project.id, projectSlugs.get(project.id) || slugify(project.name), project.name)}
