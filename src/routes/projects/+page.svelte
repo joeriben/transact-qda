@@ -10,6 +10,7 @@
 	// Sync status
 	let syncing = $state(false);
 	let syncMessage = $state<string | null>(null);
+	let showLoadMenu = $state(false);
 
 	async function syncAction(action: string, body: Record<string, any> = {}) {
 		syncing = true;
@@ -128,7 +129,9 @@
 	);
 </script>
 
-<div class="projects-page">
+<!-- svelte-ignore a11y_click_events_have_key_events -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div class="projects-page" onclick={(e) => { if (!(e.target as HTMLElement).closest('.load-dropdown')) showLoadMenu = false; }}
 	<div class="header">
 		<h1>Projects</h1>
 		<div class="header-actions">
@@ -136,6 +139,20 @@
 				{importing ? 'Importing...' : 'Import .qdpx'}
 				<input type="file" accept=".qdpx" onchange={importQdpx} hidden disabled={importing} />
 			</label>
+			<div class="load-dropdown">
+				<button class="btn-secondary" onclick={() => showLoadMenu = !showLoadMenu} disabled={unloadedDirs.length === 0}>
+					Load from disk {#if unloadedDirs.length > 0}({unloadedDirs.length}){/if}
+				</button>
+				{#if showLoadMenu && unloadedDirs.length > 0}
+					<div class="load-menu">
+						{#each unloadedDirs as dir}
+							<button class="load-menu-item" onclick={() => { showLoadMenu = false; loadProject(dir.slug); }}>
+								{dir.slug}
+							</button>
+						{/each}
+					</div>
+				{/if}
+			</div>
 			<button class="btn-primary" onclick={() => showCreate = !showCreate}>
 				{showCreate ? 'Cancel' : 'New project'}
 			</button>
@@ -195,8 +212,8 @@
 	{/if}
 
 	<!-- Unloaded projects (on disk, not in DB) -->
+	<h2 class="section-label" id="on-disk">On disk (not loaded)</h2>
 	{#if unloadedDirs.length > 0}
-		<h2 class="section-label">On disk (not loaded)</h2>
 		<div class="project-grid">
 			{#each unloadedDirs as dir}
 				<div class="project-card project-card-unloaded">
@@ -215,10 +232,12 @@
 				</div>
 			{/each}
 		</div>
+	{:else}
+		<p class="empty">No saved projects in <code>{data.projectsDir}/</code></p>
 	{/if}
 
 	{#if data.projects.length === 0 && unloadedDirs.length === 0}
-		<p class="empty">No projects yet. Create one to get started.</p>
+		<p class="empty" style="margin-top: 1rem;">No projects yet. Create one or import a .qdpx file.</p>
 	{/if}
 
 	<p class="dir-info">Project data: <code>{data.projectsDir}/</code></p>
@@ -422,4 +441,38 @@
 	}
 
 	.disabled { opacity: 0.5; pointer-events: none; }
+
+	.load-dropdown {
+		position: relative;
+	}
+
+	.load-menu {
+		position: absolute;
+		top: 100%;
+		left: 0;
+		margin-top: 0.25rem;
+		background: #1a1a1a;
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: 6px;
+		min-width: 200px;
+		padding: 0.25rem 0;
+		z-index: 100;
+		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+	}
+
+	.load-menu-item {
+		display: block;
+		width: 100%;
+		text-align: left;
+		padding: 0.5rem 0.75rem;
+		font-size: 0.85rem;
+		background: none;
+		border: none;
+		color: #e1e4e8;
+		cursor: pointer;
+	}
+	.load-menu-item:hover {
+		background: rgba(255, 255, 255, 0.08);
+		color: #fff;
+	}
 </style>
