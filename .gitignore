@@ -28,6 +28,7 @@ ai-settings.json
 
 # Uploads
 /uploads/
+/aidele-library/
 
 # PostgreSQL data
 /pgdata/

@@ -1,5 +1,5 @@
 <script lang="ts">
-	let activeTab: 'provider' | 'usage' = $state('provider');
+	let activeTab: 'provider' | 'usage' | 'library' = $state('provider');
 
 	// ── Provider state ────────────────────────────────────────
 	interface ProviderInfo {
@@ -147,10 +147,105 @@
 		return n.toString();
 	}
 
+	// ── Library state ────────────────────────────────────────
+	interface LibRef {
+		id: string;
+		title: string;
+		author: string | null;
+		description: string | null;
+		format: string;
+		chunk_count: string;
+		total_words: string;
+		created_at: string;
+	}
+
+	let libRefs = $state<LibRef[]>([]);
+	let libLoading = $state(false);
+	let libMessage = $state<{ type: 'ok' | 'error'; text: string } | null>(null);
+
+	// Upload form
+	let libTitle = $state('');
+	let libAuthor = $state('');
+	let libDescription = $state('');
+	let libPasteContent = $state('');
+	let libFile: File | null = $state(null);
+	let libUploading = $state(false);
+	let libMode: 'file' | 'paste' = $state('file');
+
+	async function loadLibrary() {
+		libLoading = true;
+		try {
+			const res = await fetch('/api/aidele-library');
+			const data = await res.json();
+			libRefs = data.references || [];
+		} catch (e: any) {
+			libMessage = { type: 'error', text: e.message };
+		} finally {
+			libLoading = false;
+		}
+	}
+
+	async function uploadReference() {
+		libUploading = true;
+		libMessage = null;
+		try {
+			if (libMode === 'file' && libFile) {
+				const form = new FormData();
+				form.append('file', libFile);
+				form.append('title', libTitle);
+				form.append('author', libAuthor);
+				form.append('description', libDescription);
+				const res = await fetch('/api/aidele-library', { method: 'POST', body: form });
+				const data = await res.json();
+				if (data.error) throw new Error(data.error);
+			} else if (libMode === 'paste' && libPasteContent.trim()) {
+				const res = await fetch('/api/aidele-library', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						title: libTitle, author: libAuthor, description: libDescription,
+						content: libPasteContent
+					})
+				});
+				const data = await res.json();
+				if (data.error) throw new Error(data.error);
+			} else {
+				throw new Error('No content provided');
+			}
+			libMessage = { type: 'ok', text: 'Reference added successfully' };
+			libTitle = ''; libAuthor = ''; libDescription = ''; libPasteContent = ''; libFile = null;
+			await loadLibrary();
+		} catch (e: any) {
+			libMessage = { type: 'error', text: e.message };
+		} finally {
+			libUploading = false;
+		}
+	}
+
+	async function deleteRef(id: string, title: string) {
+		if (!confirm(`Delete "${title}"?`)) return;
+		try {
+			await fetch(`/api/aidele-library/${id}`, { method: 'DELETE' });
+			await loadLibrary();
+		} catch (e: any) {
+			libMessage = { type: 'error', text: e.message };
+		}
+	}
+
+	function handleFileSelect(e: Event) {
+		const input = e.target as HTMLInputElement;
+		libFile = input.files?.[0] || null;
+		// Auto-fill title from filename if empty
+		if (libFile && !libTitle) {
+			libTitle = libFile.name.replace(/\.[^.]+$/, '').replace(/[_-]/g, ' ');
+		}
+	}
+
 	// Init
 	$effect(() => {
 		loadSettings();
 		fetchUsage();
+		loadLibrary();
 	});
 </script>
 
@@ -166,6 +261,9 @@
 		</button>
 		<button class="tab" class:active={activeTab === 'usage'} onclick={() => { activeTab = 'usage'; fetchUsage(); }}>
 			Usage
+		</button>
+		<button class="tab" class:active={activeTab === 'library'} onclick={() => { activeTab = 'library'; loadLibrary(); }}>
+			Aidele Library
 		</button>
 	</div>
 
@@ -360,6 +458,85 @@
 					{/if}
 				{/if}
 			{/if}
+		</div>
+	{/if}
+
+	{#if activeTab === 'library'}
+		<!-- ═══════ Aidele Reference Library ═══════ -->
+		<div class="section">
+			<h2>Reference Library</h2>
+			<p class="section-desc">Methodological texts for Aidele. Upload Clarke, Strauss/Corbin, or other SA literature so Aidele can cite concrete passages.</p>
+
+			<!-- Upload form -->
+			<div class="lib-upload">
+				<div class="lib-mode-switch">
+					<button class="preset-btn" class:active={libMode === 'file'} onclick={() => libMode = 'file'}>Upload File</button>
+					<button class="preset-btn" class:active={libMode === 'paste'} onclick={() => libMode = 'paste'}>Paste Text</button>
+				</div>
+
+				<div class="form-row">
+					<input type="text" bind:value={libTitle} placeholder="Title (e.g., Situational Analysis)" class="form-input" />
+					<input type="text" bind:value={libAuthor} placeholder="Author (optional)" class="form-input form-input-sm" />
+				</div>
+
+				<input type="text" bind:value={libDescription} placeholder="Description (optional)" class="form-input" />
+
+				{#if libMode === 'file'}
+					<div class="file-drop">
+						<input type="file" accept=".pdf,.txt,.md,.text" onchange={handleFileSelect} />
+						<span class="file-hint">.pdf, .txt, .md</span>
+					</div>
+				{:else}
+					<textarea
+						bind:value={libPasteContent}
+						placeholder="Paste text content here..."
+						rows="6"
+						class="form-input lib-paste"
+					></textarea>
+				{/if}
+
+				<button
+					class="btn btn-primary"
+					onclick={uploadReference}
+					disabled={libUploading || !libTitle || (libMode === 'file' ? !libFile : !libPasteContent.trim())}
+				>
+					{libUploading ? 'Processing...' : 'Add Reference'}
+				</button>
+
+				{#if libMessage}
+					<div class="msg" class:msg-ok={libMessage.type === 'ok'} class:msg-err={libMessage.type === 'error'}>
+						{libMessage.text}
+					</div>
+				{/if}
+			</div>
+
+			<!-- Reference list -->
+			<div class="lib-list">
+				{#if libLoading}
+					<div class="loading">Loading...</div>
+				{:else if libRefs.length === 0}
+					<div class="lib-empty">
+						<p>No reference texts uploaded yet.</p>
+						<p class="lib-suggestion">Recommended: Clarke, A.E. (2005/2023). <em>Situational Analysis</em>. Sage.</p>
+					</div>
+				{:else}
+					{#each libRefs as ref}
+						<div class="lib-item">
+							<div class="lib-item-info">
+								<span class="lib-item-title">{ref.title}</span>
+								{#if ref.author}
+									<span class="lib-item-author">{ref.author}</span>
+								{/if}
+								<span class="lib-item-meta">
+									{ref.chunk_count} chunks, {parseInt(ref.total_words).toLocaleString()} words
+									<span class="lib-item-format">{ref.format.toUpperCase()}</span>
+								</span>
+							</div>
+							<button class="aidele-btn-sm" onclick={() => deleteRef(ref.id, ref.title)} title="Delete">delete</button>
+						</div>
+					{/each}
+				{/if}
+			</div>
 		</div>
 	{/if}
 </div>
@@ -634,4 +811,167 @@
 	}
 	.mono { font-family: 'JetBrains Mono', monospace; }
 	.right { text-align: right; }
+
+	/* ── Library ────────────────────────── */
+	.section-desc {
+		font-size: 0.82rem;
+		color: #6b7280;
+		margin-bottom: 1.2rem;
+		line-height: 1.5;
+	}
+
+	.lib-upload {
+		display: flex;
+		flex-direction: column;
+		gap: 0.6rem;
+		margin-bottom: 1.5rem;
+		padding: 1rem;
+		background: rgba(255,255,255,0.02);
+		border: 1px solid #2a2d3a;
+		border-radius: 8px;
+	}
+
+	.lib-mode-switch {
+		display: flex;
+		gap: 0.3rem;
+	}
+
+	.form-row {
+		display: flex;
+		gap: 0.5rem;
+	}
+
+	.form-input {
+		flex: 1;
+		background: #1a1d2a;
+		border: 1px solid #2a2d3a;
+		border-radius: 6px;
+		color: #e1e4e8;
+		font-size: 0.85rem;
+		padding: 0.5rem 0.7rem;
+		font-family: inherit;
+	}
+	.form-input:focus {
+		outline: none;
+		border-color: #a5b4fc;
+	}
+	.form-input::placeholder { color: #4b5563; }
+	.form-input-sm { max-width: 220px; }
+
+	.lib-paste {
+		resize: vertical;
+		min-height: 80px;
+		line-height: 1.4;
+	}
+
+	.file-drop {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		padding: 0.5rem;
+		border: 1px dashed #2a2d3a;
+		border-radius: 6px;
+	}
+	.file-drop input[type="file"] {
+		font-size: 0.82rem;
+		color: #c9cdd5;
+	}
+	.file-hint {
+		font-size: 0.75rem;
+		color: #4b5563;
+	}
+
+	.btn {
+		padding: 0.5rem 1rem;
+		border: none;
+		border-radius: 6px;
+		font-size: 0.85rem;
+		cursor: pointer;
+		font-family: inherit;
+		align-self: flex-start;
+	}
+	.btn-primary {
+		background: #a5b4fc;
+		color: #0f1117;
+		font-weight: 500;
+	}
+	.btn-primary:hover:not(:disabled) { background: #8b9cf7; }
+	.btn-primary:disabled { opacity: 0.4; cursor: default; }
+
+	.msg { font-size: 0.82rem; padding: 0.4rem 0.6rem; border-radius: 4px; }
+	.msg-ok { color: #34d399; background: rgba(52, 211, 153, 0.1); }
+	.msg-err { color: #ef4444; background: rgba(239, 68, 68, 0.1); }
+
+	.lib-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.4rem;
+	}
+
+	.lib-empty {
+		text-align: center;
+		padding: 2rem 1rem;
+		color: #6b7280;
+		font-size: 0.85rem;
+	}
+	.lib-suggestion {
+		margin-top: 0.5rem;
+		font-size: 0.8rem;
+		color: #4b5563;
+	}
+
+	.lib-item {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 0.7rem 0.8rem;
+		background: rgba(255,255,255,0.02);
+		border: 1px solid #2a2d3a;
+		border-radius: 6px;
+	}
+
+	.lib-item-info {
+		display: flex;
+		flex-direction: column;
+		gap: 0.15rem;
+	}
+
+	.lib-item-title {
+		font-size: 0.88rem;
+		font-weight: 500;
+		color: #e1e4e8;
+	}
+	.lib-item-author {
+		font-size: 0.78rem;
+		color: #8b8fa3;
+	}
+	.lib-item-meta {
+		font-size: 0.72rem;
+		color: #4b5563;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+	.lib-item-format {
+		background: rgba(165, 180, 252, 0.15);
+		color: #a5b4fc;
+		padding: 0.1rem 0.35rem;
+		border-radius: 3px;
+		font-size: 0.65rem;
+		font-weight: 600;
+	}
+
+	.aidele-btn-sm {
+		background: none;
+		border: none;
+		color: #6b7280;
+		font-size: 0.75rem;
+		cursor: pointer;
+		padding: 0.15rem 0.3rem;
+		border-radius: 3px;
+	}
+	.aidele-btn-sm:hover {
+		color: #ef4444;
+		background: rgba(239, 68, 68, 0.1);
+	}
 </style>

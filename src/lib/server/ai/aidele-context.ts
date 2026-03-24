@@ -3,11 +3,13 @@
 
 import { query, queryOne } from '../db/index.js';
 import { getMapsByProject, getMapStructure } from '../db/queries/maps.js';
+import { searchChunks } from './aidele-library.js';
 
 export async function buildAideleContext(
 	projectId: string,
 	currentPage: string,
-	currentMapId?: string
+	currentMapId?: string,
+	userMessage?: string
 ): Promise<string> {
 	const parts: string[] = [];
 
@@ -208,6 +210,26 @@ export async function buildAideleContext(
 		parts.push('\nRECENT MEMOS:');
 		for (const m of recentMemos) {
 			parts.push(`  "${m.label}": ${m.preview}`);
+		}
+	}
+
+	// Reference library: retrieve relevant chunks based on user's message
+	if (userMessage) {
+		try {
+			const chunks = await searchChunks(userMessage, 3);
+			if (chunks.length > 0) {
+				parts.push('\nREFERENCE LIBRARY (relevant passages from uploaded methodological texts):');
+				for (const ch of chunks) {
+					const src = ch.reference_author
+						? `${ch.reference_author}: ${ch.reference_title}`
+						: ch.reference_title;
+					const sec = ch.section ? ` — ${ch.section}` : '';
+					parts.push(`\n[${src}${sec}]`);
+					parts.push(ch.content);
+				}
+			}
+		} catch (e) {
+			console.warn('Aidele: reference library search failed:', e);
 		}
 	}
 

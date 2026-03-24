@@ -22,7 +22,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 
 	try {
 		// Build project context for Aidele
-		const context = await buildAideleContext(params.projectId, currentPage || 'unknown', currentMapId);
+		const context = await buildAideleContext(params.projectId, currentPage || 'unknown', currentMapId, message);
 
 		// Truncate history if too long
 		const trimmedHistory = (history || []).slice(-MAX_HISTORY);
