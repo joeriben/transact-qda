@@ -2,6 +2,8 @@ import type { LayoutServerLoad } from './$types.js';
 import { queryOne } from '$lib/server/db/index.js';
 import { error } from '@sveltejs/kit';
 import { getMapsByProject } from '$lib/server/db/queries/maps.js';
+import { startPeriodicSync } from '$lib/server/project-sync/index.js';
+import { slugify } from '$lib/server/files/index.js';
 
 export const load: LayoutServerLoad = async ({ params, locals }) => {
 	const project = await queryOne<{ id: string; name: string; description: string | null; role: string }>(
@@ -15,6 +17,9 @@ export const load: LayoutServerLoad = async ({ params, locals }) => {
 	if (!project) {
 		error(404, 'Project not found');
 	}
+
+	// Auto-start periodic sync when entering a project
+	startPeriodicSync(params.projectId, slugify(project.name));
 
 	const counts = await queryOne<{ documents: string; namings: string; maps: string; memos: string; members: string }>(
 		`SELECT

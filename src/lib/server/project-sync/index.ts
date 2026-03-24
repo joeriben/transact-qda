@@ -318,6 +318,8 @@ let activeProjectId: string | null = null;
 let activeProjectSlug: string | null = null;
 
 export function startPeriodicSync(projectId: string, projectSlug: string, intervalMs = 60_000): void {
+	// Skip if already syncing this project
+	if (activeProjectId === projectId && syncInterval) return;
 	stopPeriodicSync();
 	activeProjectId = projectId;
 	activeProjectSlug = projectSlug;
