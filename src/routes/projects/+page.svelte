@@ -12,6 +12,9 @@
 	let syncMessage = $state<string | null>(null);
 	let showLoadMenu = $state(false);
 
+	// QDPX export dialog
+	let qdpxExportId = $state<string | null>(null);
+
 	async function syncAction(action: string, body: Record<string, any> = {}) {
 		syncing = true;
 		syncMessage = null;
@@ -218,10 +221,10 @@
 							onclick={() => duplicateProject(project.id, project.name)} disabled={syncing}>
 							📋
 						</button>
-						<a class="action-btn" title="Export as .qdpx (ATLAS.ti, MAXQDA, ...)"
-							href="/api/projects/{project.id}/export" download>
+						<button class="action-btn" title="Export as .qdpx (ATLAS.ti, MAXQDA, ...)"
+							onclick={() => qdpxExportId = project.id}>
 							📦
-						</a>
+						</button>
 						<button class="action-btn" title="Unload from database"
 							onclick={() => unloadProject(project.id, projectSlugs.get(project.id) || slugify(project.name), project.name)}
 							disabled={syncing}>
@@ -269,6 +272,56 @@
 
 	<p class="dir-info">Project data: <code>{data.projectsDir}/</code></p>
 </div>
+
+<!-- QDPX Export Loss Dialog -->
+{#if qdpxExportId}
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div class="modal-overlay" onclick={() => qdpxExportId = null}>
+		<div class="modal" onclick={(e) => e.stopPropagation()}>
+			<h2>QDPX Export</h2>
+			<p class="modal-subtitle">Interop-Format for ATLAS.ti, MAXQDA, NVivo</p>
+
+			<div class="loss-section loss-warn">
+				<h3>Lost for external tools</h3>
+				<ul>
+					<li>Naming history (renames, re-designations) — collapsed to latest</li>
+					<li>CCS gradient (cue/characterization/specification) — only in description field</li>
+					<li>Phases — invisible in standard QDA</li>
+					<li>Silences — not representable</li>
+					<li>AI metadata and reasoning</li>
+					<li>Map layouts — only auto-saved positions (seq=0)</li>
+					<li>Topology snapshot history</li>
+					<li>Researcher identities</li>
+				</ul>
+			</div>
+
+			<div class="loss-section loss-ok">
+				<h3>Preserved</h3>
+				<ul>
+					<li>All codes, documents, annotations</li>
+					<li>Memos and memo content</li>
+					<li>Relations between codes</li>
+					<li>Document sets (DocNets)</li>
+					<li>One map with positions</li>
+				</ul>
+			</div>
+
+			<div class="loss-section loss-recovery">
+				<h3>Recovery</h3>
+				<p>The .qdpx file contains a transact-qda namespace that preserves full fidelity. Re-importing into transact-qda restores everything except topology snapshots.</p>
+			</div>
+
+			<div class="modal-actions">
+				<button class="btn-cancel" onclick={() => qdpxExportId = null}>Cancel</button>
+				<a class="btn-export" href="/api/projects/{qdpxExportId}/export" download
+					onclick={() => qdpxExportId = null}>
+					Export .qdpx
+				</a>
+			</div>
+		</div>
+	</div>
+{/if}
 
 <style>
 	.projects-page {
@@ -502,4 +555,47 @@
 		background: rgba(255, 255, 255, 0.08);
 		color: #fff;
 	}
+
+	/* QDPX Export Modal */
+	.modal-overlay {
+		position: fixed; inset: 0; z-index: 1000;
+		background: rgba(0, 0, 0, 0.6); display: flex;
+		align-items: center; justify-content: center;
+	}
+	.modal {
+		background: #161822; border: 1px solid #2a2d3a; border-radius: 12px;
+		padding: 1.5rem; max-width: 520px; width: 90%;
+		max-height: 80vh; overflow-y: auto;
+		box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+	}
+	.modal h2 { font-size: 1.1rem; margin: 0 0 0.2rem; color: #e1e4e8; }
+	.modal-subtitle { font-size: 0.8rem; color: #6b7280; margin: 0 0 1rem; }
+	.loss-section { margin-bottom: 0.75rem; padding: 0.6rem 0.75rem; border-radius: 6px; }
+	.loss-section h3 { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 0.3rem; }
+	.loss-section ul { margin: 0; padding-left: 1.2rem; font-size: 0.8rem; line-height: 1.6; }
+	.loss-section p { margin: 0; font-size: 0.8rem; line-height: 1.5; }
+	.loss-warn { background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.2); }
+	.loss-warn h3 { color: #f59e0b; }
+	.loss-warn li { color: #c9cdd5; }
+	.loss-ok { background: rgba(16, 185, 129, 0.06); border: 1px solid rgba(16, 185, 129, 0.2); }
+	.loss-ok h3 { color: #10b981; }
+	.loss-ok li { color: #c9cdd5; }
+	.loss-recovery { background: rgba(139, 156, 247, 0.06); border: 1px solid rgba(139, 156, 247, 0.2); }
+	.loss-recovery h3 { color: #8b9cf7; }
+	.loss-recovery p { color: #c9cdd5; }
+	.modal-actions {
+		display: flex; gap: 0.5rem; justify-content: flex-end;
+		margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid #2a2d3a;
+	}
+	.btn-cancel {
+		background: none; border: 1px solid #2a2d3a; border-radius: 6px;
+		color: #8b8fa3; padding: 0.5rem 1rem; font-size: 0.85rem; cursor: pointer;
+	}
+	.btn-cancel:hover { border-color: #4b5060; color: #c9cdd5; }
+	.btn-export {
+		background: #f59e0b; color: #0f1117; border: none; border-radius: 6px;
+		padding: 0.5rem 1rem; font-size: 0.85rem; font-weight: 600;
+		cursor: pointer; text-decoration: none;
+	}
+	.btn-export:hover { background: #d97706; }
 </style>
