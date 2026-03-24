@@ -21,6 +21,7 @@ export function createCanvasPositions(
 
 	let positions = $state<Map<string, { x: number; y: number }>>(new Map());
 	let layoutInitialized = false;
+	let currentMapId: string | null = null;
 
 	// ─── Center-on (radial layout) ───
 
@@ -49,7 +50,15 @@ export function createCanvasPositions(
 
 	// ─── Init & layout ───
 
-	function initIfNeeded() {
+	function initIfNeeded(mapId?: string) {
+		// Reset on map change (SvelteKit may reuse component across navigations)
+		if (mapId && mapId !== currentMapId) {
+			currentMapId = mapId;
+			layoutInitialized = false;
+			positions = new Map();
+			centeredId = null;
+			preRadialPositions = null;
+		}
 		if (layoutInitialized) return;
 		const allNodes = [...ms.elements, ...ms.relations, ...ms.silences];
 		if (allNodes.length === 0) return;

@@ -69,9 +69,12 @@
 		if (savedGroup) listGroupBy = savedGroup as typeof listGroupBy;
 	});
 
-	// ─── Position init ───
+	// ─── Position init (reset on map navigation) ───
 
-	$effect(() => { cp.initIfNeeded(); });
+	$effect(() => {
+		cp.initIfNeeded(data.map.id);
+		posMapFitted = false; // reset fit-to-viewport for new map
+	});
 
 	// ─── Canvas interactions ───
 

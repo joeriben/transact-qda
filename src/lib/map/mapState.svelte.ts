@@ -36,9 +36,10 @@ export function createMapState(
 	let silences = $state<any[]>(initialData.silences);
 	let phases = $state<any[]>(initialData.phases);
 	let designationProfile = $state<any[]>(initialData.designationProfile);
+	let mapMeta = $state({ id: initialData.map.id, label: initialData.map.label, properties: initialData.map.properties });
 
 	// ─── Derived ───
-	const mapType = $derived(initialData.map.properties?.mapType || 'situational');
+	const mapType = $derived(mapMeta.properties?.mapType || 'situational');
 	const allItems = $derived([...axes, ...elements, ...relations, ...silences]);
 	const phaseColorMap = $derived(
 		new Map(phases.map((p: any, i: number) => [p.id, regionColor(i)]))
@@ -168,7 +169,7 @@ export function createMapState(
 	// ─── API ───
 
 	async function mapAction(action: string, body: Record<string, unknown> = {}) {
-		const res = await fetch(`/api/projects/${initialData.projectId}/maps/${initialData.map.id}`, {
+		const res = await fetch(`/api/projects/${initialData.projectId}/maps/${mapMeta.id}`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ action, ...body })
@@ -178,7 +179,7 @@ export function createMapState(
 	}
 
 	async function reload() {
-		const res = await fetch(`/api/projects/${initialData.projectId}/maps/${initialData.map.id}`);
+		const res = await fetch(`/api/projects/${initialData.projectId}/maps/${mapMeta.id}`);
 		if (!res.ok) return;
 		const fresh = await res.json();
 		axes = fresh.axes || [];
@@ -575,6 +576,7 @@ export function createMapState(
 		silences = data.silences;
 		phases = data.phases;
 		designationProfile = data.designationProfile;
+		mapMeta = { id: data.map.id, label: data.map.label, properties: data.map.properties };
 	}
 
 	return {
@@ -731,9 +733,9 @@ export function createMapState(
 
 		// Data needed for API URLs
 		projectId: initialData.projectId,
-		mapId: initialData.map.id,
-		mapLabel: initialData.map.label,
-		mapProperties: initialData.map.properties,
+		get mapId() { return mapMeta.id; },
+		get mapLabel() { return mapMeta.label; },
+		get mapProperties() { return mapMeta.properties; },
 	};
 }
 
