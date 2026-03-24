@@ -113,6 +113,17 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 				return json({ exported: results });
 			}
 
+			case 'delete-dir': {
+				const { slug } = body;
+				if (!slug) return json({ error: 'slug required' }, { status: 400 });
+
+				const dir = getProjectDir(slug);
+				const { rm } = await import('fs/promises');
+				await rm(dir, { recursive: true, force: true });
+
+				return json({ ok: true });
+			}
+
 			default:
 				return json({ error: `Unknown action: ${action}` }, { status: 400 });
 		}

@@ -70,6 +70,30 @@
 		}
 	}
 
+	async function deleteDiskProject(slug: string) {
+		const typed = prompt(`Permanently delete "${slug}" from disk?\nType the project name to confirm:`);
+		if (typed !== slug) {
+			if (typed !== null) syncMessage = 'Name did not match. Deletion cancelled.';
+			return;
+		}
+		syncing = true;
+		try {
+			const res = await fetch('/api/projects/sync', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ action: 'delete-dir', slug })
+			});
+			const result = await res.json();
+			if (!res.ok) throw new Error(result.error);
+			syncMessage = `Deleted "${slug}" from disk`;
+			await invalidateAll();
+		} catch (e: any) {
+			syncMessage = e.message;
+		} finally {
+			syncing = false;
+		}
+	}
+
 	async function duplicateProject(projectId: string, projectName: string) {
 		const newName = prompt('Save project as:', `${projectName} (copy)`);
 		if (newName === null) return;
@@ -257,6 +281,10 @@
 						<button class="action-btn" title="Load into database"
 							onclick={() => loadProject(dir.slug)} disabled={syncing}>
 							📥
+						</button>
+						<button class="action-btn action-delete" title="Delete from disk"
+							onclick={() => deleteDiskProject(dir.slug)} disabled={syncing}>
+							🗑
 						</button>
 					</div>
 				</div>
