@@ -53,11 +53,14 @@ export async function logAiInteraction(
 	model: string,
 	inputContext: Record<string, unknown>,
 	response: Record<string, unknown>,
-	tokensUsed: number
+	tokensUsed: number,
+	provider?: string,
+	inputTokens?: number,
+	outputTokens?: number
 ) {
 	await query(
-		`INSERT INTO ai_interactions (project_id, naming_id, request_type, model, input_context, response, tokens_used)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		[projectId, aiNamingId, requestType, model, JSON.stringify(inputContext), JSON.stringify(response), tokensUsed]
+		`INSERT INTO ai_interactions (project_id, naming_id, request_type, model, input_context, response, tokens_used, provider, input_tokens, output_tokens)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		[projectId, aiNamingId, requestType, model, JSON.stringify(inputContext), JSON.stringify(response), tokensUsed, provider || null, inputTokens || null, outputTokens || null]
 	);
 }

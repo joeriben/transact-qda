@@ -51,6 +51,7 @@
 						{#if settingsOpen}
 							<div class="dropdown-menu">
 								<a href="/projects" class="dropdown-item" onclick={() => settingsOpen = false}>Projects</a>
+								<a href="/settings" class="dropdown-item" onclick={() => settingsOpen = false}>Settings</a>
 								<div class="dropdown-divider"></div>
 								<span class="dropdown-label">User</span>
 								<span class="dropdown-info">{data.user.displayName || data.user.username}</span>

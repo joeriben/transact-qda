@@ -1,4 +1,4 @@
-import { chat, getModel } from './client.js';
+import { chat, getModel, getProvider } from './client.js';
 import { query } from '../db/index.js';
 
 export async function suggestCodes(
@@ -128,11 +128,14 @@ export async function logInteraction(
 	model: string,
 	inputContext: Record<string, unknown>,
 	response: Record<string, unknown>,
-	tokensUsed: number
+	tokensUsed: number,
+	provider?: string,
+	inputTokens?: number,
+	outputTokens?: number
 ) {
 	await query(
-		`INSERT INTO ai_interactions (project_id, request_type, model, input_context, response, tokens_used)
-		 VALUES ($1, $2, $3, $4, $5, $6)`,
-		[projectId, requestType, model, JSON.stringify(inputContext), JSON.stringify(response), tokensUsed]
+		`INSERT INTO ai_interactions (project_id, request_type, model, input_context, response, tokens_used, provider, input_tokens, output_tokens)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		[projectId, requestType, model, JSON.stringify(inputContext), JSON.stringify(response), tokensUsed, provider || null, inputTokens || null, outputTokens || null]
 	);
 }

@@ -1,7 +1,7 @@
 // The AI agent: builds context, calls Claude with tools, executes tool calls as naming acts.
 // Every tool call produces namings in the data space — the AI is a co-analyst.
 
-import { chat, getModel } from './client.js';
+import { chat, getModel, getProvider } from './client.js';
 import { getMapStructure, getMap, addElementToMap, relateElements, createPhase, assignToPhase, getCrossMapParticipations } from '../db/queries/maps.js';
 import { getOrCreateAiNaming, logAiInteraction } from '../db/queries/ai.js';
 import { createMemo, updateMemoContent } from '../db/queries/memos.js';
@@ -548,7 +548,10 @@ export async function runMapAgent(
 			model,
 			{ mapId, triggerEvent, contextSummary: { elements: context.elements.length, relations: context.relations.length } },
 			{ toolResults, stopReason: response.stopReason },
-			response.tokensUsed
+			response.tokensUsed,
+			response.provider,
+			response.inputTokens,
+			response.outputTokens
 		);
 	} catch (error) {
 		console.error('[AI Agent] Error:', error instanceof Error ? error.stack || error.message : error);
@@ -721,7 +724,10 @@ export async function discussCue(
 		model,
 		{ mapId, namingId, researcherMessage },
 		{ actions, text: responseText, stopReason: response.stopReason },
-		response.tokensUsed
+		response.tokensUsed,
+		response.provider,
+		response.inputTokens,
+		response.outputTokens
 	);
 
 	// Build response text for frontend
@@ -880,7 +886,10 @@ export async function discussMemo(
 		model,
 		{ mapId, memoId, researcherMessage },
 		{ actions, text: responseText, stopReason: response.stopReason },
-		response.tokensUsed
+		response.tokensUsed,
+		response.provider,
+		response.inputTokens,
+		response.outputTokens
 	);
 
 	const aiResponseText = actions

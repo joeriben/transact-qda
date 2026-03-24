@@ -1,4 +1,4 @@
-# transact-qda — Manual -- Claude Opus 4.6, derived from full coding session protocols (expt technical bughunting), redacted by Benjamin Jörissen. March 14, 2026 - Manual Version: 1.0
+# transact-qda — Manual -- Claude Opus 4.6, derived from full coding session protocols (expt technical bughunting), redacted by Benjamin Jörissen. March 14, 2026 - Manual Version: 2.0 (March 24, 2026)
 
 A qualitative data analysis platform grounded in Situational Analysis (Clarke) and transactional philosophy (Dewey/Bentley), designed for research at the intersection of Science and Technology Studies and educational theory (*Erziehungswissenschaft*, Sünkel). Open-source, self-hosted, with an AI co-researcher that operates within the same data ontology as the human analyst.
 
@@ -17,9 +17,13 @@ A qualitative data analysis platform grounded in Situational Analysis (Clarke) a
 4. [The Three-Layer Hierarchy](#4-the-three-layer-hierarchy)
 5. [Working With transact-qda](#5-working-with-transact-qda)
    - [5.1 Situational Mapping](#51-situational-mapping)
-   - [5.2 The Grounding Layer](#52-the-grounding-layer)
-   - [5.3 The AI Co-Researcher](#53-the-ai-co-researcher)
-   - [5.4 Collaboration](#54-collaboration)
+   - [5.2 Social Worlds/Arenas Maps](#52-social-worldsarenas-maps)
+   - [5.3 Positional Maps](#53-positional-maps)
+   - [5.4 The Grounding Layer](#54-the-grounding-layer)
+   - [5.5 Memos](#55-memos)
+   - [5.6 The AI Co-Researcher](#56-the-ai-co-researcher)
+   - [5.7 Collaboration](#57-collaboration)
+   - [5.8 Project Management](#58-project-management)
 6. [Design Commitments Beyond Clarke](#6-design-commitments-beyond-clarke)
 7. [Technical Overview](#7-technical-overview)
 
@@ -204,7 +208,7 @@ The Namings page is therefore not a derivative view of maps. It is the **least-r
 
 A **map** is a naming that serves as a perspective. Creating a map creates a naming with a self-referential appearance (`perspective_id = naming_id`, `mode = 'perspective'`). Everything "on the map" is a naming that has an appearance from this perspective.
 
-**Multiple maps** are both supported and expected. The Namings list (Section 4) is the complete, dimensionless representation; maps are curated perspectives on that ground truth. A project may have several situational maps (one per document explored, one for the overall situation), social worlds maps, positional maps, or network maps — all sharing the same naming pool. Clarke herself distinguishes different map types; transact-qda does not constrain you to one.
+**Multiple maps** are both supported and expected. The Namings list (Section 4) is the complete, dimensionless representation; maps are curated perspectives on that ground truth. A project may have several situational maps (one per document explored, one for the overall situation), social worlds maps, positional maps — all sharing the same naming pool.
 
 **Adding elements** creates a naming with an initial designation of `cue` and an entity-appearance on the map. At this stage, nothing is determined — the element is a pointing gesture, a registered signal. The map's designation profile (aggregate counts per CCS stage) shows predominantly cues: the map is in its messy phase. The input searches existing project namings: you can **place an existing naming** on this map (creating an appearance without a new naming) or **create a new naming**. This prevents unintended duplication across maps.
 
@@ -220,7 +224,48 @@ A **map** is a naming that serves as a perspective. Creating a map creates a nam
 
 **Pairwise interrogation** — Clarke's procedure of centering on one element and systematically examining its relation to every other — is available as a workflow mode. A transactional extension is equally available: center on a *relation* and ask which entities it connects, which other relations it participates in, what its inscription history reveals.
 
-### 5.2 The Grounding Layer
+**Topology snapshots** preserve the spatial layout of a map at a given moment. These enable temporal comparison (how did the map look before this round of analysis?) without overwriting the current state.
+
+### 5.2 Social Worlds/Arenas Maps
+
+Clarke's second map type moves from "What is in the situation?" to **"How is the situation organized, stabilized, contested?"** Social Worlds/Arenas (SW/A) maps operate at the mesolevel of social organization.
+
+**Formations** are the primary analytical objects on SW/A maps. They are not groups of elements but **universes of discourse** (Strauss), **dispositif configurations** (Foucault), performatively constituted through ongoing activity. A social world exists because actors DO it — commit to shared activities, produce discourse, maintain boundaries. Formations carry four roles:
+
+- **Social world** (dashed ellipse): A universe of discourse — shared activity, commitment, identity. *What holds them together?*
+- **Arena** (long-dashed ellipse): A site of contestation where multiple worlds meet over shared issues. *What is at stake?*
+- **Discourse** (filled ellipse): A discursive formation — a system of statements that produces objects, subjects, concepts. *What does this discourse make sayable/unsayable?*
+- **Organization** (dashed rectangle): A formal organization that may host, constrain, or enable worlds and arenas. *How does organizational structure shape participation?*
+
+**Spatial semantics** on SW/A maps carry analytical meaning: containment (element inside formation) = membership/participation in that world; formation-in-formation = nesting (a discourse operating within an arena); overlap between formations = contested or shared boundary territory. This spatial meaning is distinct from the purely layout-oriented positioning on situational maps.
+
+**Clarke's heuristic questions** structure the analytical work. For social worlds: 14 questions about activities, commitments, technologies, boundaries, segments, implicated actors. For arenas: 11 questions about contested issues, positions, power dynamics, boundary objects. These are sensitizing prompts, not a mandatory checklist.
+
+**Analytical deepening** proceeds through five moments (non-sequential, used when productive):
+
+1. **Stabilization**: How is this formation held together? What commitments, routines, or material arrangements stabilize it?
+2. **Conflict**: What is contested here? Where do worlds collide, and what is at stake?
+3. **Dispositif**: What apparatus of knowledge/power operates through this formation? What discursive and material arrangements enable it?
+4. **Discursive constitution**: How is this formation discursively constituted? Which discourses produce it as a recognizable entity?
+5. **Cross-map**: How do situational map elements map onto this formation? Which SitMap entities are constitutive of this world/arena?
+
+**Cross-map context** connects SW/A maps to situational maps: when a naming from a situational map participates in a formation on a SW/A map, this cross-map participation is tracked and displayed. The researcher can see which concrete situational elements constitute or participate in each social world or arena.
+
+### 5.3 Positional Maps
+
+Clarke's third map type projects **comparative discourse analysis into 2D** (Clarke, Chapter 7). Positional maps answer: **"What positions are taken — and NOT taken — on contested issues?"**
+
+The fundamental shift: positions are **discursive positions**, not entities or actors. The goal is disarticulation — separating positions from the actors who hold them. Multiple actors can hold the same position; one actor can hold contradictory positions. Clarke insists: "map what people SAY, not who people ARE."
+
+**Axes** define the analytical space. Two axes represent dimensions of difference, concern, or controversy. Each axis runs from "less so" (---) to "more so" (+++). Choosing and refining axes IS the analytical work — Clarke reports 12+ iterations are typical. Axes are themselves namings with CCS designation: an axis at cue-level is a first attempt at naming a dimension of the controversy; at specification, it is a precisely articulated analytical dimension.
+
+**Positions** are placed in the 2D field defined by the axes. Coordinates indicate qualitative placement, not quantitative measurement. Each position is a naming: it has an inscription, a designation, a stack of acts. The analytical questions for positions: Can you point to specific data? What makes this position distinct from nearby ones? Is this genuinely a discursive stance, or is it still tied to a specific actor?
+
+**Absences** are analytically crucial. Empty quadrants demand systematic questioning: what would a position there look like? Is this silence accidental or structural? Why might no one say this? The platform marks absent positions distinctly and supports systematic quadrant analysis.
+
+**Multiple positional maps per project** are expected — one per contested issue. Each reveals a different dimension of the discursive field.
+
+### 5.4 The Grounding Layer
 
 Documents — interview transcripts, photographs, policy texts, theoretical chapters, media artifacts — form the empirical corpus. "There is no such thing as context": a Foucault chapter is data, not external framing. It belongs in the corpus and is codeable.
 
@@ -230,13 +275,40 @@ Documents — interview transcripts, photographs, policy texts, theoretical chap
 
 **Codes are not a separate ontological domain.** They are namings — from any map, from any perspective — that have been used to annotate documents. The "code list" is a derived view: a query showing "namings with document anchors." This eliminates the artificial boundary between map elements and document codes that existing QDA tools enforce.
 
-### 5.3 The AI Co-Researcher
+**Documents are stored in project directories** (`projekte/{slug}/files/`), with relative paths in the database. This ensures portability: a project directory contains everything needed to reconstruct the project, including all media files.
+
+### 5.5 Memos
+
+Memos are the **shared inquiry medium** of the analytical process. They capture observations, questions, tensions, and theoretical connections that span the research situation. In transact-qda, a memo is a first-class naming — it participates in the core data model alongside entities, relations, and documents.
+
+**Memo creation** produces a naming with content stored in a dedicated `memo_content` table. Memos can be linked to any number of namings (elements, relations, silences, other memos) via participations. The linked elements provide analytical context: a memo about a tension between two formations links to both.
+
+**Status lifecycle.** Memos follow a lifecycle that tracks how the researcher engages with them:
+
+- **Active**: Default for newly created researcher memos. A live observation awaiting engagement.
+- **Presented**: An AI-generated memo or a restored dismissed memo. Awaiting researcher attention.
+- **Discussed**: Has an active discussion thread between researcher and AI.
+- **Acknowledged**: The researcher confirmed reading and engagement. The observation is absorbed into the analytical process.
+- **Promoted**: Elevated to a naming on a map — the memo's insight becomes a cue-designation entity. This is the transition from reflexive observation to analytical substance.
+- **Dismissed**: Archived. Can be restored to "presented" if later relevant.
+
+**Memo discussions** use the same infrastructure as cue discussions (Section 5.6): the researcher can engage the AI in dialogue about a memo's content. Discussion turns are themselves memo-namings linked to the parent memo. The AI can respond with analytical depth or revise the memo if the discussion warrants it.
+
+**Memos are NOT grounding.** They document reflexive reasoning — CCS movement, analytical process, theoretical connections. Only document anchors constitute empirical grounding. This distinction is epistemologically important: a memo about a pattern of silences is an analytical observation, not evidence.
+
+### 5.6 The AI Co-Researcher
 
 The AI is not an external tool that responds on command. It is a **naming in the data space** — it has its own researcher-naming per project, and its analytical acts (suggestions, memos, withdrawals) are naming acts attributed to this AI-naming. The AI is a co-actor in the analytical situation, not an instrument applied to it.
 
 The AI's operational constraint: it can only produce **cues**. Every AI suggestion — a new element, a relation, a pattern observation — enters the map as a cue with `by = ai_naming_id`. Only the researcher can elevate a cue to characterization (acceptance) or leave it as a cue (implicit non-engagement). Designation authority remains with the researcher; cue production is shared.
 
-**Discussion, not accept/reject.** When the AI produces a cue, the researcher does not face a binary accept/decline button. Instead, they can enter dialogue *at the cue itself*: question the AI's reasoning, request revision, challenge the framing. This discussion is a memo chain linked to the naming — not a separate chat interface. A discussion can result in: the AI rewriting the cue (new inscription in the stack, old preserved), the AI withdrawing the cue (soft-delete with discussion history preserved), or the AI responding with a deepening memo (no rewrite, but richer analytical context).
+**Socratic posture.** The AI's fundamental posture across all map types is Socratic accompaniment:
+
+1. **Ask** — questions that help the researcher articulate their analytical choices
+2. **Remind** — of Clarke's methodological principles when relevant
+3. **Reflect** — in justified cases, prompt critical self-reflection about the researcher's decisions
+
+The AI does NOT proactively suggest elements, relations, or analytical content by default. The researcher is the epistemic authority. AI suggestions are available when explicitly requested, but the default mode is questioning, not answering.
 
 **Deconstructive questioning.** The AI does not reproduce Clarke's categories as slots to fill. It does not ask "did you consider nonhuman actors?" — which reinstates the category. Instead, it questions the distinctions the researcher has drawn:
 
@@ -246,13 +318,53 @@ The AI's operational constraint: it can only produce **cues**. Every AI suggesti
 - "Which discourse constitutes this as a 'human' element?"
 - "What is the relational pattern around this absence?"
 
+**Discussion, not accept/reject.** When the AI produces a cue, the researcher does not face a binary accept/decline button. Instead, they can enter dialogue *at the cue itself*: question the AI's reasoning, request revision, challenge the framing. This discussion is a memo chain linked to the naming. A discussion can result in: the AI rewriting the cue (new inscription in the stack, old preserved), the AI withdrawing the cue (soft-delete with discussion history preserved), or the AI responding with a deepening memo (no rewrite, but richer analytical context).
+
 The AI sees the full map context — all elements, relations, designations, participations, phases, discussion histories, withdrawn cues — so its questions emerge from the actual analytical state, not from a fixed checklist.
 
-### 5.4 Collaboration
+**Map-type awareness.** The AI adapts its posture and available operations to the map type:
+
+- On **situational maps**: primary tool is `write_memo` for questions and observations; `suggest_element`, `suggest_relation`, `identify_silence` available on explicit request.
+- On **SW/A maps**: uses `suggest_formation` (not `suggest_element`) for social worlds, arenas, discourses, and organizations; attends to relations between formations; draws from Clarke's 14 social world and 11 arena questions; applies the five analytical deepening moments.
+- On **positional maps**: attends to axis refinement, disarticulation (separating positions from actors), empty quadrants, clustering, and grounding. Does NOT proactively suggest positions.
+
+**Provider-agnostic AI.** The AI client supports seven providers: Ollama (local, DSGVO-compliant), Mistral AI (EU), IONOS (EU, Berlin), Mammouth AI (EU), Anthropic (US), OpenAI (US), and OpenRouter (US). One model is configured for all use cases. Provider and model are selected in the settings page; API keys are stored in `.key` files (gitignored). All providers except Anthropic use the OpenAI-compatible API format.
+
+**Usage tracking.** Every AI interaction is logged to the `ai_interactions` table with provider, model, request type, and token counts (input/output). The settings page provides aggregated usage data by model, request type, and time period for cost control.
+
+### 5.7 Collaboration
 
 Multiple researchers can work on the same project. Each user receives a **researcher-naming** in the data space — a naming whose inscription is the researcher's name. All naming acts record `by = researcher_naming_id`, not a user account ID. This means the analytical provenance chain tracks namings, not system users. The researcher's acts are events in the same relational fabric as the data they study.
 
 Roles follow a hierarchy: owner (immutable, full control), admin (can manage members), member (can work on maps and documents), viewer (read-only). Discussion between team members uses the same memo-chain infrastructure as AI discussions — no separate communication layer.
+
+### 5.8 Project Management
+
+#### Native format
+
+The canonical project format is **PostgreSQL COPY files** — one file per table — stored in project directories (`projekte/{slug}/`). Media files live in `projekte/{slug}/files/`. This is a lossless format: it preserves the full transactional data model including naming acts, appearances, designations, and AI metadata.
+
+**Periodic sync** automatically exports the database state to the project directory every 60 seconds while a project is active. This provides continuous backup without manual intervention. Sync starts automatically when entering a project.
+
+**Operations:**
+
+- **Save**: Manual sync from database to project directory.
+- **Load**: Import a project directory into the database for active work.
+- **Unload**: Final sync, then remove from database. Data stays safe in the project directory.
+- **Delete**: Remove from both database and disk, with safety confirmation (loaded projects require double-confirm; on-disk projects require typing the project slug).
+- **Duplicate**: Full transactional copy with fresh UUIDs, including media files.
+
+#### QDPX interoperability
+
+QDPX is the open exchange format for qualitative data analysis projects (supported by ATLAS.ti, MAXQDA, NVivo, and others). transact-qda supports both import and export.
+
+**Export** uses a dual-namespace approach: a standard QDPX namespace (readable by any compliant tool) plus a custom `urn:transact-qda:1.0` namespace for lossless re-import. A **pre-export loss report dialog** shows what external tools will and will not see:
+
+- **Preserved for external tools**: All codes, documents, annotations, memos, relations, one map with positions.
+- **Lost for external tools**: Naming history (collapsed to latest inscription), CCS gradient (only in description text), phases, silences, AI metadata, map snapshot history, researcher identities.
+- **Lossless**: The native format (save to directory) preserves everything.
+
+**Import** detects the namespace: transact-qda exports are reimported with full fidelity; standard QDPX files from other tools are imported as cues on a default map, with codes becoming namings and document annotations becoming grounding anchors. All GUIDs are remapped to fresh UUIDs to prevent collisions.
 
 ---
 
@@ -284,18 +396,20 @@ For researchers who want to run or contribute to transact-qda:
 |-------|-----------|-----------|
 | Framework | SvelteKit 5 (Node adapter) | Full-stack, shared types, reactive model for interactive maps |
 | Database | PostgreSQL with JSONB | Self-hosted, GIN-indexed JSONB for flexible properties |
-| AI | Provider-agnostic client (will be configurable in the admin settins) | No vendor lock-in |
+| AI | Provider-agnostic client (7 providers) | No vendor lock-in; Ollama (local) + EU/US cloud providers |
 | Auth | Argon2id + server-side sessions | Simple, secure, no external dependency |
 | Layout | ELK.js | Hierarchical/stress/force graph layout for canvas |
+| Storage | PostgreSQL COPY + project directories | Lossless native format, automatic periodic sync |
+| Interop | QDPX (dual-namespace) | Import/export for ATLAS.ti, MAXQDA, NVivo compatibility |
 | Deployment | Self-hosted server, Cloudflare tunnel | Full control, no cloud dependency |
 
-No ORM — direct SQL with `pg` to preserve full control over the transactional data model. An ORM would impose its own ontology. API keys in `*.key` files (gitignored), never in configuration.
+No ORM — direct SQL with `pg` to preserve full control over the transactional data model. An ORM would impose its own ontology. API keys in `*.key` files (gitignored), never in configuration. AI settings (provider, model) in `ai-settings.json` (gitignored).
 
 ---
 
 ## References
 
-- Bibbert, M. (2025). Assembling the Situation: Situational Analysis After the Nonhuman Turn. *Forum Qualitative Sozialforschung / FQS*, 26(2). https://doi.org/10.17169/fqs-26.2.4306 
+- Bibbert, M. (2025). Assembling the Situation: Situational Analysis After the Nonhuman Turn. *Forum Qualitative Sozialforschung / FQS*, 26(2). https://doi.org/10.17169/fqs-26.2.4306
 - Clarke, A. E. (2005). *Situational Analysis: Grounded Theory After the Postmodern Turn*. Sage.
 - Clarke, A. E., Friese, C., & Washburn, R. S. (2018). *Situational Analysis: Grounded Theory After the Interpretive Turn* (2nd ed.). Sage.
 - Dewey, J., & Bentley, A. F. (1949). *Knowing and the Known*. Beacon Press.
