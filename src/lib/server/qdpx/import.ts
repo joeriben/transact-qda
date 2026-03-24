@@ -633,11 +633,12 @@ export async function importProject(
 			);
 		}
 
-		// 5. All participations (deduplicated by id)
+		// 5. All participations (deduplicated by naming_id + participant_id)
 		const seenPart = new Set<string>();
 		for (const p of participations) {
-			if (seenPart.has(p.id)) continue;
-			seenPart.add(p.id);
+			const key = `${p.namingId}|${p.participantId}`;
+			if (seenPart.has(key)) continue;
+			seenPart.add(key);
 			await client.query(
 				`INSERT INTO participations (id, naming_id, participant_id) VALUES ($1, $2, $3)`,
 				[p.id, p.namingId, p.participantId]
