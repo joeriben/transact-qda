@@ -12,7 +12,7 @@ import { FULL_KNOWLEDGE } from '../base/knowledge.js';
 import { MANUAL } from '../base/manual.js';
 import { buildProjectContext, buildMapDetail, buildMemoContext, buildLibraryContext, buildStructuredMapContext, type MapContext } from '../base/context.js';
 import { SEARCH_TOOLS, executeSearchTool } from '../base/search-tools.js';
-import { DELEGATE_TOOL, executeDelegation, getAvailableAgents, getAvailableAgentsSync } from '../base/delegation.js';
+import { DELEGATE_TOOL, executeDelegation, getAvailableAgents, getAvailableAgentsSync, getConfiguredDelegationAgent } from '../base/delegation.js';
 import { TICKET_TOOL, createTicket } from '../base/tickets.js';
 import { getPersona, type Persona, type PersonaName } from '../personas/index.js';
 import { getOrCreateAiNaming, logAiInteraction } from '../../db/queries/ai.js';
@@ -754,9 +754,9 @@ Respond in JSON format:
 
 If no analytically significant passages exist in this chunk, return: []`;
 
-			// Find cheapest available agent for delegation
-			const agents = await getAvailableAgents();
-			const delegateAgent = agents.find(a => a.costTier === 'low') || agents[0];
+			// Use user-configured delegation agent; fall back to cheapest available
+			const delegateAgent = await getConfiguredDelegationAgent()
+				|| (await getAvailableAgents())[0];
 			if (!delegateAgent) {
 				progress({ phase: 'coding', thinking: `No delegation agent available — skipping chunk ${c + 1}` });
 				continue;

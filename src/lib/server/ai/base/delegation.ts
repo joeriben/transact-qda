@@ -137,6 +137,34 @@ export async function getAvailableAgents(): Promise<AgentModel[]> {
 	return agents;
 }
 
+// Get the user-configured delegation agent directly (settings preference)
+export async function getConfiguredDelegationAgent(): Promise<AgentModel | null> {
+	const settings = loadSettings();
+	if (settings.delegationAgent) {
+		const da = settings.delegationAgent;
+		const provDef = PROVIDERS[da.provider];
+		if (!provDef) return null;
+
+		// Check availability
+		if (da.provider === 'ollama') {
+			const available = await checkOllamaAvailability();
+			if (!available) return null;
+		} else if (!readApiKey(da.provider)) {
+			return null;
+		}
+
+		return {
+			provider: da.provider,
+			model: da.model || provDef.defaultModel,
+			label: `${provDef.label}: ${da.model || provDef.defaultModel}`,
+			description: 'User-configured delegation agent.',
+			costTier: 'low',
+			available: true
+		};
+	}
+	return null;
+}
+
 // Synchronous version for prompt building (uses cached Ollama check)
 export function getAvailableAgentsSync(): AgentModel[] {
 	const agents: AgentModel[] = [];
