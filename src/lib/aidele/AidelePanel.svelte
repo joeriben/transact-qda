@@ -56,6 +56,13 @@
 		}
 	}
 
+	function copyDialog() {
+		const text = aidele.messages
+			.map(m => `${m.role === 'user' ? 'Researcher' : 'Aidele'}:\n${m.content}`)
+			.join('\n\n---\n\n');
+		navigator.clipboard.writeText(text);
+	}
+
 	// Resize via top-left corner drag
 	function startResize(e: PointerEvent) {
 		e.preventDefault();
@@ -92,6 +99,7 @@
 			<span class="aidele-title">Aidele</span>
 			<div class="aidele-header-actions">
 				{#if aidele.messages.length > 0}
+					<button class="aidele-btn-sm" onclick={copyDialog} title="Copy dialog to clipboard">copy</button>
 					<button class="aidele-btn-sm" onclick={() => aidele.clear()} title="Clear conversation">clear</button>
 				{/if}
 				<button class="aidele-btn-sm" onclick={() => aidele.isOpen = false} title="Close">&times;</button>

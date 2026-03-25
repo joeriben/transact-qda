@@ -145,9 +145,25 @@ export async function preprocessReference(referenceId: string) {
 	const ref = await getReference(referenceId);
 	if (!ref) throw new Error('Reference not found');
 
+	// Ensure we have a text file — extract from PDF if needed
+	if (!ref.text_file) {
+		if (ref.format === 'pdf' && ref.filename) {
+			const pdfPath = join(LIBRARY_DIR, ref.filename);
+			if (!existsSync(pdfPath)) throw new Error('Original PDF not found');
+			const pdfBuffer = readFileSync(pdfPath);
+			const extracted = await extractTextFromPdf(pdfBuffer);
+			const textFilename = ref.filename.replace(/\.pdf$/i, '.txt');
+			writeFileSync(join(LIBRARY_DIR, textFilename), extracted, 'utf-8');
+			await query('UPDATE aidele_references SET text_file = $1 WHERE id = $2', [textFilename, referenceId]);
+			ref.text_file = textFilename;
+		} else {
+			throw new Error('No text file and no PDF to extract from');
+		}
+	}
+
 	// Read the full text
 	const textPath = join(LIBRARY_DIR, ref.text_file);
-	if (!existsSync(textPath)) throw new Error('Text file not found');
+	if (!existsSync(textPath)) throw new Error('Text file not found: ' + ref.text_file);
 	const fullText = readFileSync(textPath, 'utf-8');
 
 	const wordCount = fullText.split(/\s+/).filter(Boolean).length;
@@ -308,20 +324,7 @@ export async function preprocessReference(referenceId: string) {
 		[JSON.stringify(indexData), referenceId]
 	);
 
-	// Log
-	const model = getModel();
-	const provider = getProvider();
-	await logInteraction(
-		'00000000-0000-0000-0000-000000000000',
-		'aidele-preprocess',
-		model,
-		{ referenceId, title: ref.title, chapters: chapterTexts.length },
-		{ sections: sections.length, highRelevance: highRelevance.length, concepts: allConcepts.length },
-		totalInputTokens + totalOutputTokens,
-		provider,
-		totalInputTokens,
-		totalOutputTokens
-	);
+	console.log(`Aidele preprocessing complete: "${ref.title}" — ${chapterTexts.length} chapters, ${highRelevance.length} high-relevance, ${totalInputTokens + totalOutputTokens} tokens`);
 
 	return indexData;
 }
