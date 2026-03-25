@@ -12,7 +12,7 @@ import { FULL_KNOWLEDGE } from '../base/knowledge.js';
 import { MANUAL } from '../base/manual.js';
 import { buildProjectContext, buildMapDetail, buildMemoContext, buildLibraryContext, buildStructuredMapContext, type MapContext } from '../base/context.js';
 import { SEARCH_TOOLS, executeSearchTool } from '../base/search-tools.js';
-import { DELEGATE_TOOL, executeDelegation, getAvailableAgentsSync } from '../base/delegation.js';
+import { DELEGATE_TOOL, executeDelegation, getAvailableAgents, getAvailableAgentsSync } from '../base/delegation.js';
 import { TICKET_TOOL, createTicket } from '../base/tickets.js';
 import { getPersona, type Persona, type PersonaName } from '../personas/index.js';
 import { getOrCreateAiNaming, logAiInteraction } from '../../db/queries/ai.js';
@@ -671,7 +671,8 @@ export async function runRaichelAnalysis(
 
 	// List all documents in project
 	const docs = (await query(
-		`SELECT n.id, n.inscription as title, LENGTH(dc.full_text) as text_length
+		`SELECT n.id, n.inscription as title, dc.full_text,
+		        LENGTH(dc.full_text) as text_length
 		 FROM document_content dc
 		 JOIN namings n ON n.id = dc.naming_id
 		 WHERE n.project_id = $1 AND n.deleted_at IS NULL AND dc.full_text IS NOT NULL
@@ -687,52 +688,166 @@ export async function runRaichelAnalysis(
 	// Get or create a situational map for Raichel's analysis
 	const mapId = await getOrCreateRaichelMap(projectId, aiNamingId);
 	const mapType = 'situational';
-	const systemPrompt = buildSystemPrompt(persona, mapType);
-	const tools = buildToolSet(persona, mapType);
+	const persona2 = getPersona('raichel');
+	const systemPrompt = buildSystemPrompt(persona2, mapType);
+	const tools = buildToolSet(persona2, mapType);
 
-	// ── Phase 1: Code each document ──────────────────────────────
+	// ── Phase 1: Delegation-first document coding ────────────────
+	// Chunk each document, delegate passage identification to cheap
+	// model, then execute the codes. Chief model never sees full text.
+
+	const CHUNK_SIZE = 8000; // ~2K tokens per chunk
 
 	for (let i = 0; i < docs.length; i++) {
 		const doc = docs[i];
+		const fullText: string = doc.full_text || '';
+
 		progress({
 			phase: 'coding',
 			document: doc.title,
 			documentIndex: i + 1,
 			documentCount: docs.length,
-			message: `Coding document: ${doc.title}`
+			message: `Coding document: ${doc.title} (${doc.text_length} chars)`
 		});
 
-		// Build context: existing namings on map + this document's metadata
-		const mapContext = await buildStructuredMapContext(mapId, projectId);
-		const existingNamings = mapContext.elements.length > 0
-			? `\nEXISTING CODES ON MAP (${mapContext.elements.length}):\n` +
-			  mapContext.elements.map(e => `  [${e.designation}] "${e.inscription}" (id: ${e.id})`).join('\n')
-			: '\nNo codes on map yet.';
+		// Chunk the document
+		const chunks = chunkText(fullText, CHUNK_SIZE);
+		progress({ phase: 'coding', thinking: `Document split into ${chunks.length} chunks of ~${CHUNK_SIZE} chars` });
 
-		const documentList = docs.map((d, j) =>
-			`  ${j === i ? '→' : ' '} "${d.title}" (id: ${d.id}, ${d.text_length} chars)${j < i ? ' [coded]' : ''}`
-		).join('\n');
+		// Get existing codes for the delegation prompt
+		const existingCodes = (await query(
+			`SELECT n.id, n.inscription FROM namings n
+			 JOIN appearances a ON a.naming_id = n.id AND a.perspective_id = $1 AND a.mode = 'entity'
+			 WHERE n.project_id = $2 AND n.deleted_at IS NULL`,
+			[mapId, projectId]
+		)).rows;
 
-		const userMessage = `PHASE 1: OPEN CODING
+		const existingCodesText = existingCodes.length > 0
+			? `\nEXISTING CODES (reuse if same concept):\n${existingCodes.map((c: any) => `- "${c.inscription}"`).join('\n')}`
+			: '';
 
-DOCUMENTS IN PROJECT:
-${documentList}
+		// Delegate each chunk to cheap model for passage identification
+		let allPassages: Array<{ passage: string; code_label: string; reasoning: string }> = [];
 
-CURRENT DOCUMENT: "${doc.title}" (id: ${doc.id})
-Document ${i + 1} of ${docs.length}.
-${existingNamings}
+		for (let c = 0; c < chunks.length; c++) {
+			const chunk = chunks[c];
+			progress({
+				phase: 'coding',
+				document: doc.title,
+				thinking: `Delegating chunk ${c + 1}/${chunks.length}...`
+			});
 
-INSTRUCTIONS:
-1. Use read_document to read this document's full text
-2. Code analytically significant passages using code_passage
-3. Reuse existing codes when the same concept appears
-4. After coding, write a document memo (write_memo) summarizing what you found
-5. When done with this document, say "DOCUMENT COMPLETE"`;
+			const delegationTask = `You are a qualitative researcher coding a document using Situational Analysis (Adele Clarke).
 
-		const { totalToolCalls } = await executeToolLoop(
-			systemPrompt, tools, userMessage,
+Identify analytically significant passages in this text chunk. For each passage:
+- Quote the EXACT text (verbatim, at least 20 chars)
+- Provide an analytical code label (prefer gerunds: "legitimizing X", "contesting Y")
+- Explain briefly why this passage is significant
+
+Focus on: actors, processes, discursive constructions, contested issues, material-discursive entanglements, implicit assumptions, tensions.
+Do NOT code trivial content (headers, formatting, meta-text).
+Quality over quantity — 3-8 codes per chunk is typical.
+${existingCodesText}
+
+Respond in JSON format:
+[{"passage": "exact quote from text", "code_label": "analytical label", "reasoning": "why significant"}]
+
+If no analytically significant passages exist in this chunk, return: []`;
+
+			// Find cheapest available agent for delegation
+			const agents = await getAvailableAgents();
+			const delegateAgent = agents.find(a => a.costTier === 'low') || agents[0];
+			if (!delegateAgent) {
+				progress({ phase: 'coding', thinking: `No delegation agent available — skipping chunk ${c + 1}` });
+				continue;
+			}
+
+			const taskWithChunk = delegationTask + `\n\nTEXT CHUNK (${c + 1}/${chunks.length}):\n"""\n${chunk}\n"""`;
+
+			const delegationResult = await executeDelegation(
+				delegateAgent.label,
+				taskWithChunk,
+				4096,
+				projectId
+			);
+
+			if (!delegationResult.success) {
+				progress({ phase: 'coding', thinking: `Chunk ${c + 1}: delegation failed — ${delegationResult.result}` });
+				continue;
+			}
+
+			// Parse the delegation result
+			try {
+				const jsonMatch = delegationResult.result.match(/\[[\s\S]*\]/);
+				if (jsonMatch) {
+					const passages = JSON.parse(jsonMatch[0]);
+					if (Array.isArray(passages)) {
+						allPassages.push(...passages);
+						progress({
+							phase: 'coding',
+							thinking: `Chunk ${c + 1}: ${passages.length} passages identified`
+						});
+					}
+				}
+			} catch {
+				progress({ phase: 'coding', thinking: `Chunk ${c + 1}: could not parse delegation result` });
+			}
+		}
+
+		progress({
+			phase: 'coding',
+			document: doc.title,
+			thinking: `Total passages identified: ${allPassages.length}. Creating codes...`
+		});
+
+		// Execute code_passage for each identified passage
+		let codesCreated = 0;
+		for (const p of allPassages) {
+			if (!p.passage || !p.code_label) continue;
+
+			const result = await executeRaichelTool(
+				'code_passage',
+				{
+					document_id: doc.id,
+					passage: p.passage,
+					code_label: p.code_label,
+					reasoning: p.reasoning || ''
+				},
+				projectId, mapId, aiNamingId
+			);
+
+			if (result.success) {
+				codesCreated++;
+				progress({
+					phase: 'coding',
+					toolCall: {
+						name: 'code_passage',
+						input: { code_label: p.code_label, passage: p.passage.slice(0, 80) },
+						result: result.result
+					}
+				});
+			} else {
+				progress({
+					phase: 'coding',
+					thinking: `Failed to code "${p.code_label}": ${result.result}`
+				});
+			}
+		}
+
+		// Write document memo (via chief model — one cheap call)
+		const docMemoMessage = `Write a brief analytical memo summarizing what was found in this document.
+
+Document: "${doc.title}"
+Codes created: ${codesCreated}
+Passages coded:
+${allPassages.map(p => `- [${p.code_label}] "${p.passage.slice(0, 60)}..." — ${p.reasoning}`).join('\n')}
+
+Write a memo (use write_memo tool) with title "Document: ${doc.title}" summarizing the key findings, tensions, and what this document contributes to understanding the situation.`;
+
+		await executeToolLoop(
+			systemPrompt, tools, docMemoMessage,
 			projectId, mapId, aiNamingId,
-			(p) => progress({ phase: 'coding', document: doc.title, documentIndex: i + 1, documentCount: docs.length, ...p })
+			(p2) => progress({ phase: 'coding', document: doc.title, ...p2 })
 		);
 
 		progress({
@@ -740,18 +855,9 @@ INSTRUCTIONS:
 			document: doc.title,
 			documentIndex: i + 1,
 			documentCount: docs.length,
-			toolCalls: totalToolCalls,
-			message: `Finished coding: ${doc.title} (${totalToolCalls} tool calls)`
+			toolCalls: codesCreated,
+			message: `Finished: ${doc.title} — ${codesCreated} codes from ${allPassages.length} passages`
 		});
-
-		// Log interaction for this document
-		await logAiInteraction(
-			projectId, aiNamingId, `raichel:code:${doc.id}`, model,
-			{ mapId, documentId: doc.id, documentTitle: doc.title },
-			{ toolCalls: totalToolCalls },
-			0, // tokens tracked per-call internally
-			getProvider()
-		);
 	}
 
 	// ── Phase 2: Cross-document analysis ─────────────────────────
@@ -872,6 +978,37 @@ async function getOrCreateRaichelMap(projectId: string, aiNamingId: string): Pro
 }
 
 // ── Helpers ───────────────────────────────────────────────────────
+
+// Split text into chunks at paragraph boundaries
+function chunkText(text: string, targetSize: number): string[] {
+	if (text.length <= targetSize) return [text];
+
+	const chunks: string[] = [];
+	let pos = 0;
+
+	while (pos < text.length) {
+		let end = Math.min(pos + targetSize, text.length);
+
+		// Try to break at a paragraph boundary (double newline)
+		if (end < text.length) {
+			const lastParagraph = text.lastIndexOf('\n\n', end);
+			if (lastParagraph > pos + targetSize * 0.5) {
+				end = lastParagraph + 2;
+			} else {
+				// Fall back to single newline
+				const lastNewline = text.lastIndexOf('\n', end);
+				if (lastNewline > pos + targetSize * 0.5) {
+					end = lastNewline + 1;
+				}
+			}
+		}
+
+		chunks.push(text.slice(pos, end));
+		pos = end;
+	}
+
+	return chunks;
+}
 
 async function getMapType(mapId: string): Promise<string | undefined> {
 	const result = await query(
