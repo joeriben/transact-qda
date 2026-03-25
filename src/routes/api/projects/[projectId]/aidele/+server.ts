@@ -1,11 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { chat } from '$lib/server/ai/client.js';
-import { logInteraction } from '$lib/server/ai/index.js';
-import { AIDELE_SYSTEM_PROMPT } from '$lib/server/ai/aidele-prompt.js';
-import { buildProjectContext, buildMapDetail, buildMemoContext, buildLibraryContext } from '$lib/server/ai/base/context.js';
-
-const MAX_HISTORY = 40; // Cap conversation history to prevent unbounded token growth
+import { runConversation } from '$lib/server/ai/runtime/index.js';
 
 export const POST: RequestHandler = async ({ params, request }) => {
 	const body = await request.json();
@@ -21,50 +16,13 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	}
 
 	try {
-		// Build context from shared base functions
-		const contextParts: string[] = [];
-		contextParts.push(await buildProjectContext(params.projectId));
-		contextParts.push(`CURRENT PAGE: ${currentPage || 'unknown'}`);
-		if (currentMapId) {
-			contextParts.push(await buildMapDetail(currentMapId, params.projectId));
-		}
-		const memoCtx = await buildMemoContext(params.projectId);
-		if (memoCtx) contextParts.push(memoCtx);
-		const libraryCtx = await buildLibraryContext(message);
-		if (libraryCtx) contextParts.push(libraryCtx);
-
-		const context = contextParts.join('\n\n');
-
-		// Truncate history if too long
-		const trimmedHistory = (history || []).slice(-MAX_HISTORY);
-
-		// Inject context into the latest user message so Aidele always sees current state
-		const userMessage = `CURRENT PROJECT STATE:\n${context}\n\nRESEARCHER'S MESSAGE:\n${message}`;
-
-		const response = await chat({
-			system: AIDELE_SYSTEM_PROMPT,
-			messages: [
-				...trimmedHistory,
-				{ role: 'user', content: userMessage }
-			],
+		const result = await runConversation('aidele', params.projectId, message, history || [], {
+			currentPage,
+			mapId: currentMapId,
 			maxTokens: 16000
-			// No tools — Aidele is text-only
 		});
 
-		// Log interaction for usage tracking
-		await logInteraction(
-			params.projectId,
-			'aidele',
-			response.model,
-			{ currentPage, currentMapId, messageCount: trimmedHistory.length },
-			{ text: response.text.slice(0, 500) },
-			response.tokensUsed,
-			response.provider,
-			response.inputTokens,
-			response.outputTokens
-		);
-
-		return json({ response: response.text });
+		return json({ response: result.response });
 	} catch (e: any) {
 		console.error('Aidele error:', e.message);
 		return json({ error: e.message }, { status: 500 });
