@@ -658,6 +658,44 @@ async function executeToolLoop(
 	return { text: lastText, totalToolCalls };
 }
 
+// Process a single document chunk directly with the chief model (no delegation)
+async function processChunkDirectly(
+	systemPrompt: string,
+	tools: ToolDef[],
+	chunk: string,
+	chunkIndex: number,
+	totalChunks: number,
+	codingInstruction: string,
+	projectId: string,
+	mapId: string,
+	aiNamingId: string,
+	progress: (p: Partial<RaichelProgress>) => void
+): Promise<Array<{ passage: string; code_label: string; reasoning: string }>> {
+	progress({ thinking: `Chunk ${chunkIndex}/${totalChunks}...` });
+
+	const message = `${codingInstruction}\n\nTEXT CHUNK (${chunkIndex}/${totalChunks}):\n"""\n${chunk}\n"""\n\nRespond with the JSON array only.`;
+
+	const response = await chat({
+		system: systemPrompt,
+		maxTokens: 4096,
+		messages: [{ role: 'user', content: message }]
+	});
+
+	try {
+		const jsonMatch = response.text.match(/\[[\s\S]*\]/);
+		if (jsonMatch) {
+			const passages = JSON.parse(jsonMatch[0]);
+			if (Array.isArray(passages)) {
+				progress({ thinking: `Chunk ${chunkIndex}: ${passages.length} passages identified` });
+				return passages;
+			}
+		}
+	} catch {
+		progress({ thinking: `Chunk ${chunkIndex}: could not parse result` });
+	}
+	return [];
+}
+
 export async function runRaichelAnalysis(
 	projectId: string,
 	onProgress?: (progress: RaichelProgress) => void
@@ -726,20 +764,15 @@ export async function runRaichelAnalysis(
 			? `\nEXISTING CODES (reuse if same concept):\n${existingCodes.map((c: any) => `- "${c.inscription}"`).join('\n')}`
 			: '';
 
-		// Delegate each chunk to delegation agent for passage identification
+		// Identify passages: delegate to configured agent, or process directly
 		let allPassages: Array<{ passage: string; code_label: string; reasoning: string }> = [];
 
-		// Resolve delegation agent once — fail fast if unavailable
-		const delegateAgent = await getConfiguredDelegationAgent()
-			|| (await getAvailableAgents())[0];
-		if (!delegateAgent) {
-			progress({ phase: 'error', message: 'No delegation agent configured. Set one in Settings → Delegation Agent.' });
-			throw new Error('No delegation agent configured. Set one in Settings → Delegation Agent.');
-		}
+		const delegateAgent = await getConfiguredDelegationAgent();
+		const useDelegation = !!delegateAgent;
 
-		const delegationTask = `You are a qualitative researcher coding a document using Situational Analysis (Adele Clarke).
+		const codingInstruction = `You are a qualitative researcher coding a document using Situational Analysis (Adele Clarke).
 
-Identify analytically significant passages in this text chunk. For each passage:
+Identify analytically significant passages in this text. For each passage:
 - Quote the EXACT text (verbatim, at least 20 chars)
 - Provide an analytical code label (prefer gerunds: "legitimizing X", "contesting Y")
 - Explain briefly why this passage is significant
@@ -754,54 +787,64 @@ Respond in JSON format:
 
 If no analytically significant passages exist in this chunk, return: []`;
 
-		let consecutiveFailures = 0;
+		if (useDelegation) {
+			// ── Delegation path: chunks processed by delegation agent ──
+			progress({ phase: 'coding', thinking: `Using delegation agent: ${delegateAgent.label}` });
+			let consecutiveFailures = 0;
 
-		for (let c = 0; c < chunks.length; c++) {
-			const chunk = chunks[c];
-			progress({
-				phase: 'coding',
-				document: doc.title,
-				thinking: `Chunk ${c + 1}/${chunks.length}...`
-			});
+			for (let c = 0; c < chunks.length; c++) {
+				progress({ phase: 'coding', document: doc.title, thinking: `Chunk ${c + 1}/${chunks.length}...` });
 
-			const taskWithChunk = delegationTask + `\n\nTEXT CHUNK (${c + 1}/${chunks.length}):\n"""\n${chunk}\n"""`;
+				const taskWithChunk = codingInstruction + `\n\nTEXT CHUNK (${c + 1}/${chunks.length}):\n"""\n${chunks[c]}\n"""`;
 
-			const delegationResult = await executeDelegation(
-				delegateAgent.label,
-				taskWithChunk,
-				4096,
-				projectId
-			);
+				const delegationResult = await executeDelegation(
+					delegateAgent.label, taskWithChunk, 4096, projectId
+				);
 
-			if (!delegationResult.success) {
-				consecutiveFailures++;
-				progress({ phase: 'coding', thinking: `Chunk ${c + 1}: failed — ${delegationResult.result}` });
-
-				// Fail fast: if 3 consecutive chunks fail, the agent is broken
-				if (consecutiveFailures >= 3) {
-					progress({ phase: 'error', message: `Delegation agent failing consistently: ${delegationResult.result}` });
-					throw new Error(`Delegation agent "${delegateAgent.label}" is not working: ${delegationResult.result}`);
-				}
-				continue;
-			}
-
-			consecutiveFailures = 0; // reset on success
-
-			// Parse the delegation result
-			try {
-				const jsonMatch = delegationResult.result.match(/\[[\s\S]*\]/);
-				if (jsonMatch) {
-					const passages = JSON.parse(jsonMatch[0]);
-					if (Array.isArray(passages)) {
-						allPassages.push(...passages);
-						progress({
-							phase: 'coding',
-							thinking: `Chunk ${c + 1}: ${passages.length} passages identified`
-						});
+				if (!delegationResult.success) {
+					consecutiveFailures++;
+					progress({ phase: 'coding', thinking: `Chunk ${c + 1}: failed — ${delegationResult.result}` });
+					if (consecutiveFailures >= 3) {
+						progress({ phase: 'coding', thinking: `Delegation agent failing — switching to direct processing` });
+						// Process remaining chunks directly
+						for (let r = c; r < chunks.length; r++) {
+							const directPassages = await processChunkDirectly(
+								systemPrompt, tools, chunks[r], r + 1, chunks.length,
+								codingInstruction, projectId, mapId, aiNamingId,
+								(p) => progress({ phase: 'coding', document: doc.title, ...p })
+							);
+							allPassages.push(...directPassages);
+						}
+						break;
 					}
+					continue;
 				}
-			} catch {
-				progress({ phase: 'coding', thinking: `Chunk ${c + 1}: could not parse delegation result` });
+				consecutiveFailures = 0;
+
+				// Parse the delegation result
+				try {
+					const jsonMatch = delegationResult.result.match(/\[[\s\S]*\]/);
+					if (jsonMatch) {
+						const passages = JSON.parse(jsonMatch[0]);
+						if (Array.isArray(passages)) {
+							allPassages.push(...passages);
+							progress({ phase: 'coding', thinking: `Chunk ${c + 1}: ${passages.length} passages identified` });
+						}
+					}
+				} catch {
+					progress({ phase: 'coding', thinking: `Chunk ${c + 1}: could not parse delegation result` });
+				}
+			}
+		} else {
+			// ── Direct path: chief model processes chunks itself ──
+			progress({ phase: 'coding', thinking: `No delegation agent — processing ${chunks.length} chunks directly` });
+			for (let c = 0; c < chunks.length; c++) {
+				const directPassages = await processChunkDirectly(
+					systemPrompt, tools, chunks[c], c + 1, chunks.length,
+					codingInstruction, projectId, mapId, aiNamingId,
+					(p) => progress({ phase: 'coding', document: doc.title, ...p })
+				);
+				allPassages.push(...directPassages);
 			}
 		}
 
