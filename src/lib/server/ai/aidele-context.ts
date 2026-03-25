@@ -225,6 +225,13 @@ export async function buildAideleContext(
 						: ch.reference_title;
 					const sec = ch.section ? ` — ${ch.section}` : '';
 					parts.push(`\n[${src}${sec}]`);
+					// Include AI summary if available (preprocessed)
+					if (ch.summary) {
+						parts.push(`Index note: ${ch.summary}`);
+						if (ch.questions?.length) {
+							parts.push(`Answers: ${ch.questions.join('; ')}`);
+						}
+					}
 					parts.push(ch.content);
 				}
 			}

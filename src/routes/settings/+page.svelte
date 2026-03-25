@@ -157,6 +157,7 @@
 		chunk_count: string;
 		total_words: string;
 		created_at: string;
+		indexed_at: string | null;
 	}
 
 	let libRefs = $state<LibRef[]>([]);
@@ -229,6 +230,28 @@
 			await loadLibrary();
 		} catch (e: any) {
 			libMessage = { type: 'error', text: e.message };
+		}
+	}
+
+	let preprocessing = $state<string | null>(null); // ID of reference being preprocessed
+
+	async function preprocessRef(id: string) {
+		preprocessing = id;
+		libMessage = null;
+		try {
+			const res = await fetch(`/api/aidele-library/${id}`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ action: 'preprocess' })
+			});
+			const data = await res.json();
+			if (data.error) throw new Error(data.error);
+			libMessage = { type: 'ok', text: 'Index created successfully' };
+			await loadLibrary();
+		} catch (e: any) {
+			libMessage = { type: 'error', text: e.message };
+		} finally {
+			preprocessing = null;
 		}
 	}
 
@@ -355,7 +378,9 @@
 			{/if}
 		{/if}
 
-	{:else}
+	{/if}
+
+	{#if activeTab === 'usage'}
 		<!-- ═══════ Usage ═══════ -->
 		<div class="section">
 			<div class="period-selector">
@@ -530,9 +555,32 @@
 								<span class="lib-item-meta">
 									{ref.chunk_count} chunks, {parseInt(ref.total_words).toLocaleString()} words
 									<span class="lib-item-format">{ref.format.toUpperCase()}</span>
+									{#if ref.indexed_at}
+										<span class="lib-indexed">indexed</span>
+									{/if}
 								</span>
 							</div>
-							<button class="aidele-btn-sm" onclick={() => deleteRef(ref.id, ref.title)} title="Delete">delete</button>
+							<div class="lib-item-actions">
+								{#if !ref.indexed_at}
+									<button
+										class="btn btn-sm"
+										onclick={() => preprocessRef(ref.id)}
+										disabled={preprocessing === ref.id}
+									>
+										{preprocessing === ref.id ? 'Indexing...' : 'Preprocess'}
+									</button>
+								{:else}
+									<button
+										class="btn btn-sm btn-ghost"
+										onclick={() => preprocessRef(ref.id)}
+										disabled={preprocessing === ref.id}
+										title="Re-index"
+									>
+										{preprocessing === ref.id ? 'Indexing...' : 'Re-index'}
+									</button>
+								{/if}
+								<button class="aidele-btn-sm" onclick={() => deleteRef(ref.id, ref.title)} title="Delete">delete</button>
+							</div>
 						</div>
 					{/each}
 				{/if}
@@ -959,6 +1007,36 @@
 		border-radius: 3px;
 		font-size: 0.65rem;
 		font-weight: 600;
+	}
+
+	.lib-indexed {
+		background: rgba(52, 211, 153, 0.15);
+		color: #34d399;
+		padding: 0.1rem 0.35rem;
+		border-radius: 3px;
+		font-size: 0.65rem;
+		font-weight: 600;
+	}
+
+	.lib-item-actions {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		flex-shrink: 0;
+	}
+
+	.btn-sm {
+		padding: 0.3rem 0.6rem;
+		font-size: 0.75rem;
+	}
+	.btn-ghost {
+		background: none;
+		color: #6b7280;
+		border: 1px solid #2a2d3a;
+	}
+	.btn-ghost:hover:not(:disabled) {
+		color: #a5b4fc;
+		border-color: #a5b4fc;
 	}
 
 	.aidele-btn-sm {
