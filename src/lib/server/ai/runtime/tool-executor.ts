@@ -255,7 +255,7 @@ export async function executeRaichelTool(
 			case 'code_passage': {
 				const { document_id, passage, code_label, reasoning } = input as unknown as CodePassageInput;
 
-				// Find passage position in document text
+				// Find passage position in document text using fuzzy matching
 				const docText = await query(
 					`SELECT dc.full_text FROM document_content dc
 					 JOIN namings n ON n.id = dc.naming_id
@@ -267,21 +267,15 @@ export async function executeRaichelTool(
 				}
 
 				const fullText = docText.rows[0].full_text || '';
-				const pos0 = fullText.indexOf(passage);
-				if (pos0 === -1) {
-					// Try normalized whitespace match
-					const normalizedFull = fullText.replace(/\s+/g, ' ');
-					const normalizedPassage = passage.replace(/\s+/g, ' ');
-					const normPos = normalizedFull.indexOf(normalizedPassage);
-					if (normPos === -1) {
-						return { success: false, result: `Passage not found in document. Quote the exact text.` };
-					}
-					// Map back to original positions (approximate)
-					const anchor = { pos0: normPos, pos1: normPos + normalizedPassage.length, text: passage };
-					return await createCodeAndAnnotation(projectId, mapId, aiNamingId, document_id, code_label, anchor, reasoning);
+				const match = findPassageInText(fullText, passage);
+				if (!match) {
+					// Still create the code without a document anchor —
+					// the analytical observation is valid even without exact grounding
+					return await createCodeAndAnnotation(projectId, mapId, aiNamingId, document_id, code_label,
+						{ pos0: 0, pos1: 0, text: passage }, reasoning);
 				}
 
-				const anchor = { pos0, pos1: pos0 + passage.length, text: passage };
+				const anchor = { pos0: match.pos0, pos1: match.pos1, text: match.matchedText };
 				return await createCodeAndAnnotation(projectId, mapId, aiNamingId, document_id, code_label, anchor, reasoning);
 			}
 
@@ -547,4 +541,90 @@ export async function setAiEnabled(mapId: string, enabled: boolean): Promise<voi
 		 WHERE naming_id = $2 AND perspective_id = $2 AND mode = 'perspective'`,
 		[JSON.stringify({ aiEnabled: enabled }), mapId]
 	);
+}
+
+// ── Fuzzy passage matching ───────────────────────────────────────
+
+// Find a passage in document text using progressively looser matching.
+// LLMs don't quote exactly — whitespace differs, punctuation may be
+// missing, partial quotes are common. This tries:
+// 1. Exact match
+// 2. Normalized whitespace match
+// 3. Longest unique substring match (sliding window)
+function findPassageInText(
+	fullText: string,
+	passage: string
+): { pos0: number; pos1: number; matchedText: string } | null {
+	if (!passage || passage.length < 10) return null;
+
+	// 1. Exact match
+	const exactPos = fullText.indexOf(passage);
+	if (exactPos !== -1) {
+		return { pos0: exactPos, pos1: exactPos + passage.length, matchedText: passage };
+	}
+
+	// 2. Normalized whitespace
+	const normFull = fullText.replace(/\s+/g, ' ');
+	const normPassage = passage.replace(/\s+/g, ' ');
+	const normPos = normFull.indexOf(normPassage);
+	if (normPos !== -1) {
+		// Map back: find the corresponding range in the original
+		const origStart = mapNormalizedPosToOriginal(fullText, normPos);
+		const origEnd = mapNormalizedPosToOriginal(fullText, normPos + normPassage.length);
+		return { pos0: origStart, pos1: origEnd, matchedText: fullText.slice(origStart, origEnd) };
+	}
+
+	// 3. Substring sliding window — find longest matching fragment
+	// Take the middle 60% of the passage (most distinctive part),
+	// try progressively shorter substrings
+	const words = normPassage.split(' ');
+	if (words.length < 3) return null;
+
+	const startWord = Math.floor(words.length * 0.2);
+	const endWord = Math.ceil(words.length * 0.8);
+	const coreWords = words.slice(startWord, endWord);
+
+	// Try from full core down to 5-word windows
+	for (let windowSize = coreWords.length; windowSize >= Math.min(5, coreWords.length); windowSize--) {
+		const fragment = coreWords.slice(0, windowSize).join(' ');
+		const fragPos = normFull.indexOf(fragment);
+		if (fragPos !== -1) {
+			// Expand to sentence boundaries for a meaningful anchor
+			let expandStart = normFull.lastIndexOf('.', fragPos);
+			if (expandStart === -1 || fragPos - expandStart > 300) expandStart = Math.max(0, fragPos - 50);
+			else expandStart += 2; // skip ". "
+
+			let expandEnd = normFull.indexOf('.', fragPos + fragment.length);
+			if (expandEnd === -1 || expandEnd - fragPos > 500) expandEnd = Math.min(normFull.length, fragPos + fragment.length + 50);
+			else expandEnd += 1; // include "."
+
+			const origStart = mapNormalizedPosToOriginal(fullText, expandStart);
+			const origEnd = mapNormalizedPosToOriginal(fullText, expandEnd);
+			return { pos0: origStart, pos1: origEnd, matchedText: fullText.slice(origStart, origEnd) };
+		}
+	}
+
+	return null;
+}
+
+// Map a position in whitespace-normalized text back to original text
+function mapNormalizedPosToOriginal(original: string, normPos: number): number {
+	let origIdx = 0;
+	let normIdx = 0;
+	let inWhitespace = false;
+
+	while (normIdx < normPos && origIdx < original.length) {
+		if (/\s/.test(original[origIdx])) {
+			if (!inWhitespace) {
+				normIdx++; // one space in normalized
+				inWhitespace = true;
+			}
+			origIdx++;
+		} else {
+			normIdx++;
+			origIdx++;
+			inWhitespace = false;
+		}
+	}
+	return origIdx;
 }
