@@ -3,7 +3,7 @@ import type { RequestHandler } from './$types.js';
 import { chat } from '$lib/server/ai/client.js';
 import { logInteraction } from '$lib/server/ai/index.js';
 import { AIDELE_SYSTEM_PROMPT } from '$lib/server/ai/aidele-prompt.js';
-import { buildAideleContext } from '$lib/server/ai/aidele-context.js';
+import { buildProjectContext, buildMapDetail, buildMemoContext, buildLibraryContext } from '$lib/server/ai/base/context.js';
 
 const MAX_HISTORY = 40; // Cap conversation history to prevent unbounded token growth
 
@@ -21,8 +21,19 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	}
 
 	try {
-		// Build project context for Aidele
-		const context = await buildAideleContext(params.projectId, currentPage || 'unknown', currentMapId, message);
+		// Build context from shared base functions
+		const contextParts: string[] = [];
+		contextParts.push(await buildProjectContext(params.projectId));
+		contextParts.push(`CURRENT PAGE: ${currentPage || 'unknown'}`);
+		if (currentMapId) {
+			contextParts.push(await buildMapDetail(currentMapId, params.projectId));
+		}
+		const memoCtx = await buildMemoContext(params.projectId);
+		if (memoCtx) contextParts.push(memoCtx);
+		const libraryCtx = await buildLibraryContext(message);
+		if (libraryCtx) contextParts.push(libraryCtx);
+
+		const context = contextParts.join('\n\n');
 
 		// Truncate history if too long
 		const trimmedHistory = (history || []).slice(-MAX_HISTORY);

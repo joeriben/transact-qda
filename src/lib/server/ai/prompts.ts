@@ -1,54 +1,21 @@
-// System prompt and context construction for the AI agent.
-// This encodes the methodological and ontological commitments.
+// System prompts for the map agent (co-analyst).
+// Methodology knowledge comes from base/knowledge.ts (shared with all personas).
+// This file adds the co-analyst-specific behavioral instructions.
 
-export const SYSTEM_PROMPT = `You are an AI participant in a qualitative research project using Situational Analysis (Adele Clarke). You work within a transactional ontology (Dewey/Bentley).
+import { FULL_KNOWLEDGE } from './base/knowledge.js';
+import { MANUAL } from './base/manual.js';
+import { CLARKE_SW_QUESTIONS, CLARKE_ARENA_QUESTIONS, ANALYTICAL_DEEPENING } from '$lib/shared/constants.js';
 
-You have TWO capacities — co-researcher and methodology advisor. Both draw on the same grounding knowledge but operate differently.
+// Re-export MapContext from base for backwards compatibility
+export type { MapContext } from './base/context.js';
 
-═══════════════════════════════════════
-GROUNDING KNOWLEDGE: CLARKE'S SITUATIONAL ANALYSIS
-═══════════════════════════════════════
+// ── Co-Analyst system prompt ──────────────────────────────────────
 
-ONTOLOGICAL COMMITMENTS (Dewey/Bentley):
-- Entities are constituted through relational/naming acts, not pre-existing
-- Relations are first-class objects that can themselves be related to
-- Properties are context-bound (perspectival), not intrinsic
-- The distinction between entity and relation is perspectival, not ontological
+const CO_ANALYST_ROLE = `You are an AI participant in a qualitative research project using Situational Analysis (Adele Clarke). You work within a transactional ontology (Dewey/Bentley).
 
-THE SITUATION OF ACTION:
-The situation itself is the unit of analysis — not actors, not processes. Clarke's replacement for Strauss's conditional matrix (no concentric layers, no inside/outside). Everything is on one plane.
-- "There is no such thing as context" — institutions, discourses, politics are IN the situation
-- Elements are relationally constituted, not pre-existing
-- The situation must be empirically articulated — the map IS the method for this
-- Conditions are not around the situation but elements within it
+You have TWO capacities — co-researcher and methodology advisor. Both draw on the same grounding knowledge but operate differently.`;
 
-CLARKE'S 12 HEURISTIC ELEMENT CATEGORIES (sensitizing concepts, NOT fixed types):
-1. Human Elements (Individual & Collective)
-2. Nonhuman Elements
-3. Discursive Constructions of Actors
-4. Political Economic Elements
-5. Organizational / Institutional Elements
-6. Major Contested Issues
-7. Local to Global Elements
-8. Sociocultural Elements
-9. Symbolic Elements
-10. Popular & Other Discourses
-11. Spatial & Temporal Elements
-12. Other Empirical Elements (open-ended)
-
-These are HEURISTIC PROMPTS for comprehensive coverage. A naming can be "human element" from one perspective and "discursive construction" from another. Never treat them as fixed kinds.
-
-CCS GRADIENT (Dewey/Bentley):
-- Cue: vague signal, something registered but unnamed
-- Characterization: provisional naming, everyday language
-- Specification: most determined, analytical precision (never final)
-Bidirectional — specification can dissolve back. "Messy vs. ordered" = aggregated designation state, not a mode.
-
-PROVENANCE (two orthogonal axes):
-- CCS gradient (cue ↔ characterization ↔ specification)
-- Grounding: 📄 = document anchor (empirical), 📝 = memo link (reflexive), ∅ = ungrounded (flag for resolution)
-All material is corpus — no primary/secondary distinction.
-
+const SOCRATIC_ACCOMPANIMENT = `
 ═══════════════════════════════════════
 CAPACITY 1: SOCRATIC ACCOMPANIMENT
 ═══════════════════════════════════════
@@ -94,8 +61,9 @@ Provenance:
 DECONSTRUCTIVE QUESTIONING (not categorical):
 - Do NOT ask "have you considered nonhuman actors?" (reinstates the category as slot)
 - DO ask questions ABOUT the distinctions the 12 categories draw, not prompts to fill them in
-- Clarke's categories are heuristic lenses for questioning, not checkboxes
+- Clarke's categories are heuristic lenses for questioning, not checkboxes`;
 
+const METHODOLOGY_ADVISOR = `
 ═══════════════════════════════════════
 CAPACITY 2: METHODOLOGY ADVISOR
 ═══════════════════════════════════════
@@ -116,8 +84,9 @@ EXAMPLES:
 - "Several elements lack document anchors — this weakens empirical grounding"
 - "The designation profile is mostly cues — consider which are ready for characterization"
 - "This constellation of namings seems to presuppose a specific notion of agency — what does that frame make uncountable?"
-- "The silence here isn't just 'X is missing' — what relational pattern produces this absence?"
+- "The silence here isn't just 'X is missing' — what relational pattern produces this absence?"`;
 
+const SHARED_PRINCIPLES = `
 ═══════════════════════════════════════
 SHARED PRINCIPLES
 ═══════════════════════════════════════
@@ -140,8 +109,23 @@ CONSTRAINTS:
 - If the map is very early (few elements), focus on questions about the situation and the researcher's framing
 - If the researcher explicitly asks for content input ("what elements am I missing?"), you may use suggest_element/suggest_relation — but default to questions, not answers`;
 
-// SW/A-specific supplement — appended to SYSTEM_PROMPT for social-worlds maps
-import { CLARKE_SW_QUESTIONS, CLARKE_ARENA_QUESTIONS, ANALYTICAL_DEEPENING } from '$lib/shared/constants.js';
+const MANUAL_SECTION = `
+═══════════════════════════════════════
+TRANSACT-QDA SYSTEM MANUAL
+═══════════════════════════════════════
+
+${MANUAL || '(Manual not loaded)'}`;
+
+export const SYSTEM_PROMPT = [
+	CO_ANALYST_ROLE,
+	FULL_KNOWLEDGE,
+	SOCRATIC_ACCOMPANIMENT,
+	METHODOLOGY_ADVISOR,
+	SHARED_PRINCIPLES,
+	MANUAL_SECTION
+].join('\n');
+
+// ── SW/A supplement ───────────────────────────────────────────────
 
 export const SWA_SUPPLEMENT = `
 ═══════════════════════════════════════
@@ -184,6 +168,8 @@ YOUR APPROACH ON SW/A MAPS:
 - The 5 deepening moments are analytical lenses, not sequential steps — use whichever is most productive for the current state of the map
 - When cross-map context is available, note which SitMap elements constitute or participate in the formations
 `;
+
+// ── Positional map supplement ─────────────────────────────────────
 
 export const POSITIONAL_SUPPLEMENT = `
 ═══════════════════════════════════════
@@ -251,6 +237,8 @@ CONSTRAINT:
 - Match the researcher's language
 `;
 
+// ── Discussion prompts ────────────────────────────────────────────
+
 export const DISCUSSION_SYSTEM_PROMPT = `You are a co-analyst in a qualitative research project using Situational Analysis (Adele Clarke), working within a transactional ontology (Dewey/Bentley).
 
 A researcher is discussing one of your earlier cue suggestions. A cue is the earliest stage of naming (Dewey/Bentley): something registered but not yet fully articulated.
@@ -272,45 +260,6 @@ LANGUAGE:
 - Match the researcher's language (detect from their message and the cue inscription)
 - Be concise and analytically precise`;
 
-export interface DiscussionContext {
-	cueId: string;
-	cueInscription: string;
-	cueType: 'element' | 'relation' | 'silence';
-	aiReasoning: string;
-	relationDetail?: { sourceInscription: string; targetInscription: string; valence?: string };
-	previousDiscussion: Array<{ role: 'researcher' | 'ai'; content: string }>;
-}
-
-export function buildDiscussionMessage(ctx: DiscussionContext, researcherMessage: string): string {
-	const parts: string[] = [];
-
-	parts.push(`CUE UNDER DISCUSSION (id: ${ctx.cueId}):`);
-	if (ctx.cueType === 'relation' && ctx.relationDetail) {
-		parts.push(`  Type: relation`);
-		parts.push(`  "${ctx.relationDetail.sourceInscription}" → "${ctx.relationDetail.targetInscription}"`);
-		if (ctx.cueInscription) parts.push(`  Label: "${ctx.cueInscription}"`);
-		if (ctx.relationDetail.valence) parts.push(`  Valence: ${ctx.relationDetail.valence}`);
-	} else {
-		parts.push(`  Type: ${ctx.cueType}`);
-		parts.push(`  Inscription: "${ctx.cueInscription}"`);
-	}
-	parts.push(`  Your original reasoning: ${ctx.aiReasoning}`);
-
-	if (ctx.previousDiscussion.length > 0) {
-		parts.push('\nPREVIOUS DISCUSSION:');
-		for (const turn of ctx.previousDiscussion) {
-			const prefix = turn.role === 'researcher' ? 'Researcher' : 'You';
-			parts.push(`  ${prefix}: ${turn.content}`);
-		}
-	}
-
-	parts.push(`\nRESEARCHER SAYS:\n${researcherMessage}`);
-
-	return parts.join('\n');
-}
-
-// ── Memo discussion ──
-
 export const MEMO_DISCUSSION_PROMPT = `You are a co-analyst in a qualitative research project using Situational Analysis (Adele Clarke), working within a transactional ontology (Dewey/Bentley).
 
 A researcher is discussing an analytical memo. Analytical memos are the shared inquiry medium of the Interpretations-Kollektiv — they capture observations, questions, tensions, and theoretical connections that span the research situation.
@@ -331,6 +280,22 @@ LANGUAGE:
 - Match the researcher's language (detect from their message and the memo content)
 - Be concise and analytically precise`;
 
+// ── Context message builders ──────────────────────────────────────
+
+export interface TriggerEvent {
+	action: string;
+	details: Record<string, unknown>;
+}
+
+export interface DiscussionContext {
+	cueId: string;
+	cueInscription: string;
+	cueType: 'element' | 'relation' | 'silence';
+	aiReasoning: string;
+	relationDetail?: { sourceInscription: string; targetInscription: string; valence?: string };
+	previousDiscussion: Array<{ role: 'researcher' | 'ai'; content: string }>;
+}
+
 export interface MemoDiscussionContext {
 	memoId: string;
 	memoTitle: string;
@@ -342,114 +307,9 @@ export interface MemoDiscussionContext {
 	mapType: string;
 }
 
-export function buildMemoDiscussionMessage(ctx: MemoDiscussionContext, researcherMessage: string): string {
-	const parts: string[] = [];
-
-	parts.push(`MAP CONTEXT: "${ctx.mapLabel}" (${ctx.mapType})`);
-
-	const authorLabel = ctx.memoAuthor === 'ai' ? 'AI-authored' : 'Researcher-authored';
-	parts.push(`\nMEMO UNDER DISCUSSION (id: ${ctx.memoId}, ${authorLabel}):`);
-	parts.push(`  Title: "${ctx.memoTitle}"`);
-	parts.push(`  Content: ${ctx.memoContent}`);
-
-	if (ctx.linkedElements.length > 0) {
-		parts.push(`  Linked elements: ${ctx.linkedElements.map(e => `"${e.inscription}" (${e.id})`).join(', ')}`);
-	}
-
-	if (ctx.previousDiscussion.length > 0) {
-		parts.push('\nPREVIOUS DISCUSSION:');
-		for (const turn of ctx.previousDiscussion) {
-			const prefix = turn.role === 'researcher' ? 'Researcher' : 'AI';
-			parts.push(`  ${prefix}: ${turn.content}`);
-		}
-	}
-
-	parts.push(`\nRESEARCHER SAYS:\n${researcherMessage}`);
-
-	return parts.join('\n');
-}
-
-export interface MapContext {
-	mapLabel: string;
-	mapType: string;
-	elements: Array<{
-		id: string;
-		inscription: string;
-		designation: string;
-		mode: string;
-		provenance: 'empirical' | 'analytical' | 'ungrounded';
-		swRole?: string;
-		aiSuggested?: boolean;
-		aiWithdrawn?: boolean;
-		discussionSummary?: string;
-	}>;
-	relations: Array<{
-		id: string;
-		inscription: string;
-		designation: string;
-		source: { id: string; inscription: string };
-		target: { id: string; inscription: string };
-		valence: string | null;
-		symmetric: boolean;
-		provenance: 'empirical' | 'analytical' | 'ungrounded';
-		aiSuggested?: boolean;
-		aiWithdrawn?: boolean;
-		discussionSummary?: string;
-	}>;
-	silences: Array<{
-		id: string;
-		inscription: string;
-		aiSuggested?: boolean;
-		aiWithdrawn?: boolean;
-		discussionSummary?: string;
-	}>;
-	phases: Array<{
-		id: string;
-		label: string;
-		elementCount: number;
-	}>;
-	designationProfile: Array<{
-		designation: string;
-		count: number;
-	}>;
-	recentMemos: Array<{
-		label: string;
-		content: string;
-	}>;
-	crossMapParticipations?: Array<{
-		localId: string;
-		localInscription: string;
-		outsideId: string;
-		outsideInscription: string;
-		outsideMapLabel: string;
-	}>;
-	spatialRelations?: Array<{
-		type: 'contains' | 'overlaps';
-		formationA: string;
-		formationB: string;
-	}>;
-	// Positional map fields
-	axes?: Array<{
-		id: string;
-		inscription: string;
-		designation: string;
-		dimension: 'x' | 'y';
-	}>;
-	positionCoordinates?: Array<{
-		id: string;
-		inscription: string;
-		x: number;
-		y: number;
-		absent: boolean;
-		designation: string;
-	}>;
-	quadrantAnalysis?: {
-		q1: string[];
-		q2: string[];
-		q3: string[];
-		q4: string[];
-	};
-}
+// Build context message from structured MapContext + trigger event.
+// Uses the MapContext type from base/context.ts.
+import type { MapContext } from './base/context.js';
 
 export function buildContextMessage(ctx: MapContext, triggerEvent: TriggerEvent): string {
 	const parts: string[] = [];
@@ -555,7 +415,7 @@ export function buildContextMessage(ctx: MapContext, triggerEvent: TriggerEvent)
 		}
 	}
 
-	// SW/A: Spatial structure (containment/overlap derived from canvas layout)
+	// SW/A: Spatial structure
 	if (ctx.spatialRelations && ctx.spatialRelations.length > 0) {
 		parts.push('\nSPATIAL STRUCTURE:');
 		const elementMap = new Map(ctx.elements.map(e => [e.id, e.inscription]));
@@ -570,7 +430,7 @@ export function buildContextMessage(ctx: MapContext, triggerEvent: TriggerEvent)
 		}
 	}
 
-	// SW/A: Cross-map context (SitMap elements connected to formations)
+	// SW/A: Cross-map context
 	if (ctx.crossMapParticipations && ctx.crossMapParticipations.length > 0) {
 		parts.push('\nCROSS-MAP CONTEXT:');
 		for (const cp of ctx.crossMapParticipations) {
@@ -582,11 +442,6 @@ export function buildContextMessage(ctx: MapContext, triggerEvent: TriggerEvent)
 	parts.push(`\nTRIGGER: ${describeTrigger(triggerEvent)}`);
 
 	return parts.join('\n');
-}
-
-export interface TriggerEvent {
-	action: string;
-	details: Record<string, unknown>;
 }
 
 function describeTrigger(event: TriggerEvent): string {
@@ -608,4 +463,59 @@ function describeTrigger(event: TriggerEvent): string {
 		default:
 			return `Researcher performed action: ${event.action}`;
 	}
+}
+
+export function buildDiscussionMessage(ctx: DiscussionContext, researcherMessage: string): string {
+	const parts: string[] = [];
+
+	parts.push(`CUE UNDER DISCUSSION (id: ${ctx.cueId}):`);
+	if (ctx.cueType === 'relation' && ctx.relationDetail) {
+		parts.push(`  Type: relation`);
+		parts.push(`  "${ctx.relationDetail.sourceInscription}" → "${ctx.relationDetail.targetInscription}"`);
+		if (ctx.cueInscription) parts.push(`  Label: "${ctx.cueInscription}"`);
+		if (ctx.relationDetail.valence) parts.push(`  Valence: ${ctx.relationDetail.valence}`);
+	} else {
+		parts.push(`  Type: ${ctx.cueType}`);
+		parts.push(`  Inscription: "${ctx.cueInscription}"`);
+	}
+	parts.push(`  Your original reasoning: ${ctx.aiReasoning}`);
+
+	if (ctx.previousDiscussion.length > 0) {
+		parts.push('\nPREVIOUS DISCUSSION:');
+		for (const turn of ctx.previousDiscussion) {
+			const prefix = turn.role === 'researcher' ? 'Researcher' : 'You';
+			parts.push(`  ${prefix}: ${turn.content}`);
+		}
+	}
+
+	parts.push(`\nRESEARCHER SAYS:\n${researcherMessage}`);
+
+	return parts.join('\n');
+}
+
+export function buildMemoDiscussionMessage(ctx: MemoDiscussionContext, researcherMessage: string): string {
+	const parts: string[] = [];
+
+	parts.push(`MAP CONTEXT: "${ctx.mapLabel}" (${ctx.mapType})`);
+
+	const authorLabel = ctx.memoAuthor === 'ai' ? 'AI-authored' : 'Researcher-authored';
+	parts.push(`\nMEMO UNDER DISCUSSION (id: ${ctx.memoId}, ${authorLabel}):`);
+	parts.push(`  Title: "${ctx.memoTitle}"`);
+	parts.push(`  Content: ${ctx.memoContent}`);
+
+	if (ctx.linkedElements.length > 0) {
+		parts.push(`  Linked elements: ${ctx.linkedElements.map(e => `"${e.inscription}" (${e.id})`).join(', ')}`);
+	}
+
+	if (ctx.previousDiscussion.length > 0) {
+		parts.push('\nPREVIOUS DISCUSSION:');
+		for (const turn of ctx.previousDiscussion) {
+			const prefix = turn.role === 'researcher' ? 'Researcher' : 'AI';
+			parts.push(`  ${prefix}: ${turn.content}`);
+		}
+	}
+
+	parts.push(`\nRESEARCHER SAYS:\n${researcherMessage}`);
+
+	return parts.join('\n');
 }

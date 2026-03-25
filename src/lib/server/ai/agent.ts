@@ -2,12 +2,12 @@
 // Every tool call produces namings in the data space — the AI is a co-analyst.
 
 import { chat, getModel, getProvider } from './client.js';
-import { getMapStructure, getMap, addElementToMap, relateElements, createPhase, assignToPhase, getCrossMapParticipations } from '../db/queries/maps.js';
+import { getMap, assignToPhase } from '../db/queries/maps.js';
 import { getOrCreateAiNaming, logAiInteraction } from '../db/queries/ai.js';
 import { createMemo, updateMemoContent } from '../db/queries/memos.js';
-import { getMemosByProject } from '../db/queries/memos.js';
 import { emit } from './sse.js';
-import { SYSTEM_PROMPT, SWA_SUPPLEMENT, POSITIONAL_SUPPLEMENT, DISCUSSION_SYSTEM_PROMPT, MEMO_DISCUSSION_PROMPT, buildContextMessage, buildDiscussionMessage, buildMemoDiscussionMessage, type MapContext, type TriggerEvent, type DiscussionContext, type MemoDiscussionContext } from './prompts.js';
+import { buildStructuredMapContext } from './base/context.js';
+import { SYSTEM_PROMPT, SWA_SUPPLEMENT, POSITIONAL_SUPPLEMENT, DISCUSSION_SYSTEM_PROMPT, MEMO_DISCUSSION_PROMPT, buildContextMessage, buildDiscussionMessage, buildMemoDiscussionMessage, type TriggerEvent, type DiscussionContext, type MemoDiscussionContext } from './prompts.js';
 import { AI_TOOLS, SUGGEST_FORMATION_TOOL, POSITIONAL_TOOLS, DISCUSSION_TOOLS, MEMO_DISCUSSION_TOOLS, type SuggestElementInput, type SuggestRelationInput, type IdentifySilenceInput, type WriteMemoInput, type CreatePhaseInput, type SuggestFormationInput, type SuggestPositionInput, type SuggestAxisRefinementInput, type IdentifyEmptyRegionInput, type RewriteCueInput, type RespondInput, type WithdrawCueInput, type ReviseMemoInput } from './tools.js';
 import { SW_ROLE_DEFAULTS } from '$lib/shared/constants.js';
 import { query } from '../db/index.js';
@@ -27,188 +27,8 @@ async function isAiEnabled(mapId: string): Promise<boolean> {
 	return props?.aiEnabled !== false;
 }
 
-// Build the full map context for the AI
-async function buildMapContext(mapId: string, projectId: string): Promise<MapContext> {
-	const map = await getMap(mapId, projectId);
-	const structure = await getMapStructure(mapId, projectId);
-
-	// Enrich relations with source/target inscriptions
-	const elementMap = new Map<string, string>();
-	for (const el of structure.elements) {
-		elementMap.set(el.naming_id, el.inscription);
-	}
-
-	// Collect all naming IDs that are AI-suggested to batch-fetch discussion summaries
-	const allAppearances = [...structure.elements, ...structure.relations, ...structure.silences];
-	const aiNamingIds = allAppearances
-		.filter((a: any) => a.properties?.aiSuggested)
-		.map((a: any) => a.naming_id);
-
-	// Fetch discussion summaries for AI-suggested cues (batch query)
-	const discussionMap = new Map<string, string>();
-	if (aiNamingIds.length > 0) {
-		const discussionRows = await query(
-			`SELECT p_outer.naming_id as cue_id,
-			        string_agg(
-			          CASE WHEN m.inscription = 'Discussion: researcher' THEN 'Researcher: ' ELSE 'AI: ' END
-			          || left(mc.content, 150),
-			          ' → ' ORDER BY m.created_at ASC
-			        ) as summary
-			 FROM (
-			   SELECT DISTINCT ON (m2.id) p2.naming_id, m2.id as memo_id
-			   FROM participations p2
-			   JOIN namings m2 ON m2.id = CASE WHEN p2.naming_id = ANY($1::uuid[]) THEN p2.participant_id ELSE p2.naming_id END
-			   WHERE (p2.naming_id = ANY($1::uuid[]) OR p2.participant_id = ANY($1::uuid[]))
-			     AND m2.deleted_at IS NULL
-			     AND m2.inscription LIKE 'Discussion:%'
-			 ) p_outer
-			 JOIN namings m ON m.id = p_outer.memo_id
-			 JOIN memo_content mc ON mc.naming_id = m.id
-			 GROUP BY p_outer.naming_id`,
-			[aiNamingIds]
-		);
-		for (const row of discussionRows.rows) {
-			discussionMap.set(row.cue_id, row.summary);
-		}
-	}
-
-	const relations = structure.relations.map((rel: any) => ({
-		id: rel.naming_id,
-		inscription: rel.inscription || '',
-		designation: rel.designation || 'cue',
-		source: {
-			id: rel.directed_from || '',
-			inscription: elementMap.get(rel.directed_from) || '?'
-		},
-		target: {
-			id: rel.directed_to || '',
-			inscription: elementMap.get(rel.directed_to) || '?'
-		},
-		valence: rel.valence,
-		symmetric: !rel.directed_from && !rel.directed_to,
-		provenance: rel.has_document_anchor ? 'empirical' as const : rel.has_memo_link ? 'analytical' as const : 'ungrounded' as const,
-		aiSuggested: rel.properties?.aiSuggested || false,
-		aiWithdrawn: rel.properties?.aiWithdrawn || rel.properties?.withdrawn || false,
-		discussionSummary: discussionMap.get(rel.naming_id)
-	}));
-
-	// Get recent memos (last 5)
-	const memos = await getMemosByProject(projectId);
-	const recentMemos = memos.slice(0, 5).map((m: any) => ({
-		label: m.label,
-		content: m.content || ''
-	}));
-
-	const mapType = map?.properties?.mapType || 'situational';
-	const isSwa = mapType === 'social-worlds';
-
-	// SW/A: cross-map participations and spatial relations
-	let crossMapParticipations: MapContext['crossMapParticipations'];
-	let spatialRelations: MapContext['spatialRelations'];
-
-	if (isSwa) {
-		const crossRows = await getCrossMapParticipations(mapId, projectId);
-		if (crossRows.length > 0) {
-			crossMapParticipations = crossRows.map((r: any) => ({
-				localId: r.local_id,
-				localInscription: r.local_inscription,
-				outsideId: r.outside_id,
-				outsideInscription: r.outside_inscription,
-				outsideMapLabel: r.outside_map_label,
-			}));
-		}
-
-		// Extract spatial relations from spatiallyDerived relations
-		const spatial = structure.relations
-			.filter((r: any) => r.properties?.spatiallyDerived && !r.properties?.withdrawn)
-			.map((r: any) => ({
-				type: (r.valence === 'contains' ? 'contains' : 'overlaps') as 'contains' | 'overlaps',
-				formationA: r.directed_from || r.part_source_id || '',
-				formationB: r.directed_to || r.part_target_id || '',
-			}));
-		if (spatial.length > 0) {
-			spatialRelations = spatial;
-		}
-	}
-
-	// Positional map: axes, coordinates, quadrant analysis
-	const isPositional = mapType === 'positional';
-	let posAxes: MapContext['axes'];
-	let positionCoordinates: MapContext['positionCoordinates'];
-	let quadrantAnalysis: MapContext['quadrantAnalysis'];
-
-	if (isPositional && structure.axes) {
-		posAxes = structure.axes.map((ax: any) => ({
-			id: ax.naming_id,
-			inscription: ax.inscription,
-			designation: ax.designation || 'cue',
-			dimension: ax.properties?.axisDimension || 'x',
-		}));
-
-		positionCoordinates = structure.elements
-			.filter((el: any) => el.properties?.x != null)
-			.map((el: any) => ({
-				id: el.naming_id,
-				inscription: el.inscription,
-				x: Math.round(el.properties.x),
-				y: Math.round(Math.abs(el.properties.y || 0)),
-				absent: !!el.properties.absent,
-				designation: el.designation || 'cue',
-			}));
-
-		const MID = 400;
-		const q1: string[] = [], q2: string[] = [], q3: string[] = [], q4: string[] = [];
-		for (const pos of positionCoordinates) {
-			const highX = pos.x >= MID;
-			const highY = pos.y >= MID;
-			if (highX && highY) q1.push(pos.inscription);
-			else if (!highX && highY) q2.push(pos.inscription);
-			else if (!highX && !highY) q3.push(pos.inscription);
-			else q4.push(pos.inscription);
-		}
-		quadrantAnalysis = { q1, q2, q3, q4 };
-	}
-
-	return {
-		mapLabel: map?.label || '',
-		mapType,
-		elements: structure.elements.map((el: any) => ({
-			id: el.naming_id,
-			inscription: el.inscription,
-			designation: el.designation || 'cue',
-			mode: el.mode,
-			provenance: el.has_document_anchor ? 'empirical' as const : el.has_memo_link ? 'analytical' as const : 'ungrounded' as const,
-			swRole: el.sw_role || undefined,
-			aiSuggested: el.properties?.aiSuggested || false,
-			aiWithdrawn: el.properties?.aiWithdrawn || el.properties?.withdrawn || false,
-			discussionSummary: discussionMap.get(el.naming_id)
-		})),
-		relations,
-		silences: structure.silences.map((s: any) => ({
-			id: s.naming_id,
-			inscription: s.inscription,
-			aiSuggested: s.properties?.aiSuggested || false,
-			aiWithdrawn: s.properties?.aiWithdrawn || s.properties?.withdrawn || false,
-			discussionSummary: discussionMap.get(s.naming_id)
-		})),
-		phases: structure.phases.map((p: any) => ({
-			id: p.id,
-			label: p.label,
-			elementCount: parseInt(p.element_count) || 0
-		})),
-		designationProfile: structure.designationProfile.map((d: any) => ({
-			designation: d.designation,
-			count: parseInt(d.count) || 0
-		})),
-		recentMemos,
-		crossMapParticipations,
-		spatialRelations,
-		axes: posAxes,
-		positionCoordinates,
-		quadrantAnalysis,
-	};
-}
-
+// Build the full map context for the AI — delegated to base/context.ts
+const buildMapContext = buildStructuredMapContext;
 // Execute a single tool call as a naming act
 async function executeTool(
 	toolName: string,
