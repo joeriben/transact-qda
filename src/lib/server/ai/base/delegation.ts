@@ -2,95 +2,181 @@
 // The chief decides autonomously when to delegate — it only needs accurate descriptions
 // of available agent-LLMs.
 
-import { chat, type ToolDef, type ChatResponse, loadSettings, PROVIDERS, readApiKey, type Provider } from '../client.js';
+import { type ToolDef, type ChatResponse, loadSettings, PROVIDERS, readApiKey, type Provider } from '../client.js';
+import { logInteraction } from '../index.js';
 
 // ── Available agent descriptions ──────────────────────────────────
 // These must be PRECISE and ABSOLUTELY accurate — the chief model
 // decides delegation based on these descriptions.
 
 export interface AgentModel {
-	/** Provider + model identifier for the chat() call */
 	provider: Provider;
 	model: string;
-	/** Human-readable label */
 	label: string;
-	/** Precise capability description for the chief model */
 	description: string;
-	/** Relative cost tier: 'low' | 'medium' | 'high' */
 	costTier: 'low' | 'medium' | 'high';
-	/** Whether this model is currently available (key present, etc.) */
 	available: boolean;
 }
 
-export function getAvailableAgents(): AgentModel[] {
-	const settings = loadSettings();
+// All known delegatable models with their capabilities.
+// Only models with a configured key (or local availability) are returned.
+const AGENT_CATALOG: Array<Omit<AgentModel, 'available'> & { requiresProvider: Provider }> = [
+	{
+		requiresProvider: 'anthropic',
+		provider: 'anthropic',
+		model: 'claude-haiku-4-5-20251001',
+		label: 'Claude Haiku',
+		description: 'Fast, efficient. Good for: text search, passage extraction, simple coding/classification, GREP-like pattern matching across documents. Reads well but does not do deep analytical reasoning.',
+		costTier: 'low'
+	},
+	{
+		requiresProvider: 'anthropic',
+		provider: 'anthropic',
+		model: 'claude-sonnet-4-6',
+		label: 'Claude Sonnet',
+		description: 'Strong general intelligence. Good for: document analysis, image analysis (if enabled), pattern recognition, moderate analytical reasoning, methodology-informed work.',
+		costTier: 'medium'
+	},
+	{
+		requiresProvider: 'anthropic',
+		provider: 'anthropic',
+		model: 'claude-opus-4-6',
+		label: 'Claude Opus',
+		description: 'Strongest reasoning. Good for: deep analytical reasoning, complex methodology interpretation, multi-step analysis, nuanced qualitative judgment. Use only when the task genuinely requires it.',
+		costTier: 'high'
+	}
+];
+
+// Ollama availability cache (re-checked every 60s)
+let _ollamaAvailable: boolean | null = null;
+let _ollamaCheckedAt = 0;
+const OLLAMA_CHECK_INTERVAL_MS = 60_000;
+
+async function isOllamaAvailable(): Promise<boolean> {
+	const now = Date.now();
+	if (_ollamaAvailable !== null && now - _ollamaCheckedAt < OLLAMA_CHECK_INTERVAL_MS) {
+		return _ollamaAvailable;
+	}
+	try {
+		const controller = new AbortController();
+		const timeout = setTimeout(() => controller.abort(), 2000);
+		const res = await fetch('http://localhost:11434/api/tags', { signal: controller.signal });
+		clearTimeout(timeout);
+		_ollamaAvailable = res.ok;
+	} catch {
+		_ollamaAvailable = false;
+	}
+	_ollamaCheckedAt = now;
+	return _ollamaAvailable;
+}
+
+export async function getAvailableAgents(): Promise<AgentModel[]> {
 	const agents: AgentModel[] = [];
+	const seenModels = new Set<string>();
 
-	// Check what's actually available based on configured keys
-	const hasOllama = true; // Always available locally
-	const hasAnthropic = !!readApiKey('anthropic');
-	const hasOpenRouter = !!readApiKey('openrouter');
-	const hasMistral = !!readApiKey('mistral');
-	const hasOpenAI = !!readApiKey('openai');
+	const keyAvailable: Record<Provider, boolean> = {
+		ollama: await isOllamaAvailable(),
+		anthropic: !!readApiKey('anthropic'),
+		openai: !!readApiKey('openai'),
+		openrouter: !!readApiKey('openrouter'),
+		mistral: !!readApiKey('mistral'),
+		ionos: !!readApiKey('ionos'),
+		mammouth: !!readApiKey('mammouth')
+	};
 
-	// Low-cost agents for text search, simple extraction
-	if (hasOllama) {
+	// Also check OpenRouter as fallback for Anthropic models
+	const openRouterAsAnthropicFallback = !keyAvailable.anthropic && keyAvailable.openrouter;
+
+	for (const entry of AGENT_CATALOG) {
+		// Determine effective provider (use OpenRouter as fallback for Anthropic)
+		let effectiveProvider = entry.provider;
+		let effectiveModel = entry.model;
+		let available = keyAvailable[entry.requiresProvider];
+
+		if (!available && entry.requiresProvider === 'anthropic' && openRouterAsAnthropicFallback) {
+			effectiveProvider = 'openrouter';
+			effectiveModel = `anthropic/${entry.model}`;
+			available = true;
+		}
+
+		if (!available) continue;
+
+		// Deduplicate: don't show same base model twice
+		const baseModel = entry.model.replace(/^anthropic\//, '');
+		if (seenModels.has(baseModel)) continue;
+		seenModels.add(baseModel);
+
 		agents.push({
-			provider: 'ollama',
-			model: 'llama3.1',
-			label: 'Llama 3.1 (local)',
-			description: 'Local model, no API cost. Good for: text search, simple extraction, keyword matching, summarizing short passages. NOT suitable for: complex reasoning, methodology, multi-step analysis.',
-			costTier: 'low',
+			provider: effectiveProvider,
+			model: effectiveModel,
+			label: entry.label,
+			description: entry.description,
+			costTier: entry.costTier,
 			available: true
 		});
 	}
 
-	if (hasMistral) {
-		agents.push({
-			provider: 'mistral',
-			model: 'mistral-small-latest',
-			label: 'Mistral Small (EU)',
-			description: 'Fast, low-cost EU model (DSGVO-compliant). Good for: text search, extraction, simple classification, translation. NOT suitable for: deep analytical reasoning, methodology interpretation.',
-			costTier: 'low',
-			available: true
-		});
+	// Also add the configured delegation agent if it's not already in the list
+	const settings = loadSettings();
+	if (settings.delegationAgent) {
+		const da = settings.delegationAgent;
+		const daModel = da.model.replace(/^anthropic\//, '');
+		if (!seenModels.has(daModel) && keyAvailable[da.provider]) {
+			const provDef = PROVIDERS[da.provider];
+			agents.push({
+				provider: da.provider,
+				model: da.model || provDef.defaultModel,
+				label: `${provDef.label}: ${da.model || provDef.defaultModel}`,
+				description: 'User-configured delegation agent.',
+				costTier: 'medium',
+				available: true
+			});
+		}
 	}
 
-	// Medium-cost agents for analysis, image processing
-	if (hasAnthropic) {
-		agents.push({
-			provider: 'anthropic',
-			model: 'claude-haiku-4-5-20251001',
-			label: 'Claude Haiku',
-			description: 'Fast, efficient. Good for: text search, passage extraction, simple coding/classification, GREP-like pattern matching across documents. Reads well but does not do deep analytical reasoning.',
-			costTier: 'low',
-			available: true
-		});
-		agents.push({
-			provider: 'anthropic',
-			model: 'claude-sonnet-4-6',
-			label: 'Claude Sonnet',
-			description: 'Strong general intelligence. Good for: document analysis, image analysis (if enabled), pattern recognition, moderate analytical reasoning, coding assistance. Capable of methodology-informed work but not as deep as Opus.',
-			costTier: 'medium',
-			available: true
-		});
-	}
+	return agents;
+}
 
-	if (hasOpenRouter) {
+// Synchronous version for prompt building (uses cached Ollama check)
+export function getAvailableAgentsSync(): AgentModel[] {
+	const agents: AgentModel[] = [];
+	const seenModels = new Set<string>();
+
+	const keyAvailable: Record<Provider, boolean> = {
+		ollama: _ollamaAvailable ?? false,
+		anthropic: !!readApiKey('anthropic'),
+		openai: !!readApiKey('openai'),
+		openrouter: !!readApiKey('openrouter'),
+		mistral: !!readApiKey('mistral'),
+		ionos: !!readApiKey('ionos'),
+		mammouth: !!readApiKey('mammouth')
+	};
+
+	const openRouterAsAnthropicFallback = !keyAvailable.anthropic && keyAvailable.openrouter;
+
+	for (const entry of AGENT_CATALOG) {
+		let effectiveProvider = entry.provider;
+		let effectiveModel = entry.model;
+		let available = keyAvailable[entry.requiresProvider];
+
+		if (!available && entry.requiresProvider === 'anthropic' && openRouterAsAnthropicFallback) {
+			effectiveProvider = 'openrouter';
+			effectiveModel = `anthropic/${entry.model}`;
+			available = true;
+		}
+
+		if (!available) continue;
+
+		const baseModel = entry.model.replace(/^anthropic\//, '');
+		if (seenModels.has(baseModel)) continue;
+		seenModels.add(baseModel);
+
 		agents.push({
-			provider: 'openrouter',
-			model: 'anthropic/claude-haiku-4-5-20251001',
-			label: 'Claude Haiku (OpenRouter)',
-			description: 'Fast, efficient via OpenRouter. Good for: text search, passage extraction, simple coding/classification.',
-			costTier: 'low',
-			available: true
-		});
-		agents.push({
-			provider: 'openrouter',
-			model: 'anthropic/claude-sonnet-4-6',
-			label: 'Claude Sonnet (OpenRouter)',
-			description: 'Strong general intelligence via OpenRouter. Good for: document analysis, pattern recognition, moderate analytical reasoning.',
-			costTier: 'medium',
+			provider: effectiveProvider,
+			model: effectiveModel,
+			label: entry.label,
+			description: entry.description,
+			costTier: entry.costTier,
 			available: true
 		});
 	}
@@ -129,9 +215,10 @@ export const DELEGATE_TOOL: ToolDef = {
 export async function executeDelegation(
 	agentLabel: string,
 	task: string,
-	maxTokens: number = 1024
+	maxTokens: number = 1024,
+	projectId?: string
 ): Promise<{ success: boolean; result: string; model: string; tokensUsed: number }> {
-	const agents = getAvailableAgents();
+	const agents = await getAvailableAgents();
 	const agent = agents.find(a => a.label === agentLabel);
 
 	if (!agent) {
@@ -144,18 +231,23 @@ export async function executeDelegation(
 		};
 	}
 
-	if (!agent.available) {
-		return {
-			success: false,
-			result: `Agent "${agentLabel}" is not currently available (missing API key?)`,
-			model: agent.model,
-			tokensUsed: 0
-		};
-	}
-
 	try {
-		// Override the global settings temporarily for this call
 		const response = await delegateChat(agent.provider, agent.model, task, maxTokens);
+
+		// Log the delegated call
+		if (projectId) {
+			await logInteraction(
+				projectId,
+				'delegation',
+				response.model,
+				{ delegatedTo: agentLabel, taskPreview: task.slice(0, 200) },
+				{ textPreview: response.text.slice(0, 200) },
+				response.tokensUsed,
+				response.provider,
+				response.inputTokens,
+				response.outputTokens
+			).catch(() => {}); // Don't fail the delegation if logging fails
+		}
 
 		return {
 			success: true,

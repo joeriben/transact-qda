@@ -23,6 +23,11 @@
 	let message = $state<{ type: 'ok' | 'error'; text: string } | null>(null);
 	let loading = $state(true);
 
+	// Delegation agent state
+	let delegationProvider = $state('');
+	let delegationModel = $state('');
+	const delegationProviderInfo = $derived(providers.find(p => p.id === delegationProvider));
+
 	const currentProviderInfo = $derived(providers.find(p => p.id === selectedProvider));
 
 	async function loadSettings() {
@@ -33,6 +38,8 @@
 			providers = data.providers;
 			selectedProvider = data.provider;
 			model = data.model;
+			delegationProvider = data.delegationAgent?.provider || '';
+			delegationModel = data.delegationAgent?.model || '';
 		} catch (e: any) {
 			message = { type: 'error', text: e.message };
 		} finally {
@@ -45,8 +52,11 @@
 		message = null;
 		testResult = null;
 		try {
-			const body: Record<string, string> = { provider: selectedProvider, model };
+			const body: Record<string, any> = { provider: selectedProvider, model };
 			if (apiKeyInput) body.apiKey = apiKeyInput;
+			body.delegationAgent = delegationProvider
+				? { provider: delegationProvider, model: delegationModel }
+				: null;
 			const res = await fetch('/api/settings/ai', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
@@ -352,6 +362,27 @@
 					</div>
 				</div>
 			{/if}
+
+			<div class="section">
+				<h2>Delegation Agent</h2>
+				<p class="section-hint">Optional: a cheaper/faster model for simple subtasks (text search, extraction). The main LLM delegates to this model automatically when appropriate.</p>
+				<div class="form-row">
+					<select class="input-field" bind:value={delegationProvider}>
+						<option value="">No delegation agent</option>
+						{#each providers as p}
+							{#if p.keyConfigured || !p.needsKey}
+								<option value={p.id}>{p.label} — {p.region}</option>
+							{/if}
+						{/each}
+					</select>
+				</div>
+				{#if delegationProvider}
+					<div class="form-row">
+						<input type="text" bind:value={delegationModel} placeholder="Model name" class="input-field model-input" autocomplete="off" data-1p-ignore data-lpignore="true" />
+						<span class="hint">Default: {delegationProviderInfo?.defaultModel || '—'}</span>
+					</div>
+				{/if}
+			</div>
 
 			<div class="actions">
 				<button class="btn btn-primary" onclick={save} disabled={saving}>
@@ -711,6 +742,7 @@
 	}
 	.model-input { max-width: 500px; }
 	.hint { font-size: 0.75rem; color: #666; }
+	.section-hint { font-size: 0.8rem; color: #888; margin: 0.25rem 0 0.75rem; line-height: 1.4; }
 	.current-key {
 		font-size: 0.8rem;
 		color: #888;

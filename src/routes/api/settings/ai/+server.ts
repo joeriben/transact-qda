@@ -31,17 +31,23 @@ export const GET: RequestHandler = async () => {
 	return json({
 		provider: settings.provider,
 		model: settings.model || PROVIDERS[settings.provider].defaultModel,
+		delegationAgent: settings.delegationAgent || null,
 		providers
 	});
 };
 
-// POST: update settings (provider, model, apiKey)
+// POST: update settings (provider, model, apiKey, delegationAgent)
 export const POST: RequestHandler = async ({ request }) => {
 	const body = await request.json();
-	const { provider, model, apiKey } = body;
+	const { provider, model, apiKey, delegationAgent } = body;
 
 	if (provider && !(provider in PROVIDERS)) {
 		return json({ error: `Unknown provider: ${provider}` }, { status: 400 });
+	}
+
+	// Validate delegation agent if provided
+	if (delegationAgent && delegationAgent.provider && !(delegationAgent.provider in PROVIDERS)) {
+		return json({ error: `Unknown delegation provider: ${delegationAgent.provider}` }, { status: 400 });
 	}
 
 	// Save API key if provided
@@ -57,7 +63,10 @@ export const POST: RequestHandler = async ({ request }) => {
 	const current = loadSettings();
 	const newSettings = {
 		provider: (provider as Provider) || current.provider,
-		model: model !== undefined ? model : current.model
+		model: model !== undefined ? model : current.model,
+		delegationAgent: delegationAgent !== undefined
+			? (delegationAgent?.provider ? delegationAgent : undefined)
+			: current.delegationAgent
 	};
 	saveSettings(newSettings);
 

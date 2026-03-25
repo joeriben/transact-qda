@@ -32,9 +32,16 @@ export const PROVIDERS: Record<Provider, ProviderDef> = {
 
 // ── Settings persistence ──────────────────────────────────────────
 
+export interface DelegationAgent {
+	provider: Provider;
+	model: string;
+}
+
 export interface AiSettings {
 	provider: Provider;
 	model: string;
+	/** Sub-agent for delegation (cheaper/faster model for simple tasks) */
+	delegationAgent?: DelegationAgent;
 }
 
 const SETTINGS_FILE = join(process.cwd(), 'ai-settings.json');
@@ -45,10 +52,18 @@ export function loadSettings(): AiSettings {
 	try {
 		const raw = readFileSync(SETTINGS_FILE, 'utf-8');
 		const parsed = JSON.parse(raw);
-		return {
+		const settings: AiSettings = {
 			provider: parsed.provider && parsed.provider in PROVIDERS ? parsed.provider : DEFAULT_SETTINGS.provider,
 			model: parsed.model || ''
 		};
+		// Load delegation agent if configured
+		if (parsed.delegationAgent?.provider && parsed.delegationAgent.provider in PROVIDERS) {
+			settings.delegationAgent = {
+				provider: parsed.delegationAgent.provider,
+				model: parsed.delegationAgent.model || ''
+			};
+		}
+		return settings;
 	} catch {
 		return { ...DEFAULT_SETTINGS };
 	}

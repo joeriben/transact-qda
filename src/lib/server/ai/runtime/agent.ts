@@ -10,7 +10,7 @@ import { FULL_KNOWLEDGE } from '../base/knowledge.js';
 import { MANUAL } from '../base/manual.js';
 import { buildProjectContext, buildMapDetail, buildMemoContext, buildLibraryContext, buildStructuredMapContext, type MapContext } from '../base/context.js';
 import { SEARCH_TOOLS, executeSearchTool } from '../base/search-tools.js';
-import { DELEGATE_TOOL, executeDelegation, getAvailableAgents } from '../base/delegation.js';
+import { DELEGATE_TOOL, executeDelegation, getAvailableAgentsSync } from '../base/delegation.js';
 import { TICKET_TOOL, createTicket } from '../base/tickets.js';
 import { getPersona, type Persona, type PersonaName } from '../personas/index.js';
 import { getOrCreateAiNaming, logAiInteraction } from '../../db/queries/ai.js';
@@ -45,7 +45,7 @@ ${MANUAL}`);
 
 	// Available agents for delegation (if persona can delegate)
 	if (persona.canDelegate) {
-		const agents = getAvailableAgents();
+		const agents = getAvailableAgentsSync();
 		if (agents.length > 0) {
 			parts.push(`
 ═══════════════════════════════════════
@@ -145,7 +145,8 @@ async function executeInfrastructureTool(
 		const result = await executeDelegation(
 			input.agent_label as string,
 			input.task as string,
-			(input.max_tokens as number) || 1024
+			(input.max_tokens as number) || 1024,
+			projectId
 		);
 		return { success: result.success, result: result.result };
 	}
