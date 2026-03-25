@@ -18,31 +18,109 @@
 	// Raichel: autonomous researcher
 	let raichelRunning = $state(false);
 	let raichelStatus = $state('');
+	let raichelLog = $state<string[]>([]);
+	let raichelOpen = $state(false);
+	let raichelMapId = $state<string | null>(null);
+	let logContainer: HTMLElement;
+
+	function scrollLog() {
+		if (logContainer) logContainer.scrollTop = logContainer.scrollHeight;
+	}
 
 	async function startRaichel() {
 		if (raichelRunning) return;
 		raichelRunning = true;
-		raichelStatus = 'Starting analysis...';
+		raichelOpen = true;
+		raichelLog = [];
+		raichelStatus = 'Starting...';
+		raichelMapId = null;
+
 		try {
 			const res = await fetch(`/api/projects/${p.id}/raichel`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ action: 'start' })
 			});
-			const result = await res.json();
-			if (result.success) {
-				raichelStatus = `Done — ${result.progress?.length || 0} steps. Map created.`;
-				// Navigate to the created map
-				if (result.mapId) {
-					window.location.href = `${base}/maps/${result.mapId}`;
+
+			if (!res.body) {
+				raichelStatus = 'Error: no response stream';
+				raichelRunning = false;
+				return;
+			}
+
+			const reader = res.body.getReader();
+			const decoder = new TextDecoder();
+			let buffer = '';
+
+			while (true) {
+				const { done, value } = await reader.read();
+				if (done) break;
+
+				buffer += decoder.decode(value, { stream: true });
+				const lines = buffer.split('\n');
+				buffer = lines.pop() || '';
+
+				let eventType = '';
+				for (const line of lines) {
+					if (line.startsWith('event: ')) {
+						eventType = line.slice(7);
+					} else if (line.startsWith('data: ') && eventType) {
+						try {
+							const data = JSON.parse(line.slice(6));
+							handleRaichelEvent(eventType, data);
+						} catch {}
+						eventType = '';
+					}
 				}
-			} else {
-				raichelStatus = `Error: ${result.error}`;
 			}
 		} catch (e) {
 			raichelStatus = `Error: ${e instanceof Error ? e.message : String(e)}`;
+			raichelLog.push(`ERROR: ${raichelStatus}`);
+			raichelLog = raichelLog;
 		} finally {
 			raichelRunning = false;
+		}
+	}
+
+	function handleRaichelEvent(event: string, data: any) {
+		if (event === 'progress') {
+			if (data.message) {
+				raichelStatus = data.message;
+				raichelLog.push(`── ${data.message}`);
+			}
+			if (data.thinking) {
+				raichelLog.push(data.thinking);
+			}
+			if (data.toolCall) {
+				const tc = data.toolCall;
+				if (tc.name === 'code_passage') {
+					raichelLog.push(`  [code] "${tc.input.code_label}" ← "${(tc.input.passage || '').slice(0, 80)}..."`);
+				} else if (tc.name === 'suggest_relation') {
+					raichelLog.push(`  [relation] ${tc.input.source_id?.slice(0, 8)} → ${tc.input.target_id?.slice(0, 8)}: ${tc.input.inscription || ''}`);
+				} else if (tc.name === 'write_memo') {
+					raichelLog.push(`  [memo] "${tc.input.title}"`);
+				} else if (tc.name === 'designate') {
+					raichelLog.push(`  [designate] → ${tc.input.designation}`);
+				} else if (tc.name === 'identify_silence') {
+					raichelLog.push(`  [silence] "${tc.input.inscription}"`);
+				} else if (tc.name === 'read_document') {
+					raichelLog.push(`  [reading document...]`);
+				} else {
+					raichelLog.push(`  [${tc.name}]`);
+				}
+			}
+			raichelLog = raichelLog;
+			requestAnimationFrame(scrollLog);
+		} else if (event === 'done') {
+			raichelMapId = data.mapId;
+			raichelStatus = 'Analysis complete';
+			raichelLog.push(`\n── Analysis complete. Map ready.`);
+			raichelLog = raichelLog;
+			requestAnimationFrame(scrollLog);
+		} else if (event === 'error') {
+			raichelStatus = `Error: ${data.error}`;
+			raichelLog.push(`ERROR: ${data.error}`);
+			raichelLog = raichelLog;
 		}
 	}
 
@@ -90,11 +168,11 @@
 
 			<button
 				class="raichel-toggle"
-				class:raichel-active={raichelRunning}
-				onclick={startRaichel}
-				disabled={raichelRunning}
+				class:raichel-active={raichelRunning || raichelOpen}
+				onclick={() => { if (!raichelRunning && raichelLog.length === 0) startRaichel(); else raichelOpen = !raichelOpen; }}
+				disabled={raichelRunning && raichelOpen}
 			>{raichelRunning ? 'Raichel...' : 'Raichel'}</button>
-			{#if raichelStatus}
+			{#if raichelStatus && !raichelOpen}
 				<span class="raichel-status">{raichelStatus}</span>
 			{/if}
 
@@ -107,6 +185,31 @@
 	</div>
 
 	<AidelePanel />
+
+	{#if raichelOpen}
+		<div class="raichel-panel">
+			<div class="raichel-header">
+				<span>Raichel {raichelRunning ? '(running...)' : ''}</span>
+				<div class="raichel-header-actions">
+					{#if !raichelRunning && raichelLog.length > 0}
+						<button class="raichel-btn" onclick={startRaichel}>Re-run</button>
+					{/if}
+					{#if raichelMapId}
+						<a href="{base}/maps/{raichelMapId}" class="raichel-btn">Open Map</a>
+					{/if}
+					<button class="raichel-close" onclick={() => raichelOpen = false}>x</button>
+				</div>
+			</div>
+			<div class="raichel-log" bind:this={logContainer}>
+				{#each raichelLog as line}
+					<div class="raichel-line">{line}</div>
+				{/each}
+				{#if raichelRunning && raichelLog.length === 0}
+					<div class="raichel-line">Waiting for Raichel...</div>
+				{/if}
+			</div>
+		</div>
+	{/if}
 </div>
 
 <style>
@@ -236,6 +339,75 @@
 		color: #9ca3af;
 		padding: 0.1rem 0.65rem;
 		line-height: 1.3;
+	}
+
+	.raichel-panel {
+		position: fixed;
+		right: 0;
+		top: 0;
+		bottom: 0;
+		width: 420px;
+		background: #13151e;
+		border-left: 1px solid #2a2d3a;
+		display: flex;
+		flex-direction: column;
+		z-index: 50;
+	}
+	.raichel-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		padding: 0.75rem 1rem;
+		border-bottom: 1px solid #2a2d3a;
+		font-size: 0.85rem;
+		font-weight: 600;
+		color: #f0abfc;
+	}
+	.raichel-header-actions {
+		display: flex;
+		gap: 0.5rem;
+		align-items: center;
+	}
+	.raichel-btn {
+		font-size: 0.75rem;
+		padding: 0.25rem 0.5rem;
+		border-radius: 4px;
+		border: 1px solid #2a2d3a;
+		background: none;
+		color: #c9cdd5;
+		cursor: pointer;
+		font-family: inherit;
+		text-decoration: none;
+	}
+	.raichel-btn:hover {
+		background: #1e2030;
+		border-color: #f0abfc;
+		color: #f0abfc;
+	}
+	.raichel-close {
+		font-size: 0.85rem;
+		padding: 0.15rem 0.4rem;
+		border-radius: 4px;
+		border: none;
+		background: none;
+		color: #6b7280;
+		cursor: pointer;
+		font-family: inherit;
+	}
+	.raichel-close:hover { color: #fff; }
+	.raichel-log {
+		flex: 1;
+		overflow-y: auto;
+		padding: 0.75rem 1rem;
+		font-size: 0.78rem;
+		line-height: 1.5;
+		font-family: 'SF Mono', 'Fira Code', monospace;
+		color: #d1d5db;
+	}
+	.raichel-line {
+		white-space: pre-wrap;
+		word-break: break-word;
+		margin-bottom: 0.25rem;
 	}
 
 	.back-link {

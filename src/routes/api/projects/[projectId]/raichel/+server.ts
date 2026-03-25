@@ -8,28 +8,36 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	const { action } = body;
 
 	if (action === 'start') {
-		// Collect progress events, run analysis, return result
-		const progressLog: RaichelProgress[] = [];
+		// SSE streaming response — client sees Raichel's thinking live
+		const encoder = new TextEncoder();
+		const stream = new ReadableStream({
+			async start(controller) {
+				const send = (event: string, data: unknown) => {
+					controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+				};
 
-		try {
-			const result = await runRaichelAnalysis(projectId, (progress) => {
-				progressLog.push(progress);
-			});
+				try {
+					const result = await runRaichelAnalysis(projectId, (progress) => {
+						send('progress', progress);
+					});
 
-			return json({
-				success: true,
-				mapId: result.mapId,
-				summary: result.summary,
-				progress: progressLog
-			});
-		} catch (error) {
-			const msg = error instanceof Error ? error.message : String(error);
-			return json({
-				success: false,
-				error: msg,
-				progress: progressLog
-			}, { status: 500 });
-		}
+					send('done', { mapId: result.mapId, summary: result.summary });
+				} catch (error) {
+					const msg = error instanceof Error ? error.message : String(error);
+					send('error', { error: msg });
+				} finally {
+					controller.close();
+				}
+			}
+		});
+
+		return new Response(stream, {
+			headers: {
+				'Content-Type': 'text/event-stream',
+				'Cache-Control': 'no-cache',
+				'Connection': 'keep-alive'
+			}
+		});
 	}
 
 	return json({ error: `Unknown action: ${action}` }, { status: 400 });

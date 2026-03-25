@@ -570,6 +570,91 @@ export interface RaichelProgress {
 	documentCount?: number;
 	toolCalls?: number;
 	message?: string;
+	/** Raichel's thinking/text output from the LLM */
+	thinking?: string;
+	/** Tool call that was just executed */
+	toolCall?: { name: string; input: Record<string, unknown>; result: unknown };
+}
+
+// Helper: multi-turn tool execution loop with progress streaming
+async function executeToolLoop(
+	systemPrompt: string,
+	tools: ToolDef[],
+	initialMessage: string,
+	projectId: string,
+	mapId: string,
+	aiNamingId: string,
+	progress: (p: Partial<RaichelProgress>) => void
+): Promise<{ text: string; totalToolCalls: number }> {
+	const messages: Array<{ role: 'user' | 'assistant'; content: string }> = [
+		{ role: 'user', content: initialMessage }
+	];
+
+	let currentResponse = await chat({
+		system: systemPrompt,
+		maxTokens: 16000,
+		tools,
+		messages
+	});
+
+	let totalToolCalls = 0;
+	let lastText = currentResponse.text || '';
+
+	// Emit initial thinking
+	if (lastText) {
+		progress({ thinking: lastText });
+		messages.push({ role: 'assistant', content: lastText });
+	}
+
+	while (currentResponse.toolCalls.length > 0) {
+		const toolResults: string[] = [];
+
+		for (const tc of currentResponse.toolCalls) {
+			totalToolCalls++;
+			let result: { success: boolean; result: unknown } | null = null;
+
+			// Try infrastructure tools
+			const infraResult = await executeInfrastructureTool(tc.name, tc.input, projectId, 'raichel');
+			if (infraResult) {
+				result = infraResult;
+			} else {
+				// Try Raichel-specific tools
+				const raichelResult = await executeRaichelTool(tc.name, tc.input, projectId, mapId, aiNamingId);
+				if (raichelResult.success || ['read_document', 'code_passage', 'designate'].includes(tc.name)) {
+					result = raichelResult;
+				} else {
+					// Try map tools
+					result = await executeMapTool(tc.name, tc.input, projectId, mapId, aiNamingId);
+				}
+			}
+
+			const resultStr = typeof result!.result === 'string' ? result!.result : JSON.stringify(result!.result);
+			toolResults.push(`[${tc.name}]: ${resultStr}`);
+
+			// Emit tool call progress (truncate read_document result for display)
+			const displayResult = tc.name === 'read_document'
+				? { success: result!.success, result: '(document text loaded)' }
+				: result!;
+			progress({ toolCall: { name: tc.name, input: tc.input, result: displayResult } });
+		}
+
+		messages.push({ role: 'user', content: `TOOL RESULTS:\n${toolResults.join('\n\n')}` });
+
+		currentResponse = await chat({
+			system: systemPrompt,
+			maxTokens: 16000,
+			tools,
+			messages
+		});
+
+		lastText = currentResponse.text || '';
+		if (lastText) {
+			progress({ thinking: lastText });
+			messages.push({ role: 'assistant', content: lastText });
+		}
+	}
+
+	return { text: lastText, totalToolCalls };
 }
 
 export async function runRaichelAnalysis(
@@ -643,67 +728,11 @@ INSTRUCTIONS:
 4. After coding, write a document memo (write_memo) summarizing what you found
 5. When done with this document, say "DOCUMENT COMPLETE"`;
 
-		const response = await chat({
-			system: systemPrompt,
-			maxTokens: 16000,
-			tools,
-			messages: [{ role: 'user', content: userMessage }]
-		});
-
-		// Execute tool calls
-		let totalToolCalls = 0;
-		const allToolCalls = [...response.toolCalls];
-
-		// Multi-round tool execution: some tools (read_document) return content
-		// that the LLM needs to see before deciding what to code
-		let currentResponse = response;
-		const messages: Array<{ role: 'user' | 'assistant'; content: string }> = [
-			{ role: 'user', content: userMessage }
-		];
-
-		while (currentResponse.toolCalls.length > 0) {
-			// Build assistant message with tool use indication
-			const toolResults: string[] = [];
-			if (currentResponse.text) {
-				messages.push({ role: 'assistant', content: currentResponse.text });
-			}
-
-			for (const tc of currentResponse.toolCalls) {
-				totalToolCalls++;
-
-				// Try infrastructure tools first
-				const infraResult = await executeInfrastructureTool(tc.name, tc.input, projectId, 'raichel');
-				if (infraResult) {
-					toolResults.push(`[${tc.name}]: ${typeof infraResult.result === 'string' ? infraResult.result : JSON.stringify(infraResult.result)}`);
-					continue;
-				}
-
-				// Try Raichel-specific tools
-				const raichelResult = await executeRaichelTool(tc.name, tc.input, projectId, mapId, aiNamingId);
-				if (raichelResult.success || tc.name === 'read_document' || tc.name === 'code_passage' || tc.name === 'designate') {
-					toolResults.push(`[${tc.name}]: ${typeof raichelResult.result === 'string' ? raichelResult.result : JSON.stringify(raichelResult.result)}`);
-					continue;
-				}
-
-				// Try map tools
-				const mapResult = await executeMapTool(tc.name, tc.input, projectId, mapId, aiNamingId);
-				toolResults.push(`[${tc.name}]: ${typeof mapResult.result === 'string' ? mapResult.result : JSON.stringify(mapResult.result)}`);
-			}
-
-			// Feed tool results back to LLM for next round
-			messages.push({ role: 'user', content: `TOOL RESULTS:\n${toolResults.join('\n\n')}` });
-
-			currentResponse = await chat({
-				system: systemPrompt,
-				maxTokens: 16000,
-				tools,
-				messages
-			});
-
-			if (currentResponse.text) {
-				messages.push({ role: 'assistant', content: currentResponse.text });
-			}
-		}
+		const { totalToolCalls } = await executeToolLoop(
+			systemPrompt, tools, userMessage,
+			projectId, mapId, aiNamingId,
+			(p) => progress({ phase: 'coding', document: doc.title, documentIndex: i + 1, documentCount: docs.length, ...p })
+		);
 
 		progress({
 			phase: 'coding',
@@ -754,51 +783,11 @@ INSTRUCTIONS:
 6. Write analytical memos about emerging patterns
 7. When done, say "ANALYSIS COMPLETE"`;
 
-	let crossResponse = await chat({
-		system: systemPrompt,
-		maxTokens: 16000,
-		tools,
-		messages: [{ role: 'user', content: crossMessage }]
-	});
-
-	const crossMessages: Array<{ role: 'user' | 'assistant'; content: string }> = [
-		{ role: 'user', content: crossMessage }
-	];
-
-	while (crossResponse.toolCalls.length > 0) {
-		const toolResults: string[] = [];
-		if (crossResponse.text) {
-			crossMessages.push({ role: 'assistant', content: crossResponse.text });
-		}
-
-		for (const tc of crossResponse.toolCalls) {
-			const infraResult = await executeInfrastructureTool(tc.name, tc.input, projectId, 'raichel');
-			if (infraResult) {
-				toolResults.push(`[${tc.name}]: ${typeof infraResult.result === 'string' ? infraResult.result : JSON.stringify(infraResult.result)}`);
-				continue;
-			}
-			const raichelResult = await executeRaichelTool(tc.name, tc.input, projectId, mapId, aiNamingId);
-			if (raichelResult.success || ['read_document', 'code_passage', 'designate'].includes(tc.name)) {
-				toolResults.push(`[${tc.name}]: ${typeof raichelResult.result === 'string' ? raichelResult.result : JSON.stringify(raichelResult.result)}`);
-				continue;
-			}
-			const mapResult = await executeMapTool(tc.name, tc.input, projectId, mapId, aiNamingId);
-			toolResults.push(`[${tc.name}]: ${typeof mapResult.result === 'string' ? mapResult.result : JSON.stringify(mapResult.result)}`);
-		}
-
-		crossMessages.push({ role: 'user', content: `TOOL RESULTS:\n${toolResults.join('\n\n')}` });
-
-		crossResponse = await chat({
-			system: systemPrompt,
-			maxTokens: 16000,
-			tools,
-			messages: crossMessages
-		});
-
-		if (crossResponse.text) {
-			crossMessages.push({ role: 'assistant', content: crossResponse.text });
-		}
-	}
+	await executeToolLoop(
+		systemPrompt, tools, crossMessage,
+		projectId, mapId, aiNamingId,
+		(p) => progress({ phase: 'cross-analysis', ...p })
+	);
 
 	// ── Phase 3: Integration ─────────────────────────────────────
 
@@ -828,39 +817,13 @@ Write an integrative memo (write_memo) that addresses:
 4. What would Clarke ask about this map?
 5. Advance any remaining cues to characterization if warranted (designate)`;
 
-	let intResponse = await chat({
-		system: systemPrompt,
-		maxTokens: 16000,
-		tools,
-		messages: [{ role: 'user', content: integrationMessage }]
-	});
+	const { text: integrationText } = await executeToolLoop(
+		systemPrompt, tools, integrationMessage,
+		projectId, mapId, aiNamingId,
+		(p) => progress({ phase: 'integration', ...p })
+	);
 
-	// Execute integration tool calls (usually just write_memo + designate)
-	while (intResponse.toolCalls.length > 0) {
-		const toolResults: string[] = [];
-		for (const tc of intResponse.toolCalls) {
-			const raichelResult = await executeRaichelTool(tc.name, tc.input, projectId, mapId, aiNamingId);
-			if (raichelResult.success || ['designate'].includes(tc.name)) {
-				toolResults.push(`[${tc.name}]: ${JSON.stringify(raichelResult.result)}`);
-				continue;
-			}
-			const mapResult = await executeMapTool(tc.name, tc.input, projectId, mapId, aiNamingId);
-			toolResults.push(`[${tc.name}]: ${JSON.stringify(mapResult.result)}`);
-		}
-
-		intResponse = await chat({
-			system: systemPrompt,
-			maxTokens: 16000,
-			tools,
-			messages: [
-				{ role: 'user', content: integrationMessage },
-				{ role: 'assistant', content: intResponse.text || '' },
-				{ role: 'user', content: `TOOL RESULTS:\n${toolResults.join('\n\n')}` }
-			]
-		});
-	}
-
-	const summary = intResponse.text || 'Analysis complete.';
+	const summary = integrationText || 'Analysis complete.';
 
 	progress({ phase: 'done', message: summary.slice(0, 200) });
 
