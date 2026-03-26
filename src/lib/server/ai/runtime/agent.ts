@@ -658,22 +658,22 @@ async function executeToolLoop(
 	return { text: lastText, totalToolCalls };
 }
 
-// Process a single document chunk directly with the chief model (no delegation)
-async function processChunkDirectly(
+// Process a single document segment directly with the chief model (no delegation)
+async function processSegmentDirectly(
 	systemPrompt: string,
 	tools: ToolDef[],
-	chunk: string,
-	chunkIndex: number,
-	totalChunks: number,
+	segment: string,
+	segmentIndex: number,
+	totalSegments: number,
 	codingInstruction: string,
 	projectId: string,
 	mapId: string,
 	aiNamingId: string,
 	progress: (p: Partial<AutonomousProgress>) => void
 ): Promise<Array<{ passage: string; code_label: string; reasoning: string }>> {
-	progress({ thinking: `Chunk ${chunkIndex}/${totalChunks}...` });
+	progress({ thinking: `Segment ${segmentIndex}/${totalSegments}...` });
 
-	const message = `${codingInstruction}\n\nTEXT CHUNK (${chunkIndex}/${totalChunks}):\n"""\n${chunk}\n"""\n\nRespond with the JSON array only.`;
+	const message = `${codingInstruction}\n\nDOCUMENT SEGMENT (${segmentIndex}/${totalSegments}):\n"""\n${segment}\n"""\n\nRespond with the JSON array only.`;
 
 	const response = await chat({
 		system: systemPrompt,
@@ -686,12 +686,12 @@ async function processChunkDirectly(
 		if (jsonMatch) {
 			const passages = JSON.parse(jsonMatch[0]);
 			if (Array.isArray(passages)) {
-				progress({ thinking: `Chunk ${chunkIndex}: ${passages.length} passages identified` });
+				progress({ thinking: `Segment ${segmentIndex}: ${passages.length} passages identified` });
 				return passages;
 			}
 		}
 	} catch {
-		progress({ thinking: `Chunk ${chunkIndex}: could not parse result` });
+		progress({ thinking: `Segment ${segmentIndex}: could not parse result` });
 	}
 	return [];
 }
@@ -734,8 +734,6 @@ export async function runAutonomousAnalysis(
 	// Chunk each document, delegate passage identification to cheap
 	// model, then execute the codes. Chief model never sees full text.
 
-	const CHUNK_SIZE = 8000; // ~2K tokens per chunk
-
 	for (let i = 0; i < docs.length; i++) {
 		const doc = docs[i];
 		const fullText: string = doc.full_text || '';
@@ -748,9 +746,9 @@ export async function runAutonomousAnalysis(
 			message: `Coding document: ${doc.title} (${doc.text_length} chars)`
 		});
 
-		// Chunk the document
-		const chunks = chunkText(fullText, CHUNK_SIZE);
-		progress({ phase: 'coding', thinking: `Reading document in ${chunks.length} segments` });
+		// Segment at natural document boundaries (paragraphs/sections)
+		const segments = segmentDocument(fullText);
+		progress({ phase: 'coding', thinking: `${segments.length} segments (paragraph boundaries)` });
 
 		// Get existing codes for the delegation prompt
 		const existingCodes = (await query(
@@ -779,37 +777,36 @@ Identify analytically significant passages in this text. For each passage:
 
 Focus on: actors, processes, discursive constructions, contested issues, material-discursive entanglements, implicit assumptions, tensions.
 Do NOT code trivial content (headers, formatting, meta-text).
-Quality over quantity — 3-8 codes per chunk is typical.
+Quality over quantity — code what is analytically significant, skip the rest.
 ${existingCodesText}
 
 Respond in JSON format:
 [{"passage": "exact quote from text", "code_label": "analytical label", "reasoning": "why significant"}]
 
-If no analytically significant passages exist in this chunk, return: []`;
+If no analytically significant passages exist in this segment, return: []`;
 
 		if (useDelegation) {
-			// ── Delegation path: chunks processed by delegation agent ──
+			// ── Delegation path: segments processed by delegation agent ──
 			progress({ phase: 'coding', thinking: `Using delegation agent: ${delegateAgent.label}` });
 			let consecutiveFailures = 0;
 
-			for (let c = 0; c < chunks.length; c++) {
-				progress({ phase: 'coding', document: doc.title, thinking: `Chunk ${c + 1}/${chunks.length}...` });
+			for (let s = 0; s < segments.length; s++) {
+				progress({ phase: 'coding', document: doc.title, thinking: `Segment ${s + 1}/${segments.length}...` });
 
-				const taskWithChunk = codingInstruction + `\n\nTEXT CHUNK (${c + 1}/${chunks.length}):\n"""\n${chunks[c]}\n"""`;
+				const taskWithSegment = codingInstruction + `\n\nDOCUMENT SEGMENT (${s + 1}/${segments.length}):\n"""\n${segments[s]}\n"""`;
 
 				const delegationResult = await executeDelegation(
-					delegateAgent.label, taskWithChunk, 4096, projectId
+					delegateAgent.label, taskWithSegment, 4096, projectId
 				);
 
 				if (!delegationResult.success) {
 					consecutiveFailures++;
-					progress({ phase: 'coding', thinking: `Chunk ${c + 1}: failed — ${delegationResult.result}` });
+					progress({ phase: 'coding', thinking: `Segment ${s + 1}: failed — ${delegationResult.result}` });
 					if (consecutiveFailures >= 3) {
 						progress({ phase: 'coding', thinking: `Delegation agent failing — switching to direct processing` });
-						// Process remaining chunks directly
-						for (let r = c; r < chunks.length; r++) {
-							const directPassages = await processChunkDirectly(
-								systemPrompt, tools, chunks[r], r + 1, chunks.length,
+						for (let r = s; r < segments.length; r++) {
+							const directPassages = await processSegmentDirectly(
+								systemPrompt, tools, segments[r], r + 1, segments.length,
 								codingInstruction, projectId, mapId, aiNamingId,
 								(p) => progress({ phase: 'coding', document: doc.title, ...p })
 							);
@@ -821,26 +818,25 @@ If no analytically significant passages exist in this chunk, return: []`;
 				}
 				consecutiveFailures = 0;
 
-				// Parse the delegation result
 				try {
 					const jsonMatch = delegationResult.result.match(/\[[\s\S]*\]/);
 					if (jsonMatch) {
 						const passages = JSON.parse(jsonMatch[0]);
 						if (Array.isArray(passages)) {
 							allPassages.push(...passages);
-							progress({ phase: 'coding', thinking: `Chunk ${c + 1}: ${passages.length} passages identified` });
+							progress({ phase: 'coding', thinking: `Segment ${s + 1}: ${passages.length} passages identified` });
 						}
 					}
 				} catch {
-					progress({ phase: 'coding', thinking: `Chunk ${c + 1}: could not parse delegation result` });
+					progress({ phase: 'coding', thinking: `Segment ${s + 1}: could not parse delegation result` });
 				}
 			}
 		} else {
-			// ── Direct path: chief model processes chunks itself ──
-			progress({ phase: 'coding', thinking: `No delegation agent — processing ${chunks.length} chunks directly` });
-			for (let c = 0; c < chunks.length; c++) {
-				const directPassages = await processChunkDirectly(
-					systemPrompt, tools, chunks[c], c + 1, chunks.length,
+			// ── Direct path: chief model processes segments itself ──
+			progress({ phase: 'coding', thinking: `No delegation agent — processing ${segments.length} segments directly` });
+			for (let s = 0; s < segments.length; s++) {
+				const directPassages = await processSegmentDirectly(
+					systemPrompt, tools, segments[s], s + 1, segments.length,
 					codingInstruction, projectId, mapId, aiNamingId,
 					(p) => progress({ phase: 'coding', document: doc.title, ...p })
 				);
@@ -1034,34 +1030,31 @@ async function getOrCreateAutonomousMap(projectId: string, aiNamingId: string): 
 // ── Helpers ───────────────────────────────────────────────────────
 
 // Split text into chunks at paragraph boundaries
-function chunkText(text: string, targetSize: number): string[] {
-	if (text.length <= targetSize) return [text];
+// Segment a document at its natural boundaries (paragraphs/sections).
+// Each segment is a meaningful unit — never cut mid-paragraph.
+// Adjacent short paragraphs are grouped up to maxSegmentSize to avoid
+// sending trivially small segments to the LLM.
+function segmentDocument(text: string, maxSegmentSize: number = 12000): string[] {
+	// Split at paragraph boundaries (double newline)
+	const paragraphs = text.split(/\n\n+/).filter(p => p.trim().length > 0);
 
-	const chunks: string[] = [];
-	let pos = 0;
+	if (paragraphs.length <= 1) return [text];
 
-	while (pos < text.length) {
-		let end = Math.min(pos + targetSize, text.length);
+	const segments: string[] = [];
+	let current = '';
 
-		// Try to break at a paragraph boundary (double newline)
-		if (end < text.length) {
-			const lastParagraph = text.lastIndexOf('\n\n', end);
-			if (lastParagraph > pos + targetSize * 0.5) {
-				end = lastParagraph + 2;
-			} else {
-				// Fall back to single newline
-				const lastNewline = text.lastIndexOf('\n', end);
-				if (lastNewline > pos + targetSize * 0.5) {
-					end = lastNewline + 1;
-				}
-			}
+	for (const para of paragraphs) {
+		// If adding this paragraph would exceed max, close current segment
+		if (current.length > 0 && current.length + para.length + 2 > maxSegmentSize) {
+			segments.push(current);
+			current = para;
+		} else {
+			current = current ? current + '\n\n' + para : para;
 		}
-
-		chunks.push(text.slice(pos, end));
-		pos = end;
 	}
+	if (current.trim()) segments.push(current);
 
-	return chunks;
+	return segments;
 }
 
 async function getMapType(mapId: string): Promise<string | undefined> {
