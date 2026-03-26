@@ -285,7 +285,9 @@ export async function executeAutonomousTool(
 			}
 
 			case 'code_passage': {
-				const { document_id, element_id, passage, code_label, reasoning } = input as unknown as CodePassageInput;
+				const { document_id, passage, code_label, reasoning } = input as unknown as CodePassageInput;
+				// Strip prefix (LLM may send "S:uuid" or "P:uuid" from read_document output)
+				const element_id = (input as any).element_id?.replace(/^[A-Z]\d*:/, '') || undefined;
 
 				if (element_id) {
 					// Element-based: direct UUID lookup — 100% match rate
@@ -368,10 +370,12 @@ export async function executeAutonomousTool(
 				const n = Math.min(limit || 10, 30);
 
 				// If query looks like a UUID, search by element similarity
-				const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(searchQuery);
+				// Strip element prefix if present (LLM may send "S:uuid")
+				const cleanQuery = searchQuery.replace(/^[A-Z]\d*:/, '');
+				const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanQuery);
 				const results = isUuid
-					? await findSimilarToElement(searchQuery, projectId, n, !!document_id)
-					: await findSimilarToText(searchQuery, projectId, n, document_id);
+					? await findSimilarToElement(cleanQuery, projectId, n, !!document_id)
+					: await findSimilarToText(cleanQuery, projectId, n, document_id);
 
 				return { success: true, result: {
 					matches: results.map(r => ({
