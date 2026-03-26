@@ -3,6 +3,28 @@ export async function extractText(buffer: Buffer, mimeType: string): Promise<str
 		return buffer.toString('utf-8');
 	}
 
+	if (mimeType === 'text/html') {
+		const html = buffer.toString('utf-8');
+		// Strip HTML tags, decode entities, normalize whitespace
+		return html
+			.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+			.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+			.replace(/<br\s*\/?>/gi, '\n')
+			.replace(/<\/p>/gi, '\n\n')
+			.replace(/<\/div>/gi, '\n')
+			.replace(/<\/h[1-6]>/gi, '\n\n')
+			.replace(/<\/li>/gi, '\n')
+			.replace(/<[^>]+>/g, '')
+			.replace(/&amp;/g, '&')
+			.replace(/&lt;/g, '<')
+			.replace(/&gt;/g, '>')
+			.replace(/&quot;/g, '"')
+			.replace(/&#039;/g, "'")
+			.replace(/&nbsp;/g, ' ')
+			.replace(/\n{3,}/g, '\n\n')
+			.trim();
+	}
+
 	if (mimeType === 'application/pdf') {
 		try {
 			const pdfParse = (await import('pdf-parse')) as any;
@@ -36,6 +58,8 @@ export function detectMimeType(filename: string): string {
 		pdf: 'application/pdf',
 		txt: 'text/plain',
 		md: 'text/markdown',
+		html: 'text/html',
+		htm: 'text/html',
 		docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 		doc: 'application/msword',
 		png: 'image/png',
