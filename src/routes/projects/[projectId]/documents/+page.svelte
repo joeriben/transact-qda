@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	let { data } = $props();
 	let documents = $state(data.documents || []);
 	let uploading = $state(false);
@@ -12,6 +13,34 @@
 	let expandedDocNet = $state<string | null>(null);
 	let docnetDocuments = $state<Record<string, any[]>>({});
 	let addingToDocNet = $state<string | null>(null);
+
+	// Poll embedding status for documents that are still embedding
+	let pollingIds = $state(new Set<string>());
+
+	function pollEmbeddings(docId: string) {
+		if (pollingIds.has(docId)) return;
+		pollingIds = new Set([...pollingIds, docId]);
+
+		const interval = setInterval(async () => {
+			const doc = documents.find((d: any) => d.id === docId);
+			if (!doc) {
+				// Document was deleted, stop polling
+				clearInterval(interval);
+				pollingIds = new Set([...pollingIds].filter(id => id !== docId));
+				return;
+			}
+			const res = await fetch(`/api/projects/${data.projectId}/documents/${docId}/status`);
+			if (!res.ok) { clearInterval(interval); return; }
+			const status = await res.json();
+			doc.element_count = status.element_count;
+			doc.embedded_count = status.embedded_count;
+			documents = [...documents];
+			if (status.embedded_count >= status.element_count && status.element_count > 0) {
+				clearInterval(interval);
+				pollingIds = new Set([...pollingIds].filter(id => id !== docId));
+			}
+		}, 3000);
+	}
 
 	function formatSize(bytes: number): string {
 		if (bytes < 1024) return bytes + ' B';
@@ -28,6 +57,9 @@
 			if (res.ok) {
 				const doc = await res.json();
 				documents = [...documents, doc];
+				if (doc.element_count > 0 && doc.embedded_count < doc.element_count) {
+					pollEmbeddings(doc.id);
+				}
 			}
 		}
 		uploading = false;
@@ -113,12 +145,15 @@
 			const res = await fetch(`/api/projects/${data.projectId}/documents/${docId}/parse`, { method: 'POST' });
 			if (res.ok) {
 				const result = await res.json();
-				// Update counts in local data
 				const doc = documents.find((d: any) => d.id === docId);
 				if (doc) {
 					doc.element_count = result.elements;
 					doc.embedded_count = result.embeddings;
-					documents = [...documents]; // trigger reactivity
+					documents = [...documents];
+					// Poll for embedding completion
+					if (result.elements > 0 && result.embeddings < result.elements) {
+						pollEmbeddings(docId);
+					}
 				}
 			}
 		} finally {
@@ -143,6 +178,15 @@
 	}
 
 	const hasUnparsed = $derived(documents.some((d: any) => !d.element_count));
+
+	// Auto-poll documents that have elements but incomplete embeddings (runs once on mount)
+	onMount(() => {
+		for (const doc of documents) {
+			if (doc.element_count > 0 && doc.embedded_count < doc.element_count) {
+				pollEmbeddings(doc.id);
+			}
+		}
+	});
 
 	// Documents not yet in the expanded docnet
 	const availableDocuments = $derived(() => {
