@@ -416,7 +416,7 @@ export const AUTONOMOUS_DOCUMENT_TOOLS: ToolDef[] = [
 	{
 		name: 'read_document',
 		description:
-			'Read the full text of a document. Use this to read a document before coding it.',
+			'Read a document as structured elements with stable IDs. Returns paragraphs and sentences, each with a UUID you can reference in code_passage. Use this to read and understand a document before coding it.',
 		input_schema: {
 			type: 'object' as const,
 			properties: {
@@ -431,17 +431,17 @@ export const AUTONOMOUS_DOCUMENT_TOOLS: ToolDef[] = [
 	{
 		name: 'code_passage',
 		description:
-			'Code a passage from a document — the core analytical act. Creates a grounded naming (📄) anchored in the document text. If a code with the same label already exists, it reuses it (same concept across documents). The code is automatically placed on the active map.',
+			'Code a document element — the core analytical act. Reference the element by its UUID from read_document output. Creates a grounded naming (📄) anchored to that element. If a code with the same label already exists, it reuses it (same concept across documents). The code is automatically placed on the active map.',
 		input_schema: {
 			type: 'object' as const,
 			properties: {
 				document_id: {
 					type: 'string',
-					description: 'ID of the document containing the passage'
+					description: 'ID of the document containing the element'
 				},
-				passage: {
+				element_id: {
 					type: 'string',
-					description: 'The exact text passage to code (must appear in the document)'
+					description: 'UUID of the document element to code (from read_document output)'
 				},
 				code_label: {
 					type: 'string',
@@ -449,10 +449,10 @@ export const AUTONOMOUS_DOCUMENT_TOOLS: ToolDef[] = [
 				},
 				reasoning: {
 					type: 'string',
-					description: 'Why this passage is analytically significant'
+					description: 'Why this element is analytically significant'
 				}
 			},
-			required: ['document_id', 'passage', 'code_label', 'reasoning']
+			required: ['document_id', 'element_id', 'code_label', 'reasoning']
 		}
 	},
 	{
@@ -487,7 +487,8 @@ export interface ReadDocumentInput {
 
 export interface CodePassageInput {
 	document_id: string;
-	passage: string;
+	element_id?: string;
+	passage?: string;  // legacy fallback for unparsed documents
 	code_label: string;
 	reasoning: string;
 }

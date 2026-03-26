@@ -3,6 +3,7 @@ import type { RequestHandler } from './$types.js';
 import { transaction } from '$lib/server/db/index.js';
 import { saveFile } from '$lib/server/files/index.js';
 import { extractText, detectMimeType } from '$lib/server/documents/index.js';
+import { parseAndStore } from '$lib/server/documents/parsers/index.js';
 
 export const POST: RequestHandler = async ({ request, locals, url }) => {
 	const projectId = url.searchParams.get('projectId');
@@ -36,6 +37,11 @@ export const POST: RequestHandler = async ({ request, locals, url }) => {
 			 VALUES ($1, $2, $3, $4, $5)`,
 			[namingId, fullText, filePath, mimeType, buffer.length]
 		);
+
+		// Parse into addressable elements (paragraphs, sentences, ...)
+		if (fullText) {
+			await parseAndStore(client, namingId, fullText, mimeType);
+		}
 
 		return { id: namingId, label: namingRes.rows[0].label, mimeType, size: buffer.length };
 	});

@@ -10,6 +10,9 @@
 	let annotations = $state<any[]>([]);
 	$effect(() => { annotations = data.annotations; });
 
+	// Document elements (parsed structure)
+	const elements = $derived(data.elements || []);
+
 	// Text selection state
 	let selection = $state<{ pos0: number; pos1: number; text: string } | null>(null);
 	// Image region selection state
@@ -118,7 +121,7 @@
 	}
 
 	// Build text segments for color-coded annotation display
-	type TextSegment = { text: string; codes: { id: string; annId: string; label: string; color: string }[] };
+	type TextSegment = { text: string; codes: { id: string; annId: string; label: string; color: string }[]; elementId?: string };
 	const textSegments = $derived.by((): TextSegment[] => {
 		const text = doc.full_text;
 		if (!text) return [];
@@ -129,7 +132,7 @@
 		});
 		if (textAnns.length === 0) return [{ text, codes: [] }];
 
-		// Build boundary points
+		// Build boundary points (annotations + element boundaries)
 		const points = new Set<number>();
 		points.add(0);
 		points.add(text.length);
@@ -138,7 +141,17 @@
 			if (pos0 >= 0 && pos0 <= text.length) points.add(pos0);
 			if (pos1 >= 0 && pos1 <= text.length) points.add(pos1);
 		}
+		// Add element boundaries for data-element-id mapping
+		for (const el of elements) {
+			if (el.char_start >= 0 && el.char_start <= text.length) points.add(el.char_start);
+			if (el.char_end >= 0 && el.char_end <= text.length) points.add(el.char_end);
+		}
 		const sorted = [...points].sort((a, b) => a - b);
+
+		// Build lookup: leaf elements (sentences) sorted by char_start
+		const leafElements = elements
+			.filter((e: any) => e.content !== null)
+			.sort((a: any, b: any) => a.char_start - b.char_start);
 
 		const segments: TextSegment[] = [];
 		for (let i = 0; i < sorted.length - 1; i++) {
@@ -153,7 +166,11 @@
 					activeCodes.push({ id: ann.code_id, annId: ann.id, label: ann.code_label, color: ann.code_color || '#8b9cf7' });
 				}
 			}
-			segments.push({ text: text.slice(start, end), codes: activeCodes });
+
+			// Find which element this segment belongs to
+			const el = leafElements.find((e: any) => e.char_start <= start && e.char_end >= end);
+
+			segments.push({ text: text.slice(start, end), codes: activeCodes, elementId: el?.id });
 		}
 		return segments;
 	});
@@ -321,9 +338,10 @@
 						class="coded-text"
 						class:coded-highlighted={seg.codes.some(c => c.annId === highlightedAnnotationId)}
 						style="background: {codedBackground(seg.codes)}; border-bottom: 2px solid {seg.codes[0].color};"
+						data-element-id={seg.elementId || undefined}
 						onmouseenter={() => { highlightedAnnotationId = seg.codes[0].annId; }}
 						onmouseleave={() => { highlightedAnnotationId = null; }}
-					>{seg.text}<span class="code-tooltip">{seg.codes.map(c => c.label).join(', ')}</span></span>{:else}{seg.text}{/if}{/each}</pre>
+					>{seg.text}<span class="code-tooltip">{seg.codes.map(c => c.label).join(', ')}</span></span>{:else}<span data-element-id={seg.elementId || undefined}>{seg.text}</span>{/if}{/each}</pre>
 					<div class="code-margin">
 						{#each { length: lineCount } as _, i}
 							<div class="margin-line">

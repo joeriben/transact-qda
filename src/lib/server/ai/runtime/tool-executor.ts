@@ -246,47 +246,104 @@ export async function executeAutonomousTool(
 				if (doc.rows.length === 0) {
 					return { success: false, result: 'Document not found' };
 				}
+
+				// Load structured elements (if parsed)
+				const elements = await query<{
+					id: string; element_type: string; content: string | null;
+					parent_id: string | null; seq: number; char_start: number; char_end: number;
+				}>(
+					`SELECT id, element_type, content, parent_id, seq, char_start, char_end
+					 FROM document_elements WHERE document_id = $1
+					 ORDER BY char_start, seq`,
+					[document_id]
+				);
+
+				if (elements.rows.length > 0) {
+					// Format as structured text with element IDs
+					const formatted = formatElementsForLLM(elements.rows);
+					return { success: true, result: {
+						title: doc.rows[0].title,
+						structured: true,
+						text: formatted
+					}};
+				}
+
+				// Fallback: no elements yet (document not reparsed)
 				return { success: true, result: {
 					title: doc.rows[0].title,
+					structured: false,
 					text: doc.rows[0].full_text || '(no text content)'
 				}};
 			}
 
 			case 'code_passage': {
-				const { document_id, passage, code_label, reasoning } = input as unknown as CodePassageInput;
+				const { document_id, element_id, passage, code_label, reasoning } = input as unknown as CodePassageInput;
 
-				// Find passage position in document text using fuzzy matching
-				const docText = await query(
-					`SELECT dc.full_text FROM document_content dc
-					 JOIN namings n ON n.id = dc.naming_id
-					 WHERE dc.naming_id = $1 AND n.project_id = $2 AND n.deleted_at IS NULL`,
-					[document_id, projectId]
-				);
-				if (docText.rows.length === 0) {
-					return { success: false, result: 'Document not found' };
-				}
+				if (element_id) {
+					// Element-based: direct UUID lookup — 100% match rate
+					const el = await query<{
+						id: string; content: string; char_start: number; char_end: number;
+					}>(
+						`SELECT e.id, e.content, e.char_start, e.char_end
+						 FROM document_elements e
+						 JOIN namings n ON n.id = e.document_id
+						 WHERE e.id = $1 AND e.document_id = $2
+						   AND n.project_id = $3 AND n.deleted_at IS NULL`,
+						[element_id, document_id, projectId]
+					);
 
-				const fullText = docText.rows[0].full_text || '';
-
-				// Exact match only. No fuzzy fallbacks — research data grounding
-				// must be precise or not at all.
-				const pos0 = fullText.indexOf(passage);
-				if (pos0 === -1) {
-					// Try normalized whitespace (legitimate formatting difference)
-					const normFull = fullText.replace(/\s+/g, ' ');
-					const normPassage = passage.replace(/\s+/g, ' ');
-					const normPos = normFull.indexOf(normPassage);
-					if (normPos === -1) {
-						return { success: false, result: `Passage not found in document. The model did not quote exactly.` };
+					if (el.rows.length === 0) {
+						return { success: false, result: `Element ${element_id} not found in document ${document_id}` };
 					}
-					const origStart = mapNormalizedPosToOriginal(fullText, normPos);
-					const origEnd = mapNormalizedPosToOriginal(fullText, normPos + normPassage.length);
-					const anchor = { pos0: origStart, pos1: origEnd, text: fullText.slice(origStart, origEnd) };
+
+					const { char_start, char_end, content } = el.rows[0];
+
+					// If element is a container (no content), read text from full_text via offsets
+					let text = content;
+					if (!text) {
+						const docText = await query<{ full_text: string }>(
+							`SELECT full_text FROM document_content WHERE naming_id = $1`,
+							[document_id]
+						);
+						text = docText.rows[0]?.full_text?.slice(char_start, char_end) || '';
+					}
+
+					const anchor = { pos0: char_start, pos1: char_end, text, elementId: element_id };
 					return await createCodeAndAnnotation(projectId, mapId, aiNamingId, document_id, code_label, anchor, reasoning);
 				}
 
-				const anchor = { pos0, pos1: pos0 + passage.length, text: passage };
-				return await createCodeAndAnnotation(projectId, mapId, aiNamingId, document_id, code_label, anchor, reasoning);
+				if (passage) {
+					// Legacy fallback: text matching for unparsed documents
+					const docText = await query<{ full_text: string }>(
+						`SELECT dc.full_text FROM document_content dc
+						 JOIN namings n ON n.id = dc.naming_id
+						 WHERE dc.naming_id = $1 AND n.project_id = $2 AND n.deleted_at IS NULL`,
+						[document_id, projectId]
+					);
+					if (docText.rows.length === 0) {
+						return { success: false, result: 'Document not found' };
+					}
+
+					const fullText = docText.rows[0].full_text || '';
+					const pos0 = fullText.indexOf(passage);
+					if (pos0 === -1) {
+						const normFull = fullText.replace(/\s+/g, ' ');
+						const normPassage = passage.replace(/\s+/g, ' ');
+						const normPos = normFull.indexOf(normPassage);
+						if (normPos === -1) {
+							return { success: false, result: 'Passage not found in document.' };
+						}
+						const origStart = mapNormalizedPosToOriginal(fullText, normPos);
+						const origEnd = mapNormalizedPosToOriginal(fullText, normPos + normPassage.length);
+						const anchor = { pos0: origStart, pos1: origEnd, text: fullText.slice(origStart, origEnd) };
+						return await createCodeAndAnnotation(projectId, mapId, aiNamingId, document_id, code_label, anchor, reasoning);
+					}
+
+					const anchor = { pos0, pos1: pos0 + passage.length, text: passage };
+					return await createCodeAndAnnotation(projectId, mapId, aiNamingId, document_id, code_label, anchor, reasoning);
+				}
+
+				return { success: false, result: 'Either element_id or passage is required' };
 			}
 
 			case 'designate': {
@@ -308,6 +365,46 @@ export async function executeAutonomousTool(
 	}
 }
 
+// Format parsed document elements into a readable structure with stable IDs for LLM consumption
+function formatElementsForLLM(rows: {
+	id: string; element_type: string; content: string | null;
+	parent_id: string | null; seq: number; char_start: number; char_end: number;
+}[]): string {
+	const lines: string[] = [];
+	// Build parent → children map
+	const childrenOf = new Map<string | null, typeof rows>();
+	for (const row of rows) {
+		const key = row.parent_id;
+		if (!childrenOf.has(key)) childrenOf.set(key, []);
+		childrenOf.get(key)!.push(row);
+	}
+
+	// Sequential counters per type for human-readable labels
+	const counters = new Map<string, number>();
+	function nextLabel(type: string): string {
+		const n = (counters.get(type) || 0) + 1;
+		counters.set(type, n);
+		const prefix = type === 'paragraph' ? 'P' : type === 'sentence' ? 'S' : type === 'heading' ? 'H' : type[0].toUpperCase();
+		return `${prefix}${n}`;
+	}
+
+	function render(parentId: string | null, indent: string) {
+		const children = childrenOf.get(parentId) || [];
+		for (const child of children) {
+			const label = nextLabel(child.element_type);
+			if (child.content) {
+				lines.push(`${indent}[${label}:${child.id}] ${child.content}`);
+			} else {
+				lines.push(`${indent}[${label}:${child.id}]`);
+				render(child.id, indent + '  ');
+			}
+		}
+	}
+
+	render(null, '');
+	return lines.join('\n');
+}
+
 // Helper: create or reuse a code naming, create annotation, place on map
 async function createCodeAndAnnotation(
 	projectId: string,
@@ -315,7 +412,7 @@ async function createCodeAndAnnotation(
 	aiNamingId: string,
 	documentId: string,
 	codeLabel: string,
-	anchor: { pos0: number; pos1: number; text: string },
+	anchor: { pos0: number; pos1: number; text: string; elementId?: string },
 	reasoning: string
 ): Promise<{ success: boolean; result: unknown }> {
 	// Check if code already exists (case-insensitive)

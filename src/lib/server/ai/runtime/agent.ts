@@ -746,9 +746,12 @@ export async function runAutonomousAnalysis(
 			message: `Coding document: ${doc.title} (${doc.text_length} chars)`
 		});
 
-		// Segment at natural document boundaries (paragraphs/sections)
-		const segments = segmentDocument(fullText);
-		progress({ phase: 'coding', thinking: `${segments.length} segments (paragraph boundaries)` });
+		// Load parsed elements, fall back to legacy text segmentation
+		const elementSegments = await getDocumentSegments(doc.id);
+		const usesElements = elementSegments !== null;
+		const legacySegments = usesElements ? [] : segmentDocumentLegacy(fullText);
+		const segmentCount = usesElements ? elementSegments.length : legacySegments.length;
+		progress({ phase: 'coding', thinking: `${segmentCount} segments (${usesElements ? 'parsed elements' : 'paragraph boundaries'})` });
 
 		// Get existing codes for the delegation prompt
 		const existingCodes = (await query(
@@ -762,13 +765,31 @@ export async function runAutonomousAnalysis(
 			? `\nEXISTING CODES (reuse if same concept):\n${existingCodes.map((c: any) => `- "${c.inscription}"`).join('\n')}`
 			: '';
 
-		// Identify passages: delegate to configured agent, or process directly
-		let allPassages: Array<{ passage: string; code_label: string; reasoning: string }> = [];
+		// Identify elements to code: delegate to configured agent, or process directly
+		let allIdentified: Array<{ element_id?: string; passage?: string; code_label: string; reasoning: string }> = [];
 
 		const delegateAgent = await getConfiguredDelegationAgent();
 		const useDelegation = !!delegateAgent;
 
-		const codingInstruction = `You are a qualitative researcher coding a document using Situational Analysis (Adele Clarke).
+		const codingInstruction = usesElements
+			? `You are a qualitative researcher coding a document using Situational Analysis (Adele Clarke).
+
+Each text element has a stable UUID shown as [S:uuid] or [P:uuid]. Identify analytically significant elements.
+For each element:
+- Reference it by its UUID (the "element_id")
+- Provide an analytical code label (prefer gerunds: "legitimizing X", "contesting Y")
+- Explain briefly why this element is significant
+
+Focus on: actors, processes, discursive constructions, contested issues, material-discursive entanglements, implicit assumptions, tensions.
+Do NOT code trivial content (headers, formatting, meta-text).
+Quality over quantity — code what is analytically significant, skip the rest.
+${existingCodesText}
+
+Respond in JSON format:
+[{"element_id": "uuid", "code_label": "analytical label", "reasoning": "why significant"}]
+
+If no analytically significant elements exist in this segment, return: []`
+			: `You are a qualitative researcher coding a document using Situational Analysis (Adele Clarke).
 
 Identify analytically significant passages in this text. For each passage:
 - Quote the EXACT text (verbatim, at least 20 chars)
@@ -790,10 +811,11 @@ If no analytically significant passages exist in this segment, return: []`;
 			progress({ phase: 'coding', thinking: `Using delegation agent: ${delegateAgent.label}` });
 			let consecutiveFailures = 0;
 
-			for (let s = 0; s < segments.length; s++) {
-				progress({ phase: 'coding', document: doc.title, thinking: `Segment ${s + 1}/${segments.length}...` });
+			for (let s = 0; s < segmentCount; s++) {
+				progress({ phase: 'coding', document: doc.title, thinking: `Segment ${s + 1}/${segmentCount}...` });
 
-				const taskWithSegment = codingInstruction + `\n\nDOCUMENT SEGMENT (${s + 1}/${segments.length}):\n"""\n${segments[s]}\n"""`;
+				const segmentText = usesElements ? elementSegments[s].formatted : legacySegments[s];
+				const taskWithSegment = codingInstruction + `\n\nDOCUMENT SEGMENT (${s + 1}/${segmentCount}):\n"""\n${segmentText}\n"""`;
 
 				const delegationResult = await executeDelegation(
 					delegateAgent.label, taskWithSegment, 4096, projectId
@@ -804,13 +826,14 @@ If no analytically significant passages exist in this segment, return: []`;
 					progress({ phase: 'coding', thinking: `Segment ${s + 1}: failed — ${delegationResult.result}` });
 					if (consecutiveFailures >= 3) {
 						progress({ phase: 'coding', thinking: `Delegation agent failing — switching to direct processing` });
-						for (let r = s; r < segments.length; r++) {
+						for (let r = s; r < segmentCount; r++) {
+							const segText = usesElements ? elementSegments[r].formatted : legacySegments[r];
 							const directPassages = await processSegmentDirectly(
-								systemPrompt, tools, segments[r], r + 1, segments.length,
+								systemPrompt, tools, segText, r + 1, segmentCount,
 								codingInstruction, projectId, mapId, aiNamingId,
 								(p) => progress({ phase: 'coding', document: doc.title, ...p })
 							);
-							allPassages.push(...directPassages);
+							allIdentified.push(...directPassages);
 						}
 						break;
 					}
@@ -821,10 +844,10 @@ If no analytically significant passages exist in this segment, return: []`;
 				try {
 					const jsonMatch = delegationResult.result.match(/\[[\s\S]*\]/);
 					if (jsonMatch) {
-						const passages = JSON.parse(jsonMatch[0]);
-						if (Array.isArray(passages)) {
-							allPassages.push(...passages);
-							progress({ phase: 'coding', thinking: `Segment ${s + 1}: ${passages.length} passages identified` });
+						const identified = JSON.parse(jsonMatch[0]);
+						if (Array.isArray(identified)) {
+							allIdentified.push(...identified);
+							progress({ phase: 'coding', thinking: `Segment ${s + 1}: ${identified.length} elements identified` });
 						}
 					}
 				} catch {
@@ -833,36 +856,45 @@ If no analytically significant passages exist in this segment, return: []`;
 			}
 		} else {
 			// ── Direct path: chief model processes segments itself ──
-			progress({ phase: 'coding', thinking: `No delegation agent — processing ${segments.length} segments directly` });
-			for (let s = 0; s < segments.length; s++) {
+			progress({ phase: 'coding', thinking: `No delegation agent — processing ${segmentCount} segments directly` });
+			for (let s = 0; s < segmentCount; s++) {
+				const segText = usesElements ? elementSegments[s].formatted : legacySegments[s];
 				const directPassages = await processSegmentDirectly(
-					systemPrompt, tools, segments[s], s + 1, segments.length,
+					systemPrompt, tools, segText, s + 1, segmentCount,
 					codingInstruction, projectId, mapId, aiNamingId,
 					(p) => progress({ phase: 'coding', document: doc.title, ...p })
 				);
-				allPassages.push(...directPassages);
+				allIdentified.push(...directPassages);
 			}
 		}
 
 		progress({
 			phase: 'coding',
 			document: doc.title,
-			thinking: `Total passages identified: ${allPassages.length}. Creating codes...`
+			thinking: `Total elements identified: ${allIdentified.length}. Creating codes...`
 		});
 
-		// Execute code_passage for each identified passage
+		// Execute code_passage for each identified element/passage
 		let codesCreated = 0;
-		for (const p of allPassages) {
-			if (!p.passage || !p.code_label) continue;
+		for (const p of allIdentified) {
+			if (!p.code_label) continue;
+			// Need either element_id (new) or passage (legacy)
+			if (!p.element_id && !p.passage) continue;
+
+			const toolInput: Record<string, string> = {
+				document_id: doc.id,
+				code_label: p.code_label,
+				reasoning: p.reasoning || ''
+			};
+			if (p.element_id) {
+				toolInput.element_id = p.element_id;
+			} else if (p.passage) {
+				// Legacy fallback: still using passage text matching
+				toolInput.passage = p.passage;
+			}
 
 			const result = await executeAutonomousTool(
-				'code_passage',
-				{
-					document_id: doc.id,
-					passage: p.passage,
-					code_label: p.code_label,
-					reasoning: p.reasoning || ''
-				},
+				'code_passage', toolInput,
 				projectId, mapId, aiNamingId
 			);
 
@@ -872,7 +904,7 @@ If no analytically significant passages exist in this segment, return: []`;
 					phase: 'coding',
 					toolCall: {
 						name: 'code_passage',
-						input: { code_label: p.code_label, passage: p.passage.slice(0, 80) },
+						input: { code_label: p.code_label, element_id: p.element_id || '(passage)' },
 						result: result.result
 					}
 				});
@@ -889,8 +921,8 @@ If no analytically significant passages exist in this segment, return: []`;
 
 Document: "${doc.title}"
 Codes created: ${codesCreated}
-Passages coded:
-${allPassages.map(p => `- [${p.code_label}] "${p.passage.slice(0, 60)}..." — ${p.reasoning}`).join('\n')}
+Elements coded:
+${allIdentified.map(p => `- [${p.code_label}] ${p.element_id || (p.passage?.slice(0, 60) + '...')} — ${p.reasoning}`).join('\n')}
 
 Write a memo (use write_memo tool) with title "Document: ${doc.title}" summarizing the key findings, tensions, and what this document contributes to understanding the situation.`;
 
@@ -906,7 +938,7 @@ Write a memo (use write_memo tool) with title "Document: ${doc.title}" summarizi
 			documentIndex: i + 1,
 			documentCount: docs.length,
 			toolCalls: codesCreated,
-			message: `Finished: ${doc.title} — ${codesCreated} codes from ${allPassages.length} passages`
+			message: `Finished: ${doc.title} — ${codesCreated} codes from ${allIdentified.length} elements`
 		});
 	}
 
@@ -1029,22 +1061,15 @@ async function getOrCreateAutonomousMap(projectId: string, aiNamingId: string): 
 
 // ── Helpers ───────────────────────────────────────────────────────
 
-// Split text into chunks at paragraph boundaries
-// Segment a document at its natural boundaries (paragraphs/sections).
-// Each segment is a meaningful unit — never cut mid-paragraph.
-// Adjacent short paragraphs are grouped up to maxSegmentSize to avoid
-// sending trivially small segments to the LLM.
-function segmentDocument(text: string, maxSegmentSize: number = 12000): string[] {
-	// Split at paragraph boundaries (double newline)
+// Legacy: split raw text at paragraph boundaries (fallback for unparsed docs)
+function segmentDocumentLegacy(text: string, maxSegmentSize: number = 12000): string[] {
 	const paragraphs = text.split(/\n\n+/).filter(p => p.trim().length > 0);
-
 	if (paragraphs.length <= 1) return [text];
 
 	const segments: string[] = [];
 	let current = '';
 
 	for (const para of paragraphs) {
-		// If adding this paragraph would exceed max, close current segment
 		if (current.length > 0 && current.length + para.length + 2 > maxSegmentSize) {
 			segments.push(current);
 			current = para;
@@ -1053,6 +1078,79 @@ function segmentDocument(text: string, maxSegmentSize: number = 12000): string[]
 		}
 	}
 	if (current.trim()) segments.push(current);
+	return segments;
+}
+
+interface DocumentSegment {
+	formatted: string;  // Human-readable text with element IDs
+	elements: { id: string; type: string; content: string | null; charStart: number; charEnd: number }[];
+}
+
+// Load parsed elements from DB, group into segments
+async function getDocumentSegments(documentId: string, maxChars: number = 12000): Promise<DocumentSegment[] | null> {
+	const rows = (await query<{
+		id: string; element_type: string; content: string | null;
+		parent_id: string | null; seq: number; char_start: number; char_end: number;
+	}>(
+		`SELECT id, element_type, content, parent_id, seq, char_start, char_end
+		 FROM document_elements WHERE document_id = $1
+		 ORDER BY char_start, seq`,
+		[documentId]
+	)).rows;
+
+	if (rows.length === 0) return null;
+
+	// Build tree: top-level paragraphs with their sentence children
+	const childrenOf = new Map<string | null, typeof rows>();
+	for (const row of rows) {
+		const key = row.parent_id;
+		if (!childrenOf.has(key)) childrenOf.set(key, []);
+		childrenOf.get(key)!.push(row);
+	}
+
+	const topLevel = childrenOf.get(null) || [];
+
+	// Format a single paragraph with its children
+	function formatParagraph(para: typeof rows[0], pIdx: number): { text: string; elements: DocumentSegment['elements'] } {
+		const children = childrenOf.get(para.id) || [];
+		const elements: DocumentSegment['elements'] = [];
+		const lines: string[] = [];
+
+		if (children.length > 0) {
+			lines.push(`[P${pIdx + 1}:${para.id}]`);
+			for (const child of children) {
+				lines.push(`  [S:${child.id}] ${child.content || ''}`);
+				elements.push({ id: child.id, type: child.element_type, content: child.content, charStart: child.char_start, charEnd: child.char_end });
+			}
+		} else if (para.content) {
+			lines.push(`[P${pIdx + 1}:${para.id}] ${para.content}`);
+			elements.push({ id: para.id, type: para.element_type, content: para.content, charStart: para.char_start, charEnd: para.char_end });
+		}
+
+		return { text: lines.join('\n'), elements };
+	}
+
+	// Group paragraphs into segments that fit within maxChars
+	const segments: DocumentSegment[] = [];
+	let currentLines: string[] = [];
+	let currentElements: DocumentSegment['elements'] = [];
+	let currentLen = 0;
+
+	for (let i = 0; i < topLevel.length; i++) {
+		const { text, elements } = formatParagraph(topLevel[i], i);
+		if (currentLen > 0 && currentLen + text.length > maxChars) {
+			segments.push({ formatted: currentLines.join('\n\n'), elements: currentElements });
+			currentLines = [];
+			currentElements = [];
+			currentLen = 0;
+		}
+		currentLines.push(text);
+		currentElements.push(...elements);
+		currentLen += text.length;
+	}
+	if (currentLines.length > 0) {
+		segments.push({ formatted: currentLines.join('\n\n'), elements: currentElements });
+	}
 
 	return segments;
 }
