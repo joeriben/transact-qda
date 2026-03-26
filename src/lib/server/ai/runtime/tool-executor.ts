@@ -29,7 +29,8 @@ export async function executeMapTool(
 	input: Record<string, unknown>,
 	projectId: string,
 	mapId: string,
-	aiNamingId: string
+	aiNamingId: string,
+	personaLabel: string = 'Cowork'
 ): Promise<{ success: boolean; result: unknown }> {
 	try {
 		switch (toolName) {
@@ -58,7 +59,9 @@ export async function executeMapTool(
 
 			case 'write_memo': {
 				const { title, content, linked_element_ids } = input as unknown as WriteMemoInput;
-				const memo = await createMemo(projectId, AI_SYSTEM_UUID, `AI: ${title}`, content, linked_element_ids || [], 'presented');
+				const prefix = `${personaLabel}: `;
+				const memoTitle = title.startsWith(prefix) || title.startsWith('AI:') ? title : `${prefix}${title}`;
+				const memo = await createMemo(projectId, AI_SYSTEM_UUID, memoTitle, content, linked_element_ids || [], 'presented');
 				emit(mapId, 'ai:memo', {
 					memo, title, content,
 					linkedIds: linked_element_ids || [],
@@ -113,7 +116,7 @@ export async function executeMapTool(
 				const { axis_id, new_inscription, reasoning } = input as unknown as SuggestAxisRefinementInput;
 				const memoContent = `${reasoning}\n\nSuggested label: "${new_inscription}"`;
 				const memo = await createMemo(projectId, AI_SYSTEM_UUID,
-					`AI: Axis refinement`, memoContent, [axis_id]);
+					`${personaLabel}: Axis refinement`, memoContent, [axis_id]);
 				emit(mapId, 'ai:memo', {
 					memo, title: 'AI: Axis refinement', content: memoContent,
 					linkedIds: [axis_id], authorId: AI_SYSTEM_UUID
@@ -234,7 +237,8 @@ export async function executeAutonomousTool(
 	input: Record<string, unknown>,
 	projectId: string,
 	mapId: string,
-	aiNamingId: string
+	aiNamingId: string,
+	personaLabel: string = 'Autonomous'
 ): Promise<{ success: boolean; result: unknown }> {
 	try {
 		switch (toolName) {
