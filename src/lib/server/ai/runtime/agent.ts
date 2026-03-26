@@ -713,10 +713,11 @@ export async function runAutonomousAnalysis(
 
 	progress({ phase: 'starting', message: 'Listing documents and preparing map...' });
 
-	// List all documents in project
-	const docs = (await query(
+	// List all documents with their coding_runs counter
+	const allDocs = (await query(
 		`SELECT n.id, n.inscription as title, dc.full_text,
-		        LENGTH(dc.full_text) as text_length
+		        LENGTH(dc.full_text) as text_length,
+		        COALESCE(dc.coding_runs, 0) as coding_runs
 		 FROM document_content dc
 		 JOIN namings n ON n.id = dc.naming_id
 		 WHERE n.project_id = $1 AND n.deleted_at IS NULL AND dc.full_text IS NOT NULL
@@ -724,10 +725,25 @@ export async function runAutonomousAnalysis(
 		[projectId]
 	)).rows;
 
-	if (docs.length === 0) {
+	if (allDocs.length === 0) {
 		progress({ phase: 'error', message: 'No documents found in project' });
 		throw new Error('No documents found in project. Upload documents first.');
 	}
+
+	// Only code documents that are behind: coding_runs < max(coding_runs)
+	// If all equal → code all (new full run)
+	const minRuns = Math.min(...allDocs.map((d: any) => d.coding_runs));
+	const maxRuns = Math.max(...allDocs.map((d: any) => d.coding_runs));
+	const docs = minRuns === maxRuns
+		? allDocs  // all equal → full run
+		: allDocs.filter((d: any) => d.coding_runs < maxRuns);  // only the behind ones
+
+	progress({
+		phase: 'starting',
+		message: minRuns === maxRuns
+			? `Full run: coding all ${docs.length} documents (run ${maxRuns + 1})`
+			: `Catch-up: coding ${docs.length}/${allDocs.length} documents (${allDocs.length - docs.length} already at run ${maxRuns})`
+	});
 
 	// Get or create a situational map for autonomous analysis
 	const mapId = await getOrCreateAutonomousMap(projectId, aiNamingId);
@@ -1045,6 +1061,12 @@ Write a memo (use write_memo tool) with title "Document: ${doc.title}" summarizi
 			(p2) => progress({ phase: 'coding', document: doc.title, ...p2 })
 		);
 
+		// Increment coding_runs counter for this document
+		await query(
+			`UPDATE document_content SET coding_runs = COALESCE(coding_runs, 0) + 1 WHERE naming_id = $1`,
+			[doc.id]
+		);
+
 		progress({
 			phase: 'coding',
 			document: doc.title,
@@ -1056,8 +1078,8 @@ Write a memo (use write_memo tool) with title "Document: ${doc.title}" summarizi
 	}
 
 	// ── Phase 2: Cross-document analysis ─────────────────────────
-	// Skip if only 1 document — cross-document analysis requires multiple documents
-	if (docs.length < 2) {
+	// Skip if only 1 document in the project — cross-document analysis requires multiple documents
+	if (allDocs.length < 2) {
 		progress({ phase: 'cross-analysis', message: 'Skipping cross-document analysis (single document)' });
 	} else {
 
