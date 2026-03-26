@@ -130,6 +130,14 @@
 		}
 	}
 
+	async function deleteDocument(docId: string, label: string) {
+		if (!confirm(`Delete "${label}"?`)) return;
+		const res = await fetch(`/api/projects/${data.projectId}/documents/${docId}`, { method: 'DELETE' });
+		if (res.ok) {
+			data.documents = data.documents.filter((d: any) => d.id !== docId);
+		}
+	}
+
 	const hasUnparsed = $derived(data.documents.some((d: any) => !d.element_count));
 
 	// Documents not yet in the expanded docnet
@@ -151,7 +159,7 @@
 			{/if}
 			<label class="btn-primary">
 				Upload
-				<input type="file" multiple hidden onchange={onFileInput} accept=".pdf,.txt,.md,.docx,.doc,.png,.jpg,.jpeg,.gif,.webp" />
+				<input type="file" multiple hidden onchange={onFileInput} accept=".pdf,.txt,.md,.html,.htm,.docx,.doc,.png,.jpg,.jpeg,.gif,.webp" />
 			</label>
 		</div>
 	</div>
@@ -241,6 +249,7 @@
 						<th>Size</th>
 						<th>Parsed</th>
 						<th>Added</th>
+						<th></th>
 					</tr>
 				</thead>
 				<tbody>
@@ -259,6 +268,7 @@
 								{/if}
 							</td>
 							<td class="meta">{new Date(doc.created_at).toLocaleDateString()}</td>
+							<td><button class="btn-xs btn-danger" onclick={() => deleteDocument(doc.id, doc.label)}>delete</button></td>
 						</tr>
 					{/each}
 				</tbody>
