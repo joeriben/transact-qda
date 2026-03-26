@@ -359,8 +359,13 @@ export async function executeAutonomousTool(
 			case 'designate': {
 				const { naming_id, designation, reasoning } = input as unknown as DesignateInput;
 				await designateNaming(naming_id, designation, aiNamingId);
+				// Look up the naming inscription for a meaningful memo title
+				const namingRow = await query(
+					`SELECT inscription FROM namings WHERE id = $1`, [naming_id]
+				);
+				const namingLabel = namingRow.rows[0]?.inscription || naming_id;
 				await createMemo(projectId, AI_SYSTEM_UUID,
-					`Designation → ${designation}`, reasoning, [naming_id]);
+					`${personaLabel}: "${namingLabel}" → ${designation}`, reasoning, [naming_id]);
 				emit(mapId, 'ai:designate', { namingId: naming_id, designation, reasoning });
 				return { success: true, result: { namingId: naming_id, designation } };
 			}

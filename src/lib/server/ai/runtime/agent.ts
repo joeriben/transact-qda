@@ -1014,11 +1014,13 @@ ${allCodesFormatted}
 INSTRUCTIONS:
 1. Identify near-duplicate codes — write a memo for each cluster of overlapping codes
    (title: "Near-duplicates: X / Y / Z", content: what they share, where they differ)
-2. Advance well-grounded cues to characterization (use designate tool)
+2. Advance well-grounded cues to characterization using the designate tool:
+   call designate(naming_id, "characterization", reasoning)
    — a cue is "well-grounded" when it appears in 2+ passages or its analytical meaning is clearly articulated
 3. Do NOT delete or merge codes — flag overlaps for the researcher via memos
 4. This is analytical housekeeping, not new analysis. Be brief.
-5. Do NOT write a document summary memo — that comes in the next step.`;
+5. Do NOT write a document summary memo — that comes in the next step.
+6. Do NOT create new namings (no suggest_element). Only use: write_memo, designate.`;
 
 			await executeToolLoop(
 				systemPrompt, tools, consolidationMessage,
@@ -1123,7 +1125,8 @@ Write an integrative memo (write_memo) that addresses:
 2. What are the core categories and their relations?
 3. What is structurally absent (silences)?
 4. What would Clarke ask about this map?
-5. Advance any remaining cues to characterization if warranted (designate)`;
+5. Advance any remaining cues to characterization if warranted — use the designate tool: designate(naming_id, "characterization", reasoning)
+   IMPORTANT: Do NOT create namings like "Designation → characterization" — use the designate TOOL on existing naming IDs.`;
 
 	const { text: integrationText } = await executeToolLoop(
 		systemPrompt, tools, integrationMessage,
