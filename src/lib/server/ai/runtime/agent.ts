@@ -7,7 +7,7 @@
 // - discussCue: cue discussion mode — researcher discusses an AI-generated cue
 // - discussMemo: memo discussion mode — researcher discusses an analytical memo
 
-import { chat, getModel, getProvider } from '../client.js';
+import { chat, getModel, getProvider, loadSettings, SUPPORTED_LANGUAGES } from '../client.js';
 import { FULL_KNOWLEDGE } from '../base/knowledge.js';
 import { MANUAL } from '../base/manual.js';
 import { buildProjectContext, buildMapDetail, buildMemoContext, buildLibraryContext, buildStructuredMapContext, type MapContext } from '../base/context.js';
@@ -29,6 +29,19 @@ const AI_SYSTEM_UUID = '00000000-0000-0000-0000-000000000000';
 
 // ── System prompt composition ─────────────────────────────────────
 
+function getLanguageInstruction(): string | null {
+	const settings = loadSettings();
+	const lang = settings.language;
+	if (!lang || lang === 'auto') return null;
+	const langName = SUPPORTED_LANGUAGES[lang] || lang;
+	return `═══════════════════════════════════════
+LANGUAGE
+═══════════════════════════════════════
+
+ALL your output — code labels, memos, analytical reasoning, relations, silences — MUST be in ${langName}.
+This is a hard requirement, not a suggestion. Do not fall back to English unless the researcher explicitly writes in English.`;
+}
+
 function buildSystemPrompt(persona: Persona, mapType?: string): string {
 	const parts: string[] = [];
 
@@ -39,6 +52,9 @@ function buildSystemPrompt(persona: Persona, mapType?: string): string {
 		const supplement = persona.getMapSupplement(mapType as any);
 		if (supplement) parts.push(supplement);
 	}
+
+	const langInstruction = getLanguageInstruction();
+	if (langInstruction) parts.push(langInstruction);
 
 	if (MANUAL) {
 		parts.push(`
@@ -836,7 +852,8 @@ BEFORE CREATING ANY NEW CODE:
    One code for the concept, not one code per phrasing.
 
 Typical density: 3-8 codes per text segment. Most sentences are NOT code-worthy.
-When in doubt, skip — a missed passage can be found later, but code inflation cannot easily be reversed.`;
+When in doubt, skip — a missed passage can be found later, but code inflation cannot easily be reversed.`
+		+ (getLanguageInstruction() ? `\n\nLANGUAGE: All code labels and reasoning MUST be in ${SUPPORTED_LANGUAGES[loadSettings().language || 'auto'] || 'the document language'}.` : '');
 
 		if (useDelegation) {
 			// ── Delegation path: segments processed by delegation agent ──

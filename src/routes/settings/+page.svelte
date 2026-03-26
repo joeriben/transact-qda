@@ -23,6 +23,10 @@
 	let message = $state<{ type: 'ok' | 'error'; text: string } | null>(null);
 	let loading = $state(true);
 
+	// Language state
+	let language = $state('auto');
+	let languages = $state<Record<string, string>>({});
+
 	// Delegation agent state
 	let delegationProvider = $state('');
 	let delegationModel = $state('');
@@ -61,6 +65,8 @@
 			model = data.model;
 			delegationProvider = data.delegationAgent?.provider || '';
 			delegationModel = data.delegationAgent?.model || '';
+			language = data.language || 'auto';
+			languages = data.languages || {};
 		} catch (e: any) {
 			message = { type: 'error', text: e.message };
 		} finally {
@@ -78,6 +84,7 @@
 			body.delegationAgent = delegationProvider
 				? { provider: delegationProvider, model: delegationModel }
 				: null;
+			body.language = language;
 			const res = await fetch('/api/settings/ai', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
@@ -420,6 +427,18 @@
 						<span class="hint">Default: {delegationProviderInfo?.defaultModel || '—'}</span>
 					</div>
 				{/if}
+			</div>
+
+			<div class="section">
+				<h2>Analysis Language</h2>
+				<p class="section-hint">Language for codes, memos, and all AI output. "Auto-detect" uses the language of the documents.</p>
+				<div class="form-row">
+					<select class="input-field" bind:value={language}>
+						{#each Object.entries(languages) as [code, label]}
+							<option value={code}>{label}</option>
+						{/each}
+					</select>
+				</div>
 			</div>
 
 			<div class="actions">

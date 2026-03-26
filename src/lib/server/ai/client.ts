@@ -42,7 +42,24 @@ export interface AiSettings {
 	model: string;
 	/** Sub-agent for delegation (cheaper/faster model for simple tasks) */
 	delegationAgent?: DelegationAgent;
+	/** Analysis language — codes, memos, and AI output will use this language */
+	language?: string;
 }
+
+export const SUPPORTED_LANGUAGES: Record<string, string> = {
+	auto: 'Auto-detect (from documents)',
+	de: 'Deutsch',
+	en: 'English',
+	fr: 'Français',
+	es: 'Español',
+	pt: 'Português',
+	it: 'Italiano',
+	nl: 'Nederlands',
+	pl: 'Polski',
+	ja: '日本語',
+	zh: '中文',
+	ko: '한국어'
+};
 
 const SETTINGS_FILE = join(process.cwd(), 'ai-settings.json');
 
@@ -62,6 +79,10 @@ export function loadSettings(): AiSettings {
 				provider: parsed.delegationAgent.provider,
 				model: parsed.delegationAgent.model || ''
 			};
+		}
+		// Load language preference
+		if (parsed.language && parsed.language in SUPPORTED_LANGUAGES) {
+			settings.language = parsed.language;
 		}
 		return settings;
 	} catch {

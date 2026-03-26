@@ -3,6 +3,7 @@ import type { RequestHandler } from './$types.js';
 import {
 	type Provider,
 	PROVIDERS,
+	SUPPORTED_LANGUAGES,
 	loadSettings,
 	saveSettings,
 	readApiKey,
@@ -32,6 +33,8 @@ export const GET: RequestHandler = async () => {
 		provider: settings.provider,
 		model: settings.model || PROVIDERS[settings.provider].defaultModel,
 		delegationAgent: settings.delegationAgent || null,
+		language: settings.language || 'auto',
+		languages: SUPPORTED_LANGUAGES,
 		providers
 	});
 };
@@ -39,7 +42,7 @@ export const GET: RequestHandler = async () => {
 // POST: update settings (provider, model, apiKey, delegationAgent)
 export const POST: RequestHandler = async ({ request }) => {
 	const body = await request.json();
-	const { provider, model, apiKey, delegationAgent } = body;
+	const { provider, model, apiKey, delegationAgent, language } = body;
 
 	if (provider && !(provider in PROVIDERS)) {
 		return json({ error: `Unknown provider: ${provider}` }, { status: 400 });
@@ -66,7 +69,10 @@ export const POST: RequestHandler = async ({ request }) => {
 		model: model !== undefined ? model : current.model,
 		delegationAgent: delegationAgent !== undefined
 			? (delegationAgent?.provider ? delegationAgent : undefined)
-			: current.delegationAgent
+			: current.delegationAgent,
+		language: language !== undefined
+			? (language in SUPPORTED_LANGUAGES ? language : undefined)
+			: current.language
 	};
 	saveSettings(newSettings);
 
