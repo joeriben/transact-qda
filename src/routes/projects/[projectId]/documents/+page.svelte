@@ -1,6 +1,6 @@
 <script lang="ts">
 	let { data } = $props();
-	let documents = $state(documents || []);
+	let documents = $state(data.documents || []);
 	let uploading = $state(false);
 	let dragOver = $state(false);
 	let parsing = $state<string | null>(null);
