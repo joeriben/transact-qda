@@ -478,6 +478,71 @@ export const AUTONOMOUS_DOCUMENT_TOOLS: ToolDef[] = [
 			},
 			required: ['naming_id', 'designation', 'reasoning']
 		}
+	},
+	{
+		name: 'semantic_search',
+		description:
+			'Search for semantically similar passages across all project documents. Like Ctrl+F but semantic — finds conceptually related sentences even if they use different words. Use this to follow threads across documents, find recurring themes, or discover unexpected connections.',
+		input_schema: {
+			type: 'object' as const,
+			properties: {
+				query: {
+					type: 'string',
+					description: 'Search query (free text) OR an element UUID to find similar elements'
+				},
+				document_id: {
+					type: 'string',
+					description: 'Optional: restrict search to a specific document'
+				},
+				limit: {
+					type: 'number',
+					description: 'Max results (default 10)'
+				}
+			},
+			required: ['query']
+		}
+	},
+	{
+		name: 'find_outliers',
+		description:
+			'Find the most unusual/atypical sentences in a document — elements most distant from the document\'s semantic center. These outliers may signal analytically significant singularities, ruptures, or hidden themes that deserve closer attention.',
+		input_schema: {
+			type: 'object' as const,
+			properties: {
+				document_id: {
+					type: 'string',
+					description: 'ID of the document to analyze'
+				},
+				limit: {
+					type: 'number',
+					description: 'Max results (default 10)'
+				}
+			},
+			required: ['document_id']
+		}
+	},
+	{
+		name: 'cross_document_compare',
+		description:
+			'Compare two documents semantically. For each sentence in document A, finds the closest match in document B. Reveals shared concepts, divergent framings, and gaps between documents — the basis for constant comparison (GTM).',
+		input_schema: {
+			type: 'object' as const,
+			properties: {
+				document_a_id: {
+					type: 'string',
+					description: 'ID of the first document'
+				},
+				document_b_id: {
+					type: 'string',
+					description: 'ID of the second document'
+				},
+				limit: {
+					type: 'number',
+					description: 'Max pairs to return (default 20)'
+				}
+			},
+			required: ['document_a_id', 'document_b_id']
+		}
 	}
 ];
 
@@ -497,4 +562,21 @@ export interface DesignateInput {
 	naming_id: string;
 	designation: 'cue' | 'characterization' | 'specification';
 	reasoning: string;
+}
+
+export interface SemanticSearchInput {
+	query: string;
+	document_id?: string;
+	limit?: number;
+}
+
+export interface FindOutliersInput {
+	document_id: string;
+	limit?: number;
+}
+
+export interface CrossDocumentCompareInput {
+	document_a_id: string;
+	document_b_id: string;
+	limit?: number;
 }

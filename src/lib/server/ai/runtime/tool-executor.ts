@@ -13,8 +13,12 @@ import type {
 	WriteMemoInput, CreatePhaseInput, SuggestFormationInput,
 	SuggestPositionInput, SuggestAxisRefinementInput, IdentifyEmptyRegionInput,
 	RewriteCueInput, RespondInput, WithdrawCueInput, ReviseMemoInput,
-	ReadDocumentInput, CodePassageInput, DesignateInput
+	ReadDocumentInput, CodePassageInput, DesignateInput,
+	SemanticSearchInput, FindOutliersInput, CrossDocumentCompareInput
 } from '../tools.js';
+import {
+	findSimilarToElement, findSimilarToText, findOutliers, crossDocumentSimilarity
+} from '../../documents/embedding-queries.js';
 
 const AI_SYSTEM_UUID = '00000000-0000-0000-0000-000000000000';
 
@@ -349,11 +353,59 @@ export async function executeAutonomousTool(
 			case 'designate': {
 				const { naming_id, designation, reasoning } = input as unknown as DesignateInput;
 				await designateNaming(naming_id, designation, aiNamingId);
-				// Write a memo documenting the designation decision
 				await createMemo(projectId, AI_SYSTEM_UUID,
 					`Designation → ${designation}`, reasoning, [naming_id]);
 				emit(mapId, 'ai:designate', { namingId: naming_id, designation, reasoning });
 				return { success: true, result: { namingId: naming_id, designation } };
+			}
+
+			case 'semantic_search': {
+				const { query: searchQuery, document_id, limit } = input as unknown as SemanticSearchInput;
+				const n = Math.min(limit || 10, 30);
+
+				// If query looks like a UUID, search by element similarity
+				const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(searchQuery);
+				const results = isUuid
+					? await findSimilarToElement(searchQuery, projectId, n, !!document_id)
+					: await findSimilarToText(searchQuery, projectId, n, document_id);
+
+				return { success: true, result: {
+					matches: results.map(r => ({
+						elementId: r.id,
+						documentId: r.documentId,
+						document: r.documentTitle,
+						content: r.content,
+						similarity: Math.round(r.similarity * 1000) / 1000
+					}))
+				}};
+			}
+
+			case 'find_outliers': {
+				const { document_id, limit } = input as unknown as FindOutliersInput;
+				const results = await findOutliers(document_id, projectId, Math.min(limit || 10, 30));
+
+				return { success: true, result: {
+					outliers: results.map(r => ({
+						elementId: r.id,
+						content: r.content,
+						distanceFromCenter: Math.round((1 - r.similarity) * 1000) / 1000
+					}))
+				}};
+			}
+
+			case 'cross_document_compare': {
+				const { document_a_id, document_b_id, limit } = input as unknown as CrossDocumentCompareInput;
+				const pairs = await crossDocumentSimilarity(
+					document_a_id, document_b_id, projectId, Math.min(limit || 20, 50)
+				);
+
+				return { success: true, result: {
+					pairs: pairs.map(p => ({
+						elementA: { id: p.elementA.id, content: p.elementA.content },
+						elementB: { id: p.elementB.id, content: p.elementB.content },
+						similarity: Math.round(p.similarity * 1000) / 1000
+					}))
+				}};
 			}
 
 			default:

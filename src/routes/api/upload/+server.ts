@@ -4,6 +4,7 @@ import { transaction } from '$lib/server/db/index.js';
 import { saveFile } from '$lib/server/files/index.js';
 import { extractText, detectMimeType } from '$lib/server/documents/index.js';
 import { parseAndStore } from '$lib/server/documents/parsers/index.js';
+import { embedDocumentElements } from '$lib/server/documents/embed-elements.js';
 
 export const POST: RequestHandler = async ({ request, locals, url }) => {
 	const projectId = url.searchParams.get('projectId');
@@ -45,6 +46,13 @@ export const POST: RequestHandler = async ({ request, locals, url }) => {
 
 		return { id: namingId, label: namingRes.rows[0].label, mimeType, size: buffer.length };
 	});
+
+	// Compute embeddings after transaction commits (async, non-blocking)
+	if (fullText) {
+		embedDocumentElements(doc.id).catch(err =>
+			console.error(`Embedding failed for document ${doc.id}:`, err)
+		);
+	}
 
 	return json(doc, { status: 201 });
 };
