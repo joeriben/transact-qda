@@ -964,13 +964,15 @@ ${mapContext.relations.length > 0 ? `\nEXISTING RELATIONS (${mapContext.relation
 ${memoContext ? `\nMEMOS:\n${memoContext}` : ''}
 
 INSTRUCTIONS:
-1. Compare codes across documents (constant comparison)
-2. Draw relations using suggest_relation: what enables, constrains, legitimizes, silences what?
-3. Group related codes into phases using create_phase
-4. Advance designations where warranted using designate
-5. Identify silences using identify_silence
-6. Write analytical memos about emerging patterns
-7. When done, say "ANALYSIS COMPLETE"`;
+1. Use semantic_search to find thematic connections across documents — follow threads, recurring concepts, shared framings
+2. Use find_outliers on each document to surface unusual passages that may signal hidden themes or ruptures
+3. Use cross_document_compare to systematically compare documents — what concepts are shared, what diverges, what is absent in one but present in another?
+4. Draw relations using suggest_relation: what enables, constrains, legitimizes, silences what?
+5. Group related codes into phases using create_phase
+6. Advance designations where warranted using designate
+7. Identify silences using identify_silence — including absences revealed by cross-document comparison
+8. Write analytical memos about emerging patterns
+9. When done, say "ANALYSIS COMPLETE"`;
 
 	await executeToolLoop(
 		systemPrompt, tools, crossMessage,
