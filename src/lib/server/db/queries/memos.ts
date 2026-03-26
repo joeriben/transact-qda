@@ -56,8 +56,15 @@ export async function createMemo(
 			[memo.id, content, status]
 		);
 
-		// Create participations for links
+		// Create participations for links (skip invalid IDs gracefully)
 		for (const targetId of linkedNamingIds) {
+			// Verify target exists before creating participation
+			const targetExists = await client.query(
+				`SELECT 1 FROM namings WHERE id = $1 AND deleted_at IS NULL LIMIT 1`,
+				[targetId]
+			);
+			if (targetExists.rows.length === 0) continue;
+
 			const partNaming = await client.query(
 				`INSERT INTO namings (project_id, inscription, created_by)
 				 VALUES ($1, $2, $3) RETURNING id`,
