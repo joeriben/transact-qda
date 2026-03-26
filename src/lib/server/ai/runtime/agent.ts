@@ -1017,7 +1017,8 @@ INSTRUCTIONS:
 2. Advance well-grounded cues to characterization (use designate tool)
    — a cue is "well-grounded" when it appears in 2+ passages or its analytical meaning is clearly articulated
 3. Do NOT delete or merge codes — flag overlaps for the researcher via memos
-4. This is analytical housekeeping, not new analysis. Be brief.`;
+4. This is analytical housekeeping, not new analysis. Be brief.
+5. Do NOT write a document summary memo — that comes in the next step.`;
 
 			await executeToolLoop(
 				systemPrompt, tools, consolidationMessage,
@@ -1053,6 +1054,10 @@ Write a memo (use write_memo tool) with title "Document: ${doc.title}" summarizi
 	}
 
 	// ── Phase 2: Cross-document analysis ─────────────────────────
+	// Skip if only 1 document — cross-document analysis requires multiple documents
+	if (docs.length < 2) {
+		progress({ phase: 'cross-analysis', message: 'Skipping cross-document analysis (single document)' });
+	} else {
 
 	progress({ phase: 'cross-analysis', message: 'Cross-document analysis: relations, patterns, silences...' });
 
@@ -1089,6 +1094,8 @@ INSTRUCTIONS:
 		projectId, mapId, aiNamingId,
 		(p) => progress({ phase: 'cross-analysis', ...p })
 	);
+
+	} // end if (docs.length >= 2)
 
 	// ── Phase 3: Integration ─────────────────────────────────────
 

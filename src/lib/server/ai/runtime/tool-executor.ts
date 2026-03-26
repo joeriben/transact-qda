@@ -550,6 +550,18 @@ async function addElementToAiMap(
 	properties?: Record<string, unknown>
 ) {
 	return transaction(async (client) => {
+		// Dedup: check if a naming with the same label already exists on this map
+		const existing = await client.query(
+			`SELECT n.* FROM namings n
+			 JOIN appearances a ON a.naming_id = n.id AND a.perspective_id = $1 AND a.mode = 'entity'
+			 WHERE n.project_id = $2 AND LOWER(n.inscription) = LOWER($3) AND n.deleted_at IS NULL
+			 LIMIT 1`,
+			[mapId, projectId, inscription]
+		);
+		if (existing.rows.length > 0) {
+			return existing.rows[0];
+		}
+
 		const namingRes = await client.query(
 			`INSERT INTO namings (project_id, inscription, created_by)
 			 VALUES ($1, $2, $3) RETURNING *`,
