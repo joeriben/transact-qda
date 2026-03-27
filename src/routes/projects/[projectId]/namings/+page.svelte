@@ -249,11 +249,15 @@
 
 	async function confirmRelate() {
 		if (!relateSource || !relateTarget) return;
-		await apiAction('relate', { sourceId: relateSource, targetId: relateTarget });
+		const result = await apiAction('relate', { sourceId: relateSource, targetId: relateTarget });
 		relateSource = null;
 		relateTarget = null;
-		const module = await import('$app/navigation');
-		module.invalidateAll();
+		if (result.error) {
+			alert(result.error);
+		} else {
+			const module = await import('$app/navigation');
+			module.invalidateAll();
+		}
 	}
 
 	function cancelRelate() {
@@ -498,10 +502,10 @@
 		{@const reifyNaming = findNaming(reifyNamingId)}
 		<div class="relate-banner">
 			{#if !reifySourceId}
-				<strong>{reifyNaming?.current_inscription || reifyNaming?.inscription}</strong> → Relation: click the <strong>source</strong> naming
+				Reify "<strong>{reifyNaming?.current_inscription || reifyNaming?.inscription}</strong>" as relation — click <strong>from</strong> (source)
 			{:else}
 				{@const srcNaming = findNaming(reifySourceId)}
-				<strong>{reifyNaming?.current_inscription || reifyNaming?.inscription}</strong>: <strong>{srcNaming?.current_inscription || srcNaming?.inscription}</strong> → click the <strong>target</strong> naming
+				<strong>{srcNaming?.current_inscription || srcNaming?.inscription}</strong> —[{reifyNaming?.current_inscription || reifyNaming?.inscription}]→ click <strong>to</strong> (target)
 			{/if}
 			<button class="btn-xs" onclick={cancelReify}>cancel</button>
 		</div>
@@ -631,7 +635,7 @@
 							<button class="btn-xs" onclick={() => showStack(n.naming_id)}>stack</button>
 							<a class="btn-xs btn-detail" href="/projects/{data.projectId}/namings/{n.naming_id}">detail</a>
 							<button class="btn-xs" onclick={() => startRelate(n.naming_id)}>relate</button>
-							<button class="btn-xs btn-mode" onclick={() => startReifyAsRelation(n.naming_id)}>→ relation</button>
+							<button class="btn-xs btn-mode" onclick={() => startReifyAsRelation(n.naming_id)}>reify</button>
 							<button class="btn-xs btn-merge" onclick={(e) => { e.stopPropagation(); startMerge(n.naming_id); }}>merge</button>
 							<button class="btn-xs btn-withdraw" onclick={() => withdraw(n.naming_id)}>
 								{withdrawn ? 'restore' : 'withdraw'}

@@ -555,7 +555,8 @@ export async function getAllProjectNamings(projectId: string) {
 			   AND n.deleted_at IS NULL
 			   AND (
 			     EXISTS (SELECT 1 FROM appearances a WHERE a.naming_id = n.id
-			             AND a.mode IN ('entity','relation','silence'))
+			             AND a.mode IN ('entity','relation','silence')
+			             AND (a.valence IS NULL OR a.valence != 'codes'))
 			     OR EXISTS (SELECT 1 FROM researcher_namings rn WHERE rn.naming_id = n.id)
 			   )
 			 ORDER BY n.seq DESC`,
