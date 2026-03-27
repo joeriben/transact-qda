@@ -1,5 +1,6 @@
 <script lang="ts">
 	import ImageAnnotationViewer from '$lib/components/ImageAnnotationViewer.svelte';
+	import ComparisonPanel from './ComparisonPanel.svelte';
 
 	let { data } = $props();
 	const doc = $derived(data.document);
@@ -378,6 +379,15 @@
 						</button>
 					</div>
 					<div class="selection-preview">{getSelectionPreview()}</div>
+
+					{#if !isImage && selection}
+						<ComparisonPanel
+							projectId={data.projectId}
+							docId={doc.id}
+							{selection}
+							onannotate={(codeId) => annotate(codeId)}
+						/>
+					{/if}
 
 					<form class="invivo-form" onsubmit={e => { e.preventDefault(); if (canCreateInVivo) createCodeAndAnnotate(); }}>
 						<input
