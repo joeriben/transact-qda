@@ -1,46 +1,57 @@
 /**
- * Embedding client: generates sentence embeddings via Ollama.
- * Uses nomic-embed-text (768 dims) by default.
- * Designed for batch processing — one HTTP call per sentence.
+ * Embedding client: generates sentence embeddings using @huggingface/transformers.
+ * Runs nomic-embed-text (768 dims) directly in Node.js — no external service needed.
+ * Model is downloaded automatically on first use and cached locally.
  */
 
-const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
-const EMBED_MODEL = process.env.EMBED_MODEL || 'nomic-embed-text';
+import { pipeline, type FeatureExtractionPipeline } from '@huggingface/transformers';
+
+const EMBED_MODEL = 'nomic-ai/nomic-embed-text-v1.5';
 const EMBED_DIMS = 768;
 
 export { EMBED_DIMS };
 
-interface OllamaEmbeddingResponse {
-	embedding: number[];
+// Lazy-loaded singleton pipeline
+let _pipeline: FeatureExtractionPipeline | null = null;
+let _loading: Promise<FeatureExtractionPipeline> | null = null;
+
+async function getPipeline(): Promise<FeatureExtractionPipeline> {
+	if (_pipeline) return _pipeline;
+	if (_loading) return _loading;
+
+	_loading = pipeline('feature-extraction', EMBED_MODEL, {
+		dtype: 'fp32',
+		revision: 'main'
+	}).then(p => {
+		_pipeline = p;
+		_loading = null;
+		return p;
+	});
+
+	return _loading;
 }
 
 /**
  * Generate embedding for a single text string.
  */
 export async function embed(text: string): Promise<number[]> {
-	const res = await fetch(`${OLLAMA_URL}/api/embeddings`, {
-		method: 'POST',
-		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ model: EMBED_MODEL, prompt: text })
-	});
-
-	if (!res.ok) {
-		throw new Error(`Embedding failed (${res.status}): ${await res.text()}`);
-	}
-
-	const data: OllamaEmbeddingResponse = await res.json();
-	return data.embedding;
+	const pipe = await getPipeline();
+	const result = await pipe(text, { pooling: 'mean', normalize: true });
+	return Array.from(result.data as Float32Array);
 }
 
 /**
- * Generate embeddings for multiple texts. Processes sequentially
- * (Ollama doesn't support batch embedding in a single call).
- * Returns array of vectors in same order as input.
+ * Generate embeddings for multiple texts.
+ * Processes as a batch for efficiency.
  */
 export async function embedBatch(texts: string[]): Promise<number[][]> {
+	if (texts.length === 0) return [];
+	const pipe = await getPipeline();
 	const results: number[][] = [];
+	// Process individually to avoid memory issues with large batches
 	for (const text of texts) {
-		results.push(await embed(text));
+		const result = await pipe(text, { pooling: 'mean', normalize: true });
+		results.push(Array.from(result.data as Float32Array));
 	}
 	return results;
 }

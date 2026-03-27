@@ -26,6 +26,7 @@
 	},
 	"dependencies": {
 		"@anthropic-ai/sdk": "^0.78.0",
+		"@huggingface/transformers": "^3.8.1",
 		"@types/archiver": "^7.0.0",
 		"@types/yauzl": "^2.10.3",
 		"archiver": "^7.0.1",
