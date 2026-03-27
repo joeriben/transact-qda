@@ -100,17 +100,82 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		}
 
 		case 'relate': {
-			const { sourceId, targetId, inscription, valence, symmetric, properties } = body;
+			const { sourceId, targetId, inscription, valence, symmetric } = body;
 			if (!sourceId || !targetId) return json({ error: 'sourceId and targetId required' }, { status: 400 });
 
-			// Place new relation on the newest Sit Map
-			const sitMapId = await getNewestSitMapId(projectId);
-			if (!sitMapId) return json({ error: 'No situational map found' }, { status: 400 });
+			// Find maps where BOTH source and target appear
+			const sharedMaps = (await query(
+				`SELECT DISTINCT a1.perspective_id
+				 FROM appearances a1
+				 JOIN appearances a2 ON a2.perspective_id = a1.perspective_id
+				 JOIN appearances pa ON pa.naming_id = a1.perspective_id
+				   AND pa.perspective_id = a1.perspective_id AND pa.mode = 'perspective'
+				 WHERE a1.naming_id = $1 AND a2.naming_id = $2
+				   AND a1.perspective_id != a1.naming_id
+				   AND pa.properties ? 'mapType'`,
+				[sourceId, targetId]
+			)).rows;
 
-			const relation = await relateElements(projectId, userId, sitMapId, sourceId, targetId, {
-				inscription, valence, symmetric, properties
-			});
-			return json(relation, { status: 201 });
+			if (sharedMaps.length > 0) {
+				// Place on first shared map
+				const relation = await relateElements(projectId, userId, sharedMaps[0].perspective_id, sourceId, targetId, {
+					inscription, valence, symmetric
+				});
+				// Also place on other shared maps
+				for (let i = 1; i < sharedMaps.length; i++) {
+					await query(
+						`INSERT INTO appearances (naming_id, perspective_id, mode, directed_from, directed_to, valence, properties)
+						 VALUES ($1, $2, 'relation', $3, $4, $5, '{}')
+						 ON CONFLICT DO NOTHING`,
+						[relation.id, sharedMaps[i].perspective_id,
+						 symmetric ? null : sourceId, symmetric ? null : targetId,
+						 valence || null]
+					);
+				}
+				return json(relation, { status: 201 });
+			}
+
+			// No shared map — fall back to newest Sit Map, or create without map
+			const sitMapId = await getNewestSitMapId(projectId);
+			if (sitMapId) {
+				const relation = await relateElements(projectId, userId, sitMapId, sourceId, targetId, {
+					inscription, valence, symmetric
+				});
+				return json(relation, { status: 201 });
+			}
+
+			// No map at all — create relation at ground-truth level (grounding workspace)
+			const researcherNamingId = await getOrCreateResearcherNaming(projectId, userId);
+			const { getOrCreateGroundingWorkspace } = await import('$lib/server/db/queries/codes.js');
+			const gwId = await getOrCreateGroundingWorkspace(projectId, userId);
+
+			const partNaming = (await query(
+				`INSERT INTO namings (project_id, inscription, created_by)
+				 VALUES ($1, $2, $3) RETURNING *`,
+				[projectId, inscription?.trim() || '', userId]
+			)).rows[0];
+
+			await query(
+				`INSERT INTO participations (id, naming_id, participant_id)
+				 VALUES ($1, $2, $3)`,
+				[partNaming.id, sourceId, targetId]
+			);
+
+			const dirFrom = symmetric ? null : sourceId;
+			const dirTo = symmetric ? null : targetId;
+			await query(
+				`INSERT INTO appearances (naming_id, perspective_id, mode, directed_from, directed_to, valence, properties)
+				 VALUES ($1, $2, 'relation', $3, $4, $5, '{}')`,
+				[partNaming.id, gwId, dirFrom, dirTo, valence || null]
+			);
+
+			await query(
+				`INSERT INTO naming_acts (naming_id, designation, by)
+				 VALUES ($1, 'cue', $2)`,
+				[partNaming.id, researcherNamingId]
+			);
+
+			return json(partNaming, { status: 201 });
 		}
 
 		case 'setValence': {
