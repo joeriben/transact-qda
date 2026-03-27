@@ -21,5 +21,11 @@ export async function DELETE({ params }) {
 		[docId]
 	);
 
+	// Clean up document elements (embeddings, parsed structure)
+	await query(
+		`DELETE FROM document_elements WHERE document_id = $1`,
+		[docId]
+	);
+
 	return json({ ok: true });
 }
