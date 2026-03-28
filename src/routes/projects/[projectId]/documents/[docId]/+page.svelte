@@ -199,6 +199,13 @@
 		annId: string; label: string; fullLabel: string; color: string; top: number;
 		comment: string; snippet: string;
 	}>>([]);
+	let tooltipStyle = $state('');
+
+	function showTooltip(e: MouseEvent) {
+		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+		tooltipStyle = `left: ${rect.right + 8}px; top: ${rect.top}px;`;
+	}
+	function hideTooltip() { tooltipStyle = ''; }
 	let marginEl = $state<HTMLDivElement>();
 
 	function measureMarginPositions() {
@@ -528,9 +535,9 @@
 								class="margin-label"
 								class:margin-highlighted={highlightedAnnotationId === ml.annId}
 								style="color: {ml.color}; top: {ml.top}px;"
-								onmouseenter={() => { highlightedAnnotationId = ml.annId; }}
-								onmouseleave={() => { highlightedAnnotationId = null; }}
-							>{ml.label}<span class="margin-tooltip"><strong>{ml.fullLabel}</strong>{#if ml.comment}<br/><em>{ml.comment}</em>{/if}{#if ml.snippet}<br/><span class="mt-snippet">{ml.snippet}</span>{/if}</span></span>
+								onmouseenter={(e) => { highlightedAnnotationId = ml.annId; showTooltip(e); }}
+								onmouseleave={() => { highlightedAnnotationId = null; hideTooltip(); }}
+							>{ml.label}<span class="margin-tooltip" style={tooltipStyle}><strong>{ml.fullLabel}</strong>{#if ml.comment}<em>{ml.comment}</em>{/if}{#if ml.snippet}<span class="mt-snippet">{ml.snippet}</span>{/if}</span></span>
 						{/each}
 					</div>
 				</div>
@@ -659,9 +666,10 @@
 		</div>
 
 	</div>
+</div>
 
-	<!-- Annotations overlay: floating, draggable, resizable -->
-	{#if showAnnotations}
+<!-- Annotations overlay: floating, draggable, resizable — OUTSIDE doc-viewer to avoid overflow:hidden clipping -->
+{#if showAnnotations}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div class="annotations-overlay" bind:this={overlayEl}>
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -692,17 +700,22 @@
 							<div class="ann-header">
 								<span class="color-dot" style="background: {ann.code_color || '#8b9cf7'}"></span>
 								<span class="code-name">{ann.code_label}</span>
+								<button
+									class="btn-expand-ann"
+									onclick={(e) => { e.stopPropagation(); expandedAnnId = expandedAnnId === ann.id ? null : ann.id; }}
+									title="Show passage"
+								>{expandedAnnId === ann.id ? '▼' : '▶'}</button>
 							</div>
 							{#if expandedAnnId === ann.id}
 								{@const parts = getPassageParts(ann)}
 								<div class="ann-context">
 									<span class="ctx-before">{parts.before}</span><span class="ctx-passage">{parts.passage}</span><span class="ctx-after">{parts.after}</span>
 								</div>
+								{#if ann.stack_memo || ann.properties?.comment}
+									<div class="ann-comment">{ann.stack_memo || ann.properties.comment}</div>
+								{/if}
 							{:else if getSnippet(ann)}
 								<div class="ann-text">{truncate(getSnippet(ann), 60)}</div>
-							{/if}
-							{#if ann.properties?.comment}
-								<div class="ann-comment">{ann.properties.comment}</div>
 							{/if}
 						</div>
 					{/each}
@@ -710,16 +723,15 @@
 			</div>
 		</div>
 	{/if}
-</div>
 
 <style>
-	.doc-viewer { display: flex; flex-direction: column; height: 100vh; max-height: 100vh; position: relative; overflow: hidden; }
+	.doc-viewer { display: flex; flex-direction: column; position: relative; }
 	.doc-header { margin-bottom: 1rem; }
 	.back { font-size: 0.8rem; color: #6b7280; display: inline-block; margin-bottom: 0.5rem; }
 	h1 { font-size: 1.2rem; margin-bottom: 0.25rem; }
 	.meta { font-size: 0.8rem; color: #6b7280; }
 
-	.doc-body { display: flex; gap: 1rem; flex: 1; min-height: 0; overflow: hidden; }
+	.doc-body { display: flex; gap: 1rem; align-items: flex-start; }
 
 	.content-panel {
 		flex: 1;
@@ -727,7 +739,7 @@
 		border: 1px solid #2a2d3a;
 		border-radius: 8px;
 		padding: 1.25rem;
-		overflow-y: auto;
+		min-width: 0;
 	}
 
 	.content-panel.image-mode {
@@ -788,27 +800,25 @@
 	/* Margin tooltip: shows full code + memo on hover */
 	.margin-tooltip {
 		display: none;
-		position: absolute;
-		right: calc(100% + 0.5rem);
-		top: 0;
+		position: fixed;
 		background: #1e2030;
 		border: 1px solid #2a2d3a;
 		border-radius: 6px;
-		padding: 0.4rem 0.5rem;
-		font-size: 0.72rem;
+		padding: 0.5rem 0.6rem;
+		font-size: 0.75rem;
 		font-weight: 400;
 		color: #d1d5db;
 		white-space: normal;
-		width: 220px;
-		z-index: 20;
-		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+		width: 240px;
+		z-index: 30;
+		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
 		pointer-events: none;
-		line-height: 1.4;
+		line-height: 1.5;
 	}
-	.margin-tooltip strong { color: #e1e4e8; }
+	.margin-tooltip strong { color: #e1e4e8; display: block; margin-bottom: 0.2rem; }
 	.margin-tooltip em { color: #8b9cf7; font-style: italic; }
-	.mt-snippet { color: #6b7280; }
-	.margin-label:hover > .margin-tooltip { display: block; }
+	.mt-snippet { color: #6b7280; font-size: 0.7rem; }
+	.margin-label:hover > .margin-tooltip[style*="left"] { display: block; }
 
 	/* Coded text: background + underline, no layout shift */
 	.coded-text {
@@ -838,12 +848,14 @@
 	}
 	.coded-text:hover > .code-tooltip { display: block; }
 
-	/* Work panel: coding tools — constrained height, own scroll */
+	/* Work panel: sticky — stays fixed while document scrolls with browser scrollbar */
 	.work-panel {
 		width: 280px;
 		flex-shrink: 0;
+		position: sticky;
+		top: 1rem;
+		max-height: calc(100vh - 2rem);
 		overflow-y: auto;
-		max-height: 100%;
 	}
 
 	/* Annotations overlay: floating, draggable, resizable */
@@ -1191,8 +1203,19 @@
 		margin-top: 0.2rem;
 	}
 
-	/* Expanded annotation: passage in context */
-	.annotation-card { cursor: pointer; }
+	/* Expand button + expanded annotation */
+	.btn-expand-ann {
+		background: none;
+		border: none;
+		color: #6b7280;
+		font-size: 0.65rem;
+		cursor: pointer;
+		padding: 0 0.2rem;
+		margin-left: auto;
+		flex-shrink: 0;
+	}
+	.btn-expand-ann:hover { color: #8b9cf7; }
+	.annotation-card { cursor: default; }
 	.annotation-card.ann-expanded {
 		border-color: #4b5563;
 	}
