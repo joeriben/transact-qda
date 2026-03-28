@@ -53,7 +53,7 @@
 	let highlightedAnnotationId = $state<string | null>(null);
 
 	// Annotations panel toggle + filter + expand
-	let showAnnotations = $state(true);
+	let showAnnotations = $state(false);
 	let annFilter = $state('');
 	let expandedAnnId = $state<string | null>(null);
 	const filteredAnnotations = $derived(
@@ -710,7 +710,7 @@
 </div>
 
 <style>
-	.doc-viewer { display: flex; flex-direction: column; height: 100%; position: relative; }
+	.doc-viewer { display: flex; flex-direction: column; height: 100vh; max-height: 100vh; position: relative; overflow: hidden; }
 	.doc-header { margin-bottom: 1rem; }
 	.back { font-size: 0.8rem; color: #6b7280; display: inline-block; margin-bottom: 0.5rem; }
 	h1 { font-size: 1.2rem; margin-bottom: 0.25rem; }
@@ -835,11 +835,12 @@
 	}
 	.coded-text:hover > .code-tooltip { display: block; }
 
-	/* Work panel: coding tools — fixed position, own scroll */
+	/* Work panel: coding tools — constrained height, own scroll */
 	.work-panel {
 		width: 280px;
 		flex-shrink: 0;
 		overflow-y: auto;
+		max-height: 100%;
 	}
 
 	/* Annotations overlay: floating, draggable, resizable */
