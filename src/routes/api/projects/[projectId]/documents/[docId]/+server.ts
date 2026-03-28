@@ -1,6 +1,20 @@
 import { json, error } from '@sveltejs/kit';
 import { query } from '$lib/server/db/index.js';
 
+export async function PATCH({ params, request }) {
+	const { projectId, docId } = params;
+	const { label } = await request.json();
+	if (!label?.trim()) throw error(400, 'Label required');
+
+	const result = await query(
+		`UPDATE namings SET inscription = $1 WHERE id = $2 AND project_id = $3 AND deleted_at IS NULL RETURNING id`,
+		[label.trim(), docId, projectId]
+	);
+	if (result.rows.length === 0) throw error(404, 'Document not found');
+
+	return json({ ok: true, label: label.trim() });
+}
+
 export async function DELETE({ params }) {
 	const { projectId, docId } = params;
 

@@ -9,7 +9,26 @@
 	const c = $derived(data.counts);
 	const base = $derived(`/projects/${p.id}`);
 	const mapsByType = $derived(data.mapsByType as Record<string, { id: string; label: string }[]>);
+	const documents = $derived(data.documents as { id: string; label: string }[]);
 	const pathname = $derived($page.url.pathname);
+
+	// Inline doc rename
+	let renamingDocId = $state<string | null>(null);
+	let renameValue = $state('');
+
+	async function saveDocRename(docId: string) {
+		if (!renameValue.trim()) { renamingDocId = null; return; }
+		const res = await fetch(`/api/projects/${p.id}/documents/${docId}`, {
+			method: 'PATCH',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ label: renameValue.trim() })
+		});
+		if (res.ok) {
+			const d = documents.find(d => d.id === docId);
+			if (d) d.label = renameValue.trim();
+		}
+		renamingDocId = null;
+	}
 
 	// Coach: didactic AI persona
 	const coach = createCoachState(p.id);
@@ -140,7 +159,26 @@
 		{/if}
 
 		<nav>
-			<a href="{base}/documents" class:active={pathname.startsWith(`${base}/documents`)}>Documents</a>
+			<a href="{base}/documents" class:active={pathname === `${base}/documents`}>Documents</a>
+			{#each documents as d}
+				{#if renamingDocId === d.id}
+					<!-- svelte-ignore a11y_autofocus -->
+					<input
+						class="doc-rename-input"
+						bind:value={renameValue}
+						autofocus
+						onkeydown={(e) => { if (e.key === 'Enter') saveDocRename(d.id); if (e.key === 'Escape') renamingDocId = null; }}
+						onblur={() => saveDocRename(d.id)}
+					/>
+				{:else}
+					<a
+						href="{base}/documents/{d.id}"
+						class="doc-link"
+						class:active={pathname === `${base}/documents/${d.id}`}
+						ondblclick={(e) => { e.preventDefault(); renamingDocId = d.id; renameValue = d.label; }}
+					>{d.label}</a>
+				{/if}
+			{/each}
 			<a href="{base}/namings" class:active={pathname.startsWith(`${base}/namings`)}>Namings</a>
 			<a href="{base}/memos" class:active={pathname.startsWith(`${base}/memos`)}>Memos</a>
 			<a href="{base}/maps" class:active={pathname === `${base}/maps`}>Maps</a>
@@ -281,9 +319,25 @@
 		margin-top: 0;
 	}
 
-	.map-link {
+	.map-link, .doc-link {
 		padding-left: 1.2rem !important;
+		font-size: 0.78rem !important;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
+	.doc-rename-input {
+		margin-left: 1.2rem;
+		width: calc(100% - 1.4rem);
+		background: #0f1117;
+		border: 1px solid #8b9cf7;
+		border-radius: 4px;
+		padding: 0.25rem 0.4rem;
+		color: #e1e4e8;
+		font-size: 0.78rem;
+		font-family: inherit;
+	}
+	.doc-rename-input:focus { outline: none; }
 
 	.active {
 		background: #1e2030;

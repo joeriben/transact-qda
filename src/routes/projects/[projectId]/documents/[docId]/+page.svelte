@@ -545,12 +545,6 @@
 </script>
 
 <div class="doc-viewer">
-	<div class="doc-header">
-		<a href="/projects/{data.projectId}/documents" class="back">&larr; Documents</a>
-		<h1>{doc.label}</h1>
-		<span class="meta">{doc.mime_type} &middot; {formatSize(doc.file_size)}</span>
-	</div>
-
 	<div class="doc-body">
 		<div class="content-panel" class:image-mode={isImage}>
 			{#if isImage}
@@ -810,10 +804,6 @@
 
 <style>
 	.doc-viewer { }
-	.doc-header { margin-bottom: 0.75rem; }
-	.back { font-size: 0.8rem; color: #6b7280; display: inline-block; margin-bottom: 0.5rem; }
-	h1 { font-size: 1.2rem; margin-bottom: 0.25rem; }
-	.meta { font-size: 0.8rem; color: #6b7280; }
 
 	.doc-body {
 		display: flex;
@@ -942,6 +932,9 @@
 		height: 100vh;
 		display: flex;
 		flex-direction: column;
+		background: #161822;
+		border: 1px solid #2a2d3a;
+		border-radius: 8px;
 		overflow: hidden;
 	}
 	.namings-scroll {

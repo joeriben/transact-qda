@@ -1,5 +1,5 @@
 import type { LayoutServerLoad } from './$types.js';
-import { queryOne } from '$lib/server/db/index.js';
+import { query, queryOne } from '$lib/server/db/index.js';
 import { error } from '@sveltejs/kit';
 import { getMapsByProject } from '$lib/server/db/queries/maps.js';
 import { startPeriodicSync } from '$lib/server/project-sync/index.js';
@@ -58,10 +58,20 @@ export const load: LayoutServerLoad = async ({ params, locals }) => {
 		}
 	}
 
+	const docsResult = await query<{ id: string; label: string }>(
+		`SELECT n.id, n.inscription as label
+		 FROM namings n
+		 JOIN document_content dc ON dc.naming_id = n.id
+		 WHERE n.project_id = $1 AND n.deleted_at IS NULL
+		 ORDER BY n.inscription`,
+		[params.projectId]
+	);
+
 	return {
 		project,
 		mapByType,
 		mapsByType,
+		documents: docsResult.rows,
 		counts: {
 			documents: parseInt(counts?.documents || '0'),
 			namings: parseInt(counts?.namings || '0'),
