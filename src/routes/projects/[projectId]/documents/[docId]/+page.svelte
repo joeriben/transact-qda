@@ -399,6 +399,24 @@
 		return () => { scrollContainer.removeEventListener('scroll', onScroll); cancelAnimationFrame(raf); };
 	});
 
+	// Resizable code margin
+	let marginWidth = $state(100);
+
+	function startMarginResize(e: MouseEvent) {
+		e.preventDefault();
+		const startX = e.clientX;
+		const startWidth = marginWidth;
+		function onMove(ev: MouseEvent) {
+			marginWidth = Math.max(60, Math.min(300, startWidth - (ev.clientX - startX)));
+		}
+		function onUp() {
+			window.removeEventListener('mousemove', onMove);
+			window.removeEventListener('mouseup', onUp);
+		}
+		window.addEventListener('mousemove', onMove);
+		window.addEventListener('mouseup', onUp);
+	}
+
 	function scrollToPassage(annId: string) {
 		if (!textEl) return;
 		const span = textEl.querySelector(`.coded-text[data-ann-start="${annId}"]`);
@@ -546,45 +564,49 @@
 
 <div class="doc-viewer">
 	<div class="doc-body">
-		<div class="content-panel" class:image-mode={isImage}>
-			{#if isImage}
-				<ImageAnnotationViewer
-					bind:this={imageViewer}
-					imageUrl="/api/projects/{data.projectId}/documents/{doc.id}/image"
-					{annotations}
-					bind:highlightedAnnotationId
-					onregionselect={(region) => { regionSelection = region; }}
-				/>
-			{:else if doc.full_text}
+		<div class="doc-with-margin">
+			<div class="content-panel" class:image-mode={isImage}>
+				{#if isImage}
+					<ImageAnnotationViewer
+						bind:this={imageViewer}
+						imageUrl="/api/projects/{data.projectId}/documents/{doc.id}/image"
+						{annotations}
+						bind:highlightedAnnotationId
+						onregionselect={(region) => { regionSelection = region; }}
+					/>
+				{:else if doc.full_text}
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<pre class="document-text" bind:this={textEl} onmouseup={handleMouseUp}>{#each textSegments as seg, i}{#if seg.codes.length > 0}{@const isAnnStart = i === 0 || !textSegments[i - 1].codes.some(c => c.annId === seg.codes[0].annId)}<span
+						class="coded-text"
+						class:coded-highlighted={seg.codes.some(c => c.annId === highlightedAnnotationId)}
+						style="background: {codedBackground(seg.codes)}; border-bottom: 2px solid {seg.codes[0].color};"
+						data-element-id={seg.elementId || undefined}
+						data-ann-start={isAnnStart ? seg.codes[0].annId : undefined}
+						onmouseenter={() => { highlightedAnnotationId = seg.codes[0].annId; }}
+						onmouseleave={() => { highlightedAnnotationId = null; }}
+					>{seg.text}<span class="code-tooltip">{seg.codes.map(c => c.label).join(', ')}</span></span>{:else}<span data-element-id={seg.elementId || undefined}>{seg.text}</span>{/if}{/each}</pre>
+				{:else}
+					<p class="placeholder">No text content available</p>
+				{/if}
+			</div>
+
+			{#if !isImage}
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<pre class="document-text" bind:this={textEl} onmouseup={handleMouseUp}>{#each textSegments as seg, i}{#if seg.codes.length > 0}{@const isAnnStart = i === 0 || !textSegments[i - 1].codes.some(c => c.annId === seg.codes[0].annId)}<span
-					class="coded-text"
-					class:coded-highlighted={seg.codes.some(c => c.annId === highlightedAnnotationId)}
-					style="background: {codedBackground(seg.codes)}; border-bottom: 2px solid {seg.codes[0].color};"
-					data-element-id={seg.elementId || undefined}
-					data-ann-start={isAnnStart ? seg.codes[0].annId : undefined}
-					onmouseenter={() => { highlightedAnnotationId = seg.codes[0].annId; }}
-					onmouseleave={() => { highlightedAnnotationId = null; }}
-				>{seg.text}<span class="code-tooltip">{seg.codes.map(c => c.label).join(', ')}</span></span>{:else}<span data-element-id={seg.elementId || undefined}>{seg.text}</span>{/if}{/each}</pre>
-			{:else}
-				<p class="placeholder">No text content available</p>
+				<div class="margin-divider" onmousedown={startMarginResize}></div>
+				<div class="code-margin" bind:this={marginEl} style="width: {marginWidth}px;">
+					{#each marginLabels as ml (ml.annId)}
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
+						<span
+							class="margin-label"
+							class:margin-highlighted={highlightedAnnotationId === ml.annId}
+							style="color: {ml.color}; top: {ml.top}px;"
+							onmouseenter={(e) => { highlightedAnnotationId = ml.annId; showTooltip(e); }}
+							onmouseleave={() => { highlightedAnnotationId = null; hideTooltip(); }}
+						>{ml.label}<span class="margin-tooltip" style={tooltipStyle}><strong>{ml.fullLabel}</strong>{#if ml.comment}<em>{ml.comment}</em>{/if}{#if ml.snippet}<span class="mt-snippet">{ml.snippet}</span>{/if}</span></span>
+					{/each}
+				</div>
 			{/if}
 		</div>
-
-		{#if !isImage}
-			<div class="code-margin" bind:this={marginEl}>
-				{#each marginLabels as ml (ml.annId)}
-					<!-- svelte-ignore a11y_no_static_element_interactions -->
-					<span
-						class="margin-label"
-						class:margin-highlighted={highlightedAnnotationId === ml.annId}
-						style="color: {ml.color}; top: {ml.top}px;"
-						onmouseenter={(e) => { highlightedAnnotationId = ml.annId; showTooltip(e); }}
-						onmouseleave={() => { highlightedAnnotationId = null; hideTooltip(); }}
-					>{ml.label}<span class="margin-tooltip" style={tooltipStyle}><strong>{ml.fullLabel}</strong>{#if ml.comment}<em>{ml.comment}</em>{/if}{#if ml.snippet}<span class="mt-snippet">{ml.snippet}</span>{/if}</span></span>
-				{/each}
-			</div>
-		{/if}
 
 		<!-- Namings: permanent code overview -->
 		<div class="namings-panel">
@@ -810,12 +832,18 @@
 		gap: 1rem;
 	}
 
-	.content-panel {
+	.doc-with-margin {
 		flex: 1;
+		display: flex;
 		min-width: 0;
 		background: #161822;
 		border: 1px solid #2a2d3a;
 		border-radius: 8px;
+	}
+
+	.content-panel {
+		flex: 1;
+		min-width: 0;
 		padding: 1.25rem;
 	}
 
@@ -841,16 +869,28 @@
 		background: rgba(139, 156, 247, 0.35);
 	}
 
+	/* Resize handle between doc text and code margin */
+	.margin-divider {
+		width: 3px;
+		flex-shrink: 0;
+		cursor: col-resize;
+		background: #2a2d3a;
+		transition: background 0.15s;
+		position: sticky;
+		top: 0;
+		align-self: flex-start;
+		height: 100vh;
+	}
+	.margin-divider:hover { background: #8b9cf7; }
+
 	/* Code margin column — sticky, stays in place while document scrolls */
 	.code-margin {
-		width: 100px;
 		flex-shrink: 0;
 		position: sticky;
 		top: 0;
 		align-self: flex-start;
 		height: 100vh;
 		overflow: hidden;
-		border-left: 1px solid #2a2d3a;
 		padding-left: 0.4rem;
 	}
 	.margin-label {
@@ -863,7 +903,7 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
-		max-width: 95px;
+		max-width: calc(100% - 0.5rem);
 		cursor: default;
 		opacity: 0.8;
 	}
