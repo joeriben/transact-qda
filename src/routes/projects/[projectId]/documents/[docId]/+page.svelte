@@ -409,6 +409,7 @@
 	}
 
 	async function annotate(codeId: string) {
+		if (annotating) return;
 		if (!selection && !regionSelection) return;
 		annotating = true;
 

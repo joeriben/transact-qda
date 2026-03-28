@@ -137,6 +137,22 @@ export async function createAnnotation(
 	return transaction(async (client) => {
 		const perspectiveId = await getOrCreateGroundingWorkspace(projectId, userId);
 
+		// Duplicate check: same code + document + same anchor position
+		const existing = await client.query(
+			`SELECT a.naming_id as id FROM appearances a
+			 JOIN namings n ON n.id = a.naming_id AND n.deleted_at IS NULL
+			 WHERE a.directed_from = $1 AND a.directed_to = $2 AND a.valence = 'codes'
+			   AND n.project_id = $3
+			   AND a.properties->>'anchorType' = $4
+			   AND a.properties->'anchor'->>'pos0' = $5
+			   AND a.properties->'anchor'->>'pos1' = $6`,
+			[codeId, documentId, projectId, anchorType,
+			 String(anchor.pos0 ?? ''), String(anchor.pos1 ?? '')]
+		);
+		if (existing.rows.length > 0) {
+			return existing.rows[0];
+		}
+
 		// The annotation is a naming
 		const annNaming = await client.query(
 			`INSERT INTO namings (project_id, inscription, created_by)
