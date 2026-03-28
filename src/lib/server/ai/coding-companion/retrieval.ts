@@ -64,6 +64,7 @@ export async function retrieveComparisonMaterial(
 		maxSimilar?: number;
 		maxCodes?: number;
 		maxGroundingsPerCode?: number;
+		scope?: 'in-document' | 'cross-document';
 	}
 ): Promise<RetrievalResult> {
 	const maxSimilar = options?.maxSimilar ?? 10;
@@ -97,10 +98,12 @@ export async function retrieveComparisonMaterial(
 		documentTitle: source.document_title
 	};
 
+	const scopeDocId = options?.scope === 'in-document' ? source.document_id : undefined;
+
 	// 2. Find similar passages with their codes (parallel)
 	const [similarPassages, existingCodes] = await Promise.all([
-		findSimilarWithCodes(projectId, elementId, maxSimilar),
-		getCodesWithGroundings(projectId, maxCodes, maxGroundingsPerCode)
+		findSimilarWithCodes(projectId, elementId, maxSimilar, scopeDocId),
+		getCodesWithGroundings(projectId, maxCodes, maxGroundingsPerCode, scopeDocId)
 	]);
 
 	return { passage, similarPassages, existingCodes };
@@ -118,11 +121,13 @@ export async function retrieveComparisonMaterialForText(
 		maxSimilar?: number;
 		maxCodes?: number;
 		maxGroundingsPerCode?: number;
+		scope?: 'in-document' | 'cross-document';
 	}
 ): Promise<RetrievalResult> {
 	const maxSimilar = options?.maxSimilar ?? 10;
 	const maxCodes = options?.maxCodes ?? 10;
 	const maxGroundingsPerCode = options?.maxGroundingsPerCode ?? 3;
+	const scope = options?.scope ?? 'in-document';
 
 	// Get document title
 	const docRow = await query<{ inscription: string }>(
@@ -138,9 +143,11 @@ export async function retrieveComparisonMaterialForText(
 		documentTitle
 	};
 
+	const scopeDocId = scope === 'in-document' ? documentId : undefined;
+
 	const [similarPassages, existingCodes] = await Promise.all([
-		findSimilarToTextWithCodes(projectId, text, maxSimilar),
-		getCodesWithGroundings(projectId, maxCodes, maxGroundingsPerCode)
+		findSimilarToTextWithCodes(projectId, text, maxSimilar, scopeDocId),
+		getCodesWithGroundings(projectId, maxCodes, maxGroundingsPerCode, scopeDocId)
 	]);
 
 	return { passage, similarPassages, existingCodes };
@@ -154,8 +161,13 @@ export async function retrieveComparisonMaterialForText(
 async function findSimilarWithCodes(
 	projectId: string,
 	elementId: string,
-	limit: number
+	limit: number,
+	scopeDocumentId?: string
 ): Promise<SimilarPassage[]> {
+	const scopeClause = scopeDocumentId ? `AND e2.document_id = $4` : '';
+	const params: any[] = [elementId, projectId, limit];
+	if (scopeDocumentId) params.push(scopeDocumentId);
+
 	const result = await query<{
 		element_id: string;
 		content: string;
@@ -191,9 +203,10 @@ async function findSimilarWithCodes(
 		 WHERE e2.embedding IS NOT NULL
 		   AND e2.id != $1
 		   AND doc.project_id = $2
+		   ${scopeClause}
 		 ORDER BY e2.embedding <=> s.embedding
 		 LIMIT $3`,
-		[elementId, projectId, limit]
+		params
 	);
 
 	return groupPassageCodes(result.rows);
@@ -205,10 +218,15 @@ async function findSimilarWithCodes(
 async function findSimilarToTextWithCodes(
 	projectId: string,
 	text: string,
-	limit: number
+	limit: number,
+	scopeDocumentId?: string
 ): Promise<SimilarPassage[]> {
 	const vec = await embed(text);
 	const pgVec = toPgVector(vec);
+
+	const scopeClause = scopeDocumentId ? `AND e.document_id = $4` : '';
+	const params: any[] = [pgVec, projectId, limit];
+	if (scopeDocumentId) params.push(scopeDocumentId);
 
 	const result = await query<{
 		element_id: string;
@@ -239,9 +257,10 @@ async function findSimilarToTextWithCodes(
 		 LEFT JOIN namings code ON code.id = ann.directed_from AND code.deleted_at IS NULL
 		 WHERE e.embedding IS NOT NULL
 		   AND doc.project_id = $2
+		   ${scopeClause}
 		 ORDER BY e.embedding <=> $1::vector
 		 LIMIT $3`,
-		[pgVec, projectId, limit]
+		params
 	);
 
 	return groupPassageCodes(result.rows);
@@ -297,9 +316,15 @@ function groupPassageCodes(
 async function getCodesWithGroundings(
 	projectId: string,
 	maxCodes: number,
-	maxGroundingsPerCode: number
+	maxGroundingsPerCode: number,
+	scopeDocumentId?: string
 ): Promise<CodeWithGroundings[]> {
 	// Get codes that have document anchors, ordered by grounding count
+	// When scoped to a document, only return codes grounded in that document
+	const scopeClause = scopeDocumentId ? `AND ann.directed_to = $3` : '';
+	const params: any[] = [projectId, maxCodes];
+	if (scopeDocumentId) params.push(scopeDocumentId);
+
 	const codesResult = await query<{
 		code_id: string;
 		code_label: string;
@@ -316,10 +341,11 @@ async function getCodesWithGroundings(
 		 JOIN appearances ann ON ann.directed_from = code.id AND ann.valence = 'codes'
 		 JOIN namings ann_n ON ann_n.id = ann.naming_id AND ann_n.deleted_at IS NULL
 		 WHERE code.project_id = $1 AND code.deleted_at IS NULL
+		   ${scopeClause}
 		 GROUP BY code.id, code.inscription
 		 ORDER BY grounding_count DESC
 		 LIMIT $2`,
-		[projectId, maxCodes]
+		params
 	);
 
 	// For each code, get sample groundings

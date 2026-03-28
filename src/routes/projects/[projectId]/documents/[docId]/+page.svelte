@@ -42,7 +42,7 @@
 		for (const c of filteredCandidates) {
 			const key = c.source_map_id || '__orphan__';
 			if (!groups.has(key)) {
-				groups.set(key, { label: c.source_map_label || 'Unplaced', items: [] });
+				groups.set(key, { label: c.source_map_label || 'Project', items: [] });
 			}
 			groups.get(key)!.items.push(c);
 		}
@@ -51,6 +51,16 @@
 
 	// Annotation highlight on hover
 	let highlightedAnnotationId = $state<string | null>(null);
+
+	// Annotations panel toggle + filter
+	let showAnnotations = $state(true);
+	let annFilter = $state('');
+	const filteredAnnotations = $derived(
+		annFilter.trim()
+			? annotations.filter((a: any) => a.code_label.toLowerCase().includes(annFilter.trim().toLowerCase())
+				|| (a.properties?.anchor?.text || '').toLowerCase().includes(annFilter.trim().toLowerCase()))
+			: annotations
+	);
 
 	// Image viewer ref
 	let imageViewer = $state<{ clearRegion: () => void }>();
@@ -176,27 +186,63 @@
 		return segments;
 	});
 
-	// Margin annotations: code labels positioned at the starting line of each annotation
+	// Margin annotations: positioned by actual DOM coordinates
 	function shortLabel(label: string): string {
 		const words = label.split(/\s+/);
 		return words.length <= 2 ? label : words.slice(0, 2).join(' ') + '…';
 	}
 
-	const marginMap = $derived.by(() => {
-		const text = doc.full_text;
-		if (!text) return new Map<number, { annId: string; label: string; color: string }>();
-		const map = new Map<number, { annId: string; label: string; color: string }>();
-		for (const ann of annotations) {
-			const anchor = ann.properties?.anchor;
-			if (!anchor || anchor.pos0 == null) continue;
-			const line = text.slice(0, anchor.pos0).split('\n').length - 1;
-			if (!map.has(line)) {
-				map.set(line, { annId: ann.id, label: shortLabel(ann.code_label), color: ann.code_color || '#8b9cf7' });
-			}
+	// Margin labels with measured Y positions
+	let marginLabels = $state<Array<{ annId: string; label: string; color: string; top: number }>>([]);
+	let marginEl = $state<HTMLDivElement>();
+
+	function measureMarginPositions() {
+		if (!textEl) return;
+
+		// Find the first coded-text span for each annotation
+		const annSpans = textEl.querySelectorAll<HTMLSpanElement>('.coded-text[data-ann-start]');
+		const containerTop = textEl.offsetTop;
+		const labels: typeof marginLabels = [];
+		const seen = new Set<string>();
+
+		for (const span of annSpans) {
+			const annId = span.dataset.annStart!;
+			if (seen.has(annId)) continue;
+			seen.add(annId);
+
+			const ann = annotations.find((a: any) => a.id === annId);
+			if (!ann) continue;
+
+			const top = span.offsetTop - containerTop;
+			labels.push({
+				annId,
+				label: shortLabel(ann.code_label),
+				color: ann.code_color || '#8b9cf7',
+				top
+			});
 		}
-		return map;
+
+		marginLabels = labels;
+	}
+
+	// Re-measure after DOM updates (annotations change, window resize)
+	$effect(() => {
+		// Track dependencies that affect layout
+		void textSegments;
+		void annotations;
+
+		// Measure after DOM settles
+		const raf = requestAnimationFrame(() => measureMarginPositions());
+		return () => cancelAnimationFrame(raf);
 	});
-	const lineCount = $derived(doc.full_text ? doc.full_text.split('\n').length : 0);
+
+	// Re-measure on resize (window width changes cause text wrapping)
+	$effect(() => {
+		if (!textEl) return;
+		const observer = new ResizeObserver(() => measureMarginPositions());
+		observer.observe(textEl);
+		return () => observer.disconnect();
+	});
 
 	async function annotate(codeId: string) {
 		if (!selection && !regionSelection) return;
@@ -335,29 +381,25 @@
 			{:else if doc.full_text}
 				<div class="text-with-margin">
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
-					<pre class="document-text" bind:this={textEl} onmouseup={handleMouseUp}>{#each textSegments as seg}{#if seg.codes.length > 0}<span
+					<pre class="document-text" bind:this={textEl} onmouseup={handleMouseUp}>{#each textSegments as seg, i}{#if seg.codes.length > 0}{@const isAnnStart = i === 0 || !textSegments[i - 1].codes.some(c => c.annId === seg.codes[0].annId)}<span
 						class="coded-text"
 						class:coded-highlighted={seg.codes.some(c => c.annId === highlightedAnnotationId)}
 						style="background: {codedBackground(seg.codes)}; border-bottom: 2px solid {seg.codes[0].color};"
 						data-element-id={seg.elementId || undefined}
+						data-ann-start={isAnnStart ? seg.codes[0].annId : undefined}
 						onmouseenter={() => { highlightedAnnotationId = seg.codes[0].annId; }}
 						onmouseleave={() => { highlightedAnnotationId = null; }}
 					>{seg.text}<span class="code-tooltip">{seg.codes.map(c => c.label).join(', ')}</span></span>{:else}<span data-element-id={seg.elementId || undefined}>{seg.text}</span>{/if}{/each}</pre>
-					<div class="code-margin">
-						{#each { length: lineCount } as _, i}
-							<div class="margin-line">
-								{#if marginMap.has(i)}
-									{@const ma = marginMap.get(i)!}
-									<!-- svelte-ignore a11y_no_static_element_interactions -->
-									<span
-										class="margin-label"
-										class:margin-highlighted={highlightedAnnotationId === ma.annId}
-										style="color: {ma.color};"
-										onmouseenter={() => { highlightedAnnotationId = ma.annId; }}
-										onmouseleave={() => { highlightedAnnotationId = null; }}
-									>{ma.label}</span>
-								{/if}
-							</div>
+					<div class="code-margin" bind:this={marginEl}>
+						{#each marginLabels as ml (ml.annId)}
+							<!-- svelte-ignore a11y_no_static_element_interactions -->
+							<span
+								class="margin-label"
+								class:margin-highlighted={highlightedAnnotationId === ml.annId}
+								style="color: {ml.color}; top: {ml.top}px;"
+								onmouseenter={() => { highlightedAnnotationId = ml.annId; }}
+								onmouseleave={() => { highlightedAnnotationId = null; }}
+							>{ml.label}</span>
 						{/each}
 					</div>
 				</div>
@@ -366,7 +408,8 @@
 			{/if}
 		</div>
 
-		<div class="code-panel">
+		<!-- Work panel: coding tools (non-scrolling position, own internal scroll) -->
+		<div class="work-panel">
 			{#if hasSelection}
 				<div class="selection-section">
 					<div class="section-header">
@@ -374,9 +417,15 @@
 							<img src="/icons/{isImage ? 'draw' : 'ink_highlighter'}.svg" alt="" class="section-icon" />
 							Annotate
 						</h3>
-						<button class="btn-cancel" onclick={cancelSelection}>
-							Cancel
-						</button>
+						<div class="header-actions">
+							<button
+								class="btn-toggle-ann"
+								class:active={showAnnotations}
+								onclick={() => { showAnnotations = !showAnnotations; }}
+								title="{showAnnotations ? 'Hide' : 'Show'} annotations ({annotations.length})"
+							>{annotations.length}</button>
+							<button class="btn-cancel" onclick={cancelSelection}>Cancel</button>
+						</div>
 					</div>
 					<div class="selection-preview">{getSelectionPreview()}</div>
 
@@ -386,6 +435,7 @@
 							docId={doc.id}
 							{selection}
 							onannotate={(codeId) => annotate(codeId)}
+							documentTitle={doc.label}
 						/>
 					{/if}
 
@@ -393,7 +443,7 @@
 						<input
 							type="text"
 							class="code-filter-input"
-							placeholder="Search or create code..."
+							placeholder="Annotate with code..."
 							bind:value={codeFilter}
 							disabled={annotating || creatingCode}
 						/>
@@ -434,7 +484,7 @@
 					<input
 						type="text"
 						class="comment-input"
-						placeholder="Comment (optional)"
+						placeholder="Code-Memo (optional)"
 						bind:value={comment}
 					/>
 				</div>
@@ -442,15 +492,36 @@
 				<div class="hint">
 					<img src="/icons/{isImage ? 'draw' : 'ink_highlighter'}.svg" alt="" class="section-icon" />
 					<span>{isImage ? 'Draw a region to annotate' : 'Select text to annotate'}</span>
+					<button
+						class="btn-toggle-ann hint-toggle"
+						class:active={showAnnotations}
+						onclick={() => { showAnnotations = !showAnnotations; }}
+						title="{showAnnotations ? 'Hide' : 'Show'} annotations"
+					>{annotations.length}</button>
 				</div>
 			{/if}
+		</div>
 
-			<div class="annotations-section">
+	</div>
+
+	<!-- Annotations overlay: floating, resizable reference panel -->
+	{#if showAnnotations}
+		<div class="annotations-overlay">
+			<div class="annotations-header">
 				<h3>Annotations <span class="count">({annotations.length})</span></h3>
-				{#if annotations.length === 0}
-					<p class="empty">No annotations yet.</p>
+				<button class="btn-close-ann" onclick={() => { showAnnotations = false; }}>&times;</button>
+			</div>
+			<input
+				type="text"
+				class="ann-search"
+				placeholder="Filter annotations..."
+				bind:value={annFilter}
+			/>
+			<div class="annotations-scroll">
+				{#if filteredAnnotations.length === 0}
+					<p class="empty">{annFilter ? 'No matches.' : 'No annotations yet.'}</p>
 				{:else}
-					{#each annotations as ann (ann.id)}
+					{#each filteredAnnotations as ann (ann.id)}
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
 						<div
 							class="annotation-card"
@@ -461,10 +532,9 @@
 							<div class="ann-header">
 								<span class="color-dot" style="background: {ann.code_color || '#8b9cf7'}"></span>
 								<span class="code-name">{ann.code_label}</span>
-								<button class="btn-remove" title="Delete annotation" onclick={() => deleteAnnotation(ann.id)}>&times;</button>
 							</div>
 							{#if getSnippet(ann)}
-								<div class="ann-text">{getSnippet(ann)}</div>
+								<div class="ann-text">{truncate(getSnippet(ann), 80)}</div>
 							{/if}
 							{#if ann.properties?.comment}
 								<div class="ann-comment">{ann.properties.comment}</div>
@@ -474,11 +544,11 @@
 				{/if}
 			</div>
 		</div>
-	</div>
+	{/if}
 </div>
 
 <style>
-	.doc-viewer { display: flex; flex-direction: column; height: 100%; }
+	.doc-viewer { display: flex; flex-direction: column; height: 100%; position: relative; }
 	.doc-header { margin-bottom: 1rem; }
 	.back { font-size: 0.8rem; color: #6b7280; display: inline-block; margin-bottom: 0.5rem; }
 	h1 { font-size: 1.2rem; margin-bottom: 0.25rem; }
@@ -523,26 +593,22 @@
 		background: rgba(139, 156, 247, 0.35);
 	}
 
-	/* Code margin column — same typography as .document-text for flow-based alignment */
+	/* Code margin column — absolutely positioned labels based on DOM measurement */
 	.code-margin {
 		width: 100px;
 		flex-shrink: 0;
+		position: relative;
 		border-left: 1px solid #2a2d3a;
 		margin-left: 0.5rem;
 		padding-left: 0.4rem;
-		font-size: 0.85rem;
-		line-height: 1.7;
-	}
-	.margin-line {
-		height: 1lh;
-		overflow: hidden;
 	}
 	.margin-label {
-		display: inline-block;
+		position: absolute;
+		left: 0.4rem;
+		display: block;
 		font-family: system-ui, sans-serif;
 		font-size: 0.65rem;
 		line-height: normal;
-		vertical-align: middle;
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -583,13 +649,68 @@
 	}
 	.coded-text:hover > .code-tooltip { display: block; }
 
-	.code-panel {
-		width: 300px;
+	/* Work panel: coding tools — fixed position, own scroll */
+	.work-panel {
+		width: 280px;
 		flex-shrink: 0;
+		overflow-y: auto;
+	}
+
+	/* Annotations overlay: floating, resizable reference panel */
+	.annotations-overlay {
+		position: absolute;
+		top: 3rem;
+		right: 1rem;
+		width: 280px;
+		max-height: calc(100% - 4rem);
 		display: flex;
 		flex-direction: column;
-		gap: 0.75rem;
+		background: #161822;
+		border: 1px solid #2a2d3a;
+		border-radius: 8px;
+		box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+		z-index: 10;
+		resize: both;
+		overflow: hidden;
+		min-width: 200px;
+		min-height: 150px;
+	}
+	.annotations-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 0.4rem 0.6rem;
+		border-bottom: 1px solid #2a2d3a;
+		flex-shrink: 0;
+		cursor: default;
+	}
+	.annotations-header h3 { margin: 0; font-size: 0.8rem; }
+	.btn-close-ann {
+		background: none;
+		border: none;
+		color: #6b7280;
+		font-size: 1.1rem;
+		cursor: pointer;
+		padding: 0 0.2rem;
+		line-height: 1;
+	}
+	.btn-close-ann:hover { color: #e1e4e8; }
+	.ann-search {
+		width: 100%;
+		background: #0f1117;
+		border: none;
+		border-bottom: 1px solid #2a2d3a;
+		padding: 0.35rem 0.6rem;
+		color: #e1e4e8;
+		font-size: 0.75rem;
+		box-sizing: border-box;
+		flex-shrink: 0;
+	}
+	.ann-search:focus { outline: none; border-bottom-color: #8b9cf7; }
+	.annotations-scroll {
+		flex: 1;
 		overflow-y: auto;
+		padding: 0.4rem 0.5rem;
 	}
 
 	.section-icon { width: 16px; height: 16px; opacity: 0.5; }
@@ -607,6 +728,11 @@
 		align-items: center;
 		justify-content: space-between;
 		margin-bottom: 0.5rem;
+	}
+	.header-actions {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
 	}
 
 	.section-header h3 {
@@ -626,6 +752,22 @@
 		cursor: pointer;
 	}
 	.btn-cancel:hover { color: #e1e4e8; }
+
+	.btn-toggle-ann {
+		font-size: 0.68rem;
+		font-weight: 600;
+		color: #6b7280;
+		background: #1e2030;
+		border: 1px solid #2a2d3a;
+		border-radius: 4px;
+		padding: 0.15rem 0.4rem;
+		cursor: pointer;
+		min-width: 1.5rem;
+		text-align: center;
+	}
+	.btn-toggle-ann:hover { border-color: #8b9cf7; color: #e1e4e8; }
+	.btn-toggle-ann.active { border-color: #8b9cf7; color: #8b9cf7; }
+	.hint-toggle { margin-left: auto; }
 
 	/* In-vivo coding */
 	.invivo-form {
@@ -741,17 +883,7 @@
 		padding: 0.75rem;
 	}
 
-	/* Annotations list */
-	.annotations-section {
-		background: #161822;
-		border: 1px solid #2a2d3a;
-		border-radius: 8px;
-		padding: 0.75rem;
-		flex: 1;
-		overflow-y: auto;
-	}
-
-	.annotations-section h3 {
+	.annotations-header h3, .annotations-panel h3 {
 		font-size: 0.85rem;
 		color: #8b8fa3;
 		margin-bottom: 0.75rem;

@@ -121,6 +121,83 @@ export async function comparePassage(
 	}
 }
 
+// ── Follow-up discussion ──────────────────────────────────────────────────
+
+/**
+ * Continue a discussion about a comparison result.
+ * The researcher can ask follow-up questions, request deeper analysis,
+ * or ask the AI to search for related passages/patterns.
+ */
+export async function discussComparison(
+	retrieval: RetrievalResult,
+	comparisonResult: ComparisonResult,
+	history: { role: 'user' | 'assistant'; content: string }[],
+	userMessage: string,
+	projectId: string,
+	options?: { language?: string; maxTokens?: number }
+): Promise<{ response: string; tokensUsed: number }> {
+	const maxTokens = options?.maxTokens ?? 1024;
+
+	// Build the initial context from the comparison
+	const contextMessage = formatRetrievalForLLM(retrieval, options?.language);
+	const comparisonSummary = formatComparisonForDiscussion(comparisonResult);
+
+	const messages: { role: 'user' | 'assistant'; content: string }[] = [
+		{ role: 'user', content: contextMessage },
+		{ role: 'assistant', content: comparisonSummary },
+		...history,
+		{ role: 'user', content: userMessage }
+	];
+
+	const response = await chat({
+		system: DISCUSSION_SYSTEM_PROMPT,
+		messages,
+		maxTokens
+	});
+
+	await logInteraction(
+		projectId,
+		'coding-companion-discuss',
+		response.model,
+		{ passageLength: retrieval.passage.content.length, historyLength: history.length },
+		{ responseLength: response.text.length },
+		response.tokensUsed,
+		response.provider,
+		response.inputTokens,
+		response.outputTokens
+	);
+
+	return { response: response.text, tokensUsed: response.tokensUsed };
+}
+
+const DISCUSSION_SYSTEM_PROMPT = `You are a comparison companion for qualitative data analysis. A researcher is coding a text passage and has received comparison results. They now want to discuss, deepen, or redirect the analysis.
+
+Your role:
+- Answer the researcher's questions about the passage, the codes, or the comparison.
+- When asked to "look for similar passages" or patterns, refer to the material you have and point out connections.
+- Stay Socratic: ask back, point out tensions, suggest angles — but do NOT code for the researcher.
+- Be concise. 2-4 sentences per response unless the researcher asks for more detail.
+- Match the language of the conversation.
+- You may suggest looking at specific parts of the text or specific codes more closely.
+- Do NOT suggest new code names or make coding decisions.`;
+
+function formatComparisonForDiscussion(result: ComparisonResult): string {
+	const parts: string[] = [];
+	if (result.comparisons.length > 0) {
+		parts.push('Here are the comparisons I found:\n');
+		for (const c of result.comparisons) {
+			parts.push(`**${c.codeLabel}** [${c.designation}]: ${c.analysis}`);
+		}
+	}
+	if (result.questions.length > 0) {
+		parts.push('\nQuestions for consideration:');
+		for (const q of result.questions) {
+			parts.push(`- ${q}`);
+		}
+	}
+	return parts.join('\n');
+}
+
 // ── Formatting ─────────────────────────────────────────────────────────────
 
 function formatRetrievalForLLM(retrieval: RetrievalResult, language?: string): string {
