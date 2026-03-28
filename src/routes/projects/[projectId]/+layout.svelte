@@ -143,10 +143,11 @@
 			<a href="{base}/documents" class:active={pathname.startsWith(`${base}/documents`)}>Documents</a>
 			<a href="{base}/namings" class:active={pathname.startsWith(`${base}/namings`)}>Namings</a>
 			<a href="{base}/memos" class:active={pathname.startsWith(`${base}/memos`)}>Memos</a>
+			<a href="{base}/maps" class:active={pathname === `${base}/maps`}>Maps</a>
 
 			{#each mapTypeOrder as type}
 				{#if mapsByType[type]?.length}
-					<a href="{base}/maps" class="map-group-label">{mapTypeLabels[type]}</a>
+					<span class="map-group-label">{mapTypeLabels[type]}</span>
 					{#each mapsByType[type] as map}
 						<a
 							href="{base}/maps/{map.id}"
