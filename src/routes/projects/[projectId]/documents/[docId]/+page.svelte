@@ -725,14 +725,33 @@
 	{/if}
 
 <style>
-	.doc-viewer { display: flex; flex-direction: column; position: relative; }
-	.doc-header { margin-bottom: 1rem; }
-	.back { font-size: 0.8rem; color: #6b7280; display: inline-block; margin-bottom: 0.5rem; }
-	h1 { font-size: 1.2rem; margin-bottom: 0.25rem; }
+	.doc-viewer { position: relative; }
+
+	/* Header: fixed at top */
+	.doc-header {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		z-index: 5;
+		background: #0f1117;
+		padding: 0.5rem 1rem;
+		border-bottom: 1px solid #2a2d3a;
+	}
+	.back { font-size: 0.8rem; color: #6b7280; display: inline-block; margin-bottom: 0.25rem; }
+	h1 { font-size: 1.2rem; margin-bottom: 0.15rem; }
 	.meta { font-size: 0.8rem; color: #6b7280; }
 
-	.doc-body { display: flex; gap: 1rem; align-items: flex-start; }
+	/* Body: document scrolls with browser, work-panel fixed */
+	.doc-body {
+		display: flex;
+		gap: 1rem;
+		align-items: flex-start;
+		margin-top: 5rem; /* clear fixed header */
+		padding: 0 1rem 2rem;
+	}
 
+	/* Document: natural flow, browser scrollbar */
 	.content-panel {
 		flex: 1;
 		background: #161822;
@@ -740,6 +759,7 @@
 		border-radius: 8px;
 		padding: 1.25rem;
 		min-width: 0;
+		margin-right: 296px; /* clear fixed work-panel */
 	}
 
 	.content-panel.image-mode {
@@ -848,13 +868,13 @@
 	}
 	.coded-text:hover > .code-tooltip { display: block; }
 
-	/* Work panel: sticky — stays fixed while document scrolls with browser scrollbar */
+	/* Work panel: fixed at right side of viewport */
 	.work-panel {
+		position: fixed;
+		top: 5.5rem; /* below fixed header */
+		right: 1rem;
 		width: 280px;
-		flex-shrink: 0;
-		position: sticky;
-		top: 1rem;
-		max-height: calc(100vh - 2rem);
+		max-height: calc(100vh - 6.5rem);
 		overflow-y: auto;
 	}
 
