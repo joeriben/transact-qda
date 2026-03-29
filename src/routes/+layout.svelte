@@ -1,6 +1,5 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { marked } from 'marked';
 
 	let { data, children }: { data: { user: any }; children: Snippet } = $props();
 
@@ -17,6 +16,7 @@
 			const res = await fetch('/api/manual');
 			if (res.ok) {
 				const { content } = await res.json();
+				const { marked } = await import('marked');
 				manualHtml = marked(content) as string;
 			}
 		}
