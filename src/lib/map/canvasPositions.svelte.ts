@@ -23,6 +23,9 @@ export function createCanvasPositions(
 	let layoutInitialized = false;
 	let currentMapId: string | null = null;
 
+	// Keep mapState.positionsRef in sync for unresolved tracking
+	$effect(() => { ms.positionsRef = positions; });
+
 	// ─── Center-on (radial layout) ───
 
 	let centeredId = $state<string | null>(null);
@@ -121,8 +124,18 @@ export function createCanvasPositions(
 	}
 
 	async function layoutNewNodes() {
+		// On primary SitMap, don't auto-position elements from coding bridge.
+		// They are "unresolved" — placement is a conscious analytical act.
+		// Only auto-position elements that have stored x/y in properties (= previously placed).
 		const unpositioned = [...ms.elements, ...ms.relations, ...ms.silences]
-			.filter((n: any) => !positions.has(n.naming_id));
+			.filter((n: any) => !positions.has(n.naming_id))
+			.filter((n: any) => {
+				if (!ms.isPrimary) return true;
+				// On primary map: only layout nodes that have stored positions or are relations
+				const px = n.properties?.x;
+				const py = n.properties?.y;
+				return (typeof px === 'number' && typeof py === 'number') || n.mode === 'relation';
+			});
 		if (unpositioned.length === 0) return;
 		if (unpositioned.length <= 2 && positions.size > 0) {
 			const merged = new Map(positions);

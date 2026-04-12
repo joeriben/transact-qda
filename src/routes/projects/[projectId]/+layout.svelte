@@ -8,7 +8,7 @@
 	const p = $derived(data.project);
 	const c = $derived(data.counts);
 	const base = $derived(`/projects/${p.id}`);
-	const mapsByType = $derived(data.mapsByType as Record<string, { id: string; label: string }[]>);
+	const mapsByType = $derived(data.mapsByType as Record<string, { id: string; label: string; isPrimary?: boolean }[]>);
 	const documents = $derived(data.documents as { id: string; label: string }[]);
 	const pathname = $derived($page.url.pathname);
 
@@ -191,7 +191,7 @@
 							href="{base}/maps/{map.id}"
 							class="map-link"
 							class:active={pathname === `${base}/maps/${map.id}`}
-						>{map.label}</a>
+						>{#if map.isPrimary}<span class="primary-dot" title="Primary Situational Map">●</span> {/if}{map.label}</a>
 					{/each}
 				{/if}
 			{/each}
@@ -319,6 +319,7 @@
 		margin-top: 0;
 	}
 
+	.primary-dot { color: #8b9cf7; font-size: 0.6rem; }
 	.map-link, .doc-link {
 		padding-left: 1.2rem !important;
 		font-size: 0.78rem !important;

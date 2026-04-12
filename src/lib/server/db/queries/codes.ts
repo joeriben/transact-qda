@@ -121,6 +121,26 @@ export async function createOrphanNaming(
 			[naming.id, perspectiveId, JSON.stringify(props)]
 		);
 
+		// Also place on primary Situational Map (unresolved — no x/y)
+		const primaryMap = await client.query(
+			`SELECT n.id FROM namings n
+			 JOIN appearances a ON a.naming_id = n.id AND a.perspective_id = n.id
+			 WHERE n.project_id = $1 AND n.deleted_at IS NULL
+			   AND a.mode = 'perspective'
+			   AND a.properties->>'mapType' = 'situational'
+			   AND (a.properties->>'isPrimary')::boolean = true
+			 LIMIT 1`,
+			[projectId]
+		);
+		if (primaryMap.rows.length > 0) {
+			await client.query(
+				`INSERT INTO appearances (naming_id, perspective_id, mode, properties)
+				 VALUES ($1, $2, 'entity', '{}')
+				 ON CONFLICT (naming_id, perspective_id) DO NOTHING`,
+				[naming.id, primaryMap.rows[0].id]
+			);
+		}
+
 		return { ...naming, properties: props };
 	});
 }
@@ -182,6 +202,29 @@ export async function createAnnotation(
 			[annId, perspectiveId, codeId, documentId,
 			 JSON.stringify({ anchorType, anchor, comment: comment || null })]
 		);
+
+		// Ensure the code naming has an appearance on the primary Situational Map.
+		// This is the coding→mapping bridge: coding creates unresolved namings on the map.
+		// No x/y coordinates — placement is a conscious analytical act.
+		const primaryMap = await client.query(
+			`SELECT n.id FROM namings n
+			 JOIN appearances a ON a.naming_id = n.id AND a.perspective_id = n.id
+			 WHERE n.project_id = $1 AND n.deleted_at IS NULL
+			   AND a.mode = 'perspective'
+			   AND a.properties->>'mapType' = 'situational'
+			   AND (a.properties->>'isPrimary')::boolean = true
+			 LIMIT 1`,
+			[projectId]
+		);
+		if (primaryMap.rows.length > 0) {
+			const mapId = primaryMap.rows[0].id;
+			await client.query(
+				`INSERT INTO appearances (naming_id, perspective_id, mode, properties)
+				 VALUES ($1, $2, 'entity', '{}')
+				 ON CONFLICT (naming_id, perspective_id) DO NOTHING`,
+				[codeId, mapId]
+			);
+		}
 
 		// If comment provided, record a naming_act on the CODE (not the annotation)
 		// This makes the passage-specific note part of the code's designation stack

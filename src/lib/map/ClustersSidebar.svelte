@@ -55,6 +55,23 @@
 		{/each}
 	{/if}
 
+	{#if ms.docClusters.length > 0}
+		<div class="section-divider">Documents</div>
+		{#each ms.docClusters as dc}
+			<!-- svelte-ignore a11y_click_events_have_key_events -->
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div class="cluster-card doc-cluster" class:cluster-active={ms.highlightedCluster === dc.doc_id}
+				style="border-left: 3px solid #6b7280">
+				<div class="cluster-header">
+					<span class="cluster-label clickable" onclick={() => { ms.highlightedCluster = ms.highlightedCluster === dc.doc_id ? null : dc.doc_id; }}>
+						<span class="doc-icon">&#128196;</span> {dc.doc_label}
+					</span>
+					<span class="cluster-count">{dc.naming_ids?.length || 0}</span>
+				</div>
+			</div>
+		{/each}
+	{/if}
+
 	{#if ms.declinedCount > 0}
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -104,6 +121,12 @@
 	}
 	.cluster-card.assigning { border-color: #10b981; }
 	.cluster-card.cluster-active { background: #1e2030; }
+	.section-divider {
+		font-size: 0.65rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em;
+		margin: 0.75rem 0 0.3rem; padding-top: 0.5rem; border-top: 1px solid #2a2d3a;
+	}
+	.doc-cluster { border-style: dotted; }
+	.doc-icon { font-size: 0.7rem; }
 	.declined-cluster { margin-top: 0.5rem; border-style: dashed; }
 	.declined-hint { font-size: 0.65rem; color: #6b7280; }
 	.cluster-header { display: flex; justify-content: space-between; align-items: center; }

@@ -124,9 +124,12 @@
 	</div>
 {:else}
 	<!-- Entity (element) -->
-	<div class="element-card" class:ai-suggested={item.properties?.aiSuggested === true} class:ai-withdrawn={ms.isWithdrawn(item.properties)} class:pos-absent={ms.mapType === 'positional' && item.properties?.absent} title={item.properties?.aiReasoning || ''}>
+	<div class="element-card" class:ai-suggested={item.properties?.aiSuggested === true} class:ai-withdrawn={ms.isWithdrawn(item.properties)} class:pos-absent={ms.mapType === 'positional' && item.properties?.absent} class:unresolved={ms.isUnresolved(item)} title={item.properties?.aiReasoning || ''}>
 		<div class="el-main">
 			{#if item.is_collapsed}<img class="collapsed-indicator" src="/icons/keep.svg" alt="pinned" title="Pinned to specific layer" />{/if}
+			{#if ms.isPrimary}
+				<span class="placement-dot" title={ms.isPlaced(item) ? 'Placed on canvas' : ms.isWithdrawn(item.properties) ? 'Declined' : 'Unresolved — not yet placed'}>{ms.isPlaced(item) ? '●' : ms.isWithdrawn(item.properties) ? '—' : '○'}</span>
+			{/if}
 			<span class="designation-dot" style="background: {ms.designationColor(item.designation)}" title={ms.designationLabel(item.designation)}></span>
 			{#if item.has_document_anchor}
 				<img class="provenance-indicator" src="/icons/text_snippet.svg" alt="empirical" title="Empirically grounded" />
@@ -202,6 +205,8 @@
 	.element-card:hover { border-color: #3a3d4a; }
 	.element-card.ai-withdrawn { opacity: 0.4; }
 	.element-card.ai-withdrawn :global(.el-inscription) { text-decoration: line-through; }
+	.element-card.unresolved { border-style: dashed; border-color: rgba(245, 158, 11, 0.3); }
+	.placement-dot { font-size: 0.65rem; color: #6b7280; flex-shrink: 0; width: 10px; text-align: center; }
 	.relation-card { background: #141620; }
 	.silence-card { border-style: dashed; opacity: 0.7; }
 	.el-main { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }

@@ -35,11 +35,13 @@ export function createMapState(
 	let relations = $state<any[]>(initialData.relations);
 	let silences = $state<any[]>(initialData.silences);
 	let clusters = $state<any[]>(initialData.clusters);
+	let docClusters = $state<any[]>(initialData.docClusters || []);
 	let designationProfile = $state<any[]>(initialData.designationProfile);
 	let mapMeta = $state({ id: initialData.map.id, label: initialData.map.label, properties: initialData.map.properties });
 
 	// ─── Derived ───
 	const mapType = $derived(mapMeta.properties?.mapType || 'situational');
+	const isPrimary = $derived(mapMeta.properties?.isPrimary === true);
 	const allItems = $derived([...axes, ...elements, ...relations, ...silences]);
 	const clusterColorMap = $derived(
 		new Map(clusters.map((p: any, i: number) => [p.id, regionColor(i)]))
@@ -49,6 +51,12 @@ export function createMapState(
 	const declinedCount = $derived(
 		allItems.filter((n: any) => isWithdrawn(n.properties)).length
 	);
+
+	// ─── Unresolved tracking (primary SitMap only) ───
+	// A naming is "unresolved" if it has no canvas position and is not declined.
+	// The positionsRef is set externally by canvasPositions after init.
+	let positionsRef = $state<Map<string, { x: number; y: number }> | null>(null);
+	let listFilter = $state<'all' | 'placed' | 'unresolved' | 'declined'>('all');
 
 	// ─── Shared interaction state ───
 	let stackId = $state<string | null>(null);
@@ -117,9 +125,42 @@ export function createMapState(
 		return isDeclinedFilter && isWithdrawn(node.properties);
 	}
 
+	function isUnresolved(node: any): boolean {
+		if (!isPrimary || !positionsRef) return false;
+		return !positionsRef.has(node.naming_id) && !isWithdrawn(node.properties);
+	}
+
+	function isPlaced(node: any): boolean {
+		if (!positionsRef) return true;
+		return positionsRef.has(node.naming_id);
+	}
+
+	function unresolvedCount(): number {
+		if (!isPrimary || !positionsRef) return 0;
+		return allItems.filter((n: any) => !positionsRef!.has(n.naming_id) && !isWithdrawn(n.properties)).length;
+	}
+
+	function filterItem(node: any): boolean {
+		if (listFilter === 'all') return true;
+		if (listFilter === 'declined') return isWithdrawn(node.properties);
+		if (listFilter === 'unresolved') return isUnresolved(node);
+		if (listFilter === 'placed') return isPlaced(node) && !isWithdrawn(node.properties);
+		return true;
+	}
+
+	async function declineNaming(namingId: string) {
+		await mapAction('toggleWithdraw', { namingId });
+		await reload();
+	}
+
 	function isClusterHighlighted(node: any): boolean {
 		if (!highlightedCluster) return false;
-		return node.cluster_ids?.includes(highlightedCluster) ?? false;
+		// Check manual clusters
+		if (node.cluster_ids?.includes(highlightedCluster)) return true;
+		// Check doc-clusters
+		const dc = docClusters.find((d: any) => d.doc_id === highlightedCluster);
+		if (dc) return dc.naming_ids?.includes(node.naming_id) ?? false;
+		return false;
 	}
 
 	function connectionOpacity(rel: any, srcNode: any, tgtNode: any): number {
@@ -187,6 +228,7 @@ export function createMapState(
 		relations = fresh.relations;
 		silences = fresh.silences;
 		clusters = fresh.clusters;
+		docClusters = fresh.docClusters || [];
 		designationProfile = fresh.designationProfile;
 	}
 
@@ -575,6 +617,7 @@ export function createMapState(
 		relations = data.relations;
 		silences = data.silences;
 		clusters = data.clusters;
+		docClusters = data.docClusters || [];
 		designationProfile = data.designationProfile;
 		mapMeta = { id: data.map.id, label: data.map.label, properties: data.map.properties };
 	}
@@ -586,13 +629,25 @@ export function createMapState(
 		get relations() { return relations; },
 		get silences() { return silences; },
 		get clusters() { return clusters; },
+		get docClusters() { return docClusters; },
 		get designationProfile() { return designationProfile; },
 		get mapType() { return mapType; },
 		get allItems() { return allItems; },
 		get clusterColorMap() { return clusterColorMap; },
+		get isPrimary() { return isPrimary; },
 		get declinedCount() { return declinedCount; },
 		get isDeclinedFilter() { return isDeclinedFilter; },
 		DECLINED_CLUSTER,
+
+		// Unresolved tracking
+		set positionsRef(v: Map<string, { x: number; y: number }> | null) { positionsRef = v; },
+		get listFilter() { return listFilter; },
+		set listFilter(v) { listFilter = v; },
+		isUnresolved,
+		isPlaced,
+		unresolvedCount,
+		filterItem,
+		declineNaming,
 
 		// Interaction state (getters/setters)
 		get stackId() { return stackId; },

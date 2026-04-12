@@ -3,6 +3,7 @@ import type { RequestHandler } from './$types.js';
 import { transaction } from '$lib/server/db/index.js';
 import { projectSchema } from '$lib/shared/validation.js';
 import { slugify, resolveFilePath } from '$lib/server/files/index.js';
+import { getOrCreatePrimarySitMap } from '$lib/server/db/queries/maps.js';
 import { mkdir, copyFile } from 'fs/promises';
 import { join, basename } from 'path';
 
@@ -257,6 +258,9 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
 		return p;
 	});
+
+	// Auto-create primary Situational Map (outside transaction — project must exist first)
+	await getOrCreatePrimarySitMap(project.id, userId);
 
 	return json(project, { status: 201 });
 };

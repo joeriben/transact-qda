@@ -172,7 +172,7 @@
 	// ─── List grouping ───
 
 	const groupedItems = $derived.by(() => {
-		const items = ms.allItems.filter((n: any) => !ms.isHiddenByFilter(n));
+		const items = ms.allItems.filter((n: any) => !ms.isHiddenByFilter(n)).filter((n: any) => ms.filterItem(n));
 		switch (listGroupBy) {
 			case 'mode':
 				return [
@@ -450,6 +450,14 @@
 					<option value="provenance">Provenance</option>
 					<option value="flat">Flat (all mixed)</option>
 				</select>
+				{#if ms.isPrimary}
+					<select class="grouping-select" value={ms.listFilter} onchange={e => ms.listFilter = (e.target as HTMLSelectElement).value as any}>
+						<option value="all">All</option>
+						<option value="placed">Placed</option>
+						<option value="unresolved">Unresolved</option>
+						<option value="declined">Declined</option>
+					</select>
+				{/if}
 			</div>
 			{#if ms.allItems.length === 0}
 				<p class="empty">Name what is in the situation. Everything is a cue at first.</p>

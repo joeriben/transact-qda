@@ -8,6 +8,31 @@ import { getAnnotationsByCode } from './codes.js';
 // "Messy" vs "ordered" is not a mode — it's the aggregate designation
 // state of the map's elements.
 
+// ---- Primary Situational Map ----
+
+/**
+ * Get or create the primary Situational Map for a project.
+ * The primary map is the default target for all coding namings.
+ * Its list is the source of truth (three-layer hierarchy).
+ */
+export async function getOrCreatePrimarySitMap(projectId: string, userId: string): Promise<string> {
+	const existing = await queryOne<{ id: string }>(
+		`SELECT n.id FROM namings n
+		 JOIN appearances a ON a.naming_id = n.id AND a.perspective_id = n.id
+		 WHERE n.project_id = $1 AND n.deleted_at IS NULL
+		   AND a.mode = 'perspective'
+		   AND a.properties->>'mapType' = 'situational'
+		   AND (a.properties->>'isPrimary')::boolean = true
+		 LIMIT 1`,
+		[projectId]
+	);
+	if (existing) return existing.id;
+
+	// No primary exists — create one
+	const map = await createMap(projectId, userId, 'Situational Map', 'situational', { isPrimary: true });
+	return map.id;
+}
+
 // ---- Map CRUD ----
 
 export async function createMap(
@@ -1042,12 +1067,37 @@ export async function getCrossMapParticipations(mapId: string, projectId: string
 	).rows;
 }
 
+/**
+ * Doc-Clusters: query-based clusters showing which namings on a map are grounded
+ * in which documents. Returns documents with their grounded naming IDs on this map.
+ */
+export async function getDocClusters(mapId: string, projectId: string) {
+	return (
+		await query<{ doc_id: string; doc_label: string; naming_ids: string[] }>(
+			`SELECT doc_n.id as doc_id, doc_n.inscription as doc_label,
+			        ARRAY_AGG(DISTINCT ann.directed_from) as naming_ids
+			 FROM appearances ann
+			 JOIN namings ann_n ON ann_n.id = ann.naming_id AND ann_n.deleted_at IS NULL
+			 JOIN namings doc_n ON doc_n.id = ann.directed_to AND doc_n.deleted_at IS NULL
+			 JOIN document_content dc ON dc.naming_id = doc_n.id
+			 JOIN appearances map_a ON map_a.naming_id = ann.directed_from AND map_a.perspective_id = $1
+			 WHERE ann_n.project_id = $2
+			   AND ann.valence = 'codes'
+			   AND map_a.mode IN ('entity', 'relation', 'silence')
+			 GROUP BY doc_n.id, doc_n.inscription
+			 ORDER BY doc_n.inscription`,
+			[mapId, projectId]
+		)
+	).rows;
+}
+
 // Get the full structure of a map: elements, relations, clusters, designations
 export async function getMapStructure(mapId: string, projectId: string) {
-	const [appearances, clusters, designationProfile] = await Promise.all([
+	const [appearances, clusters, designationProfile, docClusters] = await Promise.all([
 		getMapAppearances(mapId, projectId),
 		getMapClusters(mapId, projectId),
-		getMapDesignationProfile(mapId, projectId)
+		getMapDesignationProfile(mapId, projectId),
+		getDocClusters(mapId, projectId)
 	]);
 
 	const axes = appearances.filter((a: any) => a.mode === 'entity' && a.properties?.isAxis);
@@ -1065,6 +1115,7 @@ export async function getMapStructure(mapId: string, projectId: string) {
 		processes,
 		constellations,
 		clusters,
+		docClusters,
 		designationProfile
 	};
 }

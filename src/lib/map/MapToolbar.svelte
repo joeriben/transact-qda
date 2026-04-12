@@ -139,6 +139,19 @@
 		</div>
 	{/if}
 
+	{#if ms.isPrimary}
+		{@const uc = ms.unresolvedCount()}
+		{#if uc > 0}
+			<!-- svelte-ignore a11y_click_events_have_key_events -->
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<span class="unresolved-badge" onclick={() => ms.listFilter = ms.listFilter === 'unresolved' ? 'all' : 'unresolved'}>
+				{uc} unresolved
+			</span>
+		{:else}
+			<span class="resolved-badge">&#10003; all resolved</span>
+		{/if}
+	{/if}
+
 	<div class="toolbar-actions">
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -284,6 +297,16 @@
 	}
 	.designation-profile { display: flex; gap: 0.75rem; font-size: 0.8rem; }
 	.dp-item { font-weight: 500; }
+	.unresolved-badge {
+		font-size: 0.75rem; color: #f59e0b; background: rgba(245, 158, 11, 0.1);
+		padding: 0.15rem 0.5rem; border-radius: 4px; cursor: pointer;
+		border: 1px solid rgba(245, 158, 11, 0.3);
+	}
+	.unresolved-badge:hover { background: rgba(245, 158, 11, 0.2); }
+	.resolved-badge {
+		font-size: 0.75rem; color: #10b981; background: rgba(16, 185, 129, 0.1);
+		padding: 0.15rem 0.5rem; border-radius: 4px;
+	}
 	.toolbar-actions { display: flex; align-items: center; gap: 0.5rem; margin-left: auto; }
 
 	/* View toggle */
