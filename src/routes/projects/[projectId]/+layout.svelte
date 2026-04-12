@@ -40,7 +40,7 @@
 	let autonomousLog = $state<string[]>([]);
 	let autonomousOpen = $state(false);
 	let autonomousMapId = $state<string | null>(null);
-	let logContainer: HTMLElement;
+	let logContainer: HTMLElement = undefined as any;
 
 	function scrollLog() {
 		if (logContainer) logContainer.scrollTop = logContainer.scrollHeight;
@@ -205,15 +205,7 @@
 				onclick={() => coach.isOpen = !coach.isOpen}
 			>Coach</button>
 
-			<button
-				class="autonomous-toggle"
-				class:autonomous-active={autonomousRunning || autonomousOpen}
-				onclick={() => { if (!autonomousRunning && autonomousLog.length === 0) startAutonomous(); else autonomousOpen = !autonomousOpen; }}
-				disabled={autonomousRunning && autonomousOpen}
-			>{autonomousRunning ? 'Autonoma...' : 'Autonoma'}</button>
-			{#if autonomousStatus && !autonomousOpen}
-				<span class="autonomous-status">{autonomousStatus}</span>
-			{/if}
+			<!-- Autonoma (Raichel) removed from general UI — belongs in dedicated Raichel-projects only (Session 23 design) -->
 
 			<a href="/projects" class="back-link">← Projects</a>
 		</nav>
@@ -225,30 +217,7 @@
 
 	<CoachPanel />
 
-	{#if autonomousOpen}
-		<div class="autonomous-panel">
-			<div class="autonomous-header">
-				<span>Autonoma {autonomousRunning ? '(running...)' : ''}</span>
-				<div class="autonomous-header-actions">
-					{#if !autonomousRunning && autonomousLog.length > 0}
-						<button class="autonomous-btn" onclick={startAutonomous}>Re-run</button>
-					{/if}
-					{#if autonomousMapId}
-						<a href="{base}/maps/{autonomousMapId}" class="autonomous-btn">Open Map</a>
-					{/if}
-					<button class="autonomous-close" onclick={() => autonomousOpen = false}>x</button>
-				</div>
-			</div>
-			<div class="autonomous-log" bind:this={logContainer}>
-				{#each autonomousLog as line}
-					<div class="autonomous-line">{line}</div>
-				{/each}
-				{#if autonomousRunning && autonomousLog.length === 0}
-					<div class="autonomous-line">Waiting for autonomous agent...</div>
-				{/if}
-			</div>
-		</div>
-	{/if}
+	<!-- Autonoma panel removed — will be reintroduced as part of dedicated Raichel-project mode -->
 </div>
 
 <style>
