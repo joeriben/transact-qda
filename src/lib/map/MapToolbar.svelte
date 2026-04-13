@@ -278,8 +278,6 @@
 				<span class="centered-close">×</span>
 			</button>
 		{/if}
-		<button class="btn-ai-toggle" class:ai-active={ms.aiEnabled} onclick={ms.toggleAi}>AI</button>
-		<button class="btn-sm" onclick={ms.requestAnalysis} disabled={!ms.aiEnabled}>Ask AI</button>
 	</div>
 </div>
 
@@ -405,14 +403,6 @@
 		color: #c9cdd5; font-size: 0.75rem; padding: 0.25rem 0.5rem; cursor: pointer;
 	}
 	.btn-sm:hover { border-color: #8b9cf7; color: #e1e4e8; }
-	.btn-ai-toggle {
-		background: #1e2030; border: 1px solid #2a2d3a; border-radius: 4px;
-		color: #6b7280; font-size: 0.7rem; font-weight: 700; padding: 0.2rem 0.5rem;
-		cursor: pointer; letter-spacing: 0.04em;
-	}
-	.btn-ai-toggle.ai-active {
-		background: rgba(139, 156, 247, 0.15); border-color: #8b9cf7; color: #8b9cf7;
-	}
 	/* Display mode selector */
 	.display-mode-group {
 		display: flex; border: 1px solid #2a2d3a; border-radius: 5px; overflow: hidden;

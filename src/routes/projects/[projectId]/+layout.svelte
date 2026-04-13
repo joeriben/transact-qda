@@ -34,6 +34,35 @@
 	const coach = createCoachState(p.id);
 	setCoachState(coach);
 
+	// Cowork: on-demand co-researcher on the current map.
+	// Visible only when a map is open. The map's reactive-mode toggle
+	// (auto-respond to researcher acts) is configured per-project in Settings;
+	// the Cowork button is on-demand and runs regardless of that setting.
+	const currentMapId = $derived.by(() => {
+		const m = pathname.match(new RegExp(`^${base}/maps/([^/]+)$`));
+		return m ? m[1] : null;
+	});
+	let coworkRequesting = $state(false);
+	let coworkFlash = $state<string | null>(null);
+	async function askCowork() {
+		if (!currentMapId || coworkRequesting) return;
+		coworkRequesting = true;
+		coworkFlash = null;
+		try {
+			const res = await fetch(`/api/projects/${p.id}/maps/${currentMapId}`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ action: 'requestAnalysis' })
+			});
+			coworkFlash = res.ok ? 'Cowork analysis requested' : 'Request failed';
+		} catch {
+			coworkFlash = 'Request failed';
+		} finally {
+			coworkRequesting = false;
+			setTimeout(() => { coworkFlash = null; }, 4000);
+		}
+	}
+
 	// Autonomous: autonomous researcher
 	let autonomousRunning = $state(false);
 	let autonomousStatus = $state('');
@@ -205,6 +234,18 @@
 				onclick={() => coach.isOpen = !coach.isOpen}
 			>Coach</button>
 
+			{#if currentMapId}
+				<button
+					class="cowork-toggle"
+					onclick={askCowork}
+					disabled={coworkRequesting}
+					title="Ask Cowork to analyse the current map (on-demand)"
+				>{coworkRequesting ? 'Cowork…' : 'Cowork'}</button>
+				{#if coworkFlash}
+					<span class="cowork-flash">{coworkFlash}</span>
+				{/if}
+			{/if}
+
 			<!-- Autonoma (Raichel) removed from general UI — belongs in dedicated Raichel-projects only (Session 23 design) -->
 
 			<a href="/projects" class="back-link">← Projects</a>
@@ -334,6 +375,36 @@
 	.coach-active {
 		background: rgba(165, 180, 252, 0.1);
 		border-color: #a5b4fc;
+	}
+
+	.cowork-toggle {
+		display: flex;
+		align-items: center;
+		padding: 0.45rem 0.65rem;
+		border-radius: 5px;
+		font-size: 0.85rem;
+		color: #8b9cf7;
+		background: none;
+		border: 1px solid #2a2d3a;
+		cursor: pointer;
+		margin-top: 0.15rem;
+		font-family: inherit;
+		font-weight: 500;
+	}
+	.cowork-toggle:hover {
+		background: #1e2030;
+		border-color: #8b9cf7;
+	}
+	.cowork-toggle:disabled {
+		opacity: 0.6;
+		cursor: progress;
+	}
+	.cowork-flash {
+		display: block;
+		font-size: 0.7rem;
+		color: #8b9cf7;
+		padding: 0.1rem 0.5rem 0;
+		font-style: italic;
 	}
 
 	.autonomous-toggle {

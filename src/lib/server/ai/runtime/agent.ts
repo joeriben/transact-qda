@@ -255,7 +255,10 @@ export async function runMapAgent(
 	mapId: string,
 	triggerEvent: TriggerEvent
 ): Promise<void> {
-	if (!(await isAiEnabled(mapId))) return;
+	// Manual "Ask Cowork" always runs; the per-map aiEnabled flag now only gates
+	// reactive triggers (auto-respond to researcher acts) so a researcher can
+	// summon Cowork on demand even when reactive mode is off.
+	if (triggerEvent.action !== 'requestAnalysis' && !(await isAiEnabled(mapId))) return;
 
 	const model = getModel();
 	const aiNamingId = await getOrCreateAiNaming(projectId, model);
