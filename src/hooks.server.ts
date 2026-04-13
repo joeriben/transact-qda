@@ -6,18 +6,22 @@ export const handle: Handle = async ({ event, resolve }) => {
 	const token = event.cookies.get(SESSION_COOKIE);
 
 	if (token) {
-		const session = await validateSession(token);
-		if (session) {
-			event.locals.user = { ...session.user, role: session.user.role as 'admin' | 'user' };
-			event.locals.sessionId = session.sessionId;
-		} else {
-			event.cookies.delete(SESSION_COOKIE, { path: '/' });
+		try {
+			const session = await validateSession(token);
+			if (session) {
+				event.locals.user = { ...session.user, role: session.user.role as 'admin' | 'user' };
+				event.locals.sessionId = session.sessionId;
+			} else {
+				event.cookies.delete(SESSION_COOKIE, { path: '/' });
+			}
+		} catch (err) {
+			console.warn('[hooks] Session validation failed:', (err as Error).message);
 		}
 	}
 
 	// Protect all routes except login and API auth
 	const path = event.url.pathname;
-	const isPublic = path === '/login' || path.startsWith('/api/auth');
+	const isPublic = path === '/login' || path.startsWith('/api/auth') || path === '/api/db-status';
 
 	if (!isPublic && !event.locals.user) {
 		if (path.startsWith('/api/')) {

@@ -1,10 +1,39 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 
-	let { data, children }: { data: { user: any }; children: Snippet } = $props();
+	let { data, children }: { data: { user: any; dbStatus?: { status: string; error: string | null } }; children: Snippet } = $props();
 
 	let settingsOpen = $state(false);
 	let legalOpen = $state(false);
+
+	// DB status banner
+	let dbStatusValue = $state<'healthy' | 'starting' | 'error'>(
+		(data.dbStatus?.status as 'healthy' | 'starting' | 'error') ?? 'healthy'
+	);
+	let dbError = $state<string | null>(data.dbStatus?.error ?? null);
+
+	$effect(() => {
+		if (dbStatusValue === 'healthy') return;
+
+		const interval = setInterval(async () => {
+			try {
+				const res = await fetch('/api/db-status');
+				if (res.ok) {
+					const result = await res.json();
+					dbStatusValue = result.status;
+					dbError = result.error;
+					if (result.status === 'healthy') {
+						clearInterval(interval);
+						location.reload();
+					}
+				}
+			} catch {
+				// Network error — keep polling
+			}
+		}, 2000);
+
+		return () => clearInterval(interval);
+	});
 
 	// Overlay state
 	let overlay = $state<'manual' | 'impressum' | null>(null);
@@ -92,6 +121,17 @@
 				</div>
 			</div>
 		</header>
+
+		{#if dbStatusValue !== 'healthy'}
+			<div class="db-banner" class:db-error={dbStatusValue === 'error'}>
+				{#if dbStatusValue === 'starting'}
+					<span class="db-spinner"></span>
+					Datenbank wird gestartet…
+				{:else}
+					Datenbank nicht erreichbar{dbError ? `: ${dbError}` : ''}
+				{/if}
+			</div>
+		{/if}
 
 		<main class="content">
 			{@render children()}
@@ -331,6 +371,37 @@
 		height: 1px;
 		background: rgba(255, 255, 255, 0.1);
 		margin: 0.25rem 0;
+	}
+
+	/* DB Status Banner */
+	.db-banner {
+		background: #1e3a5f;
+		color: #93c5fd;
+		text-align: center;
+		padding: 0.35rem 1rem;
+		font-size: 0.8rem;
+		font-weight: 500;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+		flex-shrink: 0;
+	}
+	.db-banner.db-error {
+		background: #5f1e1e;
+		color: #fca5a5;
+	}
+	.db-spinner {
+		width: 14px;
+		height: 14px;
+		border: 2px solid rgba(147, 197, 253, 0.3);
+		border-top-color: #93c5fd;
+		border-radius: 50%;
+		animation: db-spin 0.8s linear infinite;
+		flex-shrink: 0;
+	}
+	@keyframes db-spin {
+		to { transform: rotate(360deg); }
 	}
 
 	/* Content */
