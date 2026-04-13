@@ -1,7 +1,13 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import { env } from '$env/dynamic/public';
 
 	let { data, children }: { data: { user: any; dbStatus?: { status: string; error: string | null } }; children: Snippet } = $props();
+
+	const BRAND_LOGO_URL = env.PUBLIC_BRAND_LOGO_URL || '';
+	const BRAND_NAME = env.PUBLIC_BRAND_NAME || '';
+	const BRAND_LINK = env.PUBLIC_BRAND_LINK || '';
+	const IMPRESSUM_URL = env.PUBLIC_IMPRESSUM_URL || '/brand/impressum.html';
 
 	let settingsOpen = $state(false);
 	let legalOpen = $state(false);
@@ -36,8 +42,22 @@
 	});
 
 	// Overlay state
-	let overlay = $state<'manual' | 'impressum' | null>(null);
+	let overlay = $state<'manual' | 'impressum' | 'about' | null>(null);
 	let manualHtml = $state<string | null>(null);
+	let impressumHtml = $state<string | null>(null);
+	let impressumLoaded = $state(false);
+
+	async function openImpressum() {
+		overlay = 'impressum';
+		if (impressumLoaded) return;
+		try {
+			const res = await fetch(IMPRESSUM_URL);
+			impressumHtml = res.ok ? await res.text() : null;
+		} catch {
+			impressumHtml = null;
+		}
+		impressumLoaded = true;
+	}
 
 	async function openManual() {
 		overlay = 'manual';
@@ -81,10 +101,18 @@
 		<header class="app-header">
 			<div class="header-content">
 				<div class="header-left">
-					<a href="https://www.ucdcae.fau.de/" target="_blank" rel="noopener noreferrer" class="header-logo-link">
-						<img src="/logos/unesco_chair.png" alt="UNESCO Chair" class="header-logo" />
-					</a>
-					<span class="app-title">UCDCAE AI LAB</span>
+					{#if BRAND_LOGO_URL}
+						{#if BRAND_LINK}
+							<a href={BRAND_LINK} target="_blank" rel="noopener noreferrer" class="header-logo-link">
+								<img src={BRAND_LOGO_URL} alt={BRAND_NAME || 'Operator logo'} class="header-logo" />
+							</a>
+						{:else}
+							<img src={BRAND_LOGO_URL} alt={BRAND_NAME || 'Operator logo'} class="header-logo" />
+						{/if}
+					{/if}
+					{#if BRAND_NAME}
+						<span class="app-title">{BRAND_NAME}</span>
+					{/if}
 				</div>
 
 				<div class="header-center">
@@ -115,7 +143,8 @@
 						<button class="nav-btn nav-btn-text" title="Legal" onclick={() => { legalOpen = !legalOpen; settingsOpen = false; }}>§</button>
 						{#if legalOpen}
 							<div class="dropdown-menu">
-								<button class="dropdown-item" onclick={() => { legalOpen = false; overlay = 'impressum'; }}>Impressum</button>
+								<button class="dropdown-item" onclick={() => { legalOpen = false; overlay = 'about'; }}>About</button>
+								<button class="dropdown-item" onclick={() => { legalOpen = false; openImpressum(); }}>Impressum</button>
 							</div>
 						{/if}
 					</div>
@@ -167,25 +196,48 @@
 					{:else if overlay === 'impressum'}
 						<div class="overlay-content">
 							<h1>Impressum</h1>
-							<p><strong>Herausgeber</strong><br>
-							Friedrich-Alexander-Universität Erlangen-Nürnberg<br>
-							Vertreten durch den Präsidenten Prof. Dr. Joachim Hornegger<br>
-							Freyeslebenstraße 1, 91058 Erlangen<br>
-							E-Mail: <a href="mailto:poststelle@fau.de">poststelle@fau.de</a></p>
-
-							<p><strong>Inhaltlich verantwortlich gem. § 18 Abs. 2 MStV</strong><br>
-							Prof. Dr. Benjamin Jörissen<br>
-							Bismarckstraße 1a, 91054 Erlangen<br>
-							E-Mail: <a href="mailto:benjamin.joerissen@fau.de">benjamin.joerissen@fau.de</a></p>
-
-							<p><strong>Zuständige Aufsichtsbehörde</strong><br>
-							Bayerisches Staatsministerium für Wissenschaft und Kunst<br>
-							Salvatorstraße 2, 80327 München<br>
-							<a href="https://www.stmwk.bayern.de/" target="_blank" rel="noopener">www.stmwk.bayern.de</a></p>
-
-							<p><strong>Weitere Informationen</strong><br>
-							Das vollständige Impressum der FAU finden Sie unter:<br>
-							<a href="https://www.fau.de/impressum" target="_blank" rel="noopener">www.fau.de/impressum</a></p>
+							{#if !impressumLoaded}
+								<p>Loading…</p>
+							{:else if impressumHtml}
+								{@html impressumHtml}
+							{:else}
+								<p>No legal notice has been configured for this instance.</p>
+								<p style="opacity: 0.7; font-size: 0.85rem;">
+									Instance operators: provide an HTML snippet at
+									<code>static/brand/impressum.html</code> or set
+									<code>PUBLIC_IMPRESSUM_URL</code> in <code>.env</code>.
+									See <code>static/brand/README.md</code>.
+								</p>
+							{/if}
+						</div>
+					{:else if overlay === 'about'}
+						<div class="overlay-content">
+							<h1>About transact-qda</h1>
+							<p>
+								<strong>transact-qda</strong> is an open-source qualitative-data-analysis
+								platform built on a transactional ontology (namings, participations,
+								appearances) with a designation-gradient model of coding.
+							</p>
+							<p>
+								Originally developed at the
+								<a href="https://www.ucdcae.fau.de/" target="_blank" rel="noopener">
+									UNESCO Chair in Digital Culture and Arts Education
+								</a>,
+								Friedrich-Alexander-Universität Erlangen-Nürnberg
+								(Prof. Dr. Benjamin Jörissen).
+							</p>
+							<p>
+								Released under the
+								<a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noopener">
+									GNU Affero General Public License, Version 3 or later
+								</a>.
+								A commercial license is available on request — see
+								<code>COMMERCIAL-LICENSE.md</code> in the source repository.
+							</p>
+							<p style="opacity: 0.7; font-size: 0.85rem;">
+								This attribution is part of the project's required notices
+								and must not be removed in redistributions or forks.
+							</p>
 						</div>
 					{/if}
 				</div>

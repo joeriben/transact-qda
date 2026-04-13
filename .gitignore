@@ -33,6 +33,12 @@ ai-settings.json
 # ML model cache
 /.model-cache/
 
+# Instance-specific branding (operator logo, impressum HTML, etc.)
+# Each deployment provides its own files here; public repo keeps it empty.
+/static/brand/*
+!/static/brand/.gitkeep
+!/static/brand/README.md
+
 # PostgreSQL data
 /pgdata/
 projekte/
