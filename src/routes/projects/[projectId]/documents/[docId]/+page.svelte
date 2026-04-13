@@ -1164,13 +1164,19 @@
 		background: rgba(139, 156, 247, 0.35);
 	}
 
-	/* Resize handle between doc text and code margin */
+	/* Resize handle between doc text and code margin.
+	 * Sticky inside the shared scroll container so the line is visible
+	 * across every scroll position; align-self:stretch sizes it to the
+	 * visible viewport height of .doc-with-margin. */
 	.margin-divider {
 		width: 3px;
 		flex-shrink: 0;
 		cursor: col-resize;
 		background: #2a2d3a;
 		transition: background 0.15s;
+		position: sticky;
+		top: 0;
+		align-self: stretch;
 	}
 	.margin-divider:hover { background: #8b9cf7; }
 
