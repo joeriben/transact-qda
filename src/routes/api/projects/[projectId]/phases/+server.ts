@@ -5,8 +5,8 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import {
 	getProjectPhases,
-	getClusterMembers,
-	getClusterPassages,
+	getPhaseMembers,
+	getPhasePassages,
 	createProjectPhase,
 	assignToPhase,
 	removeFromPhase
@@ -35,14 +35,14 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		case 'getMembers': {
 			const { phaseId } = body;
 			if (!phaseId) return json({ error: 'phaseId required' }, { status: 400 });
-			const members = await getClusterMembers(phaseId);
+			const members = await getPhaseMembers(phaseId);
 			return json({ members });
 		}
 
 		case 'getPassages': {
 			const { phaseId } = body;
 			if (!phaseId) return json({ error: 'phaseId required' }, { status: 400 });
-			const passages = await getClusterPassages(phaseId, projectId);
+			const passages = await getPhasePassages(phaseId, projectId);
 			return json({ passages });
 		}
 

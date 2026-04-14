@@ -139,7 +139,7 @@ interface CollectedMemoContent {
 	status: string;
 }
 
-interface CollectedClusterMembership {
+interface CollectedPhaseMembership {
 	phaseId: string;
 	namingId: string;
 	by: string;
@@ -197,7 +197,7 @@ export async function importProject(
 	const participations: CollectedParticipation[] = [];
 	const docContents: CollectedDocContent[] = [];
 	const memoContents: CollectedMemoContent[] = [];
-	const phaseMemberships: CollectedClusterMembership[] = [];
+	const phaseMemberships: CollectedPhaseMembership[] = [];
 	const topologies: CollectedTopology[] = [];
 	const counts = { codes: 0, documents: 0, annotations: 0, memos: 0, relations: 0, maps: 0 };
 

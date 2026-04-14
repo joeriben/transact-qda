@@ -14,15 +14,15 @@
 
 <div class="sidebar">
 	<div class="sidebar-header">
-		<h3>Phases</h3>
-		<button class="btn-sm" onclick={() => ms.showClusterForm = !ms.showClusterForm}>
-			{ms.showClusterForm ? 'x' : '+'}
+		<h3 title="Phase (Dewey/Bentley, Knowing and the Known, 1949): a developmental grouping of namings within the situation. Forming a phase IS characterizing — the designation gradient (cue → characterization → specification) collapsed into analytical wholes. Not a computed cluster.">Phases</h3>
+		<button class="btn-sm" onclick={() => ms.showPhaseForm = !ms.showPhaseForm}>
+			{ms.showPhaseForm ? 'x' : '+'}
 		</button>
 	</div>
 
-	{#if ms.showClusterForm}
+	{#if ms.showPhaseForm}
 		<form class="phase-form" onsubmit={e => { e.preventDefault(); ms.addPhase(); }}>
-			<input type="text" placeholder="Phase label..." bind:value={ms.newClusterLabel} />
+			<input type="text" placeholder="Phase label..." bind:value={ms.newPhaseLabel} />
 			<button type="submit" class="btn-sm">Create</button>
 		</form>
 	{/if}
@@ -82,7 +82,7 @@
 		<div class="phase-card declined-phase" class:phase-active={ms.isDeclinedFilter}
 			style="border-left: 3px solid #6b7280">
 			<div class="phase-header">
-				<span class="phase-label clickable" onclick={() => { ms.highlightedPhase = ms.isDeclinedFilter ? null : ms.DECLINED_CLUSTER; }}>Declined</span>
+				<span class="phase-label clickable" onclick={() => { ms.highlightedPhase = ms.isDeclinedFilter ? null : ms.DECLINED_PHASE; }}>Declined</span>
 				<span class="phase-count">{ms.declinedCount}</span>
 			</div>
 			<span class="declined-hint">{ms.isDeclinedFilter ? 'hidden' : 'click to hide'}</span>

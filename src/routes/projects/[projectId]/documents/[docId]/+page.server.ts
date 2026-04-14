@@ -4,7 +4,7 @@
 import type { PageServerLoad } from './$types.js';
 import { query, queryOne } from '$lib/server/db/index.js';
 import { getAnnotationsByDocument, getAnnotationsByProject, getAnnotationCandidates } from '$lib/server/db/queries/codes.js';
-import { getProjectPhases, getClusterMembers } from '$lib/server/db/queries/maps.js';
+import { getProjectPhases, getPhaseMembers } from '$lib/server/db/queries/maps.js';
 import { error } from '@sveltejs/kit';
 
 export interface DocumentElement {
@@ -66,7 +66,7 @@ export const load: PageServerLoad = async ({ params }) => {
 	// Resolve phase members for filter support
 	const phaseMemberMap: Record<string, string[]> = {};
 	for (const c of phases) {
-		const members = await getClusterMembers(c.id);
+		const members = await getPhaseMembers(c.id);
 		phaseMemberMap[c.id] = members.map((m: any) => m.naming_id);
 	}
 

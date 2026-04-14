@@ -48,11 +48,11 @@
 	let hideWithdrawn = $state(true);
 
 	// Phase state
-	let selectedClusterId = $state<string | null>(null);
+	let selectedPhaseId = $state<string | null>(null);
 	let phaseMembers = $state<any[]>([]);
 	let phasePassages = $state<any[]>([]);
 	let newPhaseName = $state('');
-	let showClusterForm = $state(false);
+	let showPhaseForm = $state(false);
 	let assigningToPhase = $state<string | null>(null);
 	let loadingPhase = $state(false);
 
@@ -438,19 +438,19 @@
 		if (!newPhaseName.trim()) return;
 		await phaseAction('create', { inscription: newPhaseName.trim() });
 		newPhaseName = '';
-		showClusterForm = false;
+		showPhaseForm = false;
 		const module = await import('$app/navigation');
 		module.invalidateAll();
 	}
 
 	async function selectPhase(phaseId: string) {
-		if (selectedClusterId === phaseId) {
-			selectedClusterId = null;
+		if (selectedPhaseId === phaseId) {
+			selectedPhaseId = null;
 			phaseMembers = [];
 			phasePassages = [];
 			return;
 		}
-		selectedClusterId = phaseId;
+		selectedPhaseId = phaseId;
 		loadingPhase = true;
 		const [membersRes, passagesRes] = await Promise.all([
 			phaseAction('getMembers', { phaseId }),
@@ -465,8 +465,8 @@
 		if (!assigningToPhase) return;
 		await phaseAction('assign', { phaseId: assigningToPhase, namingId });
 		// Refresh phase detail if viewing this phase
-		if (selectedClusterId === assigningToPhase) {
-			await selectPhase(selectedClusterId);
+		if (selectedPhaseId === assigningToPhase) {
+			await selectPhase(selectedPhaseId);
 		}
 		assigningToPhase = null;
 		const module = await import('$app/navigation');
@@ -475,7 +475,7 @@
 
 	async function removeNamingFromPhase(phaseId: string, namingId: string) {
 		await phaseAction('remove', { phaseId, namingId });
-		if (selectedClusterId === phaseId) {
+		if (selectedPhaseId === phaseId) {
 			await selectPhase(phaseId);
 		}
 		const module = await import('$app/navigation');
@@ -1079,12 +1079,12 @@
 <div class="phase-panel">
 	<div class="phase-panel-header">
 		<h3>Phases</h3>
-		<button class="btn-xs" onclick={() => showClusterForm = !showClusterForm}>
-			{showClusterForm ? '×' : '+'}
+		<button class="btn-xs" onclick={() => showPhaseForm = !showPhaseForm}>
+			{showPhaseForm ? '×' : '+'}
 		</button>
 	</div>
 
-	{#if showClusterForm}
+	{#if showPhaseForm}
 		<form class="phase-create-form" onsubmit={e => { e.preventDefault(); createPhase(); }}>
 			<input type="text" placeholder="Phase name..." bind:value={newPhaseName} />
 			<button type="submit" class="btn-xs">Create</button>
@@ -1097,7 +1097,7 @@
 		{#each phases as phase}
 			<div
 				class="phase-item"
-				class:phase-selected={selectedClusterId === phase.id}
+				class:phase-selected={selectedPhaseId === phase.id}
 				class:phase-assigning={assigningToPhase === phase.id}
 			>
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -1121,7 +1121,7 @@
 	{/if}
 
 	<!-- Phase detail: members + passages -->
-	{#if selectedClusterId && !loadingPhase}
+	{#if selectedPhaseId && !loadingPhase}
 		<div class="phase-detail">
 			<h4>Members</h4>
 			{#if phaseMembers.length === 0}
@@ -1131,7 +1131,7 @@
 					<div class="phase-member">
 						<span class="designation-dot" style="background: {designationColor(member.designation)}"></span>
 						<span class="phase-member-label">{member.inscription}</span>
-						<button class="btn-xs btn-remove" onclick={() => removeNamingFromPhase(selectedClusterId!, member.naming_id)}>×</button>
+						<button class="btn-xs btn-remove" onclick={() => removeNamingFromPhase(selectedPhaseId!, member.naming_id)}>×</button>
 					</div>
 				{/each}
 			{/if}

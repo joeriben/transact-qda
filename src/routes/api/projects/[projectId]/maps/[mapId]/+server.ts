@@ -17,7 +17,7 @@ import {
 	createProjectPhase,
 	assignToPhase,
 	removeFromPhase,
-	getClusterMembershipHistory,
+	getPhaseMembershipHistory,
 	setCollapse,
 	getNamingStack
 } from '$lib/server/db/queries/maps.js';
@@ -54,7 +54,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	// Read-only maps: reject all mutations except read-only queries
 	const readOnlyActions = ['getStack', 'getHistory', 'getOutsideParticipations', 'getMemosForNaming',
 		'searchForPlacement', 'listDocumentsForImport', 'getDocumentNamings', 'listTopologySnapshots',
-		'getClusterMembershipHistory'];
+		'getPhaseMembershipHistory'];
 	if (!readOnlyActions.includes(action)) {
 		const map = await getMap(mapId, projectId);
 		if (map?.properties?.readOnly) {
@@ -226,10 +226,10 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			return json({ ok: true });
 		}
 
-		case 'getClusterMembershipHistory': {
+		case 'getPhaseMembershipHistory': {
 			const { phaseId } = body;
 			if (!phaseId) return json({ error: 'phaseId required' }, { status: 400 });
-			const history = await getClusterMembershipHistory(phaseId);
+			const history = await getPhaseMembershipHistory(phaseId);
 			return json({ memberships: history });
 		}
 

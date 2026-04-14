@@ -588,7 +588,7 @@ export async function removeFromPhase(phaseId: string, namingId: string, byNamin
 
 // Get the full membership history for a phase (append-only chain).
 // Returns all assign/remove acts in chronological order.
-export async function getClusterMembershipHistory(phaseId: string) {
+export async function getPhaseMembershipHistory(phaseId: string) {
 	return (
 		await query(
 			`SELECT cm.*, n.inscription as naming_inscription, b.inscription as by_inscription
@@ -837,6 +837,17 @@ export async function getMapAppearances(mapId: string, projectId: string) {
 			           AND pa.naming_id != $1
 			       )
 			   ) as phase_ids,
+			   -- Documents this naming is anchored in (via valence='codes' annotations)
+			   COALESCE(
+			     (SELECT json_agg(d)
+			      FROM (
+			        SELECT DISTINCT doc.id, doc.inscription as label
+			        FROM appearances ann
+			        JOIN namings doc ON doc.id = ann.directed_to AND doc.deleted_at IS NULL
+			        WHERE ann.directed_from = a.naming_id AND ann.valence = 'codes'
+			      ) d),
+			     '[]'::json
+			   ) as document_anchors,
 			   -- Cross-boundary: participations where the other endpoint is not on this map
 			   (SELECT count(DISTINCT p_out.id)
 			    FROM participations p_out
@@ -1149,7 +1160,7 @@ export async function getProjectPhases(projectId: string) {
 }
 
 // Get members of a phase with their current state
-export async function getClusterMembers(phaseId: string) {
+export async function getPhaseMembers(phaseId: string) {
 	return (
 		await query(
 			`SELECT a.naming_id, n.inscription,
@@ -1168,7 +1179,7 @@ export async function getClusterMembers(phaseId: string) {
 }
 
 // Get all passages (annotations) for all members of a phase
-export async function getClusterPassages(phaseId: string, projectId: string) {
+export async function getPhasePassages(phaseId: string, projectId: string) {
 	return (
 		await query(
 			`SELECT ann.naming_id as id, ann.directed_from as code_id,

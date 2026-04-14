@@ -17,36 +17,36 @@
 		onclose: () => void;
 	} = $props();
 
-	let selectedClusterId = $state<string | null>(null);
-	let newClusterLabel = $state('');
+	let selectedPhaseId = $state<string | null>(null);
+	let newPhaseLabel = $state('');
 	let creating = $state(false);
 	let assigning = $state(false);
 
 	async function createPhase() {
-		if (!newClusterLabel.trim() || creating) return;
+		if (!newPhaseLabel.trim() || creating) return;
 		creating = true;
 		const res = await fetch(`/api/projects/${projectId}/phases`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ action: 'create', inscription: newClusterLabel.trim() })
+			body: JSON.stringify({ action: 'create', inscription: newPhaseLabel.trim() })
 		});
 		if (res.ok) {
 			const phase = await res.json();
-			selectedClusterId = phase.id;
-			newClusterLabel = '';
+			selectedPhaseId = phase.id;
+			newPhaseLabel = '';
 			await invalidateAll();
 		}
 		creating = false;
 	}
 
 	async function assign() {
-		if (!selectedClusterId || assigning) return;
+		if (!selectedPhaseId || assigning) return;
 		assigning = true;
 		for (const namingId of namingIds) {
 			await fetch(`/api/projects/${projectId}/phases`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ action: 'assign', phaseId: selectedClusterId, namingId })
+				body: JSON.stringify({ action: 'assign', phaseId: selectedPhaseId, namingId })
 			});
 		}
 		assigning = false;
@@ -68,8 +68,8 @@
 			{#each phases as c (c.id)}
 				<button
 					class="phase-option"
-					class:selected={selectedClusterId === c.id}
-					onclick={() => { selectedClusterId = c.id; }}
+					class:selected={selectedPhaseId === c.id}
+					onclick={() => { selectedPhaseId = c.id; }}
 				>
 					<span class="phase-name">{c.label}</span>
 					<span class="phase-count">{c.member_count}</span>
@@ -85,10 +85,10 @@
 				type="text"
 				class="create-input"
 				placeholder="New phase name..."
-				bind:value={newClusterLabel}
+				bind:value={newPhaseLabel}
 				disabled={creating}
 			/>
-			{#if newClusterLabel.trim()}
+			{#if newPhaseLabel.trim()}
 				<button type="submit" class="btn-create" disabled={creating}>
 					{creating ? 'Creating...' : '+ Create'}
 				</button>
@@ -98,7 +98,7 @@
 		<div class="modal-actions">
 			<button class="btn-cancel" onclick={onclose}>Cancel</button>
 			<button class="btn-assign" onclick={assign}
-				disabled={!selectedClusterId || assigning}>
+				disabled={!selectedPhaseId || assigning}>
 				{assigning ? 'Assigning...' : 'Assign'}
 			</button>
 		</div>

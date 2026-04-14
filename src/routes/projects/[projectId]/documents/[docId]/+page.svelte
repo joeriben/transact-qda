@@ -108,7 +108,7 @@
 	// Context menu state
 	let ctxMenuNamingIds = $state<string[] | null>(null);
 	let ctxMenuPos = $state({ x: 0, y: 0 });
-	let showClusterDialog = $state(false);
+	let showPhaseDialog = $state(false);
 	// Drag-drop state
 	let dragOverDoc = $state(false);
 	// Rubber-band selection state
@@ -1091,16 +1091,16 @@
 		position={ctxMenuPos}
 		namingLabels={ctxMenuNamingIds.map(id => candidates.find((c: any) => c.id === id)?.label || '')}
 		onclose={() => ctxMenuNamingIds = null}
-		onaddtocluster={() => { showClusterDialog = true; }}
+		onaddtophase={() => { showPhaseDialog = true; }}
 	/>
 {/if}
 
-{#if showClusterDialog && ctxMenuNamingIds}
+{#if showPhaseDialog && ctxMenuNamingIds}
 	<PhaseAssignDialog
 		namingIds={ctxMenuNamingIds}
 		{phases}
 		projectId={data.projectId}
-		onclose={() => { showClusterDialog = false; ctxMenuNamingIds = null; }}
+		onclose={() => { showPhaseDialog = false; ctxMenuNamingIds = null; }}
 	/>
 {/if}
 

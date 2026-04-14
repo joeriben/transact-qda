@@ -20,6 +20,7 @@
 	import StackPanel from '$lib/map/StackPanel.svelte';
 	import ContextMenu from '$lib/map/ContextMenu.svelte';
 	import PhasesSidebar from '$lib/map/PhasesSidebar.svelte';
+	import UnplacedPanel from '$lib/map/UnplacedPanel.svelte';
 	import ListItemCard from '$lib/map/ListItemCard.svelte';
 	import OutsidePanel from '$lib/map/OutsidePanel.svelte';
 	import MemoCreateForm from '$lib/map/MemoCreateForm.svelte';
@@ -293,6 +294,7 @@
 	<div class="map-workspace">
 		<!-- Canvas -->
 		<div class="canvas-container" bind:this={canvasContainerEl} style="{viewMode !== 'canvas' ? 'display: none;' : ''}">
+			<UnplacedPanel {viewport} />
 			<InfiniteCanvas {viewport} oncanvasclick={handleCanvasClick} oncanvascontextmenu={handleCanvasContextMenu}
 				onreset={ms.mapType === 'positional' ? fitPosMap : undefined}>
 				{#if displayMode === 'full'}

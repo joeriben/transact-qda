@@ -50,7 +50,7 @@ export function createMapState(
 		new Map(phases.map((p: any, i: number) => [p.id, regionColor(i)]))
 	);
 
-	const DECLINED_CLUSTER = '__declined__';
+	const DECLINED_PHASE = '__declined__';
 	const declinedCount = $derived(
 		allItems.filter((n: any) => isWithdrawn(n.properties)).length
 	);
@@ -81,7 +81,7 @@ export function createMapState(
 	// Phases
 	let assigningToPhase = $state<string | null>(null);
 	let highlightedPhase = $state<string | null>(null);
-	const isDeclinedFilter = $derived(highlightedPhase === DECLINED_CLUSTER);
+	const isDeclinedFilter = $derived(highlightedPhase === DECLINED_PHASE);
 
 	// AI
 	let aiEnabled = $state(true);
@@ -113,8 +113,8 @@ export function createMapState(
 	let memoCreateLinkedIds = $state<string[]>([]);
 
 	// Phase sidebar state
-	let showClusterForm = $state(false);
-	let newClusterLabel = $state('');
+	let showPhaseForm = $state(false);
+	let newPhaseLabel = $state('');
 	let expandedPhase = $state<string | null>(null);
 	let phaseContents = $state<any[]>([]);
 
@@ -156,7 +156,7 @@ export function createMapState(
 		await reload();
 	}
 
-	function isClusterHighlighted(node: any): boolean {
+	function isPhaseHighlighted(node: any): boolean {
 		if (!highlightedPhase) return false;
 		// Check manual phases
 		if (node.phase_ids?.includes(highlightedPhase)) return true;
@@ -557,10 +557,10 @@ export function createMapState(
 
 	// Phases
 	async function addPhase() {
-		if (!newClusterLabel.trim()) return;
-		await mapAction('createPhase', { inscription: newClusterLabel.trim() });
-		newClusterLabel = '';
-		showClusterForm = false;
+		if (!newPhaseLabel.trim()) return;
+		await mapAction('createPhase', { inscription: newPhaseLabel.trim() });
+		newPhaseLabel = '';
+		showPhaseForm = false;
 		await reload();
 	}
 
@@ -576,7 +576,7 @@ export function createMapState(
 		}
 	}
 
-	async function removeFromClusterFn(phaseId: string, namingId: string) {
+	async function removeFromPhaseFn(phaseId: string, namingId: string) {
 		await mapAction('removeFromPhase', { phaseId, namingId });
 		await reload();
 		if (expandedPhase === phaseId) {
@@ -640,7 +640,7 @@ export function createMapState(
 		get isPrimary() { return isPrimary; },
 		get declinedCount() { return declinedCount; },
 		get isDeclinedFilter() { return isDeclinedFilter; },
-		DECLINED_CLUSTER,
+		DECLINED_PHASE,
 
 		// Unresolved tracking
 		set positionsRef(v: Map<string, { x: number; y: number }> | null) { positionsRef = v; },
@@ -728,17 +728,17 @@ export function createMapState(
 		get memoLinkLoading() { return memoLinkLoading; },
 
 		// Phase sidebar state
-		get showClusterForm() { return showClusterForm; },
-		set showClusterForm(v) { showClusterForm = v; },
-		get newClusterLabel() { return newClusterLabel; },
-		set newClusterLabel(v) { newClusterLabel = v; },
+		get showPhaseForm() { return showPhaseForm; },
+		set showPhaseForm(v) { showPhaseForm = v; },
+		get newPhaseLabel() { return newPhaseLabel; },
+		set newPhaseLabel(v) { newPhaseLabel = v; },
 		get expandedPhase() { return expandedPhase; },
 		get phaseContents() { return phaseContents; },
 
 		// Helpers
 		isWithdrawn,
 		isHiddenByFilter,
-		isClusterHighlighted,
+		isPhaseHighlighted,
 		connectionOpacity,
 		designationColor,
 		designationLabel,
@@ -784,7 +784,7 @@ export function createMapState(
 		pullOntoMap,
 		addPhase,
 		assignToPhase: assignToPhaseFn,
-		removeFromPhase: removeFromClusterFn,
+		removeFromPhase: removeFromPhaseFn,
 		togglePhase,
 		pinToLayer,
 		unpinLayer,

@@ -8,13 +8,13 @@
 		position,
 		namingLabels,
 		onclose,
-		onaddtocluster,
+		onaddtophase,
 	}: {
 		namingIds: string[];
 		position: { x: number; y: number };
 		namingLabels: string[];
 		onclose: () => void;
-		onaddtocluster: () => void;
+		onaddtophase: () => void;
 	} = $props();
 </script>
 
@@ -25,7 +25,7 @@
 	<div class="ctx-header">
 		{namingIds.length === 1 ? namingLabels[0] : `${namingIds.length} namings`}
 	</div>
-	<button class="ctx-item" onclick={() => { onaddtocluster(); onclose(); }}>
+	<button class="ctx-item" onclick={() => { onaddtophase(); onclose(); }}>
 		Add to Phase...
 	</button>
 </div>

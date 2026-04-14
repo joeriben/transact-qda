@@ -13,7 +13,7 @@ import { createAnnotation, createOrphanNaming, getOrCreateGroundingWorkspace } f
 import { designate as designateNaming } from '../../db/queries/namings.js';
 import type {
 	SuggestElementInput, SuggestRelationInput, IdentifySilenceInput,
-	WriteMemoInput, CreateClusterInput, SuggestFormationInput,
+	WriteMemoInput, CreatePhaseInput, SuggestFormationInput,
 	SuggestPositionInput, SuggestAxisRefinementInput, IdentifyEmptyRegionInput,
 	RewriteCueInput, RespondInput, WithdrawCueInput, ReviseMemoInput,
 	ReadDocumentInput, CodePassageInput, DesignateInput,
@@ -91,9 +91,9 @@ export async function executeMapTool(
 				return { success: true, result: { id: memo.id, title } };
 			}
 
-			case 'create_cluster': {
-				const { inscription, element_ids, reasoning } = input as unknown as CreateClusterInput;
-				const phase = await createClusterAsAi(projectId, aiNamingId, mapId, inscription, { aiReasoning: reasoning }, prov);
+			case 'create_phase': {
+				const { inscription, element_ids, reasoning } = input as unknown as CreatePhaseInput;
+				const phase = await createPhaseAsAi(projectId, aiNamingId, mapId, inscription, { aiReasoning: reasoning }, prov);
 				for (const elementId of element_ids) {
 					await assignToPhase(phase.id, elementId, undefined, undefined, aiNamingId);
 				}
@@ -688,7 +688,7 @@ async function addSilenceToMap(
 	});
 }
 
-async function createClusterAsAi(
+async function createPhaseAsAi(
 	projectId: string,
 	aiNamingId: string,
 	mapId: string,

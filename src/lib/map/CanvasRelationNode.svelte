@@ -17,8 +17,8 @@
 	const ms = getMapState();
 </script>
 
-<div class="relation-diamond" class:ai-suggested={rel.properties?.aiSuggested} class:ai-withdrawn={ms.isWithdrawn(rel.properties)} class:phase-member={ms.highlightedPhase && ms.isClusterHighlighted(rel)} class:phase-dimmed={ms.highlightedPhase && !ms.isClusterHighlighted(rel)} class:centered-dim={cp.centeredConnections && !cp.centeredConnections.has(rel.naming_id)} class:centered-anchor={cp.centeredId === rel.naming_id}
-	style="{ms.highlightedPhase && ms.isClusterHighlighted(rel) ? `--phase-color: ${ms.phaseColorMap.get(ms.highlightedPhase)};` : ''}">
+<div class="relation-diamond" class:ai-suggested={rel.properties?.aiSuggested} class:ai-withdrawn={ms.isWithdrawn(rel.properties)} class:phase-member={ms.highlightedPhase && ms.isPhaseHighlighted(rel)} class:phase-dimmed={ms.highlightedPhase && !ms.isPhaseHighlighted(rel)} class:centered-dim={cp.centeredConnections && !cp.centeredConnections.has(rel.naming_id)} class:centered-anchor={cp.centeredId === rel.naming_id}
+	style="{ms.highlightedPhase && ms.isPhaseHighlighted(rel) ? `--phase-color: ${ms.phaseColorMap.get(ms.highlightedPhase)};` : ''}">
 	<svg class="diamond-bg" viewBox="0 0 100 100" preserveAspectRatio="none">
 		<polygon points="12,0 88,0 100,50 88,100 12,100 0,50" fill="#161822" stroke="#2a2d3a" stroke-width="1.5"/>
 	</svg>
