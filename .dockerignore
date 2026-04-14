@@ -1,0 +1,17 @@
+.git
+.gitignore
+.github
+.svelte-kit
+node_modules
+build
+.model-cache
+projekte
+uploads
+backups
+coach-library
+ai-settings.json
+*.key
+.env
+.env.*
+docs/sessions
+CLAUDE.md

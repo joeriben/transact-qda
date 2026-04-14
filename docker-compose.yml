@@ -1,16 +1,52 @@
+# SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
+# SPDX-License-Identifier: AGPL-3.0-or-later
+name: tqda-work
+
 services:
-  postgres:
+  db:
     image: pgvector/pgvector:pg16
-    container_name: transact-qda-db
+    container_name: tqda-work-db
     restart: unless-stopped
     environment:
       POSTGRES_DB: transact_qda
       POSTGRES_USER: tqda
       POSTGRES_PASSWORD: tqda_dev
-    ports:
-      - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tqda -d transact_qda"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: tqda-work/app:dev
+    container_name: tqda-work-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://tqda:tqda_dev@db:5432/transact_qda
+      SESSION_SECRET: ${SESSION_SECRET:-dev-only-secret-change-before-real-use-xxxxxxxxxx}
+      HOST: 0.0.0.0
+      PORT: 5174
+    ports:
+      - "${TQDA_PORT:-5174}:5174"
+    volumes:
+      - projekte:/app/projekte
+      - uploads:/app/uploads
+      - modelcache:/app/.model-cache
+      - coach:/app/coach-library
+      - backups:/app/backups
 
 volumes:
   pgdata:
+  projekte:
+  uploads:
+  modelcache:
+  coach:
+  backups:
