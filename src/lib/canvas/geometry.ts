@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Pure geometry functions for spatial relation derivation on SW/A maps.
 // All functions are stateless — they take positions/dimensions and return results.
 

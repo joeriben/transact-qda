@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Collapse modes: how a naming appears from a perspective
 export type CollapseMode = 'entity' | 'relation' | 'constellation' | 'process' | 'silence' | 'perspective';
 

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import type pg from 'pg';
 import type { ParsedElement, ParseResult } from './types.js';
 import { parsePlainText } from './plain-text.js';

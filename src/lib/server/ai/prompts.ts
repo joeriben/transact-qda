@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Map-type supplements, discussion prompts, and context message formatters.
 // Prompt composition happens in runtime/agent.ts; this file provides
 // the building blocks that the runtime and personas reference.

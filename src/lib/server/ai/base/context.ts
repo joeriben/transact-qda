@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Unified context builder for all AI personas.
 // Provides composable functions that each persona can call as needed.
 // Extracted from context.ts (project overview) and agent.ts (map detail).

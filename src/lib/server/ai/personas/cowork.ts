@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Cowork persona definition: co-researcher, reacts to user namings on maps.
 // Has tools for naming acts (suggest_element, suggest_relation, write_memo, etc.)
 // Socratic accompaniment + methodology advisor.

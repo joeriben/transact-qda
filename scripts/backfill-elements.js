@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /**
  * Backfill: parse existing documents into elements + compute embeddings.
  * Run directly: node scripts/backfill-elements.js

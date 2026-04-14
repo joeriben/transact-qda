@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import pg from 'pg';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';

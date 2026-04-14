@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Delegation system: allows the chief model to spawn sub-agents with cheaper models.
 // The chief decides autonomously when to delegate — it only needs accurate descriptions
 // of available agent-LLMs.

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import * as argon2 from 'argon2';
 import crypto from 'node:crypto';
 import { query, queryOne } from '../db/index.js';

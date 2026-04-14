@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Tool execution: maps AI tool calls to naming acts in the data space.
 // Extracted from agent.ts — now shared by all runtime entry points.
 

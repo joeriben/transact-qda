@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // AI ticket system: bots report bugs, improvements, and suggestions.
 // All personas have write access to this system.
 

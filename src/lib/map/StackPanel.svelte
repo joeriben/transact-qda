@@ -1,3 +1,7 @@
+<!--
+  SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
+  SPDX-License-Identifier: AGPL-3.0-or-later
+-->
 <script lang="ts">
 	import { getMapState } from './mapState.svelte.js';
 	import { CLARKE_SW_QUESTIONS, CLARKE_ARENA_QUESTIONS, ANALYTICAL_DEEPENING } from '$lib/shared/constants.js';

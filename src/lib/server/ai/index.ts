@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { chat, getModel, getProvider } from './client.js';
 import { query } from '../db/index.js';
 

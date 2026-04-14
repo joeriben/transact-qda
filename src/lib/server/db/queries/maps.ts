@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { query, queryOne, transaction } from '../index.js';
 import type { MapType, DesignationStage } from '$lib/shared/types/index.js';
 import { getOrCreateResearcherNaming } from './namings.js';

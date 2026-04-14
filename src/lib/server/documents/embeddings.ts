@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /**
  * Embedding client: generates sentence embeddings using @huggingface/transformers.
  * Runs nomic-embed-text (768 dims) directly in Node.js — no external service needed.

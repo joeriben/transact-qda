@@ -1,3 +1,7 @@
+<!--
+  SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
+  SPDX-License-Identifier: AGPL-3.0-or-later
+-->
 <script lang="ts">
 	import type { SwRole } from '$lib/shared/types/index.js';
 	import { SW_ROLE_STYLES } from '$lib/shared/constants.js';

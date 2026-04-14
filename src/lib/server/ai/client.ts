@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Provider-agnostic AI client with runtime-configurable provider and model.
 // All providers except Anthropic use the OpenAI-compatible SDK.
 // Settings from ai-settings.json, API keys from *.key files (gitignored).

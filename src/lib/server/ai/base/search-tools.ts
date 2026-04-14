@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Search tools available to all AI personas.
 // These are AI-callable tools for searching project data, documents, and manual.
 

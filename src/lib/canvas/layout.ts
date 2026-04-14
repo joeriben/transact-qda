@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // ELK-based automatic layout for map namings.
 // Converts map data → ELK graph → computes positions → returns position map.
 // ELK positions entities and silences; relation nodes are placed at the midpoint

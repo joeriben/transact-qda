@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Autonomous persona definition: autonomous researcher.
 // Acts like a human researcher: codes documents, creates namings,
 // draws relations, writes memos — fully autonomously.

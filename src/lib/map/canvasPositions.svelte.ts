@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { computeLayout, computeRadialLayout } from '$lib/canvas/layout.js';
 import { computeSpatialRelations, type Formation } from '$lib/canvas/geometry.js';
 import type { MapState } from './mapState.svelte.js';

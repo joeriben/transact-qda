@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Canonical methodology knowledge — single source of truth for all AI personas.
 // Contains: transactional ontology, CCS gradient, Clarke's SA, the unmarked,
 // provenance, data model, map types, memos.

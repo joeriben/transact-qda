@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Server-Sent Events for map-level AI notifications.
 // In-memory EventEmitter per map (single-server architecture).
 // Clients subscribe via GET /api/projects/[projectId]/maps/[mapId]/events

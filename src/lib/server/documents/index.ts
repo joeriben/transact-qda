@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 export async function extractText(buffer: Buffer, mimeType: string): Promise<string> {
 	if (mimeType === 'text/plain') {
 		return buffer.toString('utf-8');

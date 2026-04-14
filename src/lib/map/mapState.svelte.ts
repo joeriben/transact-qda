@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { getContext, setContext } from 'svelte';
 import { regionColor } from '$lib/canvas/regions.js';
 import type { SwRole } from '$lib/shared/types/index.js';

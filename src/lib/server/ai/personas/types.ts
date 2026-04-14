@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Persona system: defines the interface and registry for AI personas.
 // Each persona shares the same knowledge base but has different tools and instructions.
 

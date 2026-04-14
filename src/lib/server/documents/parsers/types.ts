@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 /**
  * Document element types and parser interfaces.
  * Elements form a directed graph (hierarchy via parent_id, cross-refs via refs).

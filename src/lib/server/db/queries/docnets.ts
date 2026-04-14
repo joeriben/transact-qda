@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { query, transaction } from '../index.js';
 import { createNaming } from './namings.js';
 import { getOrCreateResearcherNaming } from './namings.js';

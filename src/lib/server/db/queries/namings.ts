@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { query, queryOne, transaction } from '../index.js';
 import type { CollapseMode } from '$lib/shared/types/index.js';
 import { createMemo } from './memos.js';

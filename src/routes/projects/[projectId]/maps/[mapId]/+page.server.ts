@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import type { PageServerLoad } from './$types.js';
 import { getMap, getMapStructure } from '$lib/server/db/queries/maps.js';
 import { error } from '@sveltejs/kit';

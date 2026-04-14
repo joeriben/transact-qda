@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Claude tool definitions for the AI agent.
 // Each tool maps to a naming act in the data space.
 

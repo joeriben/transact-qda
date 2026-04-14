@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Platform manual loader — loaded once at module init, shared by all personas.
 
 import { readFileSync } from 'node:fs';

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Persona registry — importing this file registers all personas.
 // Import this once at app init to make all personas available via getPersona().
 

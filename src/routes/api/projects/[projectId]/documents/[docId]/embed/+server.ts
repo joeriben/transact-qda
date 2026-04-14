@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { json } from '@sveltejs/kit';
 import { query } from '$lib/server/db/index.js';
 import { embedDocumentElements } from '$lib/server/documents/embed-elements.js';
