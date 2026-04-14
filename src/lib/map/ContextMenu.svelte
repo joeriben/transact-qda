@@ -46,6 +46,17 @@
 	}}>
 		{ms.relatingFrom ? 'Connect here' : 'Relate...'}
 	</button>
+	{#if node?.mode === 'entity'}
+		<button class="ctx-item" onclick={() => { ms.startMapReify(namingId); onclose(); }}
+			title="Turn this appearance into a relation on this map; pick source and target next">
+			Reify as relation (this map)
+		</button>
+	{:else if node?.mode === 'relation'}
+		<button class="ctx-item" onclick={() => { ms.switchToEntityOnMap(namingId); onclose(); }}
+			title="Collapse this appearance back to entity on this map; participation stays, other maps unchanged">
+			Switch to entity (this map)
+		</button>
+	{/if}
 	<button class="ctx-item" onclick={() => { ms.showStack(namingId); onclose(); }}>Stack</button>
 	<button class="ctx-item" onclick={() => { ms.openMemoCreate([namingId]); onclose(); }}>Write memo</button>
 	<button class="ctx-item" onclick={() => { oncenter(namingId); onclose(); }}>

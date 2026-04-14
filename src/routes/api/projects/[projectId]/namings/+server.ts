@@ -192,46 +192,11 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			return json({ ok: true });
 		}
 
-		case 'switchToEntity': {
-			// Relation → Entity: change appearance mode, participations remain
-			const { namingId } = body;
-			if (!namingId) return json({ error: 'namingId required' }, { status: 400 });
-			await query(
-				`UPDATE appearances SET mode = 'entity', updated_at = now()
-				 WHERE naming_id = $1 AND mode = 'relation'`,
-				[namingId]
-			);
-			return json({ ok: true });
-		}
-
-		case 'reifyAsRelation': {
-			// Entity → Relation: create participation between sourceId and targetId,
-			// using this naming as the relation. Then update appearance mode.
-			const { namingId, sourceId, targetId, valence } = body;
-			if (!namingId || !sourceId || !targetId) return json({ error: 'namingId, sourceId, targetId required' }, { status: 400 });
-
-			// Create participation: the naming becomes the bond between source and target
-			await query(
-				`INSERT INTO participations (id, naming_id, participant_id)
-				 VALUES ($1, $2, $3)
-				 ON CONFLICT (id) DO UPDATE SET naming_id = $2, participant_id = $3`,
-				[namingId, sourceId, targetId]
-			);
-
-			// Update all appearances to mode='relation' with direction
-			await query(
-				`UPDATE appearances
-				 SET mode = 'relation',
-				     directed_from = $2,
-				     directed_to = $3,
-				     valence = COALESCE($4, valence),
-				     updated_at = now()
-				 WHERE naming_id = $1 AND naming_id != perspective_id`,
-				[namingId, sourceId, targetId, valence || null]
-			);
-
-			return json({ ok: true });
-		}
+		// (The old globally-destructive `switchToEntity` and `reifyAsRelation`
+		// actions were removed: mode is a per-appearance collapse, not a
+		// property of the naming, so flipping all appearances at once breaks
+		// the collapse model. The map endpoint's `switchAppearanceMode`
+		// action replaces them on a per-map basis.)
 
 		case 'merge': {
 			const { survivorId, mergedId } = body;

@@ -381,6 +381,49 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			return json(results);
 		}
 
+		case 'switchAppearanceMode': {
+			// Per-map collapse flip: change mode only for THIS map's appearance of
+			// the naming. Does not touch any other appearance. For entity → relation
+			// the caller also supplies sourceId, targetId (and optionally valence);
+			// we upsert the participation that makes the bond real, then flip the
+			// appearance. For relation → entity we leave directed_from/to in place
+			// so re-flipping later keeps the endpoints.
+			const { namingId, mode, sourceId, targetId, valence } = body;
+			if (!namingId) return json({ error: 'namingId required' }, { status: 400 });
+			if (mode !== 'entity' && mode !== 'relation') {
+				return json({ error: "mode must be 'entity' or 'relation'" }, { status: 400 });
+			}
+			const { query: dbQuery } = await import('$lib/server/db/index.js');
+			if (mode === 'relation') {
+				if (!sourceId || !targetId) {
+					return json({ error: 'sourceId and targetId required for relation' }, { status: 400 });
+				}
+				await dbQuery(
+					`INSERT INTO participations (id, naming_id, participant_id)
+					 VALUES ($1, $2, $3)
+					 ON CONFLICT (id) DO UPDATE SET naming_id = $2, participant_id = $3`,
+					[namingId, sourceId, targetId]
+				);
+				await dbQuery(
+					`UPDATE appearances
+					 SET mode = 'relation',
+					     directed_from = $3,
+					     directed_to = $4,
+					     valence = COALESCE($5, valence),
+					     updated_at = now()
+					 WHERE naming_id = $1 AND perspective_id = $2`,
+					[namingId, mapId, sourceId, targetId, valence || null]
+				);
+			} else {
+				await dbQuery(
+					`UPDATE appearances SET mode = 'entity', updated_at = now()
+					 WHERE naming_id = $1 AND perspective_id = $2`,
+					[namingId, mapId]
+				);
+			}
+			return json({ ok: true });
+		}
+
 		case 'updatePosition': {
 			const { namingId, x, y } = body;
 			if (!namingId || x == null || y == null) return json({ error: 'namingId, x, y required' }, { status: 400 });

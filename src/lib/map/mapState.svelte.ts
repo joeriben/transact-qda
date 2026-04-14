@@ -69,6 +69,12 @@ export function createMapState(
 	let relatingFrom = $state<string | null>(null);
 	let relatingTo = $state<string | null>(null);
 
+	// Per-map reify: flipping an entity appearance into a relation on THIS map.
+	// reifyTarget is the naming being reified; reifySource is the first endpoint
+	// the user picks. When the second endpoint is picked we fire the API.
+	let reifyTarget = $state<string | null>(null);
+	let reifySource = $state<string | null>(null);
+
 	// Naming act prompt
 	let actTarget = $state<string | null>(null);
 	let actType = $state<'rename' | 'designate' | 'relate'>('rename');
@@ -334,6 +340,42 @@ export function createMapState(
 
 	function startRelating(fromId: string) {
 		relatingFrom = fromId;
+	}
+
+	function startMapReify(namingId: string) {
+		reifyTarget = namingId;
+		reifySource = null;
+	}
+
+	function cancelMapReify() {
+		reifyTarget = null;
+		reifySource = null;
+	}
+
+	async function mapReifyPick(id: string) {
+		if (!reifyTarget || id === reifyTarget) return;
+		if (!reifySource) {
+			reifySource = id;
+			return;
+		}
+		if (id === reifySource) return;
+		const targetNamingId = reifyTarget;
+		const src = reifySource;
+		const tgt = id;
+		reifyTarget = null;
+		reifySource = null;
+		await mapAction('switchAppearanceMode', {
+			namingId: targetNamingId,
+			mode: 'relation',
+			sourceId: src,
+			targetId: tgt
+		});
+		await reload();
+	}
+
+	async function switchToEntityOnMap(namingId: string) {
+		await mapAction('switchAppearanceMode', { namingId, mode: 'entity' });
+		await reload();
 	}
 
 	function completeRelating(toId: string) {
@@ -679,6 +721,8 @@ export function createMapState(
 		set relatingFrom(v) { relatingFrom = v; },
 		get relatingTo() { return relatingTo; },
 		set relatingTo(v) { relatingTo = v; },
+		get reifyTarget() { return reifyTarget; },
+		get reifySource() { return reifySource; },
 		get actTarget() { return actTarget; },
 		set actTarget(v) { actTarget = v; },
 		get actType() { return actType; },
@@ -776,6 +820,10 @@ export function createMapState(
 		startDesignation,
 		startRelating,
 		completeRelating,
+		startMapReify,
+		cancelMapReify,
+		mapReifyPick,
+		switchToEntityOnMap,
 		submitRelation,
 		cancelRelation,
 		toggleWithdraw,

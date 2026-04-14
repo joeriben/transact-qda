@@ -84,6 +84,7 @@
 	// ─── Canvas interactions ───
 
 	function handleNodeClick(id: string, e: MouseEvent) {
+		if (ms.reifyTarget && id !== ms.reifyTarget) { ms.mapReifyPick(id); return; }
 		if (ms.relatingFrom) { ms.completeRelating(id); return; }
 		if (ms.assigningToPhase) { ms.assignToPhase(ms.assigningToPhase, id); return; }
 		selection.select(id, e.ctrlKey || e.metaKey);
@@ -239,6 +240,7 @@
 	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') {
 			if (toolbarRef?.closeDropdowns()) return;
+			ms.cancelMapReify();
 			ms.cancelRelation();
 			ms.cancelAct();
 			ms.cancelMemoCreate();
@@ -279,6 +281,18 @@
 		<div class="status-bar">
 			Relating from: <strong>{ms.findInscription(ms.relatingFrom)}</strong> — click any node to connect
 			<button class="btn-link" onclick={ms.cancelRelation}>cancel</button>
+		</div>
+	{/if}
+
+	{#if ms.reifyTarget}
+		<div class="status-bar">
+			Reifying <strong>{ms.findInscription(ms.reifyTarget)}</strong> as relation on this map —
+			{#if !ms.reifySource}
+				click <strong>source</strong> node
+			{:else}
+				source: <strong>{ms.findInscription(ms.reifySource)}</strong> — click <strong>target</strong> node
+			{/if}
+			<button class="btn-link" onclick={ms.cancelMapReify}>cancel</button>
 		</div>
 	{/if}
 
