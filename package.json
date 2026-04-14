@@ -5,6 +5,12 @@
 	"type": "module",
 	"license": "AGPL-3.0-or-later",
 	"author": "Benjamin Jörissen <benjamin.joerissen@fau.de>",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/joeriben/transact-qda.git"
+	},
+	"homepage": "https://github.com/joeriben/transact-qda#readme",
+	"bugs": "https://github.com/joeriben/transact-qda/issues",
 	"scripts": {
 		"dev": "vite dev",
 		"build": "vite build",

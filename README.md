@@ -35,7 +35,7 @@ Prerequisites:
 - **Node.js 20+** and **npm**
 
 ```bash
-git clone <this-repo>
+git clone https://github.com/joeriben/transact-qda.git
 cd transact-qda
 cp .env.example .env          # adjust SESSION_SECRET if you wish
 npm install
