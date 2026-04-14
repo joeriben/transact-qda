@@ -38,7 +38,7 @@
 
 	// ---- State ----
 	let namings = $derived<NamingRow[]>(data.namings);
-	let clusters = $derived<any[]>(data.clusters ?? []);
+	let phases = $derived<any[]>(data.phases ?? []);
 	let filterCCS = $state<'all' | 'cue' | 'characterization' | 'specification'>('all');
 	let filterGrounding = $state<'all' | 'grounded' | 'memo' | 'ungrounded'>('all');
 	let filterMode = $state<'all' | 'entity' | 'relation' | 'silence'>('all');
@@ -47,14 +47,14 @@
 	let hideAutonoma = $state(false);
 	let hideWithdrawn = $state(true);
 
-	// Cluster state
+	// Phase state
 	let selectedClusterId = $state<string | null>(null);
-	let clusterMembers = $state<any[]>([]);
-	let clusterPassages = $state<any[]>([]);
-	let newClusterName = $state('');
+	let phaseMembers = $state<any[]>([]);
+	let phasePassages = $state<any[]>([]);
+	let newPhaseName = $state('');
 	let showClusterForm = $state(false);
-	let assigningToCluster = $state<string | null>(null);
-	let loadingCluster = $state(false);
+	let assigningToPhase = $state<string | null>(null);
+	let loadingPhase = $state(false);
 
 	let newNamingValue = $state('');
 	let creatingNaming = $state(false);
@@ -119,7 +119,7 @@
 	// ---- Escape key handler ----
 	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') {
-			if (assigningToCluster) { assigningToCluster = null; e.preventDefault(); return; }
+			if (assigningToPhase) { assigningToPhase = null; e.preventDefault(); return; }
 			if (mergeSurvivorId) { cancelMerge(); e.preventDefault(); return; }
 			if (actTarget) { cancelAct(); e.preventDefault(); return; }
 			if (reifyNamingId) { cancelReify(); e.preventDefault(); return; }
@@ -424,9 +424,9 @@
 		reifySourceId = null;
 	}
 
-	// ---- Cluster API ----
-	async function clusterAction(action: string, params: Record<string, any> = {}) {
-		const res = await fetch(`/api/projects/${data.projectId}/clusters`, {
+	// ---- Phase API ----
+	async function phaseAction(action: string, params: Record<string, any> = {}) {
+		const res = await fetch(`/api/projects/${data.projectId}/phases`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ action, ...params })
@@ -434,49 +434,49 @@
 		return res.json();
 	}
 
-	async function createCluster() {
-		if (!newClusterName.trim()) return;
-		await clusterAction('create', { inscription: newClusterName.trim() });
-		newClusterName = '';
+	async function createPhase() {
+		if (!newPhaseName.trim()) return;
+		await phaseAction('create', { inscription: newPhaseName.trim() });
+		newPhaseName = '';
 		showClusterForm = false;
 		const module = await import('$app/navigation');
 		module.invalidateAll();
 	}
 
-	async function selectCluster(clusterId: string) {
-		if (selectedClusterId === clusterId) {
+	async function selectPhase(phaseId: string) {
+		if (selectedClusterId === phaseId) {
 			selectedClusterId = null;
-			clusterMembers = [];
-			clusterPassages = [];
+			phaseMembers = [];
+			phasePassages = [];
 			return;
 		}
-		selectedClusterId = clusterId;
-		loadingCluster = true;
+		selectedClusterId = phaseId;
+		loadingPhase = true;
 		const [membersRes, passagesRes] = await Promise.all([
-			clusterAction('getMembers', { clusterId }),
-			clusterAction('getPassages', { clusterId })
+			phaseAction('getMembers', { phaseId }),
+			phaseAction('getPassages', { phaseId })
 		]);
-		clusterMembers = membersRes.members || [];
-		clusterPassages = passagesRes.passages || [];
-		loadingCluster = false;
+		phaseMembers = membersRes.members || [];
+		phasePassages = passagesRes.passages || [];
+		loadingPhase = false;
 	}
 
-	async function assignNamingToCluster(namingId: string) {
-		if (!assigningToCluster) return;
-		await clusterAction('assign', { clusterId: assigningToCluster, namingId });
-		// Refresh cluster detail if viewing this cluster
-		if (selectedClusterId === assigningToCluster) {
-			await selectCluster(selectedClusterId);
+	async function assignNamingToPhase(namingId: string) {
+		if (!assigningToPhase) return;
+		await phaseAction('assign', { phaseId: assigningToPhase, namingId });
+		// Refresh phase detail if viewing this phase
+		if (selectedClusterId === assigningToPhase) {
+			await selectPhase(selectedClusterId);
 		}
-		assigningToCluster = null;
+		assigningToPhase = null;
 		const module = await import('$app/navigation');
 		module.invalidateAll();
 	}
 
-	async function removeNamingFromCluster(clusterId: string, namingId: string) {
-		await clusterAction('remove', { clusterId, namingId });
-		if (selectedClusterId === clusterId) {
-			await selectCluster(clusterId);
+	async function removeNamingFromPhase(phaseId: string, namingId: string) {
+		await phaseAction('remove', { phaseId, namingId });
+		if (selectedClusterId === phaseId) {
+			await selectPhase(phaseId);
 		}
 		const module = await import('$app/navigation');
 		module.invalidateAll();
@@ -673,7 +673,7 @@
 					{@const withdrawn = isWithdrawn(n.naming_id, n.properties)}
 					<div class="naming-card" class:withdrawn class:relate-target={(relateSource && relateSource !== n.naming_id) || (reifyNamingId && reifyNamingId !== n.naming_id)} class:merge-target={mergeSurvivorId && mergeSurvivorId !== n.naming_id} class:merge-survivor={mergeSurvivorId === n.naming_id}
 						onclick={() => {
-							if (assigningToCluster) { assignNamingToCluster(n.naming_id); return; }
+							if (assigningToPhase) { assignNamingToPhase(n.naming_id); return; }
 							if (mergeSurvivorId && mergeSurvivorId !== n.naming_id) { selectMergeTarget(n.naming_id); return; }
 							if (relateSource && !relateTarget && relateSource !== n.naming_id) { startRelate(n.naming_id); return; }
 							if (reifyNamingId && reifyNamingId !== n.naming_id) {
@@ -1075,70 +1075,70 @@
 	{/if}
 </div>
 
-<!-- Cluster Panel (right sidebar) -->
-<div class="cluster-panel">
-	<div class="cluster-panel-header">
-		<h3>Clusters</h3>
+<!-- Phase Panel (right sidebar) -->
+<div class="phase-panel">
+	<div class="phase-panel-header">
+		<h3>Phases</h3>
 		<button class="btn-xs" onclick={() => showClusterForm = !showClusterForm}>
 			{showClusterForm ? '×' : '+'}
 		</button>
 	</div>
 
 	{#if showClusterForm}
-		<form class="cluster-create-form" onsubmit={e => { e.preventDefault(); createCluster(); }}>
-			<input type="text" placeholder="Cluster name..." bind:value={newClusterName} />
+		<form class="phase-create-form" onsubmit={e => { e.preventDefault(); createPhase(); }}>
+			<input type="text" placeholder="Phase name..." bind:value={newPhaseName} />
 			<button type="submit" class="btn-xs">Create</button>
 		</form>
 	{/if}
 
-	{#if clusters.length === 0}
-		<p class="cluster-empty">No clusters yet.</p>
+	{#if phases.length === 0}
+		<p class="phase-empty">No phases yet.</p>
 	{:else}
-		{#each clusters as cluster}
+		{#each phases as phase}
 			<div
-				class="cluster-item"
-				class:cluster-selected={selectedClusterId === cluster.id}
-				class:cluster-assigning={assigningToCluster === cluster.id}
+				class="phase-item"
+				class:phase-selected={selectedClusterId === phase.id}
+				class:phase-assigning={assigningToPhase === phase.id}
 			>
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<div class="cluster-item-header" onclick={() => selectCluster(cluster.id)}>
-					<span class="cluster-item-label">{cluster.label}</span>
-					<span class="cluster-item-count">{cluster.member_count}</span>
+				<div class="phase-item-header" onclick={() => selectPhase(phase.id)}>
+					<span class="phase-item-label">{phase.label}</span>
+					<span class="phase-item-count">{phase.member_count}</span>
 				</div>
 				<button
 					class="btn-xs"
-					onclick={() => assigningToCluster = assigningToCluster === cluster.id ? null : cluster.id}
+					onclick={() => assigningToPhase = assigningToPhase === phase.id ? null : phase.id}
 				>
-					{assigningToCluster === cluster.id ? 'done' : 'assign'}
+					{assigningToPhase === phase.id ? 'done' : 'assign'}
 				</button>
 			</div>
 		{/each}
 	{/if}
 
-	{#if assigningToCluster}
-		<div class="cluster-assign-hint">Click a naming to assign it to this cluster.</div>
+	{#if assigningToPhase}
+		<div class="phase-assign-hint">Click a naming to assign it to this phase.</div>
 	{/if}
 
-	<!-- Cluster detail: members + passages -->
-	{#if selectedClusterId && !loadingCluster}
-		<div class="cluster-detail">
+	<!-- Phase detail: members + passages -->
+	{#if selectedClusterId && !loadingPhase}
+		<div class="phase-detail">
 			<h4>Members</h4>
-			{#if clusterMembers.length === 0}
-				<p class="cluster-empty">No members yet.</p>
+			{#if phaseMembers.length === 0}
+				<p class="phase-empty">No members yet.</p>
 			{:else}
-				{#each clusterMembers as member}
-					<div class="cluster-member">
+				{#each phaseMembers as member}
+					<div class="phase-member">
 						<span class="designation-dot" style="background: {designationColor(member.designation)}"></span>
-						<span class="cluster-member-label">{member.inscription}</span>
-						<button class="btn-xs btn-remove" onclick={() => removeNamingFromCluster(selectedClusterId!, member.naming_id)}>×</button>
+						<span class="phase-member-label">{member.inscription}</span>
+						<button class="btn-xs btn-remove" onclick={() => removeNamingFromPhase(selectedClusterId!, member.naming_id)}>×</button>
 					</div>
 				{/each}
 			{/if}
 
-			{#if clusterPassages.length > 0}
-				<h4>Passages ({clusterPassages.length})</h4>
-				{@const passagesByCode = clusterPassages.reduce((groups: Record<string, any>, p: any) => {
+			{#if phasePassages.length > 0}
+				<h4>Passages ({phasePassages.length})</h4>
+				{@const passagesByCode = phasePassages.reduce((groups: Record<string, any>, p: any) => {
 					const key = p.code_id;
 					if (!groups[key]) groups[key] = { label: p.code_label, docGroups: {} };
 					const docKey = p.document_id;
@@ -1163,8 +1163,8 @@
 				{/each}
 			{/if}
 		</div>
-	{:else if loadingCluster}
-		<p class="cluster-empty">Loading...</p>
+	{:else if loadingPhase}
+		<p class="phase-empty">Loading...</p>
 	{/if}
 </div>
 </div><!-- .namings-layout -->
@@ -1186,8 +1186,8 @@
 		padding-right: 1rem;
 	}
 
-	/* Cluster Panel */
-	.cluster-panel {
+	/* Phase Panel */
+	.phase-panel {
 		width: 320px;
 		flex-shrink: 0;
 		border-left: 1px solid #2a2d3a;
@@ -1196,48 +1196,48 @@
 		height: 100%;
 		background: #13151e;
 	}
-	.cluster-panel-header {
+	.phase-panel-header {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
 		margin-bottom: 0.5rem;
 	}
-	.cluster-panel-header h3 { font-size: 0.9rem; color: #8b8fa3; margin: 0; }
-	.cluster-create-form {
+	.phase-panel-header h3 { font-size: 0.9rem; color: #8b8fa3; margin: 0; }
+	.phase-create-form {
 		display: flex; gap: 0.4rem; margin-bottom: 0.5rem;
 	}
-	.cluster-create-form input {
+	.phase-create-form input {
 		flex: 1; background: #0f1117; border: 1px solid #2a2d3a; border-radius: 4px;
 		padding: 0.3rem 0.5rem; color: #e1e4e8; font-size: 0.8rem;
 	}
-	.cluster-create-form input:focus { outline: none; border-color: #8b9cf7; }
-	.cluster-empty { color: #6b7280; font-size: 0.8rem; }
-	.cluster-item {
+	.phase-create-form input:focus { outline: none; border-color: #8b9cf7; }
+	.phase-empty { color: #6b7280; font-size: 0.8rem; }
+	.phase-item {
 		background: #161822; border: 1px solid #2a2d3a; border-radius: 6px;
 		padding: 0.4rem 0.6rem; margin-bottom: 0.3rem;
 		display: flex; align-items: center; justify-content: space-between; gap: 0.4rem;
 	}
-	.cluster-item.cluster-selected { border-color: #8b9cf7; background: #1e2030; }
-	.cluster-item.cluster-assigning { border-color: #10b981; }
-	.cluster-item-header { cursor: pointer; flex: 1; display: flex; align-items: center; justify-content: space-between; }
-	.cluster-item-header:hover .cluster-item-label { color: #8b9cf7; }
-	.cluster-item-label { font-size: 0.85rem; color: #e1e4e8; font-weight: 500; }
-	.cluster-item-count { font-size: 0.7rem; color: #6b7280; margin-left: 0.5rem; }
-	.cluster-assign-hint {
+	.phase-item.phase-selected { border-color: #8b9cf7; background: #1e2030; }
+	.phase-item.phase-assigning { border-color: #10b981; }
+	.phase-item-header { cursor: pointer; flex: 1; display: flex; align-items: center; justify-content: space-between; }
+	.phase-item-header:hover .phase-item-label { color: #8b9cf7; }
+	.phase-item-label { font-size: 0.85rem; color: #e1e4e8; font-weight: 500; }
+	.phase-item-count { font-size: 0.7rem; color: #6b7280; margin-left: 0.5rem; }
+	.phase-assign-hint {
 		font-size: 0.75rem; color: #10b981; padding: 0.4rem 0; font-style: italic;
 	}
-	.cluster-detail {
+	.phase-detail {
 		margin-top: 0.75rem; border-top: 1px solid #2a2d3a; padding-top: 0.5rem;
 	}
-	.cluster-detail h4 {
+	.phase-detail h4 {
 		font-size: 0.75rem; color: #8b8fa3; margin: 0.5rem 0 0.3rem;
 		text-transform: uppercase; letter-spacing: 0.05em;
 	}
-	.cluster-member {
+	.phase-member {
 		display: flex; align-items: center; gap: 0.3rem;
 		padding: 0.2rem 0; font-size: 0.8rem; color: #c9cdd5;
 	}
-	.cluster-member-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.phase-member-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.btn-remove { color: #ef4444; border-color: transparent; padding: 0 0.3rem; }
 	.btn-remove:hover { background: rgba(239, 68, 68, 0.1); }
 	.passage-code-group { margin-bottom: 0.5rem; }

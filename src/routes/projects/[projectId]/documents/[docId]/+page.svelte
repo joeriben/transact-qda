@@ -7,7 +7,7 @@
 	import ImageAnnotationViewer from '$lib/components/ImageAnnotationViewer.svelte';
 	import ComparisonPanel from './ComparisonPanel.svelte';
 	import NamingContextMenu from './NamingContextMenu.svelte';
-	import ClusterAssignDialog from './ClusterAssignDialog.svelte';
+	import PhaseAssignDialog from './PhaseAssignDialog.svelte';
 
 	let { data } = $props();
 	const doc = $derived(data.document);
@@ -95,10 +95,10 @@
 	// Similar passages from ComparisonPanel (replaces Passages list when active)
 	let similarPassages = $state<any[] | null>(null);
 
-	// Cluster data
-	const clusters = $derived(data.clusters ?? []);
-	const clusterMemberMap = $derived<Record<string, string[]>>(data.clusterMemberMap ?? {});
-	let clusterFilter = $state<string | null>(null);
+	// Phase data
+	const phases = $derived(data.phases ?? []);
+	const phaseMemberMap = $derived<Record<string, string[]>>(data.phaseMemberMap ?? {});
+	let phaseFilter = $state<string | null>(null);
 
 	// Passages panel text search filter
 	let annFilter = $state('');
@@ -124,8 +124,8 @@
 	let expandedAnnId = $state<string | null>(null);
 	const filteredAnnotations = $derived.by(() => {
 		let result = scopedAnnotations;
-		if (clusterFilter) {
-			const memberIds = new Set(clusterMemberMap[clusterFilter] || []);
+		if (phaseFilter) {
+			const memberIds = new Set(phaseMemberMap[phaseFilter] || []);
 			result = result.filter((a: any) => memberIds.has(a.code_id));
 		}
 		if (selectedNamingIds.size > 0) {
@@ -940,18 +940,18 @@
 					</div>
 				</div>
 			</div>
-			{#if clusters.length > 0}
-				<div class="cluster-filter-row">
-					<select class="cluster-filter-select"
-						value={clusterFilter || ''}
-						onchange={(e) => { const v = (e.target as HTMLSelectElement).value; clusterFilter = v || null; }}>
-						<option value="">All clusters</option>
-						{#each clusters as c}
+			{#if phases.length > 0}
+				<div class="phase-filter-row">
+					<select class="phase-filter-select"
+						value={phaseFilter || ''}
+						onchange={(e) => { const v = (e.target as HTMLSelectElement).value; phaseFilter = v || null; }}>
+						<option value="">All phases</option>
+						{#each phases as c}
 							<option value={c.id}>{c.label} ({c.member_count})</option>
 						{/each}
 					</select>
-					{#if clusterFilter}
-						<button class="btn-xs" onclick={() => clusterFilter = null}>×</button>
+					{#if phaseFilter}
+						<button class="btn-xs" onclick={() => phaseFilter = null}>×</button>
 					{/if}
 				</div>
 			{/if}
@@ -1096,9 +1096,9 @@
 {/if}
 
 {#if showClusterDialog && ctxMenuNamingIds}
-	<ClusterAssignDialog
+	<PhaseAssignDialog
 		namingIds={ctxMenuNamingIds}
-		{clusters}
+		{phases}
 		projectId={data.projectId}
 		onclose={() => { showClusterDialog = false; ctxMenuNamingIds = null; }}
 	/>
@@ -1369,15 +1369,15 @@
 		overflow-y: auto;
 		padding: 0.4rem 0.5rem;
 	}
-	.cluster-filter-row {
+	.phase-filter-row {
 		display: flex; align-items: center; gap: 0.3rem;
 		padding: 0.2rem 0.6rem; border-bottom: 1px solid #2a2d3a;
 	}
-	.cluster-filter-select {
+	.phase-filter-select {
 		flex: 1; background: #0f1117; border: 1px solid #2a2d3a; border-radius: 4px;
 		padding: 0.2rem 0.4rem; color: #c9cdd5; font-size: 0.75rem;
 	}
-	.cluster-filter-select:focus { outline: none; border-color: #8b9cf7; }
+	.phase-filter-select:focus { outline: none; border-color: #8b9cf7; }
 	.passages-panel .panel-header,
 	.annotations-header {
 		display: flex;

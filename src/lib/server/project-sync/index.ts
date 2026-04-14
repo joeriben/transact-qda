@@ -111,16 +111,16 @@ const PROJECT_TABLES: {
 		) TO STDOUT`,
 		copyFromTable: 'memo_content'
 	},
-	// 10. Cluster memberships
+	// 10. Phase memberships
 	{
-		file: 'cluster_memberships.copy',
+		file: 'phase_memberships.copy',
 		copyToQuery: (pid) => `COPY (
-			SELECT cm.* FROM cluster_memberships cm
+			SELECT cm.* FROM phase_memberships cm
 			JOIN namings n ON n.id = cm.naming_id
 			WHERE n.project_id = '${pid}'
 		) TO STDOUT`,
-		copyFromTable: 'cluster_memberships',
-		sequences: [{ table: 'cluster_memberships', column: 'seq' }]
+		copyFromTable: 'phase_memberships',
+		sequences: [{ table: 'phase_memberships', column: 'seq' }]
 	},
 	// 11. Topology snapshots
 	{

@@ -1,0 +1,2835 @@
+╭─── Claude Code v2.1.87 ──────────────────────────────────────────────────────╮
+│                                                    │ Recent activity         │
+│               Welcome back Benjamin!               │ No recent activity      │
+│                                                    │ ─────────────────────── │
+│                       ▐▛███▜▌                      │ What's new              │
+│                      ▝▜█████▛▘                     │ Fixed messages in Cowo… │
+│                        ▘▘ ▝▝                       │ Added `X-Claude-Code-S… │
+│      Opus 4.6 (1M context) · Claude Max ·          │ Added `.jj` and `.sl` … │
+│      benjamin.joerissen@fau.de's Organization      │ /release-notes for more │
+│                 ~/ai/transact-qda                  │                         │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+❯ Docs, Spalte 3, Verbesserung: Einfacher Klick ist NICHT mehr kodieren.        
+Kodieren: Text markiert, Naming wird auf Passage gedroppt. Btw. Text bleibt     
+derzeit selektiert, aber dide Markierung verschwindet = bug. Einfach klick auf  
+Naming = dasselbe wie ">". Naming wird als markiert dargestellt (farblich),     
+Passages werden angezeigt. AUfziehen von Namings, oder Markierung Starrt/Ende   
+mit gehaltenem Shift, oder Auswahl mit gehaltenem Alt -> die dazugehörige       
+Passagen-Sammlung wird angezeigt. Aufziehen mehere Namings, rechtsklick ->      
+Kontextmenü (baue das bereits generell, das Browser-Menü verwenden wir nicht)   
+-> Menüeintrag "add to Cluster ..." -> Cluster-Dialogfenster erscheint..        
+
+● I'll explore the codebase to understand the current document viewer
+  implementation, focusing on column 3 (naming list), the coding mechanism, and
+  existing context menu patterns.
+
+● 3 Explore agents finished (ctrl+o to expand)
+   ├─ Explore document viewer column 3 · 45 tool uses · 46.2k tokens
+   │  ⎿  Done
+   ├─ Explore coding and passage mechanisms · 38 tool uses · 80.5k tokens
+   │  ⎿  Done
+   └─ Explore cluster dialog and UI patterns · 50 tool uses · 60.3k tokens
+      ⎿  Done
+
+● Good, I have a thorough understanding of the codebase. Let me now read the key
+   file directly to verify details before designing the plan.
+
+  Read 2 files (ctrl+o to expand)
+
+● Let me also check how the selection highlight works and the passage filtering.
+
+  Read 1 file (ctrl+o to expand)
+
+● Now let me read the remaining selection section and the cluster panel on the
+  namings page.
+
+  Read 1 file (ctrl+o to expand)
+
+● Let me check the server-side data loading and the cluster API.
+
+  Read 2 files (ctrl+o to expand)
+
+● Now let me design the implementation plan.
+
+● Plan(Design naming interaction changes)
+  ⎿  Done (46 tool uses · 56.7k tokens · 4m 31s)
+  (ctrl+o to expand)
+
+● Let me check how annFilter is used in the passages panel.
+
+  Read 1 file (ctrl+o to expand)
+
+● Now I have all the information I need. Let me write the plan.
+
+● Updated plan
+  ⎿  /plan to preview
+
+● User approved Claude's plan
+  ⎿  Plan saved to: ~/.claude/plans/replicated-stargazing-flame.md · /plan to 
+     edit
+     Plan: Document Viewer Naming List Interaction Redesign
+
+     Context
+
+     The document viewer's naming panel (column 2) currently uses single-click
+     to code passages (create annotations). This conflates browsing/exploring
+     namings with the coding action. The user wants a clearer separation:
+
+     - Browsing = click/select namings → view their passages
+     - Coding = drag a naming onto selected text
+
+     Additionally: multi-selection of namings (shift/alt/drag), custom
+     right-click context menu, and "Add to Cluster..." dialog.
+
+     Bug to fix: After coding, the text selection state persists but the visual
+     highlight disappears because DOM re-renders destroy the browser's native
+     Range.
+
+     Critical Files
+
+     File: src/routes/projects/[projectId]/documents/[docId]/+page.svelte
+     Role: Main file — all changes
+     ────────────────────────────────────────
+     File: src/lib/map/ContextMenu.svelte
+     Role: Reference pattern for context menu
+     ────────────────────────────────────────
+     File: src/routes/projects/+page.svelte
+     Role: Reference pattern for modal overlay
+     ────────────────────────────────────────
+     File: src/routes/api/projects/[projectId]/clusters/+server.ts
+     Role: Cluster API (create, assign) — no changes needed
+
+     New Files
+
+     ┌──────────────────────────────────────────────────┬───────────────────────
+     ┐
+     │                       File                       │        Purpose
+     │
+     ├──────────────────────────────────────────────────┼───────────────────────
+     ┤
+     │ .../documents/[docId]/NamingContextMenu.svelte   │ Right-click context
+     │
+     │                                                  │ menu for namings
+     │
+     ├──────────────────────────────────────────────────┼───────────────────────
+     ┤
+     │                                                  │ Modal: assign
+     │
+     │ .../documents/[docId]/ClusterAssignDialog.svelte │ selected namings to
+     │
+     │                                                  │ cluster
+     │
+     └──────────────────────────────────────────────────┴───────────────────────
+     ┘
+
+     ---
+     Implementation Steps
+
+     1. New State Variables
+
+     Replace string-based annFilter (which was set by ▶ button) with Set-based
+     selection:
+
+     let selectedNamingIds = $state<Set<string>>(new Set());
+     let lastClickedNamingId = $state<string | null>(null);  // for shift-click 
+     range
+     let ctxMenuNamingIds = $state<string[] | null>(null);    // context menu 
+     targets
+     let ctxMenuPos = $state({ x: 0, y: 0 });
+     let showClusterDialog = $state(false);
+     let dragOverDoc = $state(false);                          // drop zone 
+     feedback
+
+     Keep annFilter as pure text-search filter in the passages panel input (line
+      889-893).
+
+     2. Update filteredAnnotations
+
+     Add selectedNamingIds filter before the text search:
+
+     if (selectedNamingIds.size > 0) {
+         result = result.filter(a => selectedNamingIds.has(a.code_id));
+     }
+
+     3. Single Click = Select Naming (Show Passages)
+
+     Replace line 724 onclick:
+     onclick={() => { if (hasSelection) annotate(c.id); }
+     With a handleNamingClick(c.id, e) function that:
+     - Plain click: exclusive select (selectedNamingIds = new Set([id]))
+     - Shift+click: range select (all namings between lastClickedNamingId and
+     clicked, using flat scopedCandidates order)
+     - Alt+click: toggle individual naming in/out of selection
+
+     Add class:naming-selected={selectedNamingIds.has(c.id)} to .naming-row for
+     colored highlight.
+
+     Remove the ▶ button (lines 737-741) — its job is now the default click.
+
+     4. Drag-and-Drop for Coding
+
+     Naming rows: Add draggable="true" + ondragstart that stores
+     application/x-naming-id in dataTransfer. In ondragstart, cancel drag if
+     !hasSelection (prevents drag when just browsing).
+
+     Document <pre> element: Add ondragover, ondragleave, ondrop handlers. On
+     drop, read the naming ID from dataTransfer and call annotate(codeId). Show
+     visual feedback (dashed outline) via dragOverDoc state.
+
+     Conflict avoidance: draggable="true" is always set, but ondragstart calls
+     e.preventDefault() when !hasSelection. This means:
+     - Without text selection → click/drag = browse namings (rubber-band
+     multi-select)
+     - With text selection → drag = code the passage
+
+     5. Fix Selection Highlight Persistence (Bug)
+
+     Add start and end character offsets to TextSegment type. They're already
+     available as sorted[i] and sorted[i+1] in the segment-building loop.
+
+     In the template, add class:selection-highlight to text spans when selection
+      && seg.start < selection.pos1 && seg.end > selection.pos0. This renders
+     the selection visually from reactive state, surviving DOM re-renders.
+
+     CSS: .selection-highlight { background: rgba(139, 156, 247, 0.25); }
+
+     6. Rubber-Band Multi-Select on Namings
+
+     Add data-naming-id={c.id} to each .naming-row.
+
+     On .namings-scroll: onpointerdown (only if target is not a naming row)
+     starts tracking. onpointermove hit-tests .naming-row elements by bounding
+     rect against the vertical range [dragStartY, currentY]. onpointerup ends
+     tracking.
+
+     7. Context Menu (NamingContextMenu.svelte)
+
+     New component, pattern from ContextMenu.svelte:
+     - Props: namingIds, position, namingLabels, onclose, onaddtocluster
+     - Fixed position at mouse coords, z-index 200
+     - Header: naming label (single) or "N namings" (multi)
+     - Menu item: "Add to Cluster..."
+
+     Integration: Add oncontextmenu handler on .naming-main that calls
+     handleNamingContextMenu(c.id, e). If right-clicked naming is not in
+     selection, select it exclusively first. Store IDs and mouse position. Close
+      on click-away via parent onclick.
+
+     8. Cluster Dialog (ClusterAssignDialog.svelte)
+
+     New component, modal overlay pattern from projects page:
+     - Props: namingIds, clusters, projectId, onclose, onassigned
+     - Lists existing clusters (selectable)
+     - Input to create new cluster
+     - "Assign" button: POSTs assign action for each naming
+     - After assignment: call invalidateAll() to refresh page data
+
+     9. Cleanup
+
+     - Clear selectedNamingIds when clicking empty space in namings-scroll
+     - Show "Clear" button in namings header when selectedNamingIds.size > 0
+     - Cursor: .naming-main { cursor: default }, grab cursor only when
+     draggable+hasSelection
+
+     ---
+     Verification
+
+     1. Single click: Click a naming → it highlights, passages panel shows its
+     passages
+     2. Shift+click: Click naming A, shift+click naming C → A through C
+     selected, union of passages shown
+     3. Alt+click: Alt+click multiple namings → each toggles, union shown
+     4. Drag-select: Drag vertically over namings → rubber-band selects them
+     5. Coding: Select text in document, drag a naming onto the text →
+     annotation created, selection highlight persists
+     6. Right-click: Right-click on selected namings → context menu with "Add to
+      Cluster..."
+     7. Cluster dialog: "Add to Cluster..." → dialog with cluster list, assign,
+     verify in DB
+     8. Bug fix: After coding, the selection highlight remains visible on the
+     text
+
+● Good, plan approved. Git is clean — no commit needed before starting. Let me
+  begin implementing.
+
+  First, let me read the complete file to work with precise line references.
+
+  Read 1 file (ctrl+o to expand)
+
+● Let me read the remaining parts.
+
+  Read 1 file (ctrl+o to expand)
+
+● Good, I have the full file. Let me implement all changes. I'll start with the
+  new components and main file edits in parallel.
+
+● Write(src/routes/projects/[projectId]/documents/[docId]/NamingContextMenu.svel
+       te)  ⎿  Wrote 47 lines to
+     src/routes/projects/[projectId]/documents/[docId]/NamingContextMenu.svelte
+       1 <script lang="ts">
+       2        let {
+       3                namingIds,
+       4                position,
+       5                namingLabels,
+       6                onclose,
+       7                onaddtocluster,
+       8        }: {
+       9                namingIds: string[];
+      10                position: { x: number; y: number };
+     … +37 lines (ctrl+o to expand)
+
+● Write(src/routes/projects/[projectId]/documents/[docId]/ClusterAssignDialog.sv
+       elte)
+  ⎿  Wrote 220 lines to src/routes/projects/[projectId]/documents/[docId]/Cluste
+     rAssignDialog.svelte
+       1 <script lang="ts">
+       2        import { invalidateAll } from '$app/navigation';
+       3 
+       4        let {
+       5                namingIds,
+       6                clusters,
+       7                projectId,
+       8                onclose,
+       9        }: {
+      10                namingIds: string[];
+     … +210 lines (ctrl+o to expand)
+
+● Now let me edit the main file. I'll make the changes step by step.
+
+  Step 1: Add imports and new state variables.
+
+● Update(d=15dgryd;file:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/documents/%5BdocId%5D/+page.sveltesrc/routes/projects/[projectId]/documents/[docId]/+page.svelte)
+  ⎿  Added 2 lines
+      2    import { untrack } from 'svelte';
+      3    import ImageAnnotationViewer from '$lib/components/ImageAnnota
+         tionViewer.svelte';
+      4    import ComparisonPanel from './ComparisonPanel.svelte';
+      5 +  import NamingContextMenu from './NamingContextMenu.svelte';   
+      6 +  import ClusterAssignDialog from './ClusterAssignDialog.svelte'
+        +;                                                               
+      7  
+      8    let { data } = $props();
+      9    const doc = $derived(data.document);
+
+● Step 2: Add new state variables after existing ones.
+
+● Update(d=15dgryd;file:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/documents/%5BdocId%5D/+page.sveltesrc/routes/projects/[projectId]/documents/[docId]/+page.svelte)
+  ⎿  Added 13 lines, removed 1 line
+       96    const clusterMemberMap = $derived<Record<string, string[]>>(
+           data.clusterMemberMap ?? {});
+       97    let clusterFilter = $state<string | null>(null);
+       98  
+       99 -  // Passages panel filter + expand                           
+       99 +  // Passages panel text search filter                        
+      100    let annFilter = $state('');
+      101 +  // Naming selection state                                   
+      102 +  let selectedNamingIds = $state<Set<string>>(new Set());     
+      103 +  let lastClickedNamingId = $state<string | null>(null);      
+      104 +  // Context menu state                                       
+      105 +  let ctxMenuNamingIds = $state<string[] | null>(null);       
+      106 +  let ctxMenuPos = $state({ x: 0, y: 0 });                    
+      107 +  let showClusterDialog = $state(false);                      
+      108 +  // Drag-drop state                                          
+      109 +  let dragOverDoc = $state(false);                            
+      110 +  // Rubber-band selection state                              
+      111 +  let namingDragSelecting = $state(false);                    
+      112 +  let namingDragStartY = $state(0);                           
+      113    // Namings panel: expanded naming (shows memos)
+      114    let expandedNamingId = $state<string | null>(null);
+      115    // Passage memo: inline memo input on a passage card
+
+● Step 3: Update filteredAnnotations to use selectedNamingIds.
+
+● Update(d=15dgryd;file:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/documents/%5BdocId%5D/+page.sveltesrc/routes/projects/[projectId]/documents/[docId]/+page.svelte)
+  ⎿  Added 3 lines
+      124        const memberIds = new Set(clusterMemberMap[clusterFilter
+           ] || []);
+      125        result = result.filter((a: any) => memberIds.has(a.code_
+           id));
+      126      }
+      127 +    if (selectedNamingIds.size > 0) {                         
+      128 +      result = result.filter((a: any) => selectedNamingIds.has
+          +(a.code_id));                                                 
+      129 +    }                                                         
+      130      if (annFilter.trim()) {
+      131        const q = annFilter.trim().toLowerCase();
+      132        result = result.filter((a: any) => a.code_label.toLowerC
+           ase().includes(q)
+
+● Step 4: Update TextSegment type and derivation to include start/end.
+
+● Update(d=15dgryd;file:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/documents/%5BdocId%5D/+page.sveltesrc/routes/projects/[projectId]/documents/[docId]/+page.svelte)
+  ⎿  Added 1 line, removed 1 line
+      205    }
+      206  
+      207    // Build text segments for color-coded annotation display
+      208 -  type TextSegment = { text: string; codes: { id: string; annI
+          -d: string; label: string; color: string }[]; elementId?: strin
+          -g };                                                          
+      208 +  type TextSegment = { text: string; codes: { id: string; annI
+          +d: string; label: string; color: string }[]; elementId?: strin
+          +g; start: number; end: number };                              
+      209    const textSegments = $derived.by((): TextSegment[] => {
+      210      const text = doc.full_text;
+      211      if (!text) return [];
+
+● Update(d=15dgryd;file:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/documents/%5BdocId%5D/+page.sveltesrc/routes/projects/[projectId]/documents/[docId]/+page.svelte)
+  ⎿  Added 1 line, removed 1 line
+      214        const anchor = a.properties?.anchor;
+      215        return anchor && anchor.pos0 != null && anchor.pos1 != n
+           ull;
+      216      });
+      217 -    if (textAnns.length === 0) return [{ text, codes: [] }];  
+      217 +    if (textAnns.length === 0) return [{ text, codes: [], star
+          +t: 0, end: text.length }];                                    
+      218  
+      219      // Build boundary points (annotations + element boundaries
+           )
+      220      const points = new Set<number>();
+
+● Update(d=15dgryd;file:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/documents/%5BdocId%5D/+page.sveltesrc/routes/projects/[projectId]/documents/[docId]/+page.svelte)
+  ⎿  Added 1 line, removed 1 line
+      254        // Find which element this segment belongs to
+      255        const el = leafElements.find((e: any) => e.char_start <=
+            start && e.char_end >= end);
+      256  
+      257 -      segments.push({ text: text.slice(start, end), codes: act
+          -iveCodes, elementId: el?.id });                               
+      257 +      segments.push({ text: text.slice(start, end), codes: act
+          +iveCodes, elementId: el?.id, start, end });                   
+      258      }
+      259      return segments;
+      260    });
+
+● Step 5: Add handler functions before the annotate function.
+
+● Update(d=15dgryd;file:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/documents/%5BdocId%5D/+page.sveltesrc/routes/projects/[projectId]/documents/[docId]/+page.svelte)
+  ⎿  Added 70 lines
+      473      setTimeout(() => { highlightedAnnotationId = null; }, 2000
+           );
+      474    }
+      475  
+      476 +  // Naming click handler: select naming(s) to show their pass
+          +ages                                                          
+      477 +  function handleNamingClick(namingId: string, e: MouseEvent) 
+          +{                                                             
+      478 +    if (e.shiftKey && lastClickedNamingId) {                  
+      479 +      // Range selection                                      
+      480 +      const ids = scopedCandidates.map((c: any) => c.id);     
+      481 +      const fromIdx = ids.indexOf(lastClickedNamingId);       
+      482 +      const toIdx = ids.indexOf(namingId);                    
+      483 +      if (fromIdx >= 0 && toIdx >= 0) {                       
+      484 +        const start = Math.min(fromIdx, toIdx);               
+      485 +        const end = Math.max(fromIdx, toIdx);                 
+      486 +        const next = new Set(selectedNamingIds);              
+      487 +        for (let i = start; i <= end; i++) next.add(ids[i]);  
+      488 +        selectedNamingIds = next;                             
+      489 +      }                                                       
+      490 +    } else if (e.altKey) {                                    
+      491 +      // Toggle individual                                    
+      492 +      const next = new Set(selectedNamingIds);                
+      493 +      if (next.has(namingId)) next.delete(namingId);          
+      494 +      else next.add(namingId);                                
+      495 +      selectedNamingIds = next;                               
+      496 +      lastClickedNamingId = namingId;                         
+      497 +    } else {                                                  
+      498 +      // Exclusive select                                     
+      499 +      selectedNamingIds = new Set([namingId]);                
+      500 +      lastClickedNamingId = namingId;                         
+      501 +    }                                                         
+      502 +  }                                                           
+      503 +                                                              
+      504 +  // Context menu on naming right-click                       
+      505 +  function handleNamingContextMenu(namingId: string, e: MouseE
+          +vent) {                                                       
+      506 +    e.preventDefault();                                       
+      507 +    if (!selectedNamingIds.has(namingId)) {                   
+      508 +      selectedNamingIds = new Set([namingId]);                
+      509 +      lastClickedNamingId = namingId;                         
+      510 +    }                                                         
+      511 +    ctxMenuNamingIds = [...selectedNamingIds];                
+      512 +    ctxMenuPos = { x: e.clientX, y: e.clientY };              
+      513 +  }                                                           
+      514 +                                                              
+      515 +  // Drag-and-drop: naming onto selected text = code          
+      516 +  function handleNamingDragStart(namingId: string, e: DragEven
+          +t) {                                                          
+      517 +    if (!hasSelection) {                                      
+      518 +      e.preventDefault();                                     
+      519 +      return;                                                 
+      520 +    }                                                         
+      521 +    e.dataTransfer!.setData('application/x-naming-id', namingI
+          +d);                                                           
+      522 +    e.dataTransfer!.effectAllowed = 'copy';                   
+      523 +  }                                                           
+      524 +                                                              
+      525 +  function handleDocDragOver(e: DragEvent) {                  
+      526 +    if (e.dataTransfer?.types.includes('application/x-naming-i
+          +d')) {                                                        
+      527 +      e.preventDefault();                                     
+      528 +      e.dataTransfer.dropEffect = 'copy';                     
+      529 +      dragOverDoc = true;                                     
+      530 +    }                                                         
+      531 +  }                                                           
+      532 +                                                              
+      533 +  function handleDocDragLeave() {                             
+      534 +    dragOverDoc = false;                                      
+      535 +  }                                                           
+      536 +                                                              
+      537 +  function handleDocDrop(e: DragEvent) {                      
+      538 +    e.preventDefault();                                       
+      539 +    dragOverDoc = false;                                      
+      540 +    const codeId = e.dataTransfer?.getData('application/x-nami
+          +ng-id');                                                      
+      541 +    if (codeId && (selection || regionSelection)) {           
+      542 +      annotate(codeId);                                       
+      543 +    }                                                         
+      544 +  }                                                           
+      545 +                                                              
+      546    async function annotate(codeId: string) {
+      547      if (annotating) return;
+      548      if (!selection && !regionSelection) return;
+
+● Step 6: Update the document text <pre> element to be a drop zone and show 
+  selection highlights.
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(d=15dgryd;file:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/documents/%5BdocId%5D/+page.sveltesrc/routes/projects/[projectId]/documents/[docId]/+page.svelte)
+  ⎿  Added 3 lines, removed 2 lines
+      709            />
+      710          {:else if doc.full_text}
+      711            <!-- svelte-ignore a11y_no_static_element_interactio
+           ns -->
+      712 -          <pre class="document-text" bind:this={textEl} onmous
+          -eup={handleMouseUp}>{#each textSegments as seg, i}{#if seg.cod
+          -es.length > 0}{@const isAnnStart = i === 0 || !textSegments[i 
+          -- 1].codes.some(c => c.annId === seg.codes[0].annId)}<span    
+      712 +          <pre class="document-text" class:drop-target-active=
+          +{dragOverDoc && hasSelection} bind:this={textEl} onmouseup={ha
+          +ndleMouseUp} ondragover={handleDocDragOver} ondragleave={handl
+          +eDocDragLeave} ondrop={handleDocDrop}>{#each textSegments as s
+          +eg, i}{#if seg.codes.length > 0}{@const isAnnStart = i === 0 |
+          +| !textSegments[i - 1].codes.some(c => c.annId === seg.codes[0
+          +].annId)}<span                                                
+      713              class="coded-text"
+      714              class:coded-highlighted={seg.codes.some(c => c.ann
+           Id === highlightedAnnotationId)}
+      715 +            class:selection-highlight={selection && seg.start 
+          +< selection.pos1 && seg.end > selection.pos0}                 
+      716              style="background: {codedBackground(seg.codes)}; b
+           order-bottom: 2px solid {seg.codes[0].color};"
+      717              data-element-id={seg.elementId || undefined}
+      718              data-ann-start={isAnnStart ? seg.codes[0].annId : 
+           undefined}
+      719              onmouseenter={() => { highlightedAnnotationId = se
+           g.codes[0].annId; }}
+      720              onmouseleave={() => { highlightedAnnotationId = nu
+           ll; }}
+      720 -          >{seg.text}<span class="code-tooltip">{seg.codes.map
+          -(c => c.label).join(', ')}</span></span>{:else}<span data-elem
+          -ent-id={seg.elementId || undefined}>{seg.text}</span>{/if}{/ea
+          -ch}</pre>                                                     
+      721 +          >{seg.text}<span class="code-tooltip">{seg.codes.map
+          +(c => c.label).join(', ')}</span></span>{:else}<span data-elem
+          +ent-id={seg.elementId || undefined} class:selection-highlight=
+          +{selection && seg.start < selection.pos1 && seg.end > selectio
+          +n.pos0}>{seg.text}</span>{/if}{/each}</pre>                   
+      722          {:else}
+      723            <p class="placeholder">No text content available</p>
+      724          {/if}
+
+● Step 7: Update naming panel header to show clear button and naming rows with 
+  new click/drag/contextmenu behavior.
+
+● Update(d=15dgryd;file:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/documents/%5BdocId%5D/+page.sveltesrc/routes/projects/[projectId]/documents/[docId]/+page.svelte)
+  ⎿  Added 5 lines, removed 1 line
+      745      <!-- Namings: permanent code overview -->
+      746      <div class="namings-panel">
+      747        <div class="panel-header">
+      748 -        <h3>Namings <span class="count">({scopedCandidates.len
+          -gth})</span></h3>                                             
+      748 +        <h3>Namings <span class="count">({scopedCandidates.len
+          +gth})</span>                                                  
+      749 +            {#if selectedNamingIds.size > 0}                  
+      750 +              <button class="btn-xs" onclick={() => { selected
+          +NamingIds = new Set(); }}>Clear</button>                      
+      751 +            {/if}                                             
+      752 +          </h3>                                               
+      753          <div class="scope-toggle">
+      754            <button class="scope-btn" class:active={namingsScope
+            === 'this'} onclick={() => namingsScope = 'this'}>Document</b
+           utton>
+      755            <div class="scope-right">
+
+● Now update the naming row template — replace click handler, add draggable, add
+   contextmenu, add data-naming-id, add naming-selected class, remove ▶ button.
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(d=15dgryd;file:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/documents/%5BdocId%5D/+page.sveltesrc/routes/projects/[projectId]/documents/[docId]/+page.svelte)
+  ⎿  Added 2 lines, removed 7 lines
+      812                <span class="naming-group-label">{group.label}</
+           span>
+      813                {#each group.items as c (c.id)}
+      814                  <!-- svelte-ignore a11y_no_static_element_inte
+           ractions -->
+      815 -                <div class="naming-row" class:naming-expanded=
+          -{expandedNamingId === c.id}>                                  
+      816 -                  <div class="naming-main" onclick={() => { if
+          - (hasSelection) annotate(c.id); }}>                           
+      815 +                <div class="naming-row" class:naming-expanded=
+          +{expandedNamingId === c.id} class:naming-selected={selectedNam
+          +ingIds.has(c.id)} data-naming-id={c.id} draggable="true" ondra
+          +gstart={(e) => handleNamingDragStart(c.id, e)}>               
+      816 +                  <div class="naming-main" onclick={(e) => han
+          +dleNamingClick(c.id, e)} oncontextmenu={(e) => handleNamingCon
+          +textMenu(c.id, e)}>                                           
+      817                      <span class="color-dot" style="background:
+            {c.color || '#8b9cf7'}"></span>
+      818                      <span
+      819                      class="naming-label"
+     ...
+      826                        title="Show memos"
+      827                        onclick={(e) => { e.stopPropagation(); e
+           xpandedNamingId = expandedNamingId === c.id ? null : c.id; }}
+      828                      >{expandedNamingId === c.id ? '▽' : '▼'}</
+           button>
+      829 -                    <button                                   
+      830 -                      class="naming-action"                   
+      831 -                      title="Filter passages"                 
+      832 -                      onclick={(e) => { e.stopPropagation(); a
+          -nnFilter = annFilter === c.label ? '' : c.label; }}           
+      833 -                    >▶</button>                               
+      829                    </div>
+      830                    {#if expandedNamingId === c.id}
+      831                      {#each [scopedAnnotations.filter((a) => a.
+           code_id === c.id)] as codeAnns}
+
+● Step 8: Add rubber-band selection to namings-scroll and close context menu on 
+  click-away.
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(d=15dgryd;file:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/documents/%5BdocId%5D/+page.sveltesrc/routes/projects/[projectId]/documents/[docId]/+page.svelte)
+  ⎿  Added 27 lines, removed 1 line
+      805          </form>
+      806        {/if}
+      807  
+      808 -      <div class="namings-scroll">                            
+      808 +      <!-- svelte-ignore a11y_no_static_element_interactions -
+          +->                                                            
+      809 +      <div class="namings-scroll"                             
+      810 +        onclick={(e) => { if (!(e.target as HTMLElement).close
+          +st('.naming-row')) { selectedNamingIds = new Set(); } ctxMenuN
+          +amingIds = null; }}                                           
+      811 +        onpointerdown={(e) => {                               
+      812 +          if ((e.target as HTMLElement).closest('.naming-row')
+          +) return;                                                     
+      813 +          namingDragSelecting = true;                         
+      814 +          namingDragStartY = e.clientY;                       
+      815 +          (e.currentTarget as HTMLElement).setPointerCapture(e
+          +.pointerId);                                                  
+      816 +        }}                                                    
+      817 +        onpointermove={(e) => {                               
+      818 +          if (!namingDragSelecting) return;                   
+      819 +          const container = e.currentTarget as HTMLElement;   
+      820 +          const rows = container.querySelectorAll('.naming-row
+          +[data-naming-id]');                                           
+      821 +          const minY = Math.min(namingDragStartY, e.clientY); 
+      822 +          const maxY = Math.max(namingDragStartY, e.clientY); 
+      823 +          const next = new Set<string>();                     
+      824 +          rows.forEach(row => {                               
+      825 +            const rect = row.getBoundingClientRect();         
+      826 +            if (rect.bottom >= minY && rect.top <= maxY) {    
+      827 +              const id = (row as HTMLElement).dataset.namingId
+          +;                                                             
+      828 +              if (id) next.add(id);                           
+      829 +            }                                                 
+      830 +          });                                                 
+      831 +          selectedNamingIds = next;                           
+      832 +        }}                                                    
+      833 +        onpointerup={() => { namingDragSelecting = false; }}  
+      834 +      >                                                       
+      835          {#if scopedCandidates.length > 0}
+      836            {#each [...candidateGroups] as [key, group] (key)}
+      837              <div class="naming-group">
+
+● Step 9: Add context menu and cluster dialog at the end of the template, before
+   </style>.
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(d=15dgryd;file:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/documents/%5BdocId%5D/+page.sveltesrc/routes/projects/[projectId]/documents/[docId]/+page.svelte)  ⎿  Added 19 lines
+      1079  <!-- Naming tooltip: fixed position, outside overflow contain
+            ers -->
+      1080  <div class="naming-tooltip-fixed" style={namingTooltipStyle}>
+            {namingTooltipText}</div>
+      1081  
+      1082 +{#if ctxMenuNamingIds}                                       
+      1083 +  <NamingContextMenu                                         
+      1084 +    namingIds={ctxMenuNamingIds}                             
+      1085 +    position={ctxMenuPos}                                    
+      1086 +    namingLabels={ctxMenuNamingIds.map(id => candidates.find(
+           +(c: any) => c.id === id)?.label || '')}                      
+      1087 +    onclose={() => ctxMenuNamingIds = null}                  
+      1088 +    onaddtocluster={() => { showClusterDialog = true; }}     
+      1089 +  />                                                         
+      1090 +{/if}                                                        
+      1091 +                                                             
+      1092 +{#if showClusterDialog && ctxMenuNamingIds}                  
+      1093 +  <ClusterAssignDialog                                       
+      1094 +    namingIds={ctxMenuNamingIds}                             
+      1095 +    {clusters}                                               
+      1096 +    projectId={data.projectId}                               
+      1097 +    onclose={() => { showClusterDialog = false; ctxMenuNaming
+           +Ids = null; }}                                               
+      1098 +  />                                                         
+      1099 +{/if}                                                        
+      1100 +                                                             
+      1101  <style>
+      1102    .doc-viewer { }
+      1103  
+
+● Step 10: Add CSS for the new features.
+
+● Update(d=15dgryd;file:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/documents/%5BdocId%5D/+page.sveltesrc/routes/projects/[projectId]/documents/[docId]/+page.svelte)
+  ⎿  Added 8 lines, removed 1 line
+      1555    }
+      1556    .naming-row {
+      1557      border-bottom: 1px solid rgba(42, 45, 58, 0.5);
+      1558 +    user-select: none;                                       
+      1559    }
+      1560 +  .naming-row.naming-selected {                              
+      1561 +    background: rgba(139, 156, 247, 0.12);                   
+      1562 +  }                                                          
+      1563 +  .naming-row.naming-selected .naming-label {                
+      1564 +    color: #a5b4fc;                                          
+      1565 +  }                                                          
+      1566    .naming-main {
+      1567      display: flex;
+      1568      align-items: center;
+      1569      gap: 0.3rem;
+      1570      padding: 0.2rem 0;
+      1564 -    cursor: pointer;                                         
+      1571 +    cursor: default;                                         
+      1572    }
+      1573    .naming-main:hover { background: rgba(139, 156, 247, 0.05);
+             }
+      1574    .naming-label {
+
+● Now add CSS for the drop target, selection highlight, and btn-xs.
+
+● Update(d=15dgryd;file:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/documents/%5BdocId%5D/+page.sveltesrc/routes/projects/[projectId]/documents/[docId]/+page.svelte)
+  ⎿  Added 23 lines
+      1796      color: #6b7280;
+      1797      padding: 3rem 0;
+      1798    }
+      1799 +                                                             
+      1800 +  /* Drop target feedback */                                 
+      1801 +  .document-text.drop-target-active {                        
+      1802 +    outline: 2px dashed #8b9cf7;                             
+      1803 +    outline-offset: -2px;                                    
+      1804 +  }                                                          
+      1805 +                                                             
+      1806 +  /* Selection highlight (persists after DOM re-render) */   
+      1807 +  .selection-highlight {                                     
+      1808 +    background: rgba(139, 156, 247, 0.25) !important;        
+      1809 +  }                                                          
+      1810 +                                                             
+      1811 +  /* Small utility button */                                 
+      1812 +  .btn-xs {                                                  
+      1813 +    background: none;                                        
+      1814 +    border: none;                                            
+      1815 +    color: #6b7280;                                          
+      1816 +    font-size: 0.6rem;                                       
+      1817 +    cursor: pointer;                                         
+      1818 +    padding: 0 0.2rem;                                       
+      1819 +    margin-left: 0.3rem;                                     
+      1820 +  }                                                          
+      1821 +  .btn-xs:hover { color: #a5b4fc; }                          
+      1822  </style>
+
+● Now let me also close the context menu when clicking on the doc-viewer area
+  (click-away).
+
+● Update(d=15dgryd;file:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/documents/%5BdocId%5D/+page.sveltesrc/routes/projects/[projectId]/documents/[docId]/+page.svelte)
+  ⎿  Added 3 lines, removed 1 line
+      695    }
+      696  </script>
+      697  
+      698 -<div class="doc-viewer">                                      
+      698 +<!-- svelte-ignore a11y_click_events_have_key_events -->      
+      699 +<!-- svelte-ignore a11y_no_static_element_interactions -->    
+      700 +<div class="doc-viewer" onclick={() => { ctxMenuNamingIds = nu
+          +ll; }}>                                                       
+      701    <div class="doc-body">
+      702      <div class="doc-with-margin">
+      703        <div class="content-panel" class:image-mode={isImage}>
+
+● Now let me verify the file compiles by checking for any syntax issues.
+
+● Bash(npx svelte-check --output human --threshold error 2>&1 | head -60)
+  ⎿  /home/joerissen/ai/transact-qda/src/routes/api/projects/[projectId]/ex
+     port/+server.ts:24:22
+     Error: Argument of type 'Buffer<ArrayBufferLike>' is not assignable to
+     … +14 lines (ctrl+o to expand)
+  ⎿  (timeout 30s)
+
+● The first error is pre-existing. The second one is from our change — the
+  clusters type mismatch. Let me fix it.
+
+  Read 1 file (ctrl+o to expand)
+
+● The clusters derived is QueryResultRow[]. I'll fix the ClusterAssignDialog to
+  accept any[].
+
+● Update(src/routes/projects/[projectId]/documents/[docId]/ClusterAssignDialog.s
+        velte)
+  ⎿  Added 1 line, removed 1 line
+       8      onclose,
+       9    }: {
+      10      namingIds: string[];
+      11 -    clusters: { id: string; label: string; member_count: number
+         - }[];                                                          
+      11 +    clusters: any[];                                           
+      12      projectId: string;
+      13      onclose: () => void;
+      14    } = $props();
+
+● Bash(npx svelte-check --output human --threshold error 2>&1 | grep -E
+      "^(Error:|/)" | head -20)
+  ⎿  /home/joerissen/ai/transact-qda/src/routes/api/projects/[projectId]/ex
+     port/+server.ts:24:22
+     Error: Argument of type 'Buffer<ArrayBufferLike>' is not assignable to
+      parameter of type 'BodyInit | null | undefined'.
+  ⎿  (timeout 30s)
+
+● Only the pre-existing error remains. Let me verify the dev server works.
+
+● Bash(ps aux | grep -E "node.*vite|npm.*dev" | grep -v grep | head -5)
+  ⎿  joeriss+ 3359087  0.0  0.1 1130524 68760 pts/5   Sl+  16:35   0:00 npm
+      run dev
+     joeriss+ 3359098  1.9  0.5 23606768 358208 pts/5 Sl+  16:35   0:38 nod
+     e /home/joerissen/ai/transact-qda/node_modules/.bin/vite dev
+
+● Dev server is already running. Let me do a quick build check to make sure
+  everything compiles.
+
+● Bash(curl -s -o /dev/null -w "%{http_code}" http://localhost:5173/)
+  ⎿  Error: Exit code 7
+     000
+
+● Bash(curl -s -o /dev/null -w "%{http_code}" http://localhost:5174/ 2>/dev/null
+       || curl -s -o /dev/null -w "%{http_code}" http://localhost:5173/
+      2>/dev/null || echo "…)
+  ⎿  303LISTEN 0      511        127.0.0.1:5174       0.0.0.0:*    users:((
+     "node",pid=3359328,fd=21))
+     LISTEN 0      511            [::1]:5174          [::]:*    users:(("no
+     de",pid=3359098,fd=27))
+
+● Dev server is running on port 5174 and responding with 303 (redirect to
+  login). Everything compiles fine.
+
+  Let me do a final review of the key changes to make sure everything is
+  consistent.
+
+  Read 1 file (ctrl+o to expand)
+
+● Good. Let me also verify the naming row area now looks correct.
+
+  Read 1 file (ctrl+o to expand)
+
+● Everything looks correct. Let me do a summary of all changes:
+
+  Changes Made
+
+  Modified: src/routes/projects/[projectId]/documents/[docId]/+page.svelte
+
+  1. Imports: Added NamingContextMenu and ClusterAssignDialog
+  2. New state: selectedNamingIds (Set), lastClickedNamingId, ctxMenuNamingIds,
+  ctxMenuPos, showClusterDialog, dragOverDoc, namingDragSelecting,
+  namingDragStartY
+  3. filteredAnnotations: Now filters by selectedNamingIds (union of selected
+  namings' passages)
+  4. TextSegment type: Added start/end character offsets for selection highlight
+   persistence
+  5. New handler functions:
+    - handleNamingClick() — plain/shift/alt click for single/range/toggle
+  selection
+    - handleNamingContextMenu() — right-click opens custom context menu
+    - handleNamingDragStart() — initiates drag (only when text is selected)
+    - handleDocDragOver/DragLeave/Drop() — drop zone on document text
+  6. Template changes:
+    - Document <pre>: drag-drop zone + selection-highlight class on spans
+    - Naming rows: onclick → handleNamingClick, oncontextmenu, draggable,
+  data-naming-id, naming-selected class
+    - Removed ▶ filter button (replaced by click-to-select)
+    - Namings-scroll: rubber-band pointer events, click-away clears selection
+    - Added context menu + cluster dialog rendering
+    - Added "Clear" button in namings header
+  7. CSS: .naming-selected, .drop-target-active, .selection-highlight, .btn-xs,
+  user-select: none on rows
+
+  Created: NamingContextMenu.svelte
+
+  Right-click menu with "Add to Cluster..." item, positioned at mouse coords.
+
+  Created: ClusterAssignDialog.svelte
+
+  Modal overlay: cluster list (selectable), create new cluster form, assign
+  button. Uses invalidateAll() to refresh page data after assignment.
+
+✻ Baked for 14m 21s
+
+❯ Da ist etws grundsätzlich kaputt mit dem Cluster-System. Neue Cluster werden  
+NICHT gebildet und sinnlose CLuster sind persistetn s.i., "Administrator" ->    
+DAS ist eine USER-Login-FUnktion die hier zum Cluster wird                      
+
+● Let me investigate the cluster system — both the creation issue and the
+  spurious "Administrator" cluster.
+
+● Explore(Investigate cluster system bugs)
+  ⎿  Done (54 tool uses · 48.0k tokens · 28m 37s)
+  (ctrl+o to expand)
+● Clear diagnosis. Two bugs:
+  1. "Administrator" as cluster: getProjectClusters query matches
+  researcher/AI-analyst namings (they also have self-referential
+  mode='perspective' appearances) — missing role filters
+  2. New clusters not appearing: getMapClusters requires at least one member on
+  the map — empty clusters are invisible
+
+  Let me read the exact code and fix both.
+
+  Read 1 file (ctrl+o to expand)
+
+● Now I see the issue clearly. Both the CTE and the inline query in
+  getProjectClusters are missing filters for researcher and ai-analyst roles.
+  Let me fix both.
+
+● Update(src/lib/server/db/queries/maps.ts)
+  ⎿  Added 3 lines
+      946  }
+      947  
+      948  // Shared CTE for finding project clusters
+      949 +// Excludes maps (mapType), grounding workspace, researcher pe
+          +rspectives, and AI analyst perspectives                       
+      950  const PROJECT_CLUSTERS_CTE = `
+      951    SELECT DISTINCT ON (n.id) n.id, n.inscription as label
+      952    FROM namings n
+     ...
+      956      AND n.deleted_at IS NULL
+      957      AND NOT (a.properties ? 'mapType')
+      958      AND NOT (a.properties->>'role' = 'grounding-workspace')
+      959 +    AND NOT (a.properties->>'role' = 'researcher')            
+      960 +    AND NOT (a.properties->>'role' = 'ai-analyst')            
+      961    ORDER BY n.id, n.seq
+      962  `;
+      963  
+
+● Now fix the inline query in getProjectClusters too (it duplicates the CTE
+  logic):
+
+● Update(src/lib/server/db/queries/maps.ts)
+  ⎿  Error editing file
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(src/lib/server/db/queries/maps.ts)
+  ⎿  Error editing file
+
+● Bash(sed -n '1075,1086p'
+      /home/joerissen/ai/transact-qda/src/lib/server/db/queries/maps.ts | cat
+      -A)
+  ⎿  ^I^I^I   SELECT DISTINCT ON (n.id) n.id, n.inscription as label$
+     ^I^I^I   FROM namings n$
+     ^I^I^I   JOIN appearances a ON a.naming_id = n.id AND a.perspective_id
+     … +10 lines (ctrl+o to expand)
+
+● The file uses tabs. Let me match the exact indentation.
+
+● Update(src/lib/server/db/queries/maps.ts)
+  ⎿  Added 2 lines
+      1080             AND n.deleted_at IS NULL
+      1081             AND NOT (a.properties ? 'mapType')
+      1082             AND NOT (a.properties->>'role' = 'grounding-worksp
+            ace')
+      1083 +           AND NOT (a.properties->>'role' = 'researcher')    
+      1084 +           AND NOT (a.properties->>'role' = 'ai-analyst')    
+      1085           ORDER BY n.id, n.seq
+      1086         ) c
+      1087         ORDER BY c.label`,
+
+● Good. Now let me also check the createProjectCluster function to verify it
+  works correctly and see if there's an issue with the creation itself.
+
+  Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● The creation function itself looks correct. The real problem was that:
+  1. "Administrator" (a researcher naming) was polluting the cluster list,
+  making it look broken
+  2. On maps, getMapClusters hides empty clusters (needs at least one member on
+  the map)
+
+  The role filter fix will clean up the spurious entries. Let me verify the fix
+  works by checking the database.
+
+● Bash(PGPASSWORD=tqda_dev psql -h localhost -U tqda -d tqda -c "
+      SELECT n.id, n.inscription, a.properties->>'role' as role, a.properties…)
+  ⎿  Error: Exit code 2
+     psql: error: connection to server at "localhost" (::1), port 5432 failed: 
+     FATAL:  database "tqda" does not exist
+
+● Bash(PGPASSWORD=tqda_dev psql -h localhost -U tqda -c "\l" 2>/dev/null | grep
+      -i tq)
+  ⎿  No matches found
+
+● Bash(docker exec transact-qda-db psql -U tqda -c "\l" 2>/dev/null | head -10)
+  ⎿  (No output)
+
+  Searched for 2 patterns (ctrl+o to expand)
+
+● Bash(PGPASSWORD=tqda_dev psql -h localhost -U tqda -d transact_qda -c "
+      SELECT n.id, n.inscription, a.properties->>'role' as role, a.properties…)
+  ⎿                    id                  |   inscription    |    role
+      |       properties
+     --------------------------------------+------------------+------------
+     … +25 lines (ctrl+o to expand)
+
+● There it is — all 18 "clusters" are actually researcher, ai-analyst, and
+  memo-system namings. Zero real clusters. The fix needs to also exclude
+  memo-system.
+
+● Update(src/lib/server/db/queries/maps.ts)
+  ⎿  Added 1 line, removed 3 lines
+      955    WHERE n.project_id = $2
+      956      AND n.deleted_at IS NULL
+      957      AND NOT (a.properties ? 'mapType')
+      958 -    AND NOT (a.properties->>'role' = 'grounding-workspace')   
+      959 -    AND NOT (a.properties->>'role' = 'researcher')            
+      960 -    AND NOT (a.properties->>'role' = 'ai-analyst')            
+      958 +    AND NOT (a.properties ? 'role')                           
+      959    ORDER BY n.id, n.seq
+      960  `;
+      961  
+
+● Much cleaner — any perspective with a role property is a system perspective,
+  not a cluster. Let me apply the same to the inline query in
+  getProjectClusters.
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(src/lib/server/db/queries/maps.ts)
+  ⎿  Added 1 line, removed 3 lines
+      1077           WHERE n.project_id = $1
+      1078             AND n.deleted_at IS NULL
+      1079             AND NOT (a.properties ? 'mapType')
+      1080 -           AND NOT (a.properties->>'role' = 'grounding-worksp
+           -ace')                                                        
+      1081 -           AND NOT (a.properties->>'role' = 'researcher')    
+      1082 -           AND NOT (a.properties->>'role' = 'ai-analyst')    
+      1080 +           AND NOT (a.properties ? 'role')                   
+      1081           ORDER BY n.id, n.seq
+      1082         ) c
+      1083         ORDER BY c.label`,
+
+● Now let me verify — clusters created by createProjectCluster have { 
+  parentMapId: gwId } as properties (no role key), so they'll correctly pass the
+   filter. Let me confirm.
+
+● Bash(PGPASSWORD=tqda_dev psql -h localhost -U tqda -d transact_qda -c "
+      SELECT n.id, n.inscription, a.properties…)
+  ⎿                    id                  | inscription |
+           properties
+     --------------------------------------+-------------+-----------------
+     … +10 lines (ctrl+o to expand)
+● Now the query returns only real clusters (AI Economy, Interface). The
+  researcher/ai-analyst/memo-system namings are correctly excluded.
+
+  Let me also verify the PROJECT_CLUSTERS_CTE constant is consistent.
+
+  Read 1 file (ctrl+o to expand)
+
+● Both the CTE (used by getMapClusters) and the inline query (used by
+  getProjectClusters) now use the same clean filter: NOT (a.properties ? 
+  'role'). Let me update the CTE comment.
+
+● Update(src/lib/server/db/queries/maps.ts)
+  ⎿  Added 1 line, removed 1 line
+      946  }
+      947  
+      948  // Shared CTE for finding project clusters
+      949 -// Excludes maps (mapType), grounding workspace, researcher pe
+          -rspectives, and AI analyst perspectives                       
+      949 +// Excludes maps (mapType) and all system perspectives (any wi
+          +th a 'role' property)                                         
+      950  const PROJECT_CLUSTERS_CTE = `
+      951    SELECT DISTINCT ON (n.id) n.id, n.inscription as label
+      952    FROM namings n
+
+● Now let me do a final compile check.
+
+● Bash(npx svelte-check --output human --threshold error 2>&1 | grep -E
+      "^(Error:|/)" | head -10)
+  ⎿  /home/joerissen/ai/transact-qda/src/routes/api/projects/[projectId]/ex
+     port/+server.ts:24:22
+     Error: Argument of type 'Buffer<ArrayBufferLike>' is not assignable to
+      parameter of type 'BodyInit | null | undefined'.
+  ⎿  (timeout 30s)
+
+● Only the pre-existing error. All changes compile cleanly.
+
+  Summary of fixes
+
+  Cluster filter bug (src/lib/server/db/queries/maps.ts):
+  - Both PROJECT_CLUSTERS_CTE and getProjectClusters now use AND NOT 
+  (a.properties ? 'role') instead of only filtering grounding-workspace
+  - This excludes all system perspectives (researcher, ai-analyst, memo-system)
+  from cluster queries
+  - DB confirms: only 4 real clusters remain (AI Economy, Interface x3), 18
+  false positives eliminated
+
+  New cluster visibility: The creation function itself works correctly —
+  clusters are created with { parentMapId: ... } properties (no role key), so
+  they pass the filter. The issue was that the spurious entries were masking the
+   real state.
+
+✻ Brewed for 6m 2s
+
+❯ Nun habe ich mein Cluster 3 mal - immerhin, anzeige unktioniert nun. WIeso    
+sollten "Syxstem perspectives" cluster sein? Das sind KEINE Cluster, diese      
+"Cluster" durfen nicht existieren. Ihre Existenz verweist aufd einen            
+itefgehenden Fehler im Code UND offenbar, leider, in Deinem Verständnis der     
+Plattfrom                                                                       
+
+● Du hast recht — mein Fix war ein Symptom-Filter, nicht die Ursache. Die Frage
+  ist: warum haben System-Perspektiven (Researcher, AI-Analyst) dieselbe
+  Struktur wie Cluster? Das ist der eigentliche Fehler. Und warum existiert
+  "Interface" dreimal?
+
+● Bash(PGPASSWORD=tqda_dev psql -h localhost -U tqda -d transact_qda -c "
+      -- Show the 3 Interface clusters: when created, by whom, what properties…)
+  ⎿                    id                  | inscription |          created
+     _at           |                     self_app_props
+       | first_act
+     … +13 lines (ctrl+o to expand)
+
+● Bash(PGPASSWORD=tqda_dev psql -h localhost -U tqda -d transact_qda -c "
+      -- What does a researcher naming look like vs a cluster?…)
+  ⎿                    id                  |  inscription  |    mode     |
+           properties       |    type
+     --------------------------------------+---------------+-------------+-
+     … +8 lines (ctrl+o to expand)
+
+● Bash(PGPASSWORD=tqda_dev psql -h localhost -U tqda -d transact_qda -c "
+      -- How many system perspectives exist total?…)
+  ⎿          role         | count
+     ---------------------+-------
+      researcher          |     8
+     … +4 lines (ctrl+o to expand)
+
+● Jetzt sehe ich das Problem klar.
+
+  Das strukturelle Problem: Cluster sind nur negativ definiert — "eine
+  Perspektive, die kein Map, kein Researcher, kein AI-Analyst ist." Das ist
+  fragil und war der Grund, warum System-Perspektiven als Cluster auftauchten.
+
+  Die Daten:
+  - 4 Rollen-Typen nutzen dieselbe Struktur (mode='perspective',
+  self-referential): researcher (8), ai-analyst (5), grounding-workspace (5),
+  memo-system (5)
+  - Cluster haben {parentMapId: ...} aber kein role-Feld → werden nur durch
+  Ausschluss identifiziert
+  - "Interface" existiert 3x weil createProjectCluster keine Duplikat-Prüfung
+  hat
+
+  Der richtige Fix: Cluster brauchen eine positive Identität: role: 'cluster' in
+   ihren Properties. Dann:
+  - Erstellung: properties: { role: 'cluster', parentMapId: gwId }
+  - Abfrage: WHERE a.properties->>'role' = 'cluster' (positiv, nicht negativ)
+  - Migration: bestehende Cluster (AI Economy, Interface) bekommen role: 
+  'cluster'
+  - Die 2 Duplikat-Interface löschen
+
+  Zusätzlich: createProjectCluster braucht Duplikat-Schutz (oder bewusst nicht —
+   sollen Cluster gleichen Namens erlaubt sein?).
+
+  Soll ich das so umsetzen?
+
+✻ Crunched for 57s
+
+❯ Wiel ich es 3 x angelegt habe, weil ich es nicht sehen konnte                 
+
+❯ das ist also korrekt, allerdings sollten keine Cluster mit exakt demselben    
+Namen existieren dürfen                                                         
+
+  Read 1 file (ctrl+o to expand)
+
+● Now let me also check the map-level createCluster function.
+
+  Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Good, both functions have the same pattern. Now I'll implement the fix: role: 
+  'cluster' in properties, duplicate name check, migrate existing data, clean up
+   duplicates.
+
+● Update(src/lib/server/db/queries/maps.ts)
+  ⎿  Added 14 lines, removed 1 line
+      438    properties?: Record<string, unknown>
+      439  ) {
+      440    return transaction(async (client) => {
+      441 +    // Duplicate name check                                   
+      442 +    const existing = await client.query(                      
+      443 +      `SELECT n.id FROM namings n                             
+      444 +       JOIN appearances a ON a.naming_id = n.id AND a.perspect
+          +ive_id = n.id                                                 
+      445 +         AND a.mode = 'perspective' AND a.properties->>'role' 
+          += 'cluster'                                                   
+      446 +       WHERE n.project_id = $1 AND n.inscription = $2 AND n.de
+          +leted_at IS NULL                                              
+      447 +       LIMIT 1`,                                              
+      448 +      [projectId, inscription]                                
+      449 +    );                                                        
+      450 +    if (existing.rows.length > 0) {                           
+      451 +      return existing.rows[0];                                
+      452 +    }                                                         
+      453 +                                                              
+      454      const researcherNamingId = await getOrCreateResearcherNami
+           ng(projectId, userId);
+      455  
+      456      // The cluster is a naming
+     ...
+      465      await client.query(
+      466        `INSERT INTO appearances (naming_id, perspective_id, mod
+           e, properties)
+      467         VALUES ($1, $1, 'perspective', $2)`,
+      455 -      [cluster.id, JSON.stringify({ parentMapId: mapId, ...pro
+          -perties })]                                                   
+      468 +      [cluster.id, JSON.stringify({ role: 'cluster', parentMap
+          +Id: mapId, ...properties })]                                  
+      469      );
+      470  
+      471      // The cluster also appears on the map as a perspective-na
+           ming
+
+● Now fix createProjectCluster the same way.
+
+● Update(src/lib/server/db/queries/maps.ts)
+  ⎿  Added 15 lines, removed 2 lines
+      1148    inscription: string
+      1149  ) {
+      1150    return transaction(async (client) => {
+      1151 +    // Duplicate name check                                  
+      1152 +    const existing = await client.query(                     
+      1153 +      `SELECT n.id, n.inscription FROM namings n             
+      1154 +       JOIN appearances a ON a.naming_id = n.id AND a.perspec
+           +tive_id = n.id                                               
+      1155 +         AND a.mode = 'perspective' AND a.properties->>'role'
+           + = 'cluster'                                                 
+      1156 +       WHERE n.project_id = $1 AND n.inscription = $2 AND n.d
+           +eleted_at IS NULL                                            
+      1157 +       LIMIT 1`,                                             
+      1158 +      [projectId, inscription]                               
+      1159 +    );                                                       
+      1160 +    if (existing.rows.length > 0) {                          
+      1161 +      return existing.rows[0];                               
+      1162 +    }                                                        
+      1163 +                                                             
+      1164      const { getOrCreateGroundingWorkspace } = await import('.
+            /codes.js');
+      1165      const gwId = await getOrCreateGroundingWorkspace(projectI
+            d, userId);
+      1166      const researcherNamingId = await getOrCreateResearcherNam
+            ing(projectId, userId);
+     ...
+      1173      );
+      1174      const cluster = clusterRes.rows[0];
+      1175  
+      1163 -    // Self-referential appearance                           
+      1176 +    // Self-referential appearance with role: 'cluster'      
+      1177      await client.query(
+      1178        `INSERT INTO appearances (naming_id, perspective_id, mo
+            de, properties)
+      1179         VALUES ($1, $1, 'perspective', $2)`,
+      1167 -      [cluster.id, JSON.stringify({ parentMapId: gwId })]    
+      1180 +      [cluster.id, JSON.stringify({ role: 'cluster', parentMa
+           +pId: gwId })]                                                
+      1181      );
+      1182  
+      1183      // Appear on grounding workspace as sub-perspective
+
+● Now update both queries to use positive match role = 'cluster'.
+
+● Update(src/lib/server/db/queries/maps.ts)
+  ⎿  Added 2 lines, removed 5 lines
+      958    ).rows;
+      959  }
+      960  
+      961 -// Shared CTE for finding project clusters                    
+      962 -// Excludes maps (mapType) and all system perspectives (any wi
+          -th a 'role' property)                                         
+      961 +// Shared CTE for finding project clusters (positive match on 
+          +role='cluster')                                               
+      962  const PROJECT_CLUSTERS_CTE = `
+      963    SELECT DISTINCT ON (n.id) n.id, n.inscription as label
+      964    FROM namings n
+      965    JOIN appearances a ON a.naming_id = n.id AND a.perspective_i
+           d = n.id
+      967 -    AND a.mode = 'perspective'                                
+      966 +    AND a.mode = 'perspective' AND a.properties->>'role' = 'cl
+          +uster'                                                        
+      967    WHERE n.project_id = $2
+      968      AND n.deleted_at IS NULL
+      970 -    AND NOT (a.properties ? 'mapType')                        
+      971 -    AND NOT (a.properties ? 'role')                           
+      969    ORDER BY n.id, n.seq
+      970  `;
+      971  
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(src/lib/server/db/queries/maps.ts)
+  ⎿  Added 1 line, removed 3 lines
+      1083           SELECT DISTINCT ON (n.id) n.id, n.inscription as lab
+            el
+      1084           FROM namings n
+      1085           JOIN appearances a ON a.naming_id = n.id AND a.persp
+            ective_id = n.id
+      1086 -           AND a.mode = 'perspective'                        
+      1086 +           AND a.mode = 'perspective' AND a.properties->>'rol
+           +e' = 'cluster'                                               
+      1087           WHERE n.project_id = $1
+      1088             AND n.deleted_at IS NULL
+      1089 -           AND NOT (a.properties ? 'mapType')                
+      1090 -           AND NOT (a.properties ? 'role')                   
+      1089           ORDER BY n.id, n.seq
+      1090         ) c
+      1091         ORDER BY c.label`,
+
+● Now migrate existing clusters and clean up duplicates.
+● Bash(PGPASSWORD=tqda_dev psql -h localhost -U tqda -d transact_qda -c "
+      -- Show current clusters (the ones with parentMapId but no role)…)
+  ⎿                    id                  | inscription |          created
+     _at           |                       properties
+     … +14 lines (ctrl+o to expand)
+
+● Bash(PGPASSWORD=tqda_dev psql -h localhost -U tqda -d transact_qda -c "
+      -- Check if any of the 3 Interface clusters have members…)
+  ⎿   perspective_id | inscription | members
+     ----------------+-------------+---------
+     (0 rows)
+
+● No members in any of them. I'll keep the oldest one, migrate it, and
+  soft-delete the duplicates.
+
+● Bash(PGPASSWORD=tqda_dev psql -h localhost -U tqda -d transact_qda -c "
+      BEGIN;…)
+  ⎿  BEGIN
+     UPDATE 4
+     UPDATE 2
+     COMMIT
+
+● Bash(PGPASSWORD=tqda_dev psql -h localhost -U tqda -d transact_qda -c "
+      -- Verify: only real clusters with role='cluster'…)
+  ⎿                    id                  | inscription |
+                     properties
+     --------------------------------------+-------------+-----------------
+     … +6 lines (ctrl+o to expand)
+
+● Sauber. 2 echte Cluster, positiv identifiziert.
+
+● Bash(npx svelte-check --output human --threshold error 2>&1 | grep -c
+      "^Error:")
+  ⎿  1
+  ⎿  (timeout 30s)
+
+● Nur der pre-existierende Buffer-Fehler im Export.
+
+  Was gemacht wurde
+
+  Root cause fix in src/lib/server/db/queries/maps.ts:
+
+  1. Positive Identität: Cluster haben jetzt role: 'cluster' in ihren
+  self-referential appearance properties — nicht mehr negativ definiert durch
+  Ausschluss
+  2. Queries (PROJECT_CLUSTERS_CTE + getProjectClusters): filtern jetzt WHERE 
+  a.properties->>'role' = 'cluster' statt Ausschluss-Logik
+  3. Duplikat-Schutz: Beide Create-Funktionen (createCluster,
+  createProjectCluster) prüfen auf existierenden Cluster gleichen Namens und
+  geben ihn zurück statt einen neuen zu erstellen
+  4. Migration: Bestehende Cluster (AI Economy, Interface) haben role: 'cluster'
+   bekommen
+  5. Cleanup: 2 leere Interface-Duplikate soft-deleted
+
+✻ Worked for 2m 15s
+
+❯ commit und push                                                               
+
+● Bash(git status)
+  ⎿  On branch main
+     Your branch is ahead of 'origin/main' by 7 commits.
+       (use "git push" to publish your local commits)
+     … +18 lines (ctrl+o to expand)
+
+● Bash(git diff --stat)
+  ⎿   src/lib/server/db/queries/maps.ts                  |  42 +++--
+      .../[projectId]/documents/[docId]/+page.svelte     | 198 ++++++++++++
+     +++++++--
+      2 files changed, 213 insertions(+), 27 deletions(-)
+
+● Bash(git log --oneline -5)
+  ⎿  bf09466 Fix manual overlay: heading IDs for TOC links, scroll within p
+     anel
+     972fc09 Fix: dynamic import of marked in layout to prevent SSR 500
+     … +5 lines (ctrl+o to expand)
+
+● Bash(git add src/lib/server/db/queries/maps.ts
+      src/routes/projects/\[projectId\]/documents/\[docId\]/+page.svelte
+      src/routes/projects/\[projectId\]/documents/\[docId…)
+  ⎿  (No output)
+
+● Bash(git commit -m "$(cat <<'EOF'
+      Naming list redesign: click=select, drag=code, multi-select, context menu
+      + cluster fix…)
+  ⎿  [main 3b23ecc] Naming list redesign: click=select, drag=code, multi-se
+     lect, context menu + cluster fix
+      4 files changed, 480 insertions(+), 27 deletions(-)
+     … +4 lines (ctrl+o to expand)
+
+● Bash(git push)
+  ⎿  To https://github.com/joeriben/transact-qda.git
+        6b8d9df..3b23ecc  main -> main
+
+● Pushed. 8 Commits inkl. der 7 vorherigen.
+
+ ▐▛███▜▌   Claude Code v2.1.87
+▝▜█████▛▘  Opus 4.6 (1M context) · Claude Max
+  ▘▘ ▝▝    ~/ai/transact-qda
+
+❯ Docs, Spalte 3, Verbesserung: Einfacher Klick ist NICHT mehr kodieren.        
+Kodieren: Text markiert, Naming wird auf Passage gedroppt. Btw. Text bleibt     
+derzeit selektiert, aber dide Markierung verschwindet = bug. Einfach klick auf  
+Naming = dasselbe wie ">". Naming wird als markiert dargestellt (farblich),     
+Passages werden angezeigt. AUfziehen von Namings, oder Markierung Starrt/Ende   
+mit gehaltenem Shift, oder Auswahl mit gehaltenem Alt -> die dazugehörige       
+Passagen-Sammlung wird angezeigt. Aufziehen mehere Namings, rechtsklick ->      
+Kontextmenü (baue das bereits generell, das Browser-Menü verwenden wir nicht)   
+-> Menüeintrag "add to Cluster ..." -> Cluster-Dialogfenster erscheint..        
+
+● I'll explore the codebase to understand the current document viewer
+  implementation, focusing on column 3 (naming list), the coding mechanism, and
+  existing context menu patterns.
+
+● 3 Explore agents finished (ctrl+o to expand)
+   ├─ Explore document viewer column 3 · 45 tool uses · 46.2k tokens
+   │  ⎿  Done
+   ├─ Explore coding and passage mechanisms · 38 tool uses · 80.5k tokens
+   │  ⎿  Done
+   └─ Explore cluster dialog and UI patterns · 50 tool uses · 60.3k tokens
+      ⎿  Done
+
+● Good, I have a thorough understanding of the codebase. Let me now read the key
+   file directly to verify details before designing the plan.
+
+  Read 2 files (ctrl+o to expand)
+
+● Let me also check how the selection highlight works and the passage filtering.
+
+  Read 1 file (ctrl+o to expand)
+
+● Now let me read the remaining selection section and the cluster panel on the
+  namings page.
+
+  Read 1 file (ctrl+o to expand)
+
+● Let me check the server-side data loading and the cluster API.
+
+  Read 2 files (ctrl+o to expand)
+
+● Now let me design the implementation plan.
+
+● Plan(Design naming interaction changes)
+  ⎿  Done (46 tool uses · 56.7k tokens · 4m 31s)
+  (ctrl+o to expand)
+
+● Let me check how annFilter is used in the passages panel.
+
+  Read 1 file (ctrl+o to expand)
+
+● Now I have all the information I need. Let me write the plan.
+
+● Updated plan
+  ⎿  /plan to preview
+
+● User approved Claude's plan
+  ⎿  Plan saved to: ~/.claude/plans/replicated-stargazing-flame.md · /plan to 
+     edit
+     Plan: Document Viewer Naming List Interaction Redesign
+
+     Context
+
+     The document viewer's naming panel (column 2) currently uses single-click
+     to code passages (create annotations). This conflates browsing/exploring
+     namings with the coding action. The user wants a clearer separation:
+
+     - Browsing = click/select namings → view their passages
+     - Coding = drag a naming onto selected text
+
+     Additionally: multi-selection of namings (shift/alt/drag), custom
+     right-click context menu, and "Add to Cluster..." dialog.
+
+     Bug to fix: After coding, the text selection state persists but the visual
+     highlight disappears because DOM re-renders destroy the browser's native
+     Range.
+
+     Critical Files
+
+     File: src/routes/projects/[projectId]/documents/[docId]/+page.svelte
+     Role: Main file — all changes
+     ────────────────────────────────────────
+     File: src/lib/map/ContextMenu.svelte
+     Role: Reference pattern for context menu
+     ────────────────────────────────────────
+     File: src/routes/projects/+page.svelte
+     Role: Reference pattern for modal overlay
+     ────────────────────────────────────────
+     File: src/routes/api/projects/[projectId]/clusters/+server.ts
+     Role: Cluster API (create, assign) — no changes needed
+
+     New Files
+
+     ┌──────────────────────────────────────────────────┬───────────────────────
+     ┐
+     │                       File                       │        Purpose
+     │
+     ├──────────────────────────────────────────────────┼───────────────────────
+     ┤
+     │ .../documents/[docId]/NamingContextMenu.svelte   │ Right-click context
+     │
+     │                                                  │ menu for namings
+     │
+     ├──────────────────────────────────────────────────┼───────────────────────
+     ┤
+     │                                                  │ Modal: assign
+     │
+     │ .../documents/[docId]/ClusterAssignDialog.svelte │ selected namings to
+     │
+     │                                                  │ cluster
+     │
+     └──────────────────────────────────────────────────┴───────────────────────
+     ┘
+
+     ---
+     Implementation Steps
+
+     1. New State Variables
+
+     Replace string-based annFilter (which was set by ▶ button) with Set-based
+     selection:
+
+     let selectedNamingIds = $state<Set<string>>(new Set());
+     let lastClickedNamingId = $state<string | null>(null);  // for shift-click 
+     range
+     let ctxMenuNamingIds = $state<string[] | null>(null);    // context menu 
+     targets
+     let ctxMenuPos = $state({ x: 0, y: 0 });
+     let showClusterDialog = $state(false);
+     let dragOverDoc = $state(false);                          // drop zone 
+     feedback
+
+     Keep annFilter as pure text-search filter in the passages panel input (line
+      889-893).
+
+     2. Update filteredAnnotations
+
+     Add selectedNamingIds filter before the text search:
+
+     if (selectedNamingIds.size > 0) {
+         result = result.filter(a => selectedNamingIds.has(a.code_id));
+     }
+
+     3. Single Click = Select Naming (Show Passages)
+
+     Replace line 724 onclick:
+     onclick={() => { if (hasSelection) annotate(c.id); }
+     With a handleNamingClick(c.id, e) function that:
+     - Plain click: exclusive select (selectedNamingIds = new Set([id]))
+     - Shift+click: range select (all namings between lastClickedNamingId and
+     clicked, using flat scopedCandidates order)
+     - Alt+click: toggle individual naming in/out of selection
+
+     Add class:naming-selected={selectedNamingIds.has(c.id)} to .naming-row for
+     colored highlight.
+
+     Remove the ▶ button (lines 737-741) — its job is now the default click.
+
+     4. Drag-and-Drop for Coding
+
+     Naming rows: Add draggable="true" + ondragstart that stores
+     application/x-naming-id in dataTransfer. In ondragstart, cancel drag if
+     !hasSelection (prevents drag when just browsing).
+
+     Document <pre> element: Add ondragover, ondragleave, ondrop handlers. On
+     drop, read the naming ID from dataTransfer and call annotate(codeId). Show
+     visual feedback (dashed outline) via dragOverDoc state.
+
+     Conflict avoidance: draggable="true" is always set, but ondragstart calls
+     e.preventDefault() when !hasSelection. This means:
+     - Without text selection → click/drag = browse namings (rubber-band
+     multi-select)
+     - With text selection → drag = code the passage
+
+     5. Fix Selection Highlight Persistence (Bug)
+
+     Add start and end character offsets to TextSegment type. They're already
+     available as sorted[i] and sorted[i+1] in the segment-building loop.
+
+     In the template, add class:selection-highlight to text spans when selection
+      && seg.start < selection.pos1 && seg.end > selection.pos0. This renders
+     the selection visually from reactive state, surviving DOM re-renders.
+
+     CSS: .selection-highlight { background: rgba(139, 156, 247, 0.25); }
+
+     6. Rubber-Band Multi-Select on Namings
+
+     Add data-naming-id={c.id} to each .naming-row.
+
+     On .namings-scroll: onpointerdown (only if target is not a naming row)
+     starts tracking. onpointermove hit-tests .naming-row elements by bounding
+     rect against the vertical range [dragStartY, currentY]. onpointerup ends
+     tracking.
+
+     7. Context Menu (NamingContextMenu.svelte)
+
+     New component, pattern from ContextMenu.svelte:
+     - Props: namingIds, position, namingLabels, onclose, onaddtocluster
+     - Fixed position at mouse coords, z-index 200
+     - Header: naming label (single) or "N namings" (multi)
+     - Menu item: "Add to Cluster..."
+
+     Integration: Add oncontextmenu handler on .naming-main that calls
+     handleNamingContextMenu(c.id, e). If right-clicked naming is not in
+     selection, select it exclusively first. Store IDs and mouse position. Close
+      on click-away via parent onclick.
+
+     8. Cluster Dialog (ClusterAssignDialog.svelte)
+
+     New component, modal overlay pattern from projects page:
+     - Props: namingIds, clusters, projectId, onclose, onassigned
+     - Lists existing clusters (selectable)
+     - Input to create new cluster
+     - "Assign" button: POSTs assign action for each naming
+     - After assignment: call invalidateAll() to refresh page data
+
+     9. Cleanup
+
+     - Clear selectedNamingIds when clicking empty space in namings-scroll
+     - Show "Clear" button in namings header when selectedNamingIds.size > 0
+     - Cursor: .naming-main { cursor: default }, grab cursor only when
+     draggable+hasSelection
+
+     ---
+     Verification
+
+     1. Single click: Click a naming → it highlights, passages panel shows its
+     passages
+     2. Shift+click: Click naming A, shift+click naming C → A through C
+     selected, union of passages shown
+     3. Alt+click: Alt+click multiple namings → each toggles, union shown
+     4. Drag-select: Drag vertically over namings → rubber-band selects them
+     5. Coding: Select text in document, drag a naming onto the text →
+     annotation created, selection highlight persists
+     6. Right-click: Right-click on selected namings → context menu with "Add to
+      Cluster..."
+     7. Cluster dialog: "Add to Cluster..." → dialog with cluster list, assign,
+     verify in DB
+     8. Bug fix: After coding, the selection highlight remains visible on the
+     text
+
+● Good, plan approved. Git is clean — no commit needed before starting. Let me
+  begin implementing.
+
+  First, let me read the complete file to work with precise line references.
+
+  Read 1 file (ctrl+o to expand)
+
+● Let me read the remaining parts.
+
+  Read 1 file (ctrl+o to expand)
+
+● Good, I have the full file. Let me implement all changes. I'll start with the
+  new components and main file edits in parallel.
+
+● Write(src/routes/projects/[projectId]/documents/[docId]/NamingContextMenu.svel
+       te)  ⎿  Wrote 47 lines to
+     src/routes/projects/[projectId]/documents/[docId]/NamingContextMenu.svelte
+       1 <script lang="ts">
+       2        let {
+       3                namingIds,
+       4                position,
+       5                namingLabels,
+       6                onclose,
+       7                onaddtocluster,
+       8        }: {
+       9                namingIds: string[];
+      10                position: { x: number; y: number };
+     … +37 lines (ctrl+o to expand)
+
+● Write(src/routes/projects/[projectId]/documents/[docId]/ClusterAssignDialog.sv
+       elte)
+  ⎿  Wrote 220 lines to src/routes/projects/[projectId]/documents/[docId]/Cluste
+     rAssignDialog.svelte
+       1 <script lang="ts">
+       2        import { invalidateAll } from '$app/navigation';
+       3 
+       4        let {
+       5                namingIds,
+       6                clusters,
+       7                projectId,
+       8                onclose,
+       9        }: {
+      10                namingIds: string[];
+     … +210 lines (ctrl+o to expand)
+
+● Now let me edit the main file. I'll make the changes step by step.
+
+  Step 1: Add imports and new state variables.
+
+● Update(d=15dgryd;file:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/documents/%5BdocId%5D/+page.sveltesrc/routes/projects/[projectId]/documents/[docId]/+page.svelte)
+  ⎿  Added 2 lines
+      2    import { untrack } from 'svelte';
+      3    import ImageAnnotationViewer from '$lib/components/ImageAnnota
+         tionViewer.svelte';
+      4    import ComparisonPanel from './ComparisonPanel.svelte';
+      5 +  import NamingContextMenu from './NamingContextMenu.svelte';   
+      6 +  import ClusterAssignDialog from './ClusterAssignDialog.svelte'
+        +;                                                               
+      7  
+      8    let { data } = $props();
+      9    const doc = $derived(data.document);
+
+● Step 2: Add new state variables after existing ones.
+
+● Update(d=15dgryd;file:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/documents/%5BdocId%5D/+page.sveltesrc/routes/projects/[projectId]/documents/[docId]/+page.svelte)
+  ⎿  Added 13 lines, removed 1 line
+       96    const clusterMemberMap = $derived<Record<string, string[]>>(
+           data.clusterMemberMap ?? {});
+       97    let clusterFilter = $state<string | null>(null);
+       98  
+       99 -  // Passages panel filter + expand                           
+       99 +  // Passages panel text search filter                        
+      100    let annFilter = $state('');
+      101 +  // Naming selection state                                   
+      102 +  let selectedNamingIds = $state<Set<string>>(new Set());     
+      103 +  let lastClickedNamingId = $state<string | null>(null);      
+      104 +  // Context menu state                                       
+      105 +  let ctxMenuNamingIds = $state<string[] | null>(null);       
+      106 +  let ctxMenuPos = $state({ x: 0, y: 0 });                    
+      107 +  let showClusterDialog = $state(false);                      
+      108 +  // Drag-drop state                                          
+      109 +  let dragOverDoc = $state(false);                            
+      110 +  // Rubber-band selection state                              
+      111 +  let namingDragSelecting = $state(false);                    
+      112 +  let namingDragStartY = $state(0);                           
+      113    // Namings panel: expanded naming (shows memos)
+      114    let expandedNamingId = $state<string | null>(null);
+      115    // Passage memo: inline memo input on a passage card
+
+● Step 3: Update filteredAnnotations to use selectedNamingIds.
+
+● Update(d=15dgryd;file:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/documents/%5BdocId%5D/+page.sveltesrc/routes/projects/[projectId]/documents/[docId]/+page.svelte)
+  ⎿  Added 3 lines
+      124        const memberIds = new Set(clusterMemberMap[clusterFilter
+           ] || []);
+      125        result = result.filter((a: any) => memberIds.has(a.code_
+           id));
+      126      }
+      127 +    if (selectedNamingIds.size > 0) {                         
+      128 +      result = result.filter((a: any) => selectedNamingIds.has
+          +(a.code_id));                                                 
+      129 +    }                                                         
+      130      if (annFilter.trim()) {
+      131        const q = annFilter.trim().toLowerCase();
+      132        result = result.filter((a: any) => a.code_label.toLowerC
+           ase().includes(q)
+
+● Step 4: Update TextSegment type and derivation to include start/end.
+
+● Update(d=15dgryd;file:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/documents/%5BdocId%5D/+page.sveltesrc/routes/projects/[projectId]/documents/[docId]/+page.svelte)
+  ⎿  Added 1 line, removed 1 line
+      205    }
+      206  
+      207    // Build text segments for color-coded annotation display
+      208 -  type TextSegment = { text: string; codes: { id: string; annI
+          -d: string; label: string; color: string }[]; elementId?: strin
+          -g };                                                          
+      208 +  type TextSegment = { text: string; codes: { id: string; annI
+          +d: string; label: string; color: string }[]; elementId?: strin
+          +g; start: number; end: number };                              
+      209    const textSegments = $derived.by((): TextSegment[] => {
+      210      const text = doc.full_text;
+      211      if (!text) return [];
+
+● Update(d=15dgryd;file:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/documents/%5BdocId%5D/+page.sveltesrc/routes/projects/[projectId]/documents/[docId]/+page.svelte)
+  ⎿  Added 1 line, removed 1 line
+      214        const anchor = a.properties?.anchor;
+      215        return anchor && anchor.pos0 != null && anchor.pos1 != n
+           ull;
+      216      });
+      217 -    if (textAnns.length === 0) return [{ text, codes: [] }];  
+      217 +    if (textAnns.length === 0) return [{ text, codes: [], star
+          +t: 0, end: text.length }];                                    
+      218  
+      219      // Build boundary points (annotations + element boundaries
+           )
+      220      const points = new Set<number>();
+
+● Update(d=15dgryd;file:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/documents/%5BdocId%5D/+page.sveltesrc/routes/projects/[projectId]/documents/[docId]/+page.svelte)
+  ⎿  Added 1 line, removed 1 line
+      254        // Find which element this segment belongs to
+      255        const el = leafElements.find((e: any) => e.char_start <=
+            start && e.char_end >= end);
+      256  
+      257 -      segments.push({ text: text.slice(start, end), codes: act
+          -iveCodes, elementId: el?.id });                               
+      257 +      segments.push({ text: text.slice(start, end), codes: act
+          +iveCodes, elementId: el?.id, start, end });                   
+      258      }
+      259      return segments;
+      260    });
+
+● Step 5: Add handler functions before the annotate function.
+
+● Update(d=15dgryd;file:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/documents/%5BdocId%5D/+page.sveltesrc/routes/projects/[projectId]/documents/[docId]/+page.svelte)
+  ⎿  Added 70 lines
+      473      setTimeout(() => { highlightedAnnotationId = null; }, 2000
+           );
+      474    }
+      475  
+      476 +  // Naming click handler: select naming(s) to show their pass
+          +ages                                                          
+      477 +  function handleNamingClick(namingId: string, e: MouseEvent) 
+          +{                                                             
+      478 +    if (e.shiftKey && lastClickedNamingId) {                  
+      479 +      // Range selection                                      
+      480 +      const ids = scopedCandidates.map((c: any) => c.id);     
+      481 +      const fromIdx = ids.indexOf(lastClickedNamingId);       
+      482 +      const toIdx = ids.indexOf(namingId);                    
+      483 +      if (fromIdx >= 0 && toIdx >= 0) {                       
+      484 +        const start = Math.min(fromIdx, toIdx);               
+      485 +        const end = Math.max(fromIdx, toIdx);                 
+      486 +        const next = new Set(selectedNamingIds);              
+      487 +        for (let i = start; i <= end; i++) next.add(ids[i]);  
+      488 +        selectedNamingIds = next;                             
+      489 +      }                                                       
+      490 +    } else if (e.altKey) {                                    
+      491 +      // Toggle individual                                    
+      492 +      const next = new Set(selectedNamingIds);                
+      493 +      if (next.has(namingId)) next.delete(namingId);          
+      494 +      else next.add(namingId);                                
+      495 +      selectedNamingIds = next;                               
+      496 +      lastClickedNamingId = namingId;                         
+      497 +    } else {                                                  
+      498 +      // Exclusive select                                     
+      499 +      selectedNamingIds = new Set([namingId]);                
+      500 +      lastClickedNamingId = namingId;                         
+      501 +    }                                                         
+      502 +  }                                                           
+      503 +                                                              
+      504 +  // Context menu on naming right-click                       
+      505 +  function handleNamingContextMenu(namingId: string, e: MouseE
+          +vent) {                                                       
+      506 +    e.preventDefault();                                       
+      507 +    if (!selectedNamingIds.has(namingId)) {                   
+      508 +      selectedNamingIds = new Set([namingId]);                
+      509 +      lastClickedNamingId = namingId;                         
+      510 +    }                                                         
+      511 +    ctxMenuNamingIds = [...selectedNamingIds];                
+      512 +    ctxMenuPos = { x: e.clientX, y: e.clientY };              
+      513 +  }                                                           
+      514 +                                                              
+      515 +  // Drag-and-drop: naming onto selected text = code          
+      516 +  function handleNamingDragStart(namingId: string, e: DragEven
+          +t) {                                                          
+      517 +    if (!hasSelection) {                                      
+      518 +      e.preventDefault();                                     
+      519 +      return;                                                 
+      520 +    }                                                         
+      521 +    e.dataTransfer!.setData('application/x-naming-id', namingI
+          +d);                                                           
+      522 +    e.dataTransfer!.effectAllowed = 'copy';                   
+      523 +  }                                                           
+      524 +                                                              
+      525 +  function handleDocDragOver(e: DragEvent) {                  
+      526 +    if (e.dataTransfer?.types.includes('application/x-naming-i
+          +d')) {                                                        
+      527 +      e.preventDefault();                                     
+      528 +      e.dataTransfer.dropEffect = 'copy';                     
+      529 +      dragOverDoc = true;                                     
+      530 +    }                                                         
+      531 +  }                                                           
+      532 +                                                              
+      533 +  function handleDocDragLeave() {                             
+      534 +    dragOverDoc = false;                                      
+      535 +  }                                                           
+      536 +                                                              
+      537 +  function handleDocDrop(e: DragEvent) {                      
+      538 +    e.preventDefault();                                       
+      539 +    dragOverDoc = false;                                      
+      540 +    const codeId = e.dataTransfer?.getData('application/x-nami
+          +ng-id');                                                      
+      541 +    if (codeId && (selection || regionSelection)) {           
+      542 +      annotate(codeId);                                       
+      543 +    }                                                         
+      544 +  }                                                           
+      545 +                                                              
+      546    async function annotate(codeId: string) {
+      547      if (annotating) return;
+      548      if (!selection && !regionSelection) return;
+
+● Step 6: Update the document text <pre> element to be a drop zone and show 
+  selection highlights.
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(d=15dgryd;file:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/documents/%5BdocId%5D/+page.sveltesrc/routes/projects/[projectId]/documents/[docId]/+page.svelte)
+  ⎿  Added 3 lines, removed 2 lines
+      709            />
+      710          {:else if doc.full_text}
+      711            <!-- svelte-ignore a11y_no_static_element_interactio
+           ns -->
+      712 -          <pre class="document-text" bind:this={textEl} onmous
+          -eup={handleMouseUp}>{#each textSegments as seg, i}{#if seg.cod
+          -es.length > 0}{@const isAnnStart = i === 0 || !textSegments[i 
+          -- 1].codes.some(c => c.annId === seg.codes[0].annId)}<span    
+      712 +          <pre class="document-text" class:drop-target-active=
+          +{dragOverDoc && hasSelection} bind:this={textEl} onmouseup={ha
+          +ndleMouseUp} ondragover={handleDocDragOver} ondragleave={handl
+          +eDocDragLeave} ondrop={handleDocDrop}>{#each textSegments as s
+          +eg, i}{#if seg.codes.length > 0}{@const isAnnStart = i === 0 |
+          +| !textSegments[i - 1].codes.some(c => c.annId === seg.codes[0
+          +].annId)}<span                                                
+      713              class="coded-text"
+      714              class:coded-highlighted={seg.codes.some(c => c.ann
+           Id === highlightedAnnotationId)}
+      715 +            class:selection-highlight={selection && seg.start 
+          +< selection.pos1 && seg.end > selection.pos0}                 
+      716              style="background: {codedBackground(seg.codes)}; b
+           order-bottom: 2px solid {seg.codes[0].color};"
+      717              data-element-id={seg.elementId || undefined}
+      718              data-ann-start={isAnnStart ? seg.codes[0].annId : 
+           undefined}
+      719              onmouseenter={() => { highlightedAnnotationId = se
+           g.codes[0].annId; }}
+      720              onmouseleave={() => { highlightedAnnotationId = nu
+           ll; }}
+      720 -          >{seg.text}<span class="code-tooltip">{seg.codes.map
+          -(c => c.label).join(', ')}</span></span>{:else}<span data-elem
+          -ent-id={seg.elementId || undefined}>{seg.text}</span>{/if}{/ea
+          -ch}</pre>                                                     
+      721 +          >{seg.text}<span class="code-tooltip">{seg.codes.map
+          +(c => c.label).join(', ')}</span></span>{:else}<span data-elem
+          +ent-id={seg.elementId || undefined} class:selection-highlight=
+          +{selection && seg.start < selection.pos1 && seg.end > selectio
+          +n.pos0}>{seg.text}</span>{/if}{/each}</pre>                   
+      722          {:else}
+      723            <p class="placeholder">No text content available</p>
+      724          {/if}
+
+● Step 7: Update naming panel header to show clear button and naming rows with 
+  new click/drag/contextmenu behavior.
+
+● Update(d=15dgryd;file:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/documents/%5BdocId%5D/+page.sveltesrc/routes/projects/[projectId]/documents/[docId]/+page.svelte)
+  ⎿  Added 5 lines, removed 1 line
+      745      <!-- Namings: permanent code overview -->
+      746      <div class="namings-panel">
+      747        <div class="panel-header">
+      748 -        <h3>Namings <span class="count">({scopedCandidates.len
+          -gth})</span></h3>                                             
+      748 +        <h3>Namings <span class="count">({scopedCandidates.len
+          +gth})</span>                                                  
+      749 +            {#if selectedNamingIds.size > 0}                  
+      750 +              <button class="btn-xs" onclick={() => { selected
+          +NamingIds = new Set(); }}>Clear</button>                      
+      751 +            {/if}                                             
+      752 +          </h3>                                               
+      753          <div class="scope-toggle">
+      754            <button class="scope-btn" class:active={namingsScope
+            === 'this'} onclick={() => namingsScope = 'this'}>Document</b
+           utton>
+      755            <div class="scope-right">
+
+● Now update the naming row template — replace click handler, add draggable, add
+   contextmenu, add data-naming-id, add naming-selected class, remove ▶ button.
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(d=15dgryd;file:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/documents/%5BdocId%5D/+page.sveltesrc/routes/projects/[projectId]/documents/[docId]/+page.svelte)
+  ⎿  Added 2 lines, removed 7 lines
+      812                <span class="naming-group-label">{group.label}</
+           span>
+      813                {#each group.items as c (c.id)}
+      814                  <!-- svelte-ignore a11y_no_static_element_inte
+           ractions -->
+      815 -                <div class="naming-row" class:naming-expanded=
+          -{expandedNamingId === c.id}>                                  
+      816 -                  <div class="naming-main" onclick={() => { if
+          - (hasSelection) annotate(c.id); }}>                           
+      815 +                <div class="naming-row" class:naming-expanded=
+          +{expandedNamingId === c.id} class:naming-selected={selectedNam
+          +ingIds.has(c.id)} data-naming-id={c.id} draggable="true" ondra
+          +gstart={(e) => handleNamingDragStart(c.id, e)}>               
+      816 +                  <div class="naming-main" onclick={(e) => han
+          +dleNamingClick(c.id, e)} oncontextmenu={(e) => handleNamingCon
+          +textMenu(c.id, e)}>                                           
+      817                      <span class="color-dot" style="background:
+            {c.color || '#8b9cf7'}"></span>
+      818                      <span
+      819                      class="naming-label"
+     ...
+      826                        title="Show memos"
+      827                        onclick={(e) => { e.stopPropagation(); e
+           xpandedNamingId = expandedNamingId === c.id ? null : c.id; }}
+      828                      >{expandedNamingId === c.id ? '▽' : '▼'}</
+           button>
+      829 -                    <button                                   
+      830 -                      class="naming-action"                   
+      831 -                      title="Filter passages"                 
+      832 -                      onclick={(e) => { e.stopPropagation(); a
+          -nnFilter = annFilter === c.label ? '' : c.label; }}           
+      833 -                    >▶</button>                               
+      829                    </div>
+      830                    {#if expandedNamingId === c.id}
+      831                      {#each [scopedAnnotations.filter((a) => a.
+           code_id === c.id)] as codeAnns}
+
+● Step 8: Add rubber-band selection to namings-scroll and close context menu on 
+  click-away.
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(d=15dgryd;file:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/documents/%5BdocId%5D/+page.sveltesrc/routes/projects/[projectId]/documents/[docId]/+page.svelte)
+  ⎿  Added 27 lines, removed 1 line
+      805          </form>
+      806        {/if}
+      807  
+      808 -      <div class="namings-scroll">                            
+      808 +      <!-- svelte-ignore a11y_no_static_element_interactions -
+          +->                                                            
+      809 +      <div class="namings-scroll"                             
+      810 +        onclick={(e) => { if (!(e.target as HTMLElement).close
+          +st('.naming-row')) { selectedNamingIds = new Set(); } ctxMenuN
+          +amingIds = null; }}                                           
+      811 +        onpointerdown={(e) => {                               
+      812 +          if ((e.target as HTMLElement).closest('.naming-row')
+          +) return;                                                     
+      813 +          namingDragSelecting = true;                         
+      814 +          namingDragStartY = e.clientY;                       
+      815 +          (e.currentTarget as HTMLElement).setPointerCapture(e
+          +.pointerId);                                                  
+      816 +        }}                                                    
+      817 +        onpointermove={(e) => {                               
+      818 +          if (!namingDragSelecting) return;                   
+      819 +          const container = e.currentTarget as HTMLElement;   
+      820 +          const rows = container.querySelectorAll('.naming-row
+          +[data-naming-id]');                                           
+      821 +          const minY = Math.min(namingDragStartY, e.clientY); 
+      822 +          const maxY = Math.max(namingDragStartY, e.clientY); 
+      823 +          const next = new Set<string>();                     
+      824 +          rows.forEach(row => {                               
+      825 +            const rect = row.getBoundingClientRect();         
+      826 +            if (rect.bottom >= minY && rect.top <= maxY) {    
+      827 +              const id = (row as HTMLElement).dataset.namingId
+          +;                                                             
+      828 +              if (id) next.add(id);                           
+      829 +            }                                                 
+      830 +          });                                                 
+      831 +          selectedNamingIds = next;                           
+      832 +        }}                                                    
+      833 +        onpointerup={() => { namingDragSelecting = false; }}  
+      834 +      >                                                       
+      835          {#if scopedCandidates.length > 0}
+      836            {#each [...candidateGroups] as [key, group] (key)}
+      837              <div class="naming-group">
+
+● Step 9: Add context menu and cluster dialog at the end of the template, before
+   </style>.
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(d=15dgryd;file:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/documents/%5BdocId%5D/+page.sveltesrc/routes/projects/[projectId]/documents/[docId]/+page.svelte)  ⎿  Added 19 lines
+      1079  <!-- Naming tooltip: fixed position, outside overflow contain
+            ers -->
+      1080  <div class="naming-tooltip-fixed" style={namingTooltipStyle}>
+            {namingTooltipText}</div>
+      1081  
+      1082 +{#if ctxMenuNamingIds}                                       
+      1083 +  <NamingContextMenu                                         
+      1084 +    namingIds={ctxMenuNamingIds}                             
+      1085 +    position={ctxMenuPos}                                    
+      1086 +    namingLabels={ctxMenuNamingIds.map(id => candidates.find(
+           +(c: any) => c.id === id)?.label || '')}                      
+      1087 +    onclose={() => ctxMenuNamingIds = null}                  
+      1088 +    onaddtocluster={() => { showClusterDialog = true; }}     
+      1089 +  />                                                         
+      1090 +{/if}                                                        
+      1091 +                                                             
+      1092 +{#if showClusterDialog && ctxMenuNamingIds}                  
+      1093 +  <ClusterAssignDialog                                       
+      1094 +    namingIds={ctxMenuNamingIds}                             
+      1095 +    {clusters}                                               
+      1096 +    projectId={data.projectId}                               
+      1097 +    onclose={() => { showClusterDialog = false; ctxMenuNaming
+           +Ids = null; }}                                               
+      1098 +  />                                                         
+      1099 +{/if}                                                        
+      1100 +                                                             
+      1101  <style>
+      1102    .doc-viewer { }
+      1103  
+
+● Step 10: Add CSS for the new features.
+
+● Update(d=15dgryd;file:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/documents/%5BdocId%5D/+page.sveltesrc/routes/projects/[projectId]/documents/[docId]/+page.svelte)
+  ⎿  Added 8 lines, removed 1 line
+      1555    }
+      1556    .naming-row {
+      1557      border-bottom: 1px solid rgba(42, 45, 58, 0.5);
+      1558 +    user-select: none;                                       
+      1559    }
+      1560 +  .naming-row.naming-selected {                              
+      1561 +    background: rgba(139, 156, 247, 0.12);                   
+      1562 +  }                                                          
+      1563 +  .naming-row.naming-selected .naming-label {                
+      1564 +    color: #a5b4fc;                                          
+      1565 +  }                                                          
+      1566    .naming-main {
+      1567      display: flex;
+      1568      align-items: center;
+      1569      gap: 0.3rem;
+      1570      padding: 0.2rem 0;
+      1564 -    cursor: pointer;                                         
+      1571 +    cursor: default;                                         
+      1572    }
+      1573    .naming-main:hover { background: rgba(139, 156, 247, 0.05);
+             }
+      1574    .naming-label {
+
+● Now add CSS for the drop target, selection highlight, and btn-xs.
+
+● Update(d=15dgryd;file:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/documents/%5BdocId%5D/+page.sveltesrc/routes/projects/[projectId]/documents/[docId]/+page.svelte)
+  ⎿  Added 23 lines
+      1796      color: #6b7280;
+      1797      padding: 3rem 0;
+      1798    }
+      1799 +                                                             
+      1800 +  /* Drop target feedback */                                 
+      1801 +  .document-text.drop-target-active {                        
+      1802 +    outline: 2px dashed #8b9cf7;                             
+      1803 +    outline-offset: -2px;                                    
+      1804 +  }                                                          
+      1805 +                                                             
+      1806 +  /* Selection highlight (persists after DOM re-render) */   
+      1807 +  .selection-highlight {                                     
+      1808 +    background: rgba(139, 156, 247, 0.25) !important;        
+      1809 +  }                                                          
+      1810 +                                                             
+      1811 +  /* Small utility button */                                 
+      1812 +  .btn-xs {                                                  
+      1813 +    background: none;                                        
+      1814 +    border: none;                                            
+      1815 +    color: #6b7280;                                          
+      1816 +    font-size: 0.6rem;                                       
+      1817 +    cursor: pointer;                                         
+      1818 +    padding: 0 0.2rem;                                       
+      1819 +    margin-left: 0.3rem;                                     
+      1820 +  }                                                          
+      1821 +  .btn-xs:hover { color: #a5b4fc; }                          
+      1822  </style>
+
+● Now let me also close the context menu when clicking on the doc-viewer area
+  (click-away).
+
+● Update(d=15dgryd;file:///home/joerissen/ai/transact-qda/src/routes/projects/%5BprojectId%5D/documents/%5BdocId%5D/+page.sveltesrc/routes/projects/[projectId]/documents/[docId]/+page.svelte)
+  ⎿  Added 3 lines, removed 1 line
+      695    }
+      696  </script>
+      697  
+      698 -<div class="doc-viewer">                                      
+      698 +<!-- svelte-ignore a11y_click_events_have_key_events -->      
+      699 +<!-- svelte-ignore a11y_no_static_element_interactions -->    
+      700 +<div class="doc-viewer" onclick={() => { ctxMenuNamingIds = nu
+          +ll; }}>                                                       
+      701    <div class="doc-body">
+      702      <div class="doc-with-margin">
+      703        <div class="content-panel" class:image-mode={isImage}>
+
+● Now let me verify the file compiles by checking for any syntax issues.
+
+● Bash(npx svelte-check --output human --threshold error 2>&1 | head -60)
+  ⎿  /home/joerissen/ai/transact-qda/src/routes/api/projects/[projectId]/ex
+     port/+server.ts:24:22
+     Error: Argument of type 'Buffer<ArrayBufferLike>' is not assignable to
+     … +14 lines (ctrl+o to expand)
+  ⎿  (timeout 30s)
+
+● The first error is pre-existing. The second one is from our change — the
+  clusters type mismatch. Let me fix it.
+
+  Read 1 file (ctrl+o to expand)
+
+● The clusters derived is QueryResultRow[]. I'll fix the ClusterAssignDialog to
+  accept any[].
+
+● Update(src/routes/projects/[projectId]/documents/[docId]/ClusterAssignDialog.s
+        velte)
+  ⎿  Added 1 line, removed 1 line
+       8      onclose,
+       9    }: {
+      10      namingIds: string[];
+      11 -    clusters: { id: string; label: string; member_count: number
+         - }[];                                                          
+      11 +    clusters: any[];                                           
+      12      projectId: string;
+      13      onclose: () => void;
+      14    } = $props();
+
+● Bash(npx svelte-check --output human --threshold error 2>&1 | grep -E
+      "^(Error:|/)" | head -20)
+  ⎿  /home/joerissen/ai/transact-qda/src/routes/api/projects/[projectId]/ex
+     port/+server.ts:24:22
+     Error: Argument of type 'Buffer<ArrayBufferLike>' is not assignable to
+      parameter of type 'BodyInit | null | undefined'.
+  ⎿  (timeout 30s)
+
+● Only the pre-existing error remains. Let me verify the dev server works.
+
+● Bash(ps aux | grep -E "node.*vite|npm.*dev" | grep -v grep | head -5)
+  ⎿  joeriss+ 3359087  0.0  0.1 1130524 68760 pts/5   Sl+  16:35   0:00 npm
+      run dev
+     joeriss+ 3359098  1.9  0.5 23606768 358208 pts/5 Sl+  16:35   0:38 nod
+     e /home/joerissen/ai/transact-qda/node_modules/.bin/vite dev
+
+● Dev server is already running. Let me do a quick build check to make sure
+  everything compiles.
+
+● Bash(curl -s -o /dev/null -w "%{http_code}" http://localhost:5173/)
+  ⎿  Error: Exit code 7
+     000
+
+● Bash(curl -s -o /dev/null -w "%{http_code}" http://localhost:5174/ 2>/dev/null
+       || curl -s -o /dev/null -w "%{http_code}" http://localhost:5173/
+      2>/dev/null || echo "…)
+  ⎿  303LISTEN 0      511        127.0.0.1:5174       0.0.0.0:*    users:((
+     "node",pid=3359328,fd=21))
+     LISTEN 0      511            [::1]:5174          [::]:*    users:(("no
+     de",pid=3359098,fd=27))
+
+● Dev server is running on port 5174 and responding with 303 (redirect to
+  login). Everything compiles fine.
+
+  Let me do a final review of the key changes to make sure everything is
+  consistent.
+
+  Read 1 file (ctrl+o to expand)
+
+● Good. Let me also verify the naming row area now looks correct.
+
+  Read 1 file (ctrl+o to expand)
+
+● Everything looks correct. Let me do a summary of all changes:
+
+  Changes Made
+
+  Modified: src/routes/projects/[projectId]/documents/[docId]/+page.svelte
+
+  1. Imports: Added NamingContextMenu and ClusterAssignDialog
+  2. New state: selectedNamingIds (Set), lastClickedNamingId, ctxMenuNamingIds,
+  ctxMenuPos, showClusterDialog, dragOverDoc, namingDragSelecting,
+  namingDragStartY
+  3. filteredAnnotations: Now filters by selectedNamingIds (union of selected
+  namings' passages)
+  4. TextSegment type: Added start/end character offsets for selection highlight
+   persistence
+  5. New handler functions:
+    - handleNamingClick() — plain/shift/alt click for single/range/toggle
+  selection
+    - handleNamingContextMenu() — right-click opens custom context menu
+    - handleNamingDragStart() — initiates drag (only when text is selected)
+    - handleDocDragOver/DragLeave/Drop() — drop zone on document text
+  6. Template changes:
+    - Document <pre>: drag-drop zone + selection-highlight class on spans
+    - Naming rows: onclick → handleNamingClick, oncontextmenu, draggable,
+  data-naming-id, naming-selected class
+    - Removed ▶ filter button (replaced by click-to-select)
+    - Namings-scroll: rubber-band pointer events, click-away clears selection
+    - Added context menu + cluster dialog rendering
+    - Added "Clear" button in namings header
+  7. CSS: .naming-selected, .drop-target-active, .selection-highlight, .btn-xs,
+  user-select: none on rows
+
+  Created: NamingContextMenu.svelte
+
+  Right-click menu with "Add to Cluster..." item, positioned at mouse coords.
+
+  Created: ClusterAssignDialog.svelte
+
+  Modal overlay: cluster list (selectable), create new cluster form, assign
+  button. Uses invalidateAll() to refresh page data after assignment.
+
+✻ Brewed for 14m 21s
+
+❯ Da ist etws grundsätzlich kaputt mit dem Cluster-System. Neue Cluster werden  
+NICHT gebildet und sinnlose CLuster sind persistetn s.i., "Administrator" ->    
+DAS ist eine USER-Login-FUnktion die hier zum Cluster wird                      
+
+● Let me investigate the cluster system — both the creation issue and the
+  spurious "Administrator" cluster.
+
+● Explore(Investigate cluster system bugs)
+  ⎿  Done (54 tool uses · 48.0k tokens · 28m 37s)
+  (ctrl+o to expand)
+● Clear diagnosis. Two bugs:
+  1. "Administrator" as cluster: getProjectClusters query matches
+  researcher/AI-analyst namings (they also have self-referential
+  mode='perspective' appearances) — missing role filters
+  2. New clusters not appearing: getMapClusters requires at least one member on
+  the map — empty clusters are invisible
+
+  Let me read the exact code and fix both.
+
+  Read 1 file (ctrl+o to expand)
+
+● Now I see the issue clearly. Both the CTE and the inline query in
+  getProjectClusters are missing filters for researcher and ai-analyst roles.
+  Let me fix both.
+
+● Update(src/lib/server/db/queries/maps.ts)
+  ⎿  Added 3 lines
+      946  }
+      947  
+      948  // Shared CTE for finding project clusters
+      949 +// Excludes maps (mapType), grounding workspace, researcher pe
+          +rspectives, and AI analyst perspectives                       
+      950  const PROJECT_CLUSTERS_CTE = `
+      951    SELECT DISTINCT ON (n.id) n.id, n.inscription as label
+      952    FROM namings n
+     ...
+      956      AND n.deleted_at IS NULL
+      957      AND NOT (a.properties ? 'mapType')
+      958      AND NOT (a.properties->>'role' = 'grounding-workspace')
+      959 +    AND NOT (a.properties->>'role' = 'researcher')            
+      960 +    AND NOT (a.properties->>'role' = 'ai-analyst')            
+      961    ORDER BY n.id, n.seq
+      962  `;
+      963  
+
+● Now fix the inline query in getProjectClusters too (it duplicates the CTE
+  logic):
+
+● Update(src/lib/server/db/queries/maps.ts)
+  ⎿  Error editing file
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(src/lib/server/db/queries/maps.ts)
+  ⎿  Error editing file
+
+● Bash(sed -n '1075,1086p'
+      /home/joerissen/ai/transact-qda/src/lib/server/db/queries/maps.ts | cat
+      -A)
+  ⎿  ^I^I^I   SELECT DISTINCT ON (n.id) n.id, n.inscription as label$
+     ^I^I^I   FROM namings n$
+     ^I^I^I   JOIN appearances a ON a.naming_id = n.id AND a.perspective_id
+     … +10 lines (ctrl+o to expand)
+
+● The file uses tabs. Let me match the exact indentation.
+
+● Update(src/lib/server/db/queries/maps.ts)
+  ⎿  Added 2 lines
+      1080             AND n.deleted_at IS NULL
+      1081             AND NOT (a.properties ? 'mapType')
+      1082             AND NOT (a.properties->>'role' = 'grounding-worksp
+            ace')
+      1083 +           AND NOT (a.properties->>'role' = 'researcher')    
+      1084 +           AND NOT (a.properties->>'role' = 'ai-analyst')    
+      1085           ORDER BY n.id, n.seq
+      1086         ) c
+      1087         ORDER BY c.label`,
+
+● Good. Now let me also check the createProjectCluster function to verify it
+  works correctly and see if there's an issue with the creation itself.
+
+  Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● The creation function itself looks correct. The real problem was that:
+  1. "Administrator" (a researcher naming) was polluting the cluster list,
+  making it look broken
+  2. On maps, getMapClusters hides empty clusters (needs at least one member on
+  the map)
+
+  The role filter fix will clean up the spurious entries. Let me verify the fix
+  works by checking the database.
+
+● Bash(PGPASSWORD=tqda_dev psql -h localhost -U tqda -d tqda -c "
+      SELECT n.id, n.inscription, a.properties->>'role' as role, a.properties…)
+  ⎿  Error: Exit code 2
+     psql: error: connection to server at "localhost" (::1), port 5432 failed: 
+     FATAL:  database "tqda" does not exist
+
+● Bash(PGPASSWORD=tqda_dev psql -h localhost -U tqda -c "\l" 2>/dev/null | grep
+      -i tq)
+  ⎿  No matches found
+
+● Bash(docker exec transact-qda-db psql -U tqda -c "\l" 2>/dev/null | head -10)
+  ⎿  (No output)
+
+  Searched for 2 patterns (ctrl+o to expand)
+
+● Bash(PGPASSWORD=tqda_dev psql -h localhost -U tqda -d transact_qda -c "
+      SELECT n.id, n.inscription, a.properties->>'role' as role, a.properties…)
+  ⎿                    id                  |   inscription    |    role
+      |       properties
+     --------------------------------------+------------------+------------
+     … +25 lines (ctrl+o to expand)
+
+● There it is — all 18 "clusters" are actually researcher, ai-analyst, and
+  memo-system namings. Zero real clusters. The fix needs to also exclude
+  memo-system.
+
+● Update(src/lib/server/db/queries/maps.ts)
+  ⎿  Added 1 line, removed 3 lines
+      955    WHERE n.project_id = $2
+      956      AND n.deleted_at IS NULL
+      957      AND NOT (a.properties ? 'mapType')
+      958 -    AND NOT (a.properties->>'role' = 'grounding-workspace')   
+      959 -    AND NOT (a.properties->>'role' = 'researcher')            
+      960 -    AND NOT (a.properties->>'role' = 'ai-analyst')            
+      958 +    AND NOT (a.properties ? 'role')                           
+      959    ORDER BY n.id, n.seq
+      960  `;
+      961  
+
+● Much cleaner — any perspective with a role property is a system perspective,
+  not a cluster. Let me apply the same to the inline query in
+  getProjectClusters.
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(src/lib/server/db/queries/maps.ts)
+  ⎿  Added 1 line, removed 3 lines
+      1077           WHERE n.project_id = $1
+      1078             AND n.deleted_at IS NULL
+      1079             AND NOT (a.properties ? 'mapType')
+      1080 -           AND NOT (a.properties->>'role' = 'grounding-worksp
+           -ace')                                                        
+      1081 -           AND NOT (a.properties->>'role' = 'researcher')    
+      1082 -           AND NOT (a.properties->>'role' = 'ai-analyst')    
+      1080 +           AND NOT (a.properties ? 'role')                   
+      1081           ORDER BY n.id, n.seq
+      1082         ) c
+      1083         ORDER BY c.label`,
+
+● Now let me verify — clusters created by createProjectCluster have { 
+  parentMapId: gwId } as properties (no role key), so they'll correctly pass the
+   filter. Let me confirm.
+
+● Bash(PGPASSWORD=tqda_dev psql -h localhost -U tqda -d transact_qda -c "
+      SELECT n.id, n.inscription, a.properties…)
+  ⎿                    id                  | inscription |
+           properties
+     --------------------------------------+-------------+-----------------
+     … +10 lines (ctrl+o to expand)
+● Now the query returns only real clusters (AI Economy, Interface). The
+  researcher/ai-analyst/memo-system namings are correctly excluded.
+
+  Let me also verify the PROJECT_CLUSTERS_CTE constant is consistent.
+
+  Read 1 file (ctrl+o to expand)
+
+● Both the CTE (used by getMapClusters) and the inline query (used by
+  getProjectClusters) now use the same clean filter: NOT (a.properties ? 
+  'role'). Let me update the CTE comment.
+
+● Update(src/lib/server/db/queries/maps.ts)
+  ⎿  Added 1 line, removed 1 line
+      946  }
+      947  
+      948  // Shared CTE for finding project clusters
+      949 -// Excludes maps (mapType), grounding workspace, researcher pe
+          -rspectives, and AI analyst perspectives                       
+      949 +// Excludes maps (mapType) and all system perspectives (any wi
+          +th a 'role' property)                                         
+      950  const PROJECT_CLUSTERS_CTE = `
+      951    SELECT DISTINCT ON (n.id) n.id, n.inscription as label
+      952    FROM namings n
+
+● Now let me do a final compile check.
+
+● Bash(npx svelte-check --output human --threshold error 2>&1 | grep -E
+      "^(Error:|/)" | head -10)
+  ⎿  /home/joerissen/ai/transact-qda/src/routes/api/projects/[projectId]/ex
+     port/+server.ts:24:22
+     Error: Argument of type 'Buffer<ArrayBufferLike>' is not assignable to
+      parameter of type 'BodyInit | null | undefined'.
+  ⎿  (timeout 30s)
+
+● Only the pre-existing error. All changes compile cleanly.
+
+  Summary of fixes
+
+  Cluster filter bug (src/lib/server/db/queries/maps.ts):
+  - Both PROJECT_CLUSTERS_CTE and getProjectClusters now use AND NOT 
+  (a.properties ? 'role') instead of only filtering grounding-workspace
+  - This excludes all system perspectives (researcher, ai-analyst, memo-system)
+  from cluster queries
+  - DB confirms: only 4 real clusters remain (AI Economy, Interface x3), 18
+  false positives eliminated
+
+  New cluster visibility: The creation function itself works correctly —
+  clusters are created with { parentMapId: ... } properties (no role key), so
+  they pass the filter. The issue was that the spurious entries were masking the
+   real state.
+
+✻ Crunched for 6m 2s
+
+❯ Nun habe ich mein Cluster 3 mal - immerhin, anzeige unktioniert nun. WIeso    
+sollten "Syxstem perspectives" cluster sein? Das sind KEINE Cluster, diese      
+"Cluster" durfen nicht existieren. Ihre Existenz verweist aufd einen            
+itefgehenden Fehler im Code UND offenbar, leider, in Deinem Verständnis der     
+Plattfrom                                                                       
+
+● Du hast recht — mein Fix war ein Symptom-Filter, nicht die Ursache. Die Frage
+  ist: warum haben System-Perspektiven (Researcher, AI-Analyst) dieselbe
+  Struktur wie Cluster? Das ist der eigentliche Fehler. Und warum existiert
+  "Interface" dreimal?
+
+● Bash(PGPASSWORD=tqda_dev psql -h localhost -U tqda -d transact_qda -c "
+      -- Show the 3 Interface clusters: when created, by whom, what properties…)
+  ⎿                    id                  | inscription |          created
+     _at           |                     self_app_props
+       | first_act
+     … +13 lines (ctrl+o to expand)
+
+● Bash(PGPASSWORD=tqda_dev psql -h localhost -U tqda -d transact_qda -c "
+      -- What does a researcher naming look like vs a cluster?…)
+  ⎿                    id                  |  inscription  |    mode     |
+           properties       |    type
+     --------------------------------------+---------------+-------------+-
+     … +8 lines (ctrl+o to expand)
+
+● Bash(PGPASSWORD=tqda_dev psql -h localhost -U tqda -d transact_qda -c "
+      -- How many system perspectives exist total?…)
+  ⎿          role         | count
+     ---------------------+-------
+      researcher          |     8
+     … +4 lines (ctrl+o to expand)
+
+● Jetzt sehe ich das Problem klar.
+
+  Das strukturelle Problem: Cluster sind nur negativ definiert — "eine
+  Perspektive, die kein Map, kein Researcher, kein AI-Analyst ist." Das ist
+  fragil und war der Grund, warum System-Perspektiven als Cluster auftauchten.
+
+  Die Daten:
+  - 4 Rollen-Typen nutzen dieselbe Struktur (mode='perspective',
+  self-referential): researcher (8), ai-analyst (5), grounding-workspace (5),
+  memo-system (5)
+  - Cluster haben {parentMapId: ...} aber kein role-Feld → werden nur durch
+  Ausschluss identifiziert
+  - "Interface" existiert 3x weil createProjectCluster keine Duplikat-Prüfung
+  hat
+
+  Der richtige Fix: Cluster brauchen eine positive Identität: role: 'cluster' in
+   ihren Properties. Dann:
+  - Erstellung: properties: { role: 'cluster', parentMapId: gwId }
+  - Abfrage: WHERE a.properties->>'role' = 'cluster' (positiv, nicht negativ)
+  - Migration: bestehende Cluster (AI Economy, Interface) bekommen role: 
+  'cluster'
+  - Die 2 Duplikat-Interface löschen
+
+  Zusätzlich: createProjectCluster braucht Duplikat-Schutz (oder bewusst nicht —
+   sollen Cluster gleichen Namens erlaubt sein?).
+
+  Soll ich das so umsetzen?
+
+✻ Cooked for 57s
+
+❯ Wiel ich es 3 x angelegt habe, weil ich es nicht sehen konnte                 
+
+❯ das ist also korrekt, allerdings sollten keine Cluster mit exakt demselben    
+Namen existieren dürfen                                                         
+
+  Read 1 file (ctrl+o to expand)
+
+● Now let me also check the map-level createCluster function.
+
+  Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Good, both functions have the same pattern. Now I'll implement the fix: role: 
+  'cluster' in properties, duplicate name check, migrate existing data, clean up
+   duplicates.
+
+● Update(src/lib/server/db/queries/maps.ts)
+  ⎿  Added 14 lines, removed 1 line
+      438    properties?: Record<string, unknown>
+      439  ) {
+      440    return transaction(async (client) => {
+      441 +    // Duplicate name check                                   
+      442 +    const existing = await client.query(                      
+      443 +      `SELECT n.id FROM namings n                             
+      444 +       JOIN appearances a ON a.naming_id = n.id AND a.perspect
+          +ive_id = n.id                                                 
+      445 +         AND a.mode = 'perspective' AND a.properties->>'role' 
+          += 'cluster'                                                   
+      446 +       WHERE n.project_id = $1 AND n.inscription = $2 AND n.de
+          +leted_at IS NULL                                              
+      447 +       LIMIT 1`,                                              
+      448 +      [projectId, inscription]                                
+      449 +    );                                                        
+      450 +    if (existing.rows.length > 0) {                           
+      451 +      return existing.rows[0];                                
+      452 +    }                                                         
+      453 +                                                              
+      454      const researcherNamingId = await getOrCreateResearcherNami
+           ng(projectId, userId);
+      455  
+      456      // The cluster is a naming
+     ...
+      465      await client.query(
+      466        `INSERT INTO appearances (naming_id, perspective_id, mod
+           e, properties)
+      467         VALUES ($1, $1, 'perspective', $2)`,
+      455 -      [cluster.id, JSON.stringify({ parentMapId: mapId, ...pro
+          -perties })]                                                   
+      468 +      [cluster.id, JSON.stringify({ role: 'cluster', parentMap
+          +Id: mapId, ...properties })]                                  
+      469      );
+      470  
+      471      // The cluster also appears on the map as a perspective-na
+           ming
+
+● Now fix createProjectCluster the same way.
+
+● Update(src/lib/server/db/queries/maps.ts)
+  ⎿  Added 15 lines, removed 2 lines
+      1148    inscription: string
+      1149  ) {
+      1150    return transaction(async (client) => {
+      1151 +    // Duplicate name check                                  
+      1152 +    const existing = await client.query(                     
+      1153 +      `SELECT n.id, n.inscription FROM namings n             
+      1154 +       JOIN appearances a ON a.naming_id = n.id AND a.perspec
+           +tive_id = n.id                                               
+      1155 +         AND a.mode = 'perspective' AND a.properties->>'role'
+           + = 'cluster'                                                 
+      1156 +       WHERE n.project_id = $1 AND n.inscription = $2 AND n.d
+           +eleted_at IS NULL                                            
+      1157 +       LIMIT 1`,                                             
+      1158 +      [projectId, inscription]                               
+      1159 +    );                                                       
+      1160 +    if (existing.rows.length > 0) {                          
+      1161 +      return existing.rows[0];                               
+      1162 +    }                                                        
+      1163 +                                                             
+      1164      const { getOrCreateGroundingWorkspace } = await import('.
+            /codes.js');
+      1165      const gwId = await getOrCreateGroundingWorkspace(projectI
+            d, userId);
+      1166      const researcherNamingId = await getOrCreateResearcherNam
+            ing(projectId, userId);
+     ...
+      1173      );
+      1174      const cluster = clusterRes.rows[0];
+      1175  
+      1163 -    // Self-referential appearance                           
+      1176 +    // Self-referential appearance with role: 'cluster'      
+      1177      await client.query(
+      1178        `INSERT INTO appearances (naming_id, perspective_id, mo
+            de, properties)
+      1179         VALUES ($1, $1, 'perspective', $2)`,
+      1167 -      [cluster.id, JSON.stringify({ parentMapId: gwId })]    
+      1180 +      [cluster.id, JSON.stringify({ role: 'cluster', parentMa
+           +pId: gwId })]                                                
+      1181      );
+      1182  
+      1183      // Appear on grounding workspace as sub-perspective
+
+● Now update both queries to use positive match role = 'cluster'.
+
+● Update(src/lib/server/db/queries/maps.ts)
+  ⎿  Added 2 lines, removed 5 lines
+      958    ).rows;
+      959  }
+      960  
+      961 -// Shared CTE for finding project clusters                    
+      962 -// Excludes maps (mapType) and all system perspectives (any wi
+          -th a 'role' property)                                         
+      961 +// Shared CTE for finding project clusters (positive match on 
+          +role='cluster')                                               
+      962  const PROJECT_CLUSTERS_CTE = `
+      963    SELECT DISTINCT ON (n.id) n.id, n.inscription as label
+      964    FROM namings n
+      965    JOIN appearances a ON a.naming_id = n.id AND a.perspective_i
+           d = n.id
+      967 -    AND a.mode = 'perspective'                                
+      966 +    AND a.mode = 'perspective' AND a.properties->>'role' = 'cl
+          +uster'                                                        
+      967    WHERE n.project_id = $2
+      968      AND n.deleted_at IS NULL
+      970 -    AND NOT (a.properties ? 'mapType')                        
+      971 -    AND NOT (a.properties ? 'role')                           
+      969    ORDER BY n.id, n.seq
+      970  `;
+      971  
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(src/lib/server/db/queries/maps.ts)
+  ⎿  Added 1 line, removed 3 lines
+      1083           SELECT DISTINCT ON (n.id) n.id, n.inscription as lab
+            el
+      1084           FROM namings n
+      1085           JOIN appearances a ON a.naming_id = n.id AND a.persp
+            ective_id = n.id
+      1086 -           AND a.mode = 'perspective'                        
+      1086 +           AND a.mode = 'perspective' AND a.properties->>'rol
+           +e' = 'cluster'                                               
+      1087           WHERE n.project_id = $1
+      1088             AND n.deleted_at IS NULL
+      1089 -           AND NOT (a.properties ? 'mapType')                
+      1090 -           AND NOT (a.properties ? 'role')                   
+      1089           ORDER BY n.id, n.seq
+      1090         ) c
+      1091         ORDER BY c.label`,
+
+● Now migrate existing clusters and clean up duplicates.
+● Bash(PGPASSWORD=tqda_dev psql -h localhost -U tqda -d transact_qda -c "
+      -- Show current clusters (the ones with parentMapId but no role)…)
+  ⎿                    id                  | inscription |          created
+     _at           |                       properties
+     … +14 lines (ctrl+o to expand)
+
+● Bash(PGPASSWORD=tqda_dev psql -h localhost -U tqda -d transact_qda -c "
+      -- Check if any of the 3 Interface clusters have members…)
+  ⎿   perspective_id | inscription | members
+     ----------------+-------------+---------
+     (0 rows)
+
+● No members in any of them. I'll keep the oldest one, migrate it, and
+  soft-delete the duplicates.
+
+● Bash(PGPASSWORD=tqda_dev psql -h localhost -U tqda -d transact_qda -c "
+      BEGIN;…)
+  ⎿  BEGIN
+     UPDATE 4
+     UPDATE 2
+     COMMIT
+
+● Bash(PGPASSWORD=tqda_dev psql -h localhost -U tqda -d transact_qda -c "
+      -- Verify: only real clusters with role='cluster'…)
+  ⎿                    id                  | inscription |
+                     properties
+     --------------------------------------+-------------+-----------------
+     … +6 lines (ctrl+o to expand)
+
+● Sauber. 2 echte Cluster, positiv identifiziert.
+
+● Bash(npx svelte-check --output human --threshold error 2>&1 | grep -c
+      "^Error:")
+  ⎿  1
+  ⎿  (timeout 30s)
+
+● Nur der pre-existierende Buffer-Fehler im Export.
+
+  Was gemacht wurde
+
+  Root cause fix in src/lib/server/db/queries/maps.ts:
+
+  1. Positive Identität: Cluster haben jetzt role: 'cluster' in ihren
+  self-referential appearance properties — nicht mehr negativ definiert durch
+  Ausschluss
+  2. Queries (PROJECT_CLUSTERS_CTE + getProjectClusters): filtern jetzt WHERE 
+  a.properties->>'role' = 'cluster' statt Ausschluss-Logik
+  3. Duplikat-Schutz: Beide Create-Funktionen (createCluster,
+  createProjectCluster) prüfen auf existierenden Cluster gleichen Namens und
+  geben ihn zurück statt einen neuen zu erstellen
+  4. Migration: Bestehende Cluster (AI Economy, Interface) haben role: 'cluster'
+   bekommen
+  5. Cleanup: 2 leere Interface-Duplikate soft-deleted
+
+✻ Cooked for 2m 15s
+
+❯ commit und push                                                               
+
+● Bash(git status)
+  ⎿  On branch main
+     Your branch is ahead of 'origin/main' by 7 commits.
+       (use "git push" to publish your local commits)
+     … +18 lines (ctrl+o to expand)
+
+● Bash(git diff --stat)
+  ⎿   src/lib/server/db/queries/maps.ts                  |  42 +++--
+      .../[projectId]/documents/[docId]/+page.svelte     | 198 ++++++++++++
+     +++++++--
+      2 files changed, 213 insertions(+), 27 deletions(-)
+
+● Bash(git log --oneline -5)
+  ⎿  bf09466 Fix manual overlay: heading IDs for TOC links, scroll within p
+     anel
+     972fc09 Fix: dynamic import of marked in layout to prevent SSR 500
+     … +5 lines (ctrl+o to expand)
+
+● Bash(git add src/lib/server/db/queries/maps.ts
+      src/routes/projects/\[projectId\]/documents/\[docId\]/+page.svelte
+      src/routes/projects/\[projectId\]/documents/\[docId…)
+  ⎿  (No output)
+
+● Bash(git commit -m "$(cat <<'EOF'
+      Naming list redesign: click=select, drag=code, multi-select, context menu
+      + cluster fix…)
+  ⎿  [main 3b23ecc] Naming list redesign: click=select, drag=code, multi-se
+     lect, context menu + cluster fix
+      4 files changed, 480 insertions(+), 27 deletions(-)
+     … +4 lines (ctrl+o to expand)
+
+● Bash(git push)
+  ⎿  To https://github.com/joeriben/transact-qda.git
+        6b8d9df..3b23ecc  main -> main
+
+● Pushed. 8 Commits inkl. der 7 vorherigen.
+
+❯ /export                                                                       
+  ⎿  Export cancelled
+
+❯ was ist noch zu tun?                                                          
+
+● Aus dem Plan ist alles implementiert:
+
+  1. Klick = Auswahl + Passages — done
+  2. Drag & Drop = Kodieren — done
+  3. Multi-Select (Shift/Alt/Rubber-band) — done
+  4. Rechtsklick-Kontextmenü — done (mit "Add to Cluster...")
+  5. Cluster-Dialog — done
+  6. Selection-Highlight-Bug — done (Highlight via State statt DOM-Range)
+  7. Cluster-Identität — done (role: 'cluster', positive Abfrage,
+  Duplikat-Schutz)
+
+  Noch offen: Testen. Die Interaktionen müssen im Browser verifiziert werden:
+  - Klick auf Naming → wird farblich markiert, Passages erscheinen?
+  - Shift/Alt/Drag-Selektion funktioniert?
+  - Text markieren, Naming auf Text ziehen → Kodierung erstellt?
+  - Selection-Highlight bleibt nach Kodierung sichtbar?
+  - Rechtsklick → Kontextmenü → Cluster-Dialog → Zuweisung?
+
+❯ FUnktioniert perfekt. COmit und push                                          
+
+● Bash(git status)
+  ⎿  On branch main
+     Your branch is up to date with 'origin/main'.
+     … +7 lines (ctrl+o to expand)
+
+● Keine Änderungen seit dem letzten Commit — alles ist bereits committed und
+  gepusht (commit 3b23ecc). Die untracked Files sind Session-Docs (sacred, nicht
+   anfassen).

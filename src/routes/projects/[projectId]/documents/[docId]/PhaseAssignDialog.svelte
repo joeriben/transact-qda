@@ -7,12 +7,12 @@
 
 	let {
 		namingIds,
-		clusters,
+		phases,
 		projectId,
 		onclose,
 	}: {
 		namingIds: string[];
-		clusters: any[];
+		phases: any[];
 		projectId: string;
 		onclose: () => void;
 	} = $props();
@@ -22,17 +22,17 @@
 	let creating = $state(false);
 	let assigning = $state(false);
 
-	async function createCluster() {
+	async function createPhase() {
 		if (!newClusterLabel.trim() || creating) return;
 		creating = true;
-		const res = await fetch(`/api/projects/${projectId}/clusters`, {
+		const res = await fetch(`/api/projects/${projectId}/phases`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ action: 'create', inscription: newClusterLabel.trim() })
 		});
 		if (res.ok) {
-			const cluster = await res.json();
-			selectedClusterId = cluster.id;
+			const phase = await res.json();
+			selectedClusterId = phase.id;
 			newClusterLabel = '';
 			await invalidateAll();
 		}
@@ -43,10 +43,10 @@
 		if (!selectedClusterId || assigning) return;
 		assigning = true;
 		for (const namingId of namingIds) {
-			await fetch(`/api/projects/${projectId}/clusters`, {
+			await fetch(`/api/projects/${projectId}/phases`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ action: 'assign', clusterId: selectedClusterId, namingId })
+				body: JSON.stringify({ action: 'assign', phaseId: selectedClusterId, namingId })
 			});
 		}
 		assigning = false;
@@ -59,32 +59,32 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="modal-overlay" onclick={onclose}>
 	<div class="modal" onclick={(e) => e.stopPropagation()}>
-		<h2>Add to Cluster</h2>
+		<h2>Add to Phase</h2>
 		<p class="modal-subtitle">
 			{namingIds.length === 1 ? '1 naming' : `${namingIds.length} namings`}
 		</p>
 
-		<div class="cluster-list">
-			{#each clusters as c (c.id)}
+		<div class="phase-list">
+			{#each phases as c (c.id)}
 				<button
-					class="cluster-option"
+					class="phase-option"
 					class:selected={selectedClusterId === c.id}
 					onclick={() => { selectedClusterId = c.id; }}
 				>
-					<span class="cluster-name">{c.label}</span>
-					<span class="cluster-count">{c.member_count}</span>
+					<span class="phase-name">{c.label}</span>
+					<span class="phase-count">{c.member_count}</span>
 				</button>
 			{/each}
-			{#if clusters.length === 0}
-				<p class="empty">No clusters yet.</p>
+			{#if phases.length === 0}
+				<p class="empty">No phases yet.</p>
 			{/if}
 		</div>
 
-		<form class="create-form" onsubmit={(e) => { e.preventDefault(); createCluster(); }}>
+		<form class="create-form" onsubmit={(e) => { e.preventDefault(); createPhase(); }}>
 			<input
 				type="text"
 				class="create-input"
-				placeholder="New cluster name..."
+				placeholder="New phase name..."
 				bind:value={newClusterLabel}
 				disabled={creating}
 			/>
@@ -133,13 +133,13 @@
 		color: #6b7280;
 		margin: 0 0 0.75rem;
 	}
-	.cluster-list {
+	.phase-list {
 		flex: 1;
 		overflow-y: auto;
 		margin-bottom: 0.75rem;
 		max-height: 240px;
 	}
-	.cluster-option {
+	.phase-option {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
@@ -153,12 +153,12 @@
 		cursor: pointer;
 		text-align: left;
 	}
-	.cluster-option:hover { background: rgba(139, 156, 247, 0.08); }
-	.cluster-option.selected {
+	.phase-option:hover { background: rgba(139, 156, 247, 0.08); }
+	.phase-option.selected {
 		background: rgba(139, 156, 247, 0.15);
 		border-color: #8b9cf7;
 	}
-	.cluster-count {
+	.phase-count {
 		font-size: 0.7rem;
 		color: #6b7280;
 	}

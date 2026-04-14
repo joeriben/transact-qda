@@ -109,7 +109,7 @@ WHEN TO USE TOOLS:
 - Do NOT proactively suggest positions — ask questions that help the researcher discover them
 
 WHAT TO ATTEND TO:
-- CLUSTERING: when multiple positions crowd one area, ask what distinguishes them
+- FORMING A PHASE: when multiple positions crowd one area, ask what distinguishes them
 - EMPTY QUADRANTS: systematically ask about each empty quadrant — what would a position there mean?
 - DISARTICULATION: flag any position that reads like an actor rather than a discursive stance
 - GROUNDING: note positions that lack empirical provenance (∅ markers)
@@ -282,10 +282,10 @@ export function buildContextMessage(ctx: MapContext, triggerEvent: TriggerEvent)
 		}
 	}
 
-	// Clusters
-	if (ctx.clusters.length > 0) {
-		parts.push('\nCLUSTERS:');
-		for (const p of ctx.clusters) {
+	// Phases
+	if (ctx.phases.length > 0) {
+		parts.push('\nPHASES:');
+		for (const p of ctx.phases) {
 			parts.push(`  "${p.label}" (${p.elementCount} elements, id: ${p.id})`);
 		}
 	}
@@ -340,8 +340,8 @@ function describeTrigger(event: TriggerEvent): string {
 			return `Researcher changed designation of "${event.details.inscription}" to ${event.details.designation}`;
 		case 'rename':
 			return `Researcher renamed "${event.details.oldInscription}" to "${event.details.newInscription}"`;
-		case 'createCluster':
-			return `Researcher created cluster "${event.details.inscription}"`;
+		case 'createPhase':
+			return `Researcher created phase "${event.details.inscription}"`;
 		case 'requestAnalysis':
 			return `Researcher explicitly requested AI analysis`;
 		default:

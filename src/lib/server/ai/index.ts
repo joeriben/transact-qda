@@ -71,13 +71,13 @@ export async function findPatterns(
 		maxTokens: 1500,
 		messages: [{
 			role: 'user',
-			content: `You are assisting a qualitative researcher doing Situational Analysis (Adele Clarke). Analyze the following elements from their project and identify patterns, clusters, contradictions, or silences (what is notably absent).
+			content: `You are assisting a qualitative researcher doing Situational Analysis (Adele Clarke). Analyze the following elements from their project and identify patterns, phases, contradictions, or silences (what is notably absent).
 
 Elements:
 ${itemList}
 
 Provide your analysis structured as:
-1. **Clusters**: Groups of related elements
+1. **Phases**: Groups of related elements
 2. **Tensions/Contradictions**: Elements that seem to conflict
 3. **Silences**: What seems notably absent given the situation
 4. **Suggested relations**: Connections worth investigating`

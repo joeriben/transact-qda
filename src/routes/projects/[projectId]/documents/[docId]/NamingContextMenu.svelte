@@ -26,7 +26,7 @@
 		{namingIds.length === 1 ? namingLabels[0] : `${namingIds.length} namings`}
 	</div>
 	<button class="ctx-item" onclick={() => { onaddtocluster(); onclose(); }}>
-		Add to Cluster...
+		Add to Phase...
 	</button>
 </div>
 

@@ -52,7 +52,7 @@ PHASE 1 — OPEN CODING (per document):
 PHASE 2 — AXIAL CODING (cross-document):
 - Compare namings across documents (constant comparison)
 - Draw relations between namings: what enables, constrains, legitimizes, silences what?
-- Group related namings into clusters
+- Group related namings into phases
 - Advance designations: cue -> characterization for namings that have stabilized
 - Write analytical memos about emerging patterns and tensions
 

@@ -1,4 +1,4 @@
-# Primary Situational Map, Doc-Clusters, and the Coding→Mapping Flow
+# Primary Situational Map, Doc-Phases, and the Coding→Mapping Flow
 
 Design decision document. Established session 30 (2026-04-12).
 
@@ -20,7 +20,7 @@ The transact-qda ontology already resolves this at the data level (codes ARE nam
 Clarke describes ONE situational map that grows and evolves:
 
 1. Messy Map — first dump, everything as cues
-2. Ordered/Working Map — revisions of the same map, clustering, relating
+2. Ordered/Working Map — revisions of the same map, forming a phase, relating
 3. Relational Maps — analytical operations on pairs of elements FROM the situational map
 
 Relational Maps are not independent maps. They are focused interrogations of the one map. Social Worlds/Arenas Maps and Positional Maps are different map TYPES, not additional situational maps.
@@ -32,7 +32,7 @@ Each project has one primary Situational Map — simply called **"Situational Ma
 - Created automatically with the project (or on first coding act)
 - Marked as primary (`isPrimary: true` in perspective properties); cannot be deleted while project has namings
 - All namings from document coding default to this map — no "which map?" prompt
-- The map starts messy (all cues, no relations, no clusters) and becomes ordered through CCS progress
+- The map starts messy (all cues, no relations, no phases) and becomes ordered through CCS progress
 - The stack IS the revision history (messy → ordered is not a mode switch but the aggregate designation state)
 - The Situational Map is never "done" — it grows as long as analysis continues
 
@@ -82,23 +82,23 @@ The term is "unresolved" rather than "unplaced" because the resolution can be pl
 
 The indicator is deliberately prominent. The analytical process aims for full resolution — every naming examined, every naming decided. This does not mean rushed: dozens of unresolved namings during active coding phases are normal. But the system communicates that resolution is the direction of travel.
 
-## Doc-Clusters: Provenance as Lens
+## Doc-Phases: Provenance as Lens
 
 ### The concept
 
-A **Doc-Cluster** is a query-based cluster that shows all namings on the Situational Map grounded in a specific document. It is not manually assigned — it is derived from the document-anchor relationship.
+A **Doc-Phase** is a query-based phase that shows all namings on the Situational Map grounded in a specific document. It is not manually assigned — it is derived from the document-anchor relationship.
 
 ```
-Manual Cluster:  cluster_memberships → naming_ids → highlight on map
-Doc-Cluster:     annotations WHERE document = X → naming_ids → highlight on map
+Manual Phase:  phase_memberships → naming_ids → highlight on map
+Doc-Phase:     annotations WHERE document = X → naming_ids → highlight on map
 ```
 
 ### UI integration
 
-Doc-Clusters appear in the ClustersSidebar alongside manual clusters, visually distinguished (e.g., 📄 icon, different border style):
+Doc-Phases appear in the PhasesSidebar alongside manual phases, visually distinguished (e.g., 📄 icon, different border style):
 
 ```
-Clusters
+Phases
   ├── [manual] Selbstwirksamkeit (5)
   ├── [manual] Institutionelle Diskurse (3)
   ├── ─── Documents ───
@@ -107,11 +107,11 @@ Clusters
   └── [📄] Foucault_Ch3.txt (2)
 ```
 
-Clicking a Doc-Cluster applies the same highlight/dim logic as manual clusters: elements grounded in that document are highlighted, everything else dims. This answers: "Which elements on my map came from this document?"
+Clicking a Doc-Phase applies the same highlight/dim logic as manual phases: elements grounded in that document are highlighted, everything else dims. This answers: "Which elements on my map came from this document?"
 
 ### Overlap visibility
 
-A naming can be grounded in multiple documents. Doc-Clusters naturally overlap. This is analytically meaningful: a naming grounded in both Interview_Meier and Policy_Brief is an element that bridges those data sources.
+A naming can be grounded in multiple documents. Doc-Phases naturally overlap. This is analytically meaningful: a naming grounded in both Interview_Meier and Policy_Brief is an element that bridges those data sources.
 
 ## Secondary Maps: Projections, Not Parallel Worlds
 
@@ -133,9 +133,9 @@ All secondary maps share namings with the Situational Map. A naming placed on a 
 
 D/B define Phase as: "Aspect of fact in sufficiently developed statement to exhibit definite spatial and temporal localizations." Secondary maps ARE aspects of the same analytical fact. However:
 
-1. **The UX problem persists.** "Phase" was renamed to "Cluster" precisely because users read "Phase 1, Phase 2" as sequential. Using "Phase" for map types reintroduces the same ambiguity.
+1. **The UX problem persists.** "Phase" was renamed to "Phase" precisely because users read "Phase 1, Phase 2" as sequential. Using "Phase" for map types reintroduces the same ambiguity.
 2. **D/B's Phase is ontological, not methodological.** A fact presents itself in phases — that describes reality. A Relational Map is a researcher's deliberate analytical reduction — that describes method. Conflating the two levels would be the kind of reification D/B criticize.
-3. **The term is codebase-burned.** `phase_memberships` → `cluster_memberships` was a conscious migration. Reintroducing "Phase" for a different concept invites confusion in code and docs.
+3. **The term is codebase-burned.** `phase_memberships` → `phase_memberships` was a conscious migration. Reintroducing "Phase" for a different concept invites confusion in code and docs.
 
 Secondary maps are simply **maps with a type**. No umbrella term needed.
 
@@ -151,7 +151,7 @@ There is no fixed sequence. The workflow is bidirectional:
 3. Switch to Situational Map (or open in second tab)
 4. See new unplaced namings in list
 5. Drag onto canvas — analytical placement act
-6. Clustering and relating follow naturally
+6. Forming a phase and relating follow naturally
 ```
 
 ### Map → Coding (theory-first)
@@ -190,8 +190,8 @@ The system shows these states. The researcher decides the order. "Messy" is when
 - List panel filters: "all" / "placed" / "unresolved" / "declined"
 - Toolbar status: prominent unresolved count with [show] action; "✓ all resolved" when count = 0
 
-### Doc-Clusters
-- Not stored in `cluster_memberships` — computed at query time
+### Doc-Phases
+- Not stored in `phase_memberships` — computed at query time
 - Query: `SELECT DISTINCT code_id FROM annotations WHERE document_id = $1`
 - Intersected with current map's appearances to produce the highlight set
 - Cached per page load, invalidated on annotation changes
@@ -204,18 +204,18 @@ The system shows these states. The researcher decides the order. "Messy" is when
 ## Relation to Existing Design Documents
 
 - **design-provenance-and-codes.md**: Codes as derived view from maps — the Situational Map IS where codes live. The "code list" is a query on the Situational Map's grounded namings.
-- **design-clusters.md**: Clusters as characterization — manual clusters on the Situational Map are the primary clustering mechanism. Doc-Clusters extend this with query-based provenance clusters.
-- **design-documents-and-docnets.md**: DocNets group documents. A DocNet-Cluster would be the union of its documents' Doc-Clusters. The "Generate SitMap from DocNet" operation (point 4) becomes: "Generate a secondary map from the Situational Map, filtered to namings grounded in this DocNet's documents."
+- **design-phases.md**: Phases as characterization — manual phases on the Situational Map are the primary forming a phase mechanism. Doc-Phases extend this with query-based provenance phases.
+- **design-documents-and-docnets.md**: DocNets group documents. A DocNet-Phase would be the union of its documents' Doc-Phases. The "Generate SitMap from DocNet" operation (point 4) becomes: "Generate a secondary map from the Situational Map, filtered to namings grounded in this DocNet's documents."
 
 ## Resolved Questions (Session 30)
 
 1. **Name**: "Situational Map" — definite article, like Clarke. No qualifying name needed for the primary. Additional SitMaps (if created) require names.
 2. **Multiple SitMaps**: Permitted, but only one is primary (`isPrimary: true`). The primary is the default target for all coding. Its list is the source of truth (three-layer hierarchy). Switching primary requires confirmation.
 3. **Unresolved indicator**: Prominent. Full resolution (placed or declined) is the methodological goal. The system communicates this clearly: `7 unresolved [show]` → `✓ all resolved`.
-4. **No "Phase" for secondary maps**: Rejected after critical examination. D/B's "Phase" is ontological (aspects of fact), not methodological (researcher's analytical operations). The UX confusion that motivated Phase→Cluster rename applies equally here. Secondary maps are simply maps with a type attribute.
+4. **No "Phase" for secondary maps**: Rejected after critical examination. D/B's "Phase" is ontological (aspects of fact), not methodological (researcher's analytical operations). The UX confusion that motivated Phase→Phase rename applies equally here. Secondary maps are simply maps with a type attribute.
 
 ## Open Questions
 
-1. **Doc-Cluster performance**: For projects with many documents, computing Doc-Clusters on every page load may be expensive. Consider materialized view or caching strategy.
+1. **Doc-Phase performance**: For projects with many documents, computing Doc-Phases on every page load may be expensive. Consider materialized view or caching strategy.
 2. **Unresolved → Aidele integration**: Should the didactic persona (Phase 4 roadmap) reference the unresolved count? E.g., "You have 12 unresolved namings — in Clarke's process, this would be a good moment to work on your situational map."
 3. **Secondary map creation UX**: How does a researcher create a Relational Map from the Situational Map? Select two elements → "Create Relational Map"? Or a dedicated "New Map from selection" action?

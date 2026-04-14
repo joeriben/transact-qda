@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Cluster color palette for consistent cluster visualization.
-// Used by sidebar borders, node cluster dots, and highlight glow.
+// Phase color palette for consistent phase visualization.
+// Used by sidebar borders, node phase dots, and highlight glow.
 
-const CLUSTER_COLORS = [
+const PHASE_COLORS = [
 	'#5b6abf', // muted indigo
 	'#4a9e7e', // muted teal
 	'#b07840', // muted amber
@@ -14,5 +14,5 @@ const CLUSTER_COLORS = [
 ];
 
 export function regionColor(index: number): string {
-	return CLUSTER_COLORS[index % CLUSTER_COLORS.length];
+	return PHASE_COLORS[index % PHASE_COLORS.length];
 }

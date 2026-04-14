@@ -6,7 +6,7 @@
 
 import { query, transaction } from '../../db/index.js';
 import { createMemo, updateMemoContent } from '../../db/queries/memos.js';
-import { assignToCluster } from '../../db/queries/maps.js';
+import { assignToPhase } from '../../db/queries/maps.js';
 import { emit } from '../sse.js';
 import { SW_ROLE_DEFAULTS } from '$lib/shared/constants.js';
 import { createAnnotation, createOrphanNaming, getOrCreateGroundingWorkspace } from '../../db/queries/codes.js';
@@ -93,12 +93,12 @@ export async function executeMapTool(
 
 			case 'create_cluster': {
 				const { inscription, element_ids, reasoning } = input as unknown as CreateClusterInput;
-				const cluster = await createClusterAsAi(projectId, aiNamingId, mapId, inscription, { aiReasoning: reasoning }, prov);
+				const phase = await createClusterAsAi(projectId, aiNamingId, mapId, inscription, { aiReasoning: reasoning }, prov);
 				for (const elementId of element_ids) {
-					await assignToCluster(cluster.id, elementId, undefined, undefined, aiNamingId);
+					await assignToPhase(phase.id, elementId, undefined, undefined, aiNamingId);
 				}
-				emit(mapId, 'ai:cluster', { cluster, elementIds: element_ids, reasoning });
-				return { success: true, result: { id: cluster.id, inscription, elementCount: element_ids.length } };
+				emit(mapId, 'ai:phase', { phase, elementIds: element_ids, reasoning });
+				return { success: true, result: { id: phase.id, inscription, elementCount: element_ids.length } };
 			}
 
 			case 'suggest_formation': {
@@ -697,39 +697,39 @@ async function createClusterAsAi(
 	prov: WriteProvenance = DEFAULT_PROV
 ) {
 	return transaction(async (client) => {
-		const clusterRes = await client.query(
+		const phaseRes = await client.query(
 			`INSERT INTO namings (project_id, inscription, created_by)
 			 VALUES ($1, $2, $3) RETURNING *`,
 			[projectId, inscription, AI_SYSTEM_UUID]
 		);
-		const cluster = clusterRes.rows[0];
+		const phase = phaseRes.rows[0];
 
 		await client.query(
 			`INSERT INTO appearances (naming_id, perspective_id, mode, properties)
 			 VALUES ($1, $1, 'perspective', $2)`,
-			[cluster.id, JSON.stringify({ parentMapId: mapId, ...properties, aiSuggested: true, ...provenanceProps(prov) })]
+			[phase.id, JSON.stringify({ parentMapId: mapId, ...properties, aiSuggested: true, ...provenanceProps(prov) })]
 		);
 
 		await client.query(
 			`INSERT INTO appearances (naming_id, perspective_id, mode, properties)
 			 VALUES ($1, $2, 'perspective', $3)`,
-			[cluster.id, mapId, JSON.stringify({ ...properties, aiSuggested: true, ...provenanceProps(prov) })]
+			[phase.id, mapId, JSON.stringify({ ...properties, aiSuggested: true, ...provenanceProps(prov) })]
 		);
 
 		await client.query(
 			`INSERT INTO participations (id, naming_id, participant_id)
 			 VALUES ($1, $1, $2)`,
-			[cluster.id, mapId]
+			[phase.id, mapId]
 		);
 
-		// Clustering IS characterizing (D/B)
+		// Forming a phase IS characterizing (D/B)
 		await client.query(
 			`INSERT INTO naming_acts (naming_id, designation, by)
 			 VALUES ($1, 'characterization', $2)`,
-			[cluster.id, aiNamingId]
+			[phase.id, aiNamingId]
 		);
 
-		return cluster;
+		return phase;
 	});
 }
 

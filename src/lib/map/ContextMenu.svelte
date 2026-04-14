@@ -51,10 +51,10 @@
 	<button class="ctx-item" onclick={() => { oncenter(namingId); onclose(); }}>
 		Center
 	</button>
-	{#if ms.assigningToCluster}
+	{#if ms.assigningToPhase}
 		<div class="ctx-separator"></div>
-		<button class="ctx-item" onclick={() => { ms.assignToCluster(ms.assigningToCluster!, namingId); onclose(); }}>
-			+ Cluster
+		<button class="ctx-item" onclick={() => { ms.assignToPhase(ms.assigningToPhase!, namingId); onclose(); }}>
+			+ Phase
 		</button>
 	{/if}
 	<div class="ctx-separator"></div>

@@ -6,7 +6,7 @@
  *
  * Produces a valid QDPX (REFI-QDA v1.0) ZIP archive with:
  * - Standard namespace (urn:QDA-XML:project:1.0): readable by ATLAS.ti, MAXQDA, NVivo, etc.
- * - Custom namespace (urn:transact-qda:1.0): preserves naming_acts, appearances, AI metadata, clusters
+ * - Custom namespace (urn:transact-qda:1.0): preserves naming_acts, appearances, AI metadata, phases
  *
  * On re-import into transact-qda, the tq: namespace restores full fidelity.
  */
@@ -32,7 +32,7 @@ async function fetchProjectData(projectId: string) {
 		appearances,
 		documents,
 		memoContents,
-		clusterMemberships,
+		phaseMemberships,
 		topologySnapshots
 	] = await Promise.all([
 		query(`SELECT * FROM projects WHERE id = $1`, [projectId]),
@@ -78,7 +78,7 @@ async function fetchProjectData(projectId: string) {
 			[projectId]
 		),
 		query(
-			`SELECT cm.* FROM cluster_memberships cm
+			`SELECT cm.* FROM phase_memberships cm
 			 JOIN namings n ON n.id = cm.naming_id
 			 WHERE n.project_id = $1 AND n.deleted_at IS NULL
 			 ORDER BY cm.seq`,
@@ -101,7 +101,7 @@ async function fetchProjectData(projectId: string) {
 		appearances: appearances.rows,
 		documents: documents.rows,
 		memoContents: memoContents.rows,
-		clusterMemberships: clusterMemberships.rows,
+		phaseMemberships: phaseMemberships.rows,
 		topologySnapshots: topologySnapshots.rows
 	};
 }
@@ -181,7 +181,7 @@ function currentInscription(namingActs: any[], namingId: string, fallback: strin
 
 function buildQDE(data: Awaited<ReturnType<typeof fetchProjectData>>): string {
 	const { project, users, namings, namingActs, participations, appearances,
-		documents, memoContents, clusterMemberships, topologySnapshots } = data;
+		documents, memoContents, phaseMemberships, topologySnapshots } = data;
 
 	const lines: string[] = [];
 	const w = (s: string) => lines.push(s);
@@ -520,26 +520,26 @@ function buildQDE(data: Awaited<ReturnType<typeof fetchProjectData>>): string {
 				w(`      <Edge guid="${rel.naming_id}-e" representedGUID="${rel.naming_id}" name="${esc(naming.inscription)}" sourceVertex="${rel.directed_from}-v" targetVertex="${rel.directed_to}-v" direction="Associative"/>`);
 			}
 
-			// tq: clusters (XML tags kept as tq:Phase for backward compat)
-			const clusterAppearances = appearances.filter(
+			// tq: phases (XML tags kept as tq:Phase for backward compat)
+			const phaseAppearances = appearances.filter(
 				(a: any) => a.perspective_id === map.id && a.mode === 'perspective'
 					&& a.naming_id !== map.id
 			);
-			if (clusterAppearances.length > 0) {
+			if (phaseAppearances.length > 0) {
 				w(`      <tq:Phases>`);
-				for (const ca of clusterAppearances) {
-					const clusterNaming = namings.find((n: any) => n.id === ca.naming_id);
-					if (!clusterNaming) continue;
-					const members = clusterMemberships.filter(
-						(cm: any) => cm.cluster_id === ca.naming_id && cm.action === 'assign'
+				for (const ca of phaseAppearances) {
+					const phaseNaming = namings.find((n: any) => n.id === ca.naming_id);
+					if (!phaseNaming) continue;
+					const members = phaseMemberships.filter(
+						(cm: any) => cm.phase_id === ca.naming_id && cm.action === 'assign'
 					).filter((cm: any) => {
-						const removeAfter = clusterMemberships.find(
-							(cm2: any) => cm2.cluster_id === cm.cluster_id && cm2.naming_id === cm.naming_id
+						const removeAfter = phaseMemberships.find(
+							(cm2: any) => cm2.phase_id === cm.phase_id && cm2.naming_id === cm.naming_id
 								&& cm2.action === 'remove' && cm2.seq > cm.seq
 						);
 						return !removeAfter;
 					});
-					w(`        <tq:Phase guid="${ca.naming_id}" name="${esc(clusterNaming.inscription)}">`);
+					w(`        <tq:Phase guid="${ca.naming_id}" name="${esc(phaseNaming.inscription)}">`);
 					for (const m of members) {
 						w(`          <tq:Member targetGUID="${m.naming_id}"/>`);
 					}

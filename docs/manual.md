@@ -20,7 +20,7 @@ A qualitative data analysis platform grounded in Situational Analysis (Clarke) a
    - [5.2 Social Worlds/Arenas Maps](#52-social-worldsarenas-maps)
    - [5.3 Positional Maps](#53-positional-maps)
    - [5.4 The Grounding Layer](#54-the-grounding-layer)
-   - [5.5 Clusters](#55-clusters)
+   - [5.5 Phases](#55-phases)
    - [5.6 Memos](#56-memos)
    - [5.7 The AI Co-Researcher](#57-the-ai-co-researcher)
    - [5.8 Collaboration](#58-collaboration)
@@ -65,7 +65,7 @@ The same naming can appear as an entity on one map ("neoliberal accountability")
 Dewey and Bentley's naming taxonomy (*Knowing and the Known*, Chapter 10) distinguishes stages of sign-process. transact-qda operationalizes the three linguistic stages — CCS:
 
 - **Cue**: The most primitive language-behavior — already verbal, but vague and undifferentiated. (The pre-linguistic, perceptive-manipulative stage is what Dewey/Bentley call **Signal**, which precedes Cue and falls outside the naming process proper.)
-- **Characterization**: Develops out of cue through the clustering of cues and the growth of language. Provisional naming — everyday language, functional but loose.
+- **Characterization**: Develops out of cue through the forming a phase of cues and the growth of language. Provisional naming — everyday language, functional but loose.
 - **Specification**: The perfected (and ever-perfecting) stage of naming. Analytical precision achieved through sustained engagement, never final.
 
 This gradient is **bidirectional**: a well-specified naming can dissolve back into a cue when new evidence or a new perspective destabilizes the specification. It is also **append-only**: every designation change is recorded as a naming act, preserving the full analytical history. A naming IS its designation history — it does not *have* a history the way a file has metadata.
@@ -195,7 +195,7 @@ Three constraints follow from this hierarchy:
 
 - No operation may exist only on the canvas.
 - No analytically relevant state may be visible only on the canvas.
-- The list must be able to show everything the canvas shows (cluster membership, provenance, designation, stack depth).
+- The list must be able to show everything the canvas shows (phase membership, provenance, designation, stack depth).
 
 A critical clarification: core operations — designate, rename, relate, withdraw, inspect stack — operate on the **naming itself**, not on its appearance on a specific map. The `naming_acts` table has no `perspective_id` column. Designation belongs to the naming; participations are global bonds; the inscription chain belongs to the naming. Appearances determine how a naming *looks* from a perspective, but the operations that constitute analytical work act on the naming directly.
 
@@ -221,7 +221,7 @@ A **map** is a naming that serves as a perspective. Creating a map creates a nam
 
 **Import from document**: all annotation-namings (codes) from a specific document can be batch-placed on a map. This supports the workflow: create a map → import from a document → begin relational analysis.
 
-**Clusters** group related namings by analytical affinity. A cluster is a naming with `mode = 'perspective'` — Dewey/Bentley: "Characterization develops out of cue through the clustering of cues and the growth of language." Clustering IS characterizing; accordingly, a new cluster's initial designation is `characterization`, not `cue`. Clusters are project-level: they appear on any map where at least one member is present, and they are managed on the Namings page independently of maps. On maps, cluster membership is visualized through colored dots and highlight filtering. Cluster membership is tracked in an append-only history table (`cluster_memberships`) for full analytical provenance.
+**Phases** group related namings by analytical affinity. A phase is a naming with `mode = 'perspective'` — Dewey/Bentley: "Characterization develops out of cue through the forming a phase of cues and the growth of language." Forming a phase IS characterizing; accordingly, a new phase's initial designation is `characterization`, not `cue`. Phases are project-level: they appear on any map where at least one member is present, and they are managed on the Namings page independently of maps. On maps, phase membership is visualized through colored dots and highlight filtering. Phase membership is tracked in an append-only history table (`phase_memberships`) for full analytical provenance.
 
 **Pairwise interrogation** — Clarke's procedure of centering on one element and systematically examining its relation to every other — is available as a workflow mode. A transactional extension is equally available: center on a *relation* and ask which entities it connects, which other relations it participates in, what its inscription history reveals.
 
@@ -278,19 +278,19 @@ Documents — interview transcripts, photographs, policy texts, theoretical chap
 
 **Documents are stored in project directories** (`projekte/{slug}/files/`), with relative paths in the database. This ensures portability: a project directory contains everything needed to reconstruct the project, including all media files.
 
-### 5.5 Clusters
+### 5.5 Phases
 
-Clusters are the bridge between document coding and situational mapping. Dewey/Bentley: "Characterization develops out of cue through the **clustering** of cues and the growth of language." Clustering IS characterization — grouping related cues and naming the group is the act that moves from cue to characterization on the CCS gradient.
+Phases are the bridge between document coding and situational mapping. Dewey/Bentley: "Characterization develops out of cue through the **forming a phase** of cues and the growth of language." Forming a phase IS characterization — grouping related cues and naming the group is the act that moves from cue to characterization on the CCS gradient.
 
-**A cluster is a naming** with `mode = 'perspective'`. It has its own inscription, designation (starts at `characterization`), and stack. Cluster membership is tracked in an append-only history table for full provenance.
+**A phase is a naming** with `mode = 'perspective'`. It has its own inscription, designation (starts at `characterization`), and stack. Phase membership is tracked in an append-only history table for full provenance.
 
-**Project-level, not map-bound.** Clusters belong to the project, not to a specific map. They appear automatically on any map where at least one of their members is present. This means a researcher can create clusters during coding and find them on the map when they move to relational analysis.
+**Project-level, not map-bound.** Phases belong to the project, not to a specific map. They appear automatically on any map where at least one of their members is present. This means a researcher can create phases during coding and find them on the map when they move to relational analysis.
 
-**Cluster management** lives on the **Namings page** — the privileged representation (Section 4). The right panel shows all clusters; clicking one reveals its members and all their passages, grouped by naming and document. Namings are assigned to clusters by entering assign mode and clicking. This is an analytical operation on naming-level, not a passage-level operation.
+**Phase management** lives on the **Namings page** — the privileged representation (Section 4). The right panel shows all phases; clicking one reveals its members and all their passages, grouped by naming and document. Namings are assigned to phases by entering assign mode and clicking. This is an analytical operation on naming-level, not a passage-level operation.
 
-**Cluster filter in the Document view.** The Passages panel (right column in the document viewer) provides a cluster filter dropdown. Selecting a cluster narrows the passage list to codes that belong to that cluster — enabling focused review of the empirical basis for a cluster while coding.
+**Phase filter in the Document view.** The Passages panel (right column in the document viewer) provides a phase filter dropdown. Selecting a phase narrows the passage list to codes that belong to that phase — enabling focused review of the empirical basis for a phase while coding.
 
-**Recursive clustering** is supported: a cluster can itself be a member of another cluster. This enables multi-level analytical organization without imposing a fixed hierarchy.
+**Recursive forming a phase** is supported: a phase can itself be a member of another phase. This enables multi-level analytical organization without imposing a fixed hierarchy.
 
 ### 5.6 Memos
 
@@ -335,13 +335,13 @@ The AI does NOT proactively suggest elements, relations, or analytical content b
 
 **Discussion, not accept/reject.** When the AI produces a cue, the researcher does not face a binary accept/decline button. Instead, they can enter dialogue *at the cue itself*: question the AI's reasoning, request revision, challenge the framing. This discussion is a memo chain linked to the naming. A discussion can result in: the AI rewriting the cue (new inscription in the stack, old preserved), the AI withdrawing the cue (soft-delete with discussion history preserved), or the AI responding with a deepening memo (no rewrite, but richer analytical context).
 
-The AI sees the full map context — all elements, relations, designations, participations, clusters, discussion histories, withdrawn cues — so its questions emerge from the actual analytical state, not from a fixed checklist.
+The AI sees the full map context — all elements, relations, designations, participations, phases, discussion histories, withdrawn cues — so its questions emerge from the actual analytical state, not from a fixed checklist.
 
 **Map-type awareness.** The AI adapts its posture and available operations to the map type:
 
 - On **situational maps**: primary tool is `write_memo` for questions and observations; `suggest_element`, `suggest_relation`, `identify_silence` available on explicit request.
 - On **SW/A maps**: uses `suggest_formation` (not `suggest_element`) for social worlds, arenas, discourses, and organizations; attends to relations between formations; draws from Clarke's 14 social world and 11 arena questions; applies the five analytical deepening moments.
-- On **positional maps**: attends to axis refinement, disarticulation (separating positions from actors), empty quadrants, clustering, and grounding. Does NOT proactively suggest positions.
+- On **positional maps**: attends to axis refinement, disarticulation (separating positions from actors), empty quadrants, forming a phase, and grounding. Does NOT proactively suggest positions.
 
 **Provider-agnostic AI.** The AI client supports seven providers: Ollama (local, DSGVO-compliant), Mistral AI (EU), IONOS (EU, Berlin), Mammouth AI (EU), Anthropic (US), OpenAI (US), and OpenRouter (US). One model is configured for all use cases. Provider and model are selected in the settings page; API keys are stored in `.key` files (gitignored). All providers except Anthropic use the OpenAI-compatible API format.
 
@@ -376,7 +376,7 @@ QDPX is the open exchange format for qualitative data analysis projects (support
 **Export** uses a dual-namespace approach: a standard QDPX namespace (readable by any compliant tool) plus a custom `urn:transact-qda:1.0` namespace for lossless re-import. A **pre-export loss report dialog** shows what external tools will and will not see:
 
 - **Preserved for external tools**: All codes, documents, annotations, memos, relations, one map with positions.
-- **Lost for external tools**: Naming history (collapsed to latest inscription), CCS gradient (only in description text), clusters, silences, AI metadata, map snapshot history, researcher identities.
+- **Lost for external tools**: Naming history (collapsed to latest inscription), CCS gradient (only in description text), phases, silences, AI metadata, map snapshot history, researcher identities.
 - **Lossless**: The native format (save to directory) preserves everything.
 
 **Import** detects the namespace: transact-qda exports are reimported with full fidelity; standard QDPX files from other tools are imported as cues on a default map, with codes becoming namings and document annotations becoming grounding anchors. All GUIDs are remapped to fresh UUIDs to prevent collisions.
@@ -393,13 +393,13 @@ Clarke's relational analysis ("center on one element, draw lines to all others")
 
 **2. No enforced procedure — diffractory methods.** The platform does not enforce Clarke's messy-ordered-relational sequence. It is available for those who want it, but not normative. The platform encourages exploring the non-identical, superpositional nature of namings through multiple methods:
 
-- Multiple competing narrative drafts about the same map/cluster (differing narrations)
+- Multiple competing narrative drafts about the same map/phase (differing narrations)
 - Map iterations understood as superpositions, not linear progress — each version a perspective, not a superseded draft
 - Diffraction (Barad): making difference patterns visible, not reflecting the same
 
-This is architecturally supported: different `collapseAt` values on the same naming, different clusters of the same map, are literally different superposition collapses placed side by side.
+This is architecturally supported: different `collapseAt` values on the same naming, different phases of the same map, are literally different superposition collapses placed side by side.
 
-**3. Theories as visible namings on the map.** Theoretical commitments are placed ON the map as explicit namings — with their own inscription chains, designation histories, and provenance. This prevents hidden social theories from entering the analytical process as unexamined dogmata. From the transactional standpoint, the distinction between "empirical situation" and "research situation" does not need to be imposed a priori — it will emerge through the analytical process itself, through different clusters, maps, and perspectival collapses.
+**3. Theories as visible namings on the map.** Theoretical commitments are placed ON the map as explicit namings — with their own inscription chains, designation histories, and provenance. This prevents hidden social theories from entering the analytical process as unexamined dogmata. From the transactional standpoint, the distinction between "empirical situation" and "research situation" does not need to be imposed a priori — it will emerge through the analytical process itself, through different phases, maps, and perspectival collapses.
 
 ---
 

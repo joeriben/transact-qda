@@ -37,8 +37,8 @@ export function createMapState(
 	let elements = $state<any[]>(initialData.elements);
 	let relations = $state<any[]>(initialData.relations);
 	let silences = $state<any[]>(initialData.silences);
-	let clusters = $state<any[]>(initialData.clusters);
-	let docClusters = $state<any[]>(initialData.docClusters || []);
+	let phases = $state<any[]>(initialData.phases);
+	let docPhases = $state<any[]>(initialData.docPhases || []);
 	let designationProfile = $state<any[]>(initialData.designationProfile);
 	let mapMeta = $state({ id: initialData.map.id, label: initialData.map.label, properties: initialData.map.properties });
 
@@ -46,8 +46,8 @@ export function createMapState(
 	const mapType = $derived(mapMeta.properties?.mapType || 'situational');
 	const isPrimary = $derived(mapMeta.properties?.isPrimary === true);
 	const allItems = $derived([...axes, ...elements, ...relations, ...silences]);
-	const clusterColorMap = $derived(
-		new Map(clusters.map((p: any, i: number) => [p.id, regionColor(i)]))
+	const phaseColorMap = $derived(
+		new Map(phases.map((p: any, i: number) => [p.id, regionColor(i)]))
 	);
 
 	const DECLINED_CLUSTER = '__declined__';
@@ -78,10 +78,10 @@ export function createMapState(
 	let showActLinks = $state(false);
 	let actExistingMemos = $state<any[]>([]);
 
-	// Clusters
-	let assigningToCluster = $state<string | null>(null);
-	let highlightedCluster = $state<string | null>(null);
-	const isDeclinedFilter = $derived(highlightedCluster === DECLINED_CLUSTER);
+	// Phases
+	let assigningToPhase = $state<string | null>(null);
+	let highlightedPhase = $state<string | null>(null);
+	const isDeclinedFilter = $derived(highlightedPhase === DECLINED_CLUSTER);
 
 	// AI
 	let aiEnabled = $state(true);
@@ -112,11 +112,11 @@ export function createMapState(
 	let memoCreateContent = $state('');
 	let memoCreateLinkedIds = $state<string[]>([]);
 
-	// Cluster sidebar state
+	// Phase sidebar state
 	let showClusterForm = $state(false);
 	let newClusterLabel = $state('');
-	let expandedCluster = $state<string | null>(null);
-	let clusterContents = $state<any[]>([]);
+	let expandedPhase = $state<string | null>(null);
+	let phaseContents = $state<any[]>([]);
 
 	// ─── Helpers ───
 
@@ -157,11 +157,11 @@ export function createMapState(
 	}
 
 	function isClusterHighlighted(node: any): boolean {
-		if (!highlightedCluster) return false;
-		// Check manual clusters
-		if (node.cluster_ids?.includes(highlightedCluster)) return true;
-		// Check doc-clusters
-		const dc = docClusters.find((d: any) => d.doc_id === highlightedCluster);
+		if (!highlightedPhase) return false;
+		// Check manual phases
+		if (node.phase_ids?.includes(highlightedPhase)) return true;
+		// Check doc-phases
+		const dc = docPhases.find((d: any) => d.doc_id === highlightedPhase);
 		if (dc) return dc.naming_ids?.includes(node.naming_id) ?? false;
 		return false;
 	}
@@ -230,8 +230,8 @@ export function createMapState(
 		elements = fresh.elements;
 		relations = fresh.relations;
 		silences = fresh.silences;
-		clusters = fresh.clusters;
-		docClusters = fresh.docClusters || [];
+		phases = fresh.phases;
+		docPhases = fresh.docPhases || [];
 		designationProfile = fresh.designationProfile;
 	}
 
@@ -555,49 +555,49 @@ export function createMapState(
 		}
 	}
 
-	// Clusters
-	async function addCluster() {
+	// Phases
+	async function addPhase() {
 		if (!newClusterLabel.trim()) return;
-		await mapAction('createCluster', { inscription: newClusterLabel.trim() });
+		await mapAction('createPhase', { inscription: newClusterLabel.trim() });
 		newClusterLabel = '';
 		showClusterForm = false;
 		await reload();
 	}
 
-	async function assignToClusterFn(clusterId: string, namingId: string) {
-		await mapAction('assignToCluster', { clusterId, namingId });
+	async function assignToPhaseFn(phaseId: string, namingId: string) {
+		await mapAction('assignToPhase', { phaseId, namingId });
 		await reload();
-		if (expandedCluster === clusterId) {
-			const res = await fetch(`/api/projects/${initialData.projectId}/maps/${clusterId}`);
+		if (expandedPhase === phaseId) {
+			const res = await fetch(`/api/projects/${initialData.projectId}/maps/${phaseId}`);
 			if (res.ok) {
 				const fresh = await res.json();
-				clusterContents = [...(fresh.elements || []), ...(fresh.relations || []), ...(fresh.silences || [])];
+				phaseContents = [...(fresh.elements || []), ...(fresh.relations || []), ...(fresh.silences || [])];
 			}
 		}
 	}
 
-	async function removeFromClusterFn(clusterId: string, namingId: string) {
-		await mapAction('removeFromCluster', { clusterId, namingId });
+	async function removeFromClusterFn(phaseId: string, namingId: string) {
+		await mapAction('removeFromPhase', { phaseId, namingId });
 		await reload();
-		if (expandedCluster === clusterId) {
-			const res = await fetch(`/api/projects/${initialData.projectId}/maps/${clusterId}`);
+		if (expandedPhase === phaseId) {
+			const res = await fetch(`/api/projects/${initialData.projectId}/maps/${phaseId}`);
 			if (res.ok) {
 				const fresh = await res.json();
-				clusterContents = [...(fresh.elements || []), ...(fresh.relations || []), ...(fresh.silences || [])];
+				phaseContents = [...(fresh.elements || []), ...(fresh.relations || []), ...(fresh.silences || [])];
 			}
 		}
 	}
 
-	async function toggleCluster(clusterId: string) {
-		if (expandedCluster === clusterId) {
-			expandedCluster = null;
-			clusterContents = [];
+	async function togglePhase(phaseId: string) {
+		if (expandedPhase === phaseId) {
+			expandedPhase = null;
+			phaseContents = [];
 		} else {
-			expandedCluster = clusterId;
-			const res = await fetch(`/api/projects/${initialData.projectId}/maps/${clusterId}`);
+			expandedPhase = phaseId;
+			const res = await fetch(`/api/projects/${initialData.projectId}/maps/${phaseId}`);
 			if (res.ok) {
 				const fresh = await res.json();
-				clusterContents = [...(fresh.elements || []), ...(fresh.relations || []), ...(fresh.silences || [])];
+				phaseContents = [...(fresh.elements || []), ...(fresh.relations || []), ...(fresh.silences || [])];
 			}
 		}
 	}
@@ -619,8 +619,8 @@ export function createMapState(
 		elements = data.elements;
 		relations = data.relations;
 		silences = data.silences;
-		clusters = data.clusters;
-		docClusters = data.docClusters || [];
+		phases = data.phases;
+		docPhases = data.docPhases || [];
 		designationProfile = data.designationProfile;
 		mapMeta = { id: data.map.id, label: data.map.label, properties: data.map.properties };
 	}
@@ -631,12 +631,12 @@ export function createMapState(
 		get elements() { return elements; },
 		get relations() { return relations; },
 		get silences() { return silences; },
-		get clusters() { return clusters; },
-		get docClusters() { return docClusters; },
+		get phases() { return phases; },
+		get docPhases() { return docPhases; },
 		get designationProfile() { return designationProfile; },
 		get mapType() { return mapType; },
 		get allItems() { return allItems; },
-		get clusterColorMap() { return clusterColorMap; },
+		get phaseColorMap() { return phaseColorMap; },
 		get isPrimary() { return isPrimary; },
 		get declinedCount() { return declinedCount; },
 		get isDeclinedFilter() { return isDeclinedFilter; },
@@ -678,10 +678,10 @@ export function createMapState(
 		get showActLinks() { return showActLinks; },
 		set showActLinks(v) { showActLinks = v; },
 		get actExistingMemos() { return actExistingMemos; },
-		get assigningToCluster() { return assigningToCluster; },
-		set assigningToCluster(v) { assigningToCluster = v; },
-		get highlightedCluster() { return highlightedCluster; },
-		set highlightedCluster(v) { highlightedCluster = v; },
+		get assigningToPhase() { return assigningToPhase; },
+		set assigningToPhase(v) { assigningToPhase = v; },
+		get highlightedPhase() { return highlightedPhase; },
+		set highlightedPhase(v) { highlightedPhase = v; },
 		get aiEnabled() { return aiEnabled; },
 		get aiNotification() { return aiNotification; },
 		set aiNotification(v) { aiNotification = v; },
@@ -727,13 +727,13 @@ export function createMapState(
 		get memoLinkResults() { return memoLinkResults; },
 		get memoLinkLoading() { return memoLinkLoading; },
 
-		// Cluster sidebar state
+		// Phase sidebar state
 		get showClusterForm() { return showClusterForm; },
 		set showClusterForm(v) { showClusterForm = v; },
 		get newClusterLabel() { return newClusterLabel; },
 		set newClusterLabel(v) { newClusterLabel = v; },
-		get expandedCluster() { return expandedCluster; },
-		get clusterContents() { return clusterContents; },
+		get expandedPhase() { return expandedPhase; },
+		get phaseContents() { return phaseContents; },
 
 		// Helpers
 		isWithdrawn,
@@ -782,10 +782,10 @@ export function createMapState(
 		cancelMemoLink,
 		showOutsideParticipations,
 		pullOntoMap,
-		addCluster,
-		assignToCluster: assignToClusterFn,
-		removeFromCluster: removeFromClusterFn,
-		toggleCluster,
+		addPhase,
+		assignToPhase: assignToPhaseFn,
+		removeFromPhase: removeFromClusterFn,
+		togglePhase,
 		pinToLayer,
 		unpinLayer,
 

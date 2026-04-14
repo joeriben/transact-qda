@@ -175,23 +175,23 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 				);
 			}
 
-			// Copy cluster_memberships
+			// Copy phase_memberships
 			const cms = (await client.query(
-				`SELECT cm.cluster_id, cm.naming_id, cm.action, cm.mode, cm.by, cm.properties
-				 FROM cluster_memberships cm
+				`SELECT cm.phase_id, cm.naming_id, cm.action, cm.mode, cm.by, cm.properties
+				 FROM phase_memberships cm
 				 JOIN namings n ON n.id = cm.naming_id
 				 WHERE n.project_id = $1 AND n.deleted_at IS NULL`,
 				[sourceProjectId]
 			)).rows;
 
 			for (const cm of cms) {
-				const newCluster = remap(cm.cluster_id);
+				const newPhase = remap(cm.phase_id);
 				const newNaming = remap(cm.naming_id);
-				if (!newCluster || !newNaming) continue;
+				if (!newPhase || !newNaming) continue;
 				await client.query(
-					`INSERT INTO cluster_memberships (cluster_id, naming_id, action, mode, by, properties)
+					`INSERT INTO phase_memberships (phase_id, naming_id, action, mode, by, properties)
 					 VALUES ($1, $2, $3, $4, $5, $6)`,
-					[newCluster, newNaming, cm.action, cm.mode, remap(cm.by), cm.properties]
+					[newPhase, newNaming, cm.action, cm.mode, remap(cm.by), cm.properties]
 				);
 			}
 

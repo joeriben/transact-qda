@@ -107,18 +107,18 @@ export const AI_TOOLS: ToolDef[] = [
 	{
 		name: 'create_cluster',
 		description:
-			'Suggest a cluster (thematic grouping) for elements on the map. Clusters are sub-perspectives that organize related cues into characterizations.',
+			'Suggest a phase (thematic grouping) for elements on the map. Phases are sub-perspectives that organize related cues into characterizations.',
 		input_schema: {
 			type: 'object' as const,
 			properties: {
 				inscription: {
 					type: 'string',
-					description: 'Name of the cluster'
+					description: 'Name of the phase'
 				},
 				element_ids: {
 					type: 'array',
 					items: { type: 'string' },
-					description: 'IDs of elements to include in this cluster'
+					description: 'IDs of elements to include in this phase'
 				},
 				reasoning: {
 					type: 'string',

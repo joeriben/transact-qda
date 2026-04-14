@@ -383,28 +383,28 @@ export async function getAggregatedNaming(namingId: string, projectId: string) {
 			perspective_id: string; perspective_label: string; map_type: string;
 			mode: string; valence: string | null; properties: Record<string, any>;
 			directed_from: string | null; directed_to: string | null;
-			cluster_id: string | null; cluster_label: string | null;
+			phase_id: string | null; phase_label: string | null;
 		}>(
 			`SELECT a.perspective_id, m.inscription as perspective_label,
 			        ma.properties->>'mapType' as map_type,
 			        a.mode, a.valence, a.properties,
 			        a.directed_from, a.directed_to,
-			        -- Cluster membership (if any)
-			        (SELECT ch.naming_id FROM cluster_memberships ch
-			         JOIN appearances cha ON cha.naming_id = ch.cluster_id AND cha.perspective_id = a.perspective_id
+			        -- Phase membership (if any)
+			        (SELECT ch.naming_id FROM phase_memberships ch
+			         JOIN appearances cha ON cha.naming_id = ch.phase_id AND cha.perspective_id = a.perspective_id
 			         WHERE ch.naming_id = $1 AND ch.action = 'assign'
-			           AND NOT EXISTS (SELECT 1 FROM cluster_memberships ch2
-			             WHERE ch2.cluster_id = ch.cluster_id AND ch2.naming_id = ch.naming_id
+			           AND NOT EXISTS (SELECT 1 FROM phase_memberships ch2
+			             WHERE ch2.phase_id = ch.phase_id AND ch2.naming_id = ch.naming_id
 			               AND ch2.action = 'remove' AND ch2.seq > ch.seq)
-			         ORDER BY ch.seq DESC LIMIT 1) as cluster_id,
-			        (SELECT chn.inscription FROM cluster_memberships ch
-			         JOIN namings chn ON chn.id = ch.cluster_id
-			         JOIN appearances cha ON cha.naming_id = ch.cluster_id AND cha.perspective_id = a.perspective_id
+			         ORDER BY ch.seq DESC LIMIT 1) as phase_id,
+			        (SELECT chn.inscription FROM phase_memberships ch
+			         JOIN namings chn ON chn.id = ch.phase_id
+			         JOIN appearances cha ON cha.naming_id = ch.phase_id AND cha.perspective_id = a.perspective_id
 			         WHERE ch.naming_id = $1 AND ch.action = 'assign'
-			           AND NOT EXISTS (SELECT 1 FROM cluster_memberships ch2
-			             WHERE ch2.cluster_id = ch.cluster_id AND ch2.naming_id = ch.naming_id
+			           AND NOT EXISTS (SELECT 1 FROM phase_memberships ch2
+			             WHERE ch2.phase_id = ch.phase_id AND ch2.naming_id = ch.naming_id
 			               AND ch2.action = 'remove' AND ch2.seq > ch.seq)
-			         ORDER BY ch.seq DESC LIMIT 1) as cluster_label
+			         ORDER BY ch.seq DESC LIMIT 1) as phase_label
 			 FROM appearances a
 			 JOIN namings m ON m.id = a.perspective_id AND m.deleted_at IS NULL
 			 JOIN appearances ma ON ma.naming_id = m.id AND ma.perspective_id = m.id
@@ -698,9 +698,9 @@ export async function mergeNamings(
 			[survivorId, mergedId]
 		);
 
-		// 4. Transfer cluster memberships
+		// 4. Transfer phase memberships
 		await client.query(
-			`UPDATE cluster_memberships SET naming_id = $1 WHERE naming_id = $2`,
+			`UPDATE phase_memberships SET naming_id = $1 WHERE naming_id = $2`,
 			[survivorId, mergedId]
 		);
 
