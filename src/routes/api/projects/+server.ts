@@ -78,10 +78,18 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 				const newPerspId = remap(a.perspective_id);
 				// Skip appearances where core naming is gone (dangling)
 				if (!newNamingId || !newPerspId) continue;
+				// Strip the readOnly flag on duplication — templates are read-only
+				// so users can't mutate the seed, but a Save-As copy is meant
+				// to be edited. Keep everything else in properties as-is.
+				let props = a.properties;
+				if (props && typeof props === 'object' && 'readOnly' in props) {
+					props = { ...props };
+					delete props.readOnly;
+				}
 				await client.query(
 					`INSERT INTO appearances (naming_id, perspective_id, mode, directed_from, directed_to, valence, properties)
 					 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-					[newNamingId, newPerspId, a.mode, remap(a.directed_from), remap(a.directed_to), a.valence, a.properties]
+					[newNamingId, newPerspId, a.mode, remap(a.directed_from), remap(a.directed_to), a.valence, props]
 				);
 			}
 
