@@ -4,78 +4,38 @@ transact-qda — Installation
 Prerequisites
 -------------
 
-  Docker Engine 24+ or Docker Desktop
-  Node.js 20+ and npm
+  Docker — install for your platform:
+      Linux:   https://docs.docker.com/engine/install/
+      macOS:   https://www.docker.com/products/docker-desktop/
+      Windows: https://www.docker.com/products/docker-desktop/
+               (enable the WSL 2 backend during install)
+     On macOS and Windows, launch Docker Desktop once after install
+     and accept the system permission prompts. Wait until the whale
+     icon in the menu bar / tray stops animating before continuing.
+     The Docker Desktop window itself is not used to run transact-qda;
+     it only needs to be running in the background. All commands below
+     go into your terminal.
   Git
-  bash (native on Linux/macOS; on Windows via WSL2)
 
 
-Linux
------
+Install and start
+-----------------
 
-  1. Install Docker per https://docs.docker.com/engine/install/
-     Add your user to the docker group (the shell replaces $USER with
-     your account name automatically):
-
-         sudo usermod -aG docker $USER
-         newgrp docker
-
-  2. Install Node.js 20 and Git.
-
-     Debian/Ubuntu:
-         curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-         sudo apt-get install -y nodejs git
-
-     Fedora:
-         sudo dnf install nodejs npm git
-
-  3. Clone and configure:
+  1. Clone the repository:
          git clone https://github.com/joeriben/transact-qda.git
          cd transact-qda
-         cp .env.example .env
 
-     Set SESSION_SECRET in .env to a random string of 30+ characters.
+  2. Set a session secret:
+         echo "SESSION_SECRET=$(openssl rand -hex 32)" > .env
 
-  4. Install and start:
-         npm install
-         ./scripts/2_start_dev.sh
+  3. Start:
+         docker compose up -d
 
+     The first start builds the image (about 5 minutes). The first
+     AI request downloads the embedding model nomic-embed-text-v1.5
+     (~150 MB). Both are one-time operations.
 
-macOS
------
-
-  1. Install Docker Desktop from
-     https://www.docker.com/products/docker-desktop/
-     Launch it once and wait for startup to complete.
-
-  2. Install Node.js and Git via Homebrew:
-         brew install node git
-
-  3. Clone and configure:
-         git clone https://github.com/joeriben/transact-qda.git
-         cd transact-qda
-         cp .env.example .env
-
-     Set SESSION_SECRET in .env to a random string of 30+ characters.
-
-  4. Install and start:
-         npm install
-         ./scripts/2_start_dev.sh
-
-
-Windows
--------
-
-Run setup under WSL2.
-
-  1. In PowerShell as administrator:
-         wsl --install
-     Restart when prompted. Set a username and password at first boot.
-
-  2. Install Docker Desktop for Windows with the WSL 2 backend enabled.
-
-  3. Open the Ubuntu terminal from the Start menu. Continue from step 2
-     of the Linux section.
+To use a host port other than 5174, add TQDA_PORT=... to .env.
 
 
 First run
@@ -85,27 +45,21 @@ Open http://localhost:5174 in a browser.
 Log in with username admin and password adminadmin.
 Change the password at the yellow banner.
 
-The first AI request downloads the embedding model
-nomic-ai/nomic-embed-text-v1.5 (~150 MB) to .model-cache/.
 
+Everyday use
+------------
 
-Start and stop
---------------
-
-Start:
-    ./scripts/2_start_dev.sh
-
-Stop:
-    Ctrl+C in the terminal, then ./scripts/1_stop_all.sh
+    docker compose up -d       start
+    docker compose down        stop (data is preserved in volumes)
+    docker compose logs -f     view logs
 
 
 Updating
 --------
 
-    ./scripts/1_stop_all.sh
     git pull
-    npm install
-    ./scripts/2_start_dev.sh
+    docker compose build
+    docker compose up -d
 
 
 Issues
