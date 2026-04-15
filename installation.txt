@@ -13,6 +13,9 @@ Voraussetzungen
      einmal starten und die System-Berechtigungsdialoge bestätigen.
      Warten, bis das Wal-Symbol in der Menüleiste bzw. im Tray nicht
      mehr animiert, bevor es weitergeht.
+     Das Docker-Desktop-Fenster selbst wird nicht benutzt, um
+     transact-qda zu starten; es muss nur im Hintergrund laufen.
+     Alle folgenden Befehle werden im Terminal eingegeben.
   Git
 
 

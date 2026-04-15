@@ -12,6 +12,9 @@ Prerequisites
      On macOS and Windows, launch Docker Desktop once after install
      and accept the system permission prompts. Wait until the whale
      icon in the menu bar / tray stops animating before continuing.
+     The Docker Desktop window itself is not used to run transact-qda;
+     it only needs to be running in the background. All commands below
+     go into your terminal.
   Git
 
 
