@@ -9,6 +9,10 @@ Voraussetzungen
       macOS:   https://www.docker.com/products/docker-desktop/
       Windows: https://www.docker.com/products/docker-desktop/
                (bei der Installation WSL-2-Backend aktivieren)
+     Unter macOS und Windows nach der Installation Docker Desktop
+     einmal starten und die System-Berechtigungsdialoge bestätigen.
+     Warten, bis das Wal-Symbol in der Menüleiste bzw. im Tray nicht
+     mehr animiert, bevor es weitergeht.
   Git
 
 
