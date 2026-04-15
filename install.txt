@@ -4,7 +4,11 @@ transact-qda — Installation
 Prerequisites
 -------------
 
-  Docker Engine 24+ or Docker Desktop
+  Docker — install for your platform:
+      Linux:   https://docs.docker.com/engine/install/
+      macOS:   https://www.docker.com/products/docker-desktop/
+      Windows: https://www.docker.com/products/docker-desktop/
+               (enable the WSL 2 backend during install)
   Git
 
 
