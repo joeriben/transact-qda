@@ -2,6 +2,6 @@
 set -e
 cd "$(dirname "$0")/.."
 
-echo "Seeding database..."
-DATABASE_URL=postgresql://tqda:tqda_dev@localhost:5432/transact_qda node scripts/seed.js
+echo "Seeding database inside the app container..."
+docker compose exec -T app node scripts/seed.js
 echo "Done."

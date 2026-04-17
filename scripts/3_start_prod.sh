@@ -4,12 +4,12 @@ cd "$(dirname "$0")/.."
 
 echo "Starting transact-qda production..."
 
-# Start PostgreSQL
-docker compose up -d
+# Start PostgreSQL only; the app runs on the host in this script.
+docker compose up -d db
 
 # Wait for PostgreSQL
 for i in {1..30}; do
-  if docker compose exec -T postgres pg_isready -U tqda -d transact_qda > /dev/null 2>&1; then
+  if docker compose exec -T db pg_isready -U tqda -d transact_qda > /dev/null 2>&1; then
     break
   fi
   sleep 1

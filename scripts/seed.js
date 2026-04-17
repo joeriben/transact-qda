@@ -68,10 +68,11 @@ async function createNaming(client, projectId, userId, researcherId, inscription
 		[projectId, inscription, userId]
 	);
 	const id = res.rows[0].id;
+	const actorId = researcherId ?? id;
 	await client.query(
 		`INSERT INTO naming_acts (naming_id, designation, "by")
 		 VALUES ($1, $2, $3)`,
-		[id, designation, researcherId]
+		[id, designation, actorId]
 	);
 	return id;
 }
@@ -153,11 +154,6 @@ async function seedClarkeDemoProject(client, userId) {
 
 	// Researcher naming (every project needs one)
 	const researcherId = await createNaming(client, projectId, userId, null, 'admin (Researcher)', 'cue');
-	// Fix: the researcher naming_act needs a "by" — use itself
-	await client.query(
-		`UPDATE naming_acts SET "by" = $1 WHERE naming_id = $1`,
-		[researcherId]
-	);
 
 	// ────────────────────────────────────────────────
 	// Fig. 5.1: Abstract Situational Map

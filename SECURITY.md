@@ -34,6 +34,9 @@ again.
 
 If you deploy transact-qda behind a public URL:
 
+- Treat the Docker Compose stack as the runtime base. Add a reverse
+  proxy, HTTPS termination, secret management, backups, monitoring and
+  your update process around that stack.
 - Always set `SESSION_SECRET` to a long random string (32+ bytes) in
   `.env`.
 - Put the app behind HTTPS.

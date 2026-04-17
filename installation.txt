@@ -27,7 +27,8 @@ Installieren und starten
          cd transact-qda
 
   2. Session-Secret setzen:
-         echo "SESSION_SECRET=$(openssl rand -hex 32)" > .env
+         cp .env.example .env
+         # Fuer nicht-lokale Nutzung SESSION_SECRET zufaellig setzen
 
   3. Starten:
          docker compose up -d
@@ -55,11 +56,18 @@ Alltägliche Nutzung
     docker compose logs -f     Logs anzeigen
 
 
+Wartung
+-------
+
+    ./scripts/4_db_migrate.sh  offene Migrationen im App-Container ausfuehren
+    ./scripts/5_db_seed.sh     Demo-Inhalte im App-Container anlegen
+    ./scripts/6_db_backup.sh   Datenbank-Backup erzeugen
+
+
 Aktualisieren
 -------------
 
     git pull
-    docker compose build
     docker compose up -d
 
 

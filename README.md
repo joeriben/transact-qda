@@ -31,15 +31,13 @@ Breaking changes between point releases are possible until v1.0.
 ## Quick start (local research workstation)
 
 Prerequisites:
-- **Docker + Docker Compose** (for the PostgreSQL/pgvector database)
-- **Node.js 20+** and **npm**
+- **Docker + Docker Compose**
 
 ```bash
 git clone https://github.com/joeriben/transact-qda.git
 cd transact-qda
-cp .env.example .env          # adjust SESSION_SECRET if you wish
-npm install
-./scripts/2_start_dev.sh      # starts Postgres, runs migrations, then dev server
+cp .env.example .env          # set SESSION_SECRET for non-local use
+docker compose up -d
 ```
 
 Open <http://localhost:5174> in your browser.
@@ -48,10 +46,11 @@ On **first login**, use `admin` / `adminadmin`. A prominent yellow
 banner will appear at the top prompting you to change the password;
 please do so immediately. The banner goes away once you have.
 
-On **first AI request**, the embedding model
-`nomic-ai/nomic-embed-text-v1.5` (~150 MB, Apache-2.0) is downloaded
-from the Hugging Face Hub into `.model-cache/`. A toast in the lower
-right corner shows progress. Subsequent starts are fully offline.
+The first start builds the app image. On **first AI request**, the
+embedding model `nomic-ai/nomic-embed-text-v1.5` (~150 MB, Apache-2.0)
+is downloaded from the Hugging Face Hub into the persistent
+`modelcache` volume. A toast in the lower right corner shows progress.
+Subsequent starts reuse both.
 
 ### Seeding a demo project
 
@@ -63,12 +62,31 @@ This creates the `admin` account (if absent), an empty *Sample Project*,
 and the *Clarke Abstract Maps (Demo)* project illustrating situational,
 social-worlds, and positional maps.
 
-### Other scripts
+### Everyday use
 
-- `./scripts/1_stop_all.sh` — stop the dev server and the database
-- `./scripts/3_start_prod.sh` — build and start in production mode
-- `./scripts/4_db_migrate.sh` — run pending migrations
-- `./scripts/6_db_backup.sh` — dump the database to `backups/`
+```bash
+docker compose up -d
+docker compose down
+docker compose logs -f
+```
+
+### Maintenance commands
+
+- `./scripts/4_db_migrate.sh` — run pending migrations against the local Docker DB
+- `./scripts/5_db_seed.sh` — seed the local Docker DB with demo content
+- `./scripts/6_db_backup.sh` — dump the local Docker DB to `backups/`
+
+### Development on the host
+
+If you want to run the SvelteKit app on the host while keeping Postgres
+in Docker, this remains available as a developer-only path:
+
+- install **Node.js 20+** and **npm**
+- run `npm install`
+- run `./scripts/2_start_dev.sh`
+
+For a host-side production build against the local Docker DB, use
+`./scripts/3_start_prod.sh`.
 
 ## Configuration
 
@@ -97,6 +115,9 @@ transact-qda is primarily designed for **local research workstations**.
 If you plan to run it as a networked service for other people:
 
 - Read [`SECURITY.md`](./SECURITY.md) carefully.
+- Treat Docker Compose as the runtime substrate; add your reverse proxy,
+  HTTPS termination, secrets management, backups and update process
+  around it.
 - Set a long random `SESSION_SECRET`, put the app behind HTTPS, and
   delete/rename the default `admin` account after creating your own.
 - **The AGPL-3.0 requires that any modifications you run as a network

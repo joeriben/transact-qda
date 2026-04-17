@@ -4,14 +4,14 @@ cd "$(dirname "$0")/.."
 
 echo "Starting transact-qda development..."
 
-# Start PostgreSQL
+# Start PostgreSQL only; the app runs on the host in dev mode.
 echo "  Starting PostgreSQL..."
-docker compose up -d
+docker compose up -d db
 
 # Wait for PostgreSQL to be ready
 echo "  Waiting for database..."
 for i in {1..30}; do
-  if docker compose exec -T postgres pg_isready -U tqda -d transact_qda > /dev/null 2>&1; then
+  if docker compose exec -T db pg_isready -U tqda -d transact_qda > /dev/null 2>&1; then
     echo "  Database ready."
     break
   fi

@@ -9,14 +9,14 @@ BACKUP_FILE="$BACKUP_DIR/transact_qda_${TIMESTAMP}.sql.gz"
 
 mkdir -p "$BACKUP_DIR"
 
-# Check if the container is running
-if ! docker compose ps --status running | grep -q postgres; then
+# Check if the database service is running
+if ! docker compose ps --status running db | grep -q "tqda-work-db"; then
   echo "ERROR: PostgreSQL container is not running. Skipping backup."
   exit 1
 fi
 
 echo "Backing up transact_qda → $BACKUP_FILE"
-docker compose exec -T postgres pg_dump -U tqda --clean --if-exists transact_qda | gzip > "$BACKUP_FILE"
+docker compose exec -T db pg_dump -U tqda --clean --if-exists transact_qda | gzip > "$BACKUP_FILE"
 
 # Verify the backup is non-empty
 if [ ! -s "$BACKUP_FILE" ]; then
