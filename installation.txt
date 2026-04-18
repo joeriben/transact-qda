@@ -17,9 +17,6 @@ Voraussetzungen
      transact-qda zu starten; es muss nur im Hintergrund laufen.
      Alle folgenden Befehle werden im Terminal eingegeben.
   Git
-  Falls das GHCR-Image privat bleibt:
-      GitHub-Konto mit Paket-Leserechten und einmalig
-      `docker login ghcr.io`
 
 
 Installieren und starten
@@ -32,16 +29,10 @@ Installieren und starten
   2. Session-Secret setzen:
          echo "SESSION_SECRET=$(openssl rand -hex 32)" > .env
 
-  3. Optional auf getestetes Image pinnen:
-         echo "TQDA_IMAGE=ghcr.io/joeriben/transact-qda:v0.7.0-internal.1" >> .env
+  3. Optional auf getesteten Release-Tag pinnen:
+         echo "TQDA_IMAGE=ghcr.io/joeriben/transact-qda:<tag>" >> .env
 
-  4. Falls das Image privat ist, einmalig anmelden:
-         docker login ghcr.io -u IHR_GITHUB_USERNAME
-
-     Verwenden Sie dazu einen Personal Access Token mit mindestens
-     `read:packages`.
-
-  5. Starten:
+  4. Starten:
          docker compose pull
          docker compose up -d
 

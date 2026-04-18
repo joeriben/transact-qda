@@ -28,25 +28,23 @@ The Compose runtime pulls that image by default through `TQDA_IMAGE`.
 2. Merge to the release branch.
 3. Push a Git tag such as:
    - `v0.7.0`
-   - `v0.7.0-internal.1`
+   - `v0.7.0-rc.1`
 4. GitHub Actions publishes the image to GHCR.
 5. Roll out that exact tag to users by setting:
    - `TQDA_IMAGE=ghcr.io/joeriben/transact-qda:<tag>`
 
 Do not ask users to track floating `latest` if you want a controlled
-internal rollout.
+test rollout.
 
 ## Package visibility
 
-Choose one of these consciously:
+Default: publish the GHCR image publicly.
 
-- public image:
-  - easiest installation path
-  - users do not need `docker login ghcr.io`
-- private image:
-  - requires GitHub package-read access
-  - every installer needs `docker login ghcr.io`
-  - use a Personal Access Token with `read:packages`
+That keeps the open-source installation path simple:
+
+- no GitHub login required for normal users
+- `docker compose pull` works out of the box
+- releases can still be pinned to exact tags
 
 ## What users do
 
@@ -54,9 +52,7 @@ Choose one of these consciously:
 2. Copy `.env.example` to `.env`.
 3. Set `SESSION_SECRET`.
 4. Set `TQDA_IMAGE` to the released tag.
-5. If the image is private, run:
-   - `docker login ghcr.io -u <github-user>`
-6. Start:
+5. Start:
    - `docker compose pull`
    - `docker compose up -d`
 

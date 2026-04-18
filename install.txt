@@ -16,9 +16,6 @@ Prerequisites
      it only needs to be running in the background. All commands below
      go into your terminal.
   Git
-  If the GHCR image is private:
-      a GitHub account with package-read access and a one-time
-      `docker login ghcr.io`
 
 
 Install and start
@@ -31,15 +28,10 @@ Install and start
   2. Set a session secret:
          echo "SESSION_SECRET=$(openssl rand -hex 32)" > .env
 
-  3. Optional: pin a tested image:
-         echo "TQDA_IMAGE=ghcr.io/joeriben/transact-qda:v0.7.0-internal.1" >> .env
+  3. Optional: pin a tested release tag:
+         echo "TQDA_IMAGE=ghcr.io/joeriben/transact-qda:<tag>" >> .env
 
-  4. If the image is private, log in once:
-         docker login ghcr.io -u YOUR_GITHUB_USERNAME
-
-     Use a Personal Access Token with at least `read:packages`.
-
-  5. Start:
+  4. Start:
          docker compose pull
          docker compose up -d
 

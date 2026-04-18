@@ -33,8 +33,6 @@ Breaking changes between point releases are possible until v1.0.
 Prerequisites:
 - **Docker + Docker Compose**
 - **Git**
-- If the GHCR image is kept private: a GitHub account with package-read
-  access and a one-time `docker login ghcr.io`
 
 ```bash
 git clone https://github.com/joeriben/transact-qda.git
@@ -54,19 +52,11 @@ and stores project data in Docker volumes. The app is shipped as a
 prebuilt multi-arch container image from GHCR:
 `ghcr.io/joeriben/transact-qda`.
 
-For a controlled internal rollout, pin a tested image tag in `.env`:
+For a controlled test rollout, pin a specific tested tag in `.env`:
 
 ```bash
-echo "TQDA_IMAGE=ghcr.io/joeriben/transact-qda:v0.7.0-internal.1" >> .env
+echo "TQDA_IMAGE=ghcr.io/joeriben/transact-qda:<tag>" >> .env
 ```
-
-If the GHCR image is private, log in once before `docker compose pull`:
-
-```bash
-docker login ghcr.io -u YOUR_GITHUB_USERNAME
-```
-
-Use a Personal Access Token with at least `read:packages`.
 
 On **first login**, use `admin` / `adminadmin`. A prominent yellow
 banner will appear at the top prompting you to change the password;

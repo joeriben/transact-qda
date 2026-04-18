@@ -36,9 +36,8 @@ If you deploy transact-qda behind a public URL:
 
 - The Compose stack can be the runtime base for such a deployment, but
   it does not replace operator hardening.
-- If you distribute installs through GHCR, decide consciously whether
-  the package should be public or private. Private packages require
-  package-read access and authenticated pulls on every client.
+- The public GHCR image is a distribution artifact, not a hardening
+  measure. Server operators still need to secure the deployment itself.
 - Always set `SESSION_SECRET` to a long random string (32+ bytes) in
   `.env`.
 - Put the app behind HTTPS.
