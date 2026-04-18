@@ -16,6 +16,9 @@ Prerequisites
      it only needs to be running in the background. All commands below
      go into your terminal.
   Git
+  If the GHCR image is private:
+      a GitHub account with package-read access and a one-time
+      `docker login ghcr.io`
 
 
 Install and start
@@ -28,12 +31,21 @@ Install and start
   2. Set a session secret:
          echo "SESSION_SECRET=$(openssl rand -hex 32)" > .env
 
-  3. Start:
+  3. Optional: pin a tested image:
+         echo "TQDA_IMAGE=ghcr.io/joeriben/transact-qda:v0.7.0-internal.1" >> .env
+
+  4. If the image is private, log in once:
+         docker login ghcr.io -u YOUR_GITHUB_USERNAME
+
+     Use a Personal Access Token with at least `read:packages`.
+
+  5. Start:
+         docker compose pull
          docker compose up -d
 
-     The first start builds the image (about 5 minutes). The first
-     AI request downloads the embedding model nomic-embed-text-v1.5
-     (~150 MB). Both are one-time operations.
+     The app image is pulled as a prebuilt multi-arch GHCR container.
+     The first AI request downloads the embedding model
+     nomic-embed-text-v1.5 (~150 MB). That happens only once.
 
 To use a host port other than 5174, add TQDA_PORT=... to .env.
 
@@ -51,14 +63,30 @@ Everyday use
 
     docker compose up -d       start
     docker compose down        stop (data is preserved in volumes)
+    docker compose pull        fetch a newer published image
     docker compose logs -f     view logs
+    ./scripts/4_db_migrate.sh  run migrations
+    ./scripts/5_db_seed.sh     seed demo data
+    ./scripts/6_db_backup.sh   create a database backup
+
+
+Scope
+-----
+
+The supported runtime is the Compose stack above. Host-side Node helper
+scripts are for development only and are not the installation path that
+is promised to work the same way across macOS, Linux, and Windows.
+
+For local image builds during development:
+
+    docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 
 
 Updating
 --------
 
     git pull
-    docker compose build
+    docker compose pull
     docker compose up -d
 
 

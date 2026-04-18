@@ -4,11 +4,10 @@
 
 FROM node:20-bookworm AS build
 WORKDIR /app
-ENV NODE_ENV=development
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
-RUN npm run build
+RUN NODE_ENV=production npm run build
 RUN npm prune --omit=dev
 
 FROM node:20-bookworm-slim AS runtime

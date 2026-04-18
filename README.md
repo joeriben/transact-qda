@@ -28,21 +28,45 @@ AI personas, and export pipelines work end-to-end. Rough edges remain
 (some UI polish, a few known bugs tracked in the memory notes).
 Breaking changes between point releases are possible until v1.0.
 
-## Quick start (local research workstation)
+## Quick start (official runtime)
 
 Prerequisites:
-- **Docker + Docker Compose** (for the PostgreSQL/pgvector database)
-- **Node.js 20+** and **npm**
+- **Docker + Docker Compose**
+- **Git**
+- If the GHCR image is kept private: a GitHub account with package-read
+  access and a one-time `docker login ghcr.io`
 
 ```bash
 git clone https://github.com/joeriben/transact-qda.git
 cd transact-qda
-cp .env.example .env          # adjust SESSION_SECRET if you wish
-npm install
-./scripts/2_start_dev.sh      # starts Postgres, runs migrations, then dev server
+cp .env.example .env
+# set SESSION_SECRET in .env to a long random value
+docker compose pull
+docker compose up -d
 ```
 
 Open <http://localhost:5174> in your browser.
+
+This Compose-based path is the supported runtime on macOS, Linux, and
+Windows (Docker Desktop / Docker Engine). It runs the app and the
+PostgreSQL/pgvector database together, applies migrations on startup,
+and stores project data in Docker volumes. The app is shipped as a
+prebuilt multi-arch container image from GHCR:
+`ghcr.io/joeriben/transact-qda`.
+
+For a controlled internal rollout, pin a tested image tag in `.env`:
+
+```bash
+echo "TQDA_IMAGE=ghcr.io/joeriben/transact-qda:v0.7.0-internal.1" >> .env
+```
+
+If the GHCR image is private, log in once before `docker compose pull`:
+
+```bash
+docker login ghcr.io -u YOUR_GITHUB_USERNAME
+```
+
+Use a Personal Access Token with at least `read:packages`.
 
 On **first login**, use `admin` / `adminadmin`. A prominent yellow
 banner will appear at the top prompting you to change the password;
@@ -63,12 +87,27 @@ This creates the `admin` account (if absent), an empty *Sample Project*,
 and the *Clarke Abstract Maps (Demo)* project illustrating situational,
 social-worlds, and positional maps.
 
-### Other scripts
+### Operations
 
-- `./scripts/1_stop_all.sh` — stop the dev server and the database
-- `./scripts/3_start_prod.sh` — build and start in production mode
+- `docker compose up -d` — start app + database
+- `docker compose down` — stop the stack (data stays in volumes)
+- `docker compose pull` — fetch a newer published app image
+- `docker compose logs -f` — view live logs
 - `./scripts/4_db_migrate.sh` — run pending migrations
 - `./scripts/6_db_backup.sh` — dump the database to `backups/`
+
+### Development-only shell helpers
+
+The Unix shell helpers under `scripts/` are developer conveniences
+only. They are not the supported installation path and are not part of
+the cross-platform runtime promise. The supported runtime remains
+`docker compose up -d` against the published GHCR image.
+
+For local image builds during development, use:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+```
 
 ## Configuration
 
@@ -77,8 +116,10 @@ All runtime configuration lives in `.env` (gitignored). Copy
 
 | Variable                  | Meaning                                                     |
 |---------------------------|-------------------------------------------------------------|
-| `DATABASE_URL`            | PostgreSQL connection string                                |
 | `SESSION_SECRET`          | Secret for session-cookie signing — **set this**            |
+| `TQDA_IMAGE`              | Published app image tag to pull from GHCR                   |
+| `TQDA_PORT`               | Host port exposed by the app container                      |
+| `DATABASE_URL`            | PostgreSQL connection string (host-side development only)   |
 | `PUBLIC_BRAND_LOGO_URL`   | Operator logo in the header (optional)                      |
 | `PUBLIC_BRAND_NAME`       | Short label shown next to the logo (optional)               |
 | `PUBLIC_BRAND_LINK`       | URL the logo links to (optional)                            |
@@ -97,6 +138,9 @@ transact-qda is primarily designed for **local research workstations**.
 If you plan to run it as a networked service for other people:
 
 - Read [`SECURITY.md`](./SECURITY.md) carefully.
+- The same Compose stack can be used as the runtime base on a server,
+  but it still needs operator hardening: HTTPS, reverse proxying,
+  secret management, backups, and regular updates.
 - Set a long random `SESSION_SECRET`, put the app behind HTTPS, and
   delete/rename the default `admin` account after creating your own.
 - **The AGPL-3.0 requires that any modifications you run as a network
@@ -111,6 +155,7 @@ If you plan to run it as a networked service for other people:
   conversations; these are not polished documentation but preserve the
   reasoning behind every design decision.
 - **Architecture notes** — distributed across `docs/`.
+- **Container release** — [`docs/ghcr-release.md`](./docs/ghcr-release.md)
 
 ## Contributing
 

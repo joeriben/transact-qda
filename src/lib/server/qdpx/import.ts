@@ -216,8 +216,18 @@ export async function importProject(
 	namings.push({ id: memoSysId, inscription: 'Memo System' });
 
 	appearances.push({ namingId: researcherNamingId, perspectiveId: researcherNamingId, mode: 'perspective', properties: { role: 'researcher' } });
-	appearances.push({ namingId: gwId, perspectiveId: gwId, mode: 'perspective', properties: { role: 'grounding-workspace' } });
-	appearances.push({ namingId: memoSysId, perspectiveId: memoSysId, mode: 'perspective', properties: { role: 'memo-system' } });
+	appearances.push({
+		namingId: gwId,
+		perspectiveId: gwId,
+		mode: 'perspective',
+		properties: { role: 'grounding-workspace', groundingRegime: 'infrastructural' }
+	});
+	appearances.push({
+		namingId: memoSysId,
+		perspectiveId: memoSysId,
+		mode: 'perspective',
+		properties: { role: 'memo-system', groundingRegime: 'infrastructural' }
+	});
 
 	namingActs.push({ namingId: researcherNamingId, by: researcherNamingId, designation: 'characterization' });
 
@@ -448,7 +458,12 @@ export async function importProject(
 		const name = set['@_name'] || 'Untitled set';
 
 		namings.push({ id, inscription: name });
-		appearances.push({ namingId: id, perspectiveId: id, mode: 'perspective', properties: { role: 'docnet' } });
+		appearances.push({
+			namingId: id,
+			perspectiveId: id,
+			mode: 'perspective',
+			properties: { role: 'docnet', groundingRegime: 'infrastructural' }
+		});
 
 		for (const member of arr(set.MemberSource)) {
 			const docId = remap(member['@_targetGUID']);
@@ -466,7 +481,12 @@ export async function importProject(
 			const mapType = graph['tq:Perspective']?.['@_mapType'] || 'situational';
 
 			namings.push({ id, inscription: name });
-			appearances.push({ namingId: id, perspectiveId: id, mode: 'perspective', properties: { mapType } });
+			appearances.push({
+				namingId: id,
+				perspectiveId: id,
+				mode: 'perspective',
+				properties: { mapType, groundingRegime: 'analytic', analyticForm: 'map' }
+			});
 
 			// Topology
 			const vertices = arr(graph.Vertex);
@@ -488,6 +508,12 @@ export async function importProject(
 			for (const phaseEl of arr(graph['tq:Phases']?.['tq:Phase'])) {
 				const phaseId = remap(phaseEl['@_guid']);
 				namings.push({ id: phaseId, inscription: phaseEl['@_name'] || 'Phase' });
+				appearances.push({
+					namingId: phaseId,
+					perspectiveId: phaseId,
+					mode: 'perspective',
+					properties: { role: 'phase', groundingRegime: 'analytic', analyticForm: 'phase', parentMapId: id }
+				});
 				appearances.push({ namingId: phaseId, perspectiveId: id, mode: 'perspective', properties: {} });
 
 				for (const member of arr(phaseEl['tq:Member'])) {

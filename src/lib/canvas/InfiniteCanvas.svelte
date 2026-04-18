@@ -8,12 +8,14 @@
 
 	let {
 		viewport = createViewport(),
+		contentBounds = null,
 		oncanvasclick,
 		oncanvascontextmenu,
 		onreset,
 		children
 	}: {
 		viewport?: ReturnType<typeof createViewport>;
+		contentBounds?: { minX: number; minY: number; maxX: number; maxY: number } | null;
 		oncanvasclick?: (x: number, y: number) => void;
 		oncanvascontextmenu?: (e: MouseEvent) => void;
 		onreset?: () => void;
@@ -24,15 +26,56 @@
 	let isPanning = $state(false);
 	let lastPointer = { x: 0, y: 0 };
 
+	function constrainViewport() {
+		if (!containerEl || !contentBounds) return;
+
+		const viewW = containerEl.clientWidth / viewport.zoom;
+		const viewH = containerEl.clientHeight / viewport.zoom;
+		if (viewW <= 0 || viewH <= 0) return;
+
+		// Keep some screen-space breathing room around content, but never let the
+		// viewport drift completely into empty space.
+		const paddingX = 80 / viewport.zoom;
+		const paddingY = 80 / viewport.zoom;
+		const minX = contentBounds.minX - paddingX;
+		const maxX = contentBounds.maxX + paddingX;
+		const minY = contentBounds.minY - paddingY;
+		const maxY = contentBounds.maxY + paddingY;
+		const contentW = maxX - minX;
+		const contentH = maxY - minY;
+		const contentCx = (minX + maxX) / 2;
+		const contentCy = (minY + maxY) / 2;
+
+		if (contentW <= viewW) {
+			viewport.x = (viewW / 2) - contentCx;
+		} else {
+			const minVisibleX = Math.min(contentW, Math.max(viewW * 0.2, 180 / viewport.zoom));
+			const minAllowedX = -(maxX - minVisibleX);
+			const maxAllowedX = viewW - (minX + minVisibleX);
+			viewport.x = Math.min(maxAllowedX, Math.max(minAllowedX, viewport.x));
+		}
+
+		if (contentH <= viewH) {
+			viewport.y = (viewH / 2) - contentCy;
+		} else {
+			const minVisibleY = Math.min(contentH, Math.max(viewH * 0.2, 180 / viewport.zoom));
+			const minAllowedY = -(maxY - minVisibleY);
+			const maxAllowedY = viewH - (minY + minVisibleY);
+			viewport.y = Math.min(maxAllowedY, Math.max(minAllowedY, viewport.y));
+		}
+	}
+
 	function onWheel(e: WheelEvent) {
 		if (e.ctrlKey || e.metaKey || e.altKey) {
 			e.preventDefault();
 			const factor = e.deltaY > 0 ? 0.9 : 1.1;
 			const rect = containerEl.getBoundingClientRect();
 			viewport.zoomAt(factor, (e.clientX - rect.left) / viewport.zoom, (e.clientY - rect.top) / viewport.zoom);
+			constrainViewport();
 		} else {
 			e.preventDefault();
 			viewport.pan(-e.deltaX, -e.deltaY);
+			constrainViewport();
 		}
 	}
 
@@ -58,6 +101,7 @@
 		const dy = e.clientY - lastPointer.y;
 		lastPointer = { x: e.clientX, y: e.clientY };
 		viewport.pan(dx, dy);
+		constrainViewport();
 	}
 
 	function onPointerUp(e: PointerEvent) {
@@ -81,6 +125,16 @@
 			oncanvascontextmenu?.(e);
 		}
 	}
+
+	$effect(() => {
+		if (!containerEl || !contentBounds) return;
+		contentBounds.minX;
+		contentBounds.minY;
+		contentBounds.maxX;
+		contentBounds.maxY;
+		viewport.zoom;
+		requestAnimationFrame(constrainViewport);
+	});
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -102,10 +156,10 @@
 	</div>
 
 	<div class="canvas-hud">
-		<button onclick={() => viewport.zoomAt(0.8, containerEl.clientWidth / 2 / viewport.zoom, containerEl.clientHeight / 2 / viewport.zoom)}>−</button>
+		<button onclick={() => { viewport.zoomAt(0.8, containerEl.clientWidth / 2 / viewport.zoom, containerEl.clientHeight / 2 / viewport.zoom); constrainViewport(); }}>−</button>
 		<span class="zoom-label">{Math.round(viewport.zoom * 100)}%</span>
-		<button onclick={() => viewport.zoomAt(1.25, containerEl.clientWidth / 2 / viewport.zoom, containerEl.clientHeight / 2 / viewport.zoom)}>+</button>
-		<button onclick={() => { if (onreset) onreset(); else viewport.reset(); }}>Reset</button>
+		<button onclick={() => { viewport.zoomAt(1.25, containerEl.clientWidth / 2 / viewport.zoom, containerEl.clientHeight / 2 / viewport.zoom); constrainViewport(); }}>+</button>
+		<button onclick={() => { if (onreset) onreset(); else viewport.reset(); constrainViewport(); }}>Reset</button>
 	</div>
 </div>
 

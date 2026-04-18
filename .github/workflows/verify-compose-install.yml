@@ -1,0 +1,43 @@
+name: Verify Compose Install
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - codex-docker-redo
+  workflow_dispatch:
+
+jobs:
+  verify-compose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Create runtime env
+        run: |
+          cp .env.example .env
+          sed -i 's/^SESSION_SECRET=.*/SESSION_SECRET=ci-secret-not-for-production/' .env
+
+      - name: Start stack from local development build
+        run: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+
+      - name: Wait for db status endpoint
+        run: |
+          for i in $(seq 1 60); do
+            if curl --fail --silent http://localhost:5174/api/db-status | grep -q '"status":"healthy"'; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Compose stack did not become healthy in time." >&2
+          docker compose -f docker-compose.yml -f docker-compose.dev.yml logs --tail=200
+          exit 1
+
+      - name: Verify login redirect
+        run: test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:5174)" = "303"
+
+      - name: Stop stack
+        if: always()
+        run: docker compose -f docker-compose.yml -f docker-compose.dev.yml down -v

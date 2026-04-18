@@ -50,6 +50,13 @@ export const load: LayoutServerLoad = async ({ params, locals }) => {
 	);
 
 	const maps = await getMapsByProject(params.projectId);
+	const projectIsReadOnly = maps.some((m) => m.properties?.readOnly === true);
+	if (projectIsReadOnly) {
+		project.properties = {
+			...(project.properties || {}),
+			readOnly: true
+		};
+	}
 	const mapByType: Record<string, { id: string }> = {};
 	const mapsByType: Record<string, { id: string; label: string; isPrimary?: boolean }[]> = {};
 	for (const m of maps) {

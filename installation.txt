@@ -17,6 +17,9 @@ Voraussetzungen
      transact-qda zu starten; es muss nur im Hintergrund laufen.
      Alle folgenden Befehle werden im Terminal eingegeben.
   Git
+  Falls das GHCR-Image privat bleibt:
+      GitHub-Konto mit Paket-Leserechten und einmalig
+      `docker login ghcr.io`
 
 
 Installieren und starten
@@ -29,12 +32,22 @@ Installieren und starten
   2. Session-Secret setzen:
          echo "SESSION_SECRET=$(openssl rand -hex 32)" > .env
 
-  3. Starten:
+  3. Optional auf getestetes Image pinnen:
+         echo "TQDA_IMAGE=ghcr.io/joeriben/transact-qda:v0.7.0-internal.1" >> .env
+
+  4. Falls das Image privat ist, einmalig anmelden:
+         docker login ghcr.io -u IHR_GITHUB_USERNAME
+
+     Verwenden Sie dazu einen Personal Access Token mit mindestens
+     `read:packages`.
+
+  5. Starten:
+         docker compose pull
          docker compose up -d
 
-     Der erste Start baut das Image (ca. 5 Minuten). Der erste
-     KI-Aufruf lädt das Embedding-Modell nomic-embed-text-v1.5
-     (~150 MB). Beides ist einmalig.
+     Das App-Image wird als vorgebautes Multi-Arch-GHCR-Image gezogen.
+     Der erste KI-Aufruf lädt zusätzlich das Embedding-Modell
+     nomic-embed-text-v1.5 (~150 MB). Das geschieht nur einmalig.
 
 Für einen anderen Host-Port als 5174: TQDA_PORT=... in .env setzen.
 
@@ -52,14 +65,31 @@ Alltägliche Nutzung
 
     docker compose up -d       starten
     docker compose down        stoppen (Daten bleiben in Volumes)
+    docker compose pull        neues veröffentlichtes Image holen
     docker compose logs -f     Logs anzeigen
+    ./scripts/4_db_migrate.sh  Migrationen ausführen
+    ./scripts/5_db_seed.sh     Demo-Daten anlegen
+    ./scripts/6_db_backup.sh   Datenbank sichern
+
+
+Geltungsbereich
+---------------
+
+Der unterstützte Laufzeitpfad ist der obige Compose-Stack. Host-seitige
+Node-Hilfsskripte dienen nur der Entwicklung und gehören nicht zu dem
+plattformneutral zugesagten Installationspfad für macOS, Linux und
+Windows.
+
+Für lokale Image-Builds in der Entwicklung:
+
+    docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 
 
 Aktualisieren
 -------------
 
     git pull
-    docker compose build
+    docker compose pull
     docker compose up -d
 
 

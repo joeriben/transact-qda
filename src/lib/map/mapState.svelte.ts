@@ -45,6 +45,7 @@ export function createMapState(
 	// ─── Derived ───
 	const mapType = $derived(mapMeta.properties?.mapType || 'situational');
 	const isPrimary = $derived(mapMeta.properties?.isPrimary === true);
+	const isReadOnly = $derived(mapMeta.properties?.readOnly === true);
 	const allItems = $derived([...axes, ...elements, ...relations, ...silences]);
 	const phaseColorMap = $derived(
 		new Map(phases.map((p: any, i: number) => [p.id, regionColor(i)]))
@@ -238,8 +239,12 @@ export function createMapState(
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ action, ...body })
 		});
-		if (!res.ok) return null;
-		return res.json();
+		const payload = await res.json().catch(() => null);
+		if (!res.ok) {
+			showAiNotification(payload?.error || `${action} failed`);
+			return null;
+		}
+		return payload;
 	}
 
 	async function reload() {
@@ -614,14 +619,16 @@ export function createMapState(
 	// Phases
 	async function addPhase() {
 		if (!newPhaseLabel.trim()) return;
-		await mapAction('createPhase', { inscription: newPhaseLabel.trim() });
+		const created = await mapAction('createPhase', { inscription: newPhaseLabel.trim() });
+		if (!created) return;
 		newPhaseLabel = '';
 		showPhaseForm = false;
 		await reload();
 	}
 
 	async function assignToPhaseFn(phaseId: string, namingId: string) {
-		await mapAction('assignToPhase', { phaseId, namingId });
+		const assigned = await mapAction('assignToPhase', { phaseId, namingId });
+		if (!assigned) return;
 		await reload();
 		if (expandedPhase === phaseId) {
 			const res = await fetch(`/api/projects/${initialData.projectId}/maps/${phaseId}`);
@@ -633,7 +640,8 @@ export function createMapState(
 	}
 
 	async function removeFromPhaseFn(phaseId: string, namingId: string) {
-		await mapAction('removeFromPhase', { phaseId, namingId });
+		const removed = await mapAction('removeFromPhase', { phaseId, namingId });
+		if (!removed) return;
 		await reload();
 		if (expandedPhase === phaseId) {
 			const res = await fetch(`/api/projects/${initialData.projectId}/maps/${phaseId}`);
@@ -694,6 +702,7 @@ export function createMapState(
 		get allItems() { return allItems; },
 		get phaseColorMap() { return phaseColorMap; },
 		get isPrimary() { return isPrimary; },
+		get isReadOnly() { return isReadOnly; },
 		get declinedCount() { return declinedCount; },
 		get isDeclinedFilter() { return isDeclinedFilter; },
 		DECLINED_PHASE,

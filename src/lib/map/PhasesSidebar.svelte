@@ -15,15 +15,20 @@
 <div class="sidebar">
 	<div class="sidebar-header">
 		<h3 title="Phase (Dewey/Bentley, Knowing and the Known, 1949): a developmental grouping of namings within the situation. Forming a phase IS characterizing — the designation gradient (cue → characterization → specification) collapsed into analytical wholes. Not a computed cluster.">Phases</h3>
-		<button class="btn-sm" onclick={() => ms.showPhaseForm = !ms.showPhaseForm}>
+		<button class="btn-sm" onclick={() => ms.showPhaseForm = !ms.showPhaseForm} disabled={ms.isReadOnly}
+			title={ms.isReadOnly ? 'Template map: copy the project to create or assign phases.' : 'Create phase'}>
 			{ms.showPhaseForm ? 'x' : '+'}
 		</button>
 	</div>
 
+	{#if ms.isReadOnly}
+		<p class="read-only-hint">Template map: phases can be viewed here, but creating or assigning requires a copied project.</p>
+	{/if}
+
 	{#if ms.showPhaseForm}
 		<form class="phase-form" onsubmit={e => { e.preventDefault(); ms.addPhase(); }}>
-			<input type="text" placeholder="Phase label..." bind:value={ms.newPhaseLabel} />
-			<button type="submit" class="btn-sm">Create</button>
+			<input type="text" placeholder="Phase label..." bind:value={ms.newPhaseLabel} disabled={ms.isReadOnly} />
+			<button type="submit" class="btn-sm" disabled={ms.isReadOnly}>Create</button>
 		</form>
 	{/if}
 
@@ -40,6 +45,8 @@
 					<span class="phase-count">{phase.element_count}</span>
 				</div>
 				<button class="btn-xs"
+					disabled={ms.isReadOnly}
+					title={ms.isReadOnly ? 'Template map: copy the project to assign elements to phases.' : 'Assign elements to this phase'}
 					onclick={() => ms.assigningToPhase = ms.assigningToPhase === phase.id ? null : phase.id}>
 					{ms.assigningToPhase === phase.id ? 'done' : 'assign'}
 				</button>
@@ -119,6 +126,12 @@
 	}
 	.phase-form input:focus { outline: none; border-color: #8b9cf7; }
 	.empty-small { color: #6b7280; font-size: 0.8rem; }
+	.read-only-hint {
+		margin: 0 0 0.5rem;
+		color: #f59e0b;
+		font-size: 0.72rem;
+		line-height: 1.35;
+	}
 	.phase-card {
 		background: #161822; border: 1px solid #2a2d3a; border-radius: 6px;
 		padding: 0.4rem 0.5rem; margin-bottom: 0.3rem;

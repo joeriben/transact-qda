@@ -68,10 +68,11 @@ async function createNaming(client, projectId, userId, researcherId, inscription
 		[projectId, inscription, userId]
 	);
 	const id = res.rows[0].id;
+	const byId = researcherId ?? id;
 	await client.query(
 		`INSERT INTO naming_acts (naming_id, designation, "by")
 		 VALUES ($1, $2, $3)`,
-		[id, designation, researcherId]
+		[id, designation, byId]
 	);
 	return id;
 }
@@ -135,36 +136,33 @@ async function createRelation(client, projectId, userId, researcherId, mapId, so
 // Read-only template. Copy the project to make changes.
 // ════════════════════════════════════════════════════════════════
 async function seedClarkeDemoProject(client, userId) {
-	// Project
-	const projRes = await client.query(
-		`INSERT INTO projects (name, description, created_by)
-		 VALUES ('Clarke Abstract Maps (Demo)',
-		         'Demo-Projekt (read-only Template). Clarke et al. 2018, Figures 5.1, 6.1. Zum Üben: Projekt kopieren.',
-		         $1)
-		 RETURNING id`,
-		[userId]
-	);
-	const projectId = projRes.rows[0].id;
-	await client.query(
-		`INSERT INTO project_members (project_id, user_id, role) VALUES ($1, $2, 'owner')`,
-		[projectId, userId]
-	);
-	console.log(`  Created Clarke demo project: ${projectId}`);
+	await client.query('BEGIN');
+	try {
+		// Project
+		const projRes = await client.query(
+			`INSERT INTO projects (name, description, created_by)
+			 VALUES ('Clarke Abstract Maps (Demo)',
+			         'Demo-Projekt (read-only Template). Clarke et al. 2018, Figures 5.1, 6.1. Zum Üben: Projekt kopieren.',
+			         $1)
+			 RETURNING id`,
+			[userId]
+		);
+		const projectId = projRes.rows[0].id;
+		await client.query(
+			`INSERT INTO project_members (project_id, user_id, role) VALUES ($1, $2, 'owner')`,
+			[projectId, userId]
+		);
+		console.log(`  Created Clarke demo project: ${projectId}`);
 
-	// Researcher naming (every project needs one)
-	const researcherId = await createNaming(client, projectId, userId, null, 'admin (Researcher)', 'cue');
-	// Fix: the researcher naming_act needs a "by" — use itself
-	await client.query(
-		`UPDATE naming_acts SET "by" = $1 WHERE naming_id = $1`,
-		[researcherId]
-	);
+		// Researcher naming (every project needs one)
+		const researcherId = await createNaming(client, projectId, userId, null, 'admin (Researcher)', 'cue');
 
-	// ────────────────────────────────────────────────
-	// Fig. 5.1: Abstract Situational Map
-	// ────────────────────────────────────────────────
-	const sitMapId = await createMap(client, projectId, userId, researcherId,
-		'Abstract Situational Map (Fig. 5.1)', 'situational');
-	console.log('  Seeding Fig. 5.1 (Situational Map)...');
+		// ────────────────────────────────────────────────
+		// Fig. 5.1: Abstract Situational Map
+		// ────────────────────────────────────────────────
+		const sitMapId = await createMap(client, projectId, userId, researcherId,
+			'Abstract Situational Map (Fig. 5.1)', 'situational');
+		console.log('  Seeding Fig. 5.1 (Situational Map)...');
 
 	// Elements — Clarke's abstract categories
 	const sitElements = {
@@ -215,9 +213,9 @@ async function seedClarkeDemoProject(client, userId) {
 	// ────────────────────────────────────────────────
 	// Fig. 6.1: Abstract Map of Social Worlds in Arenas
 	// ────────────────────────────────────────────────
-	const swaMapId = await createMap(client, projectId, userId, researcherId,
-		'Abstract Map of Social Worlds in Arenas (Fig. 6.1)', 'social-worlds');
-	console.log('  Seeding Fig. 6.1 (SW/A Map)...');
+		const swaMapId = await createMap(client, projectId, userId, researcherId,
+			'Abstract Map of Social Worlds in Arenas (Fig. 6.1)', 'social-worlds');
+		console.log('  Seeding Fig. 6.1 (SW/A Map)...');
 
 	// Formations: { inscription, swRole, x, y, rx, ry, rotation? }
 	const formations = [
@@ -290,6 +288,11 @@ async function seedClarkeDemoProject(client, userId) {
 	});
 
 	console.log('  Clarke demo project complete (3 maps, read-only).');
+		await client.query('COMMIT');
+	} catch (error) {
+		await client.query('ROLLBACK');
+		throw error;
+	}
 }
 
 seed().catch((e) => {

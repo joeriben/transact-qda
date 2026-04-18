@@ -39,6 +39,7 @@
 	// ---- State ----
 	let namings = $derived<NamingRow[]>(data.namings);
 	let phases = $derived<any[]>(data.phases ?? []);
+	let isReadOnly = $derived(((data.project?.properties as Record<string, any> | undefined)?.readOnly) === true);
 	let filterCCS = $state<'all' | 'cue' | 'characterization' | 'specification'>('all');
 	let filterGrounding = $state<'all' | 'grounded' | 'memo' | 'ungrounded'>('all');
 	let filterMode = $state<'all' | 'entity' | 'relation' | 'silence'>('all');
@@ -55,6 +56,7 @@
 	let showPhaseForm = $state(false);
 	let assigningToPhase = $state<string | null>(null);
 	let loadingPhase = $state(false);
+	let phaseError = $state<string | null>(null);
 
 	let newNamingValue = $state('');
 	let creatingNaming = $state(false);
@@ -388,17 +390,23 @@
 
 	// ---- Phase API ----
 	async function phaseAction(action: string, params: Record<string, any> = {}) {
+		phaseError = null;
 		const res = await fetch(`/api/projects/${data.projectId}/phases`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ action, ...params })
 		});
-		return res.json();
+		const payload = await res.json();
+		if (!res.ok) {
+			phaseError = payload.error || 'Phase action failed';
+		}
+		return payload;
 	}
 
 	async function createPhase() {
 		if (!newPhaseName.trim()) return;
-		await phaseAction('create', { inscription: newPhaseName.trim() });
+		const result = await phaseAction('create', { inscription: newPhaseName.trim() });
+		if (result?.error) return;
 		newPhaseName = '';
 		showPhaseForm = false;
 		const module = await import('$app/navigation');
@@ -425,7 +433,8 @@
 
 	async function assignNamingToPhase(namingId: string) {
 		if (!assigningToPhase) return;
-		await phaseAction('assign', { phaseId: assigningToPhase, namingId });
+		const result = await phaseAction('assign', { phaseId: assigningToPhase, namingId });
+		if (result?.error) return;
 		// Refresh phase detail if viewing this phase
 		if (selectedPhaseId === assigningToPhase) {
 			await selectPhase(selectedPhaseId);
@@ -436,7 +445,8 @@
 	}
 
 	async function removeNamingFromPhase(phaseId: string, namingId: string) {
-		await phaseAction('remove', { phaseId, namingId });
+		const result = await phaseAction('remove', { phaseId, namingId });
+		if (result?.error) return;
 		if (selectedPhaseId === phaseId) {
 			await selectPhase(phaseId);
 		}
@@ -898,15 +908,24 @@
 <div class="phase-panel">
 	<div class="phase-panel-header">
 		<h3>Phases</h3>
-		<button class="btn-xs" onclick={() => showPhaseForm = !showPhaseForm}>
+		<button class="btn-xs" onclick={() => showPhaseForm = !showPhaseForm} disabled={isReadOnly}
+			title={isReadOnly ? 'Template project: copy it to create or assign phases.' : 'Create phase'}>
 			{showPhaseForm ? '×' : '+'}
 		</button>
 	</div>
 
+	{#if isReadOnly}
+		<p class="phase-readonly-hint">Template project: phases can be inspected here, but creating or assigning requires a copied project.</p>
+	{/if}
+
+	{#if phaseError}
+		<p class="phase-error">{phaseError}</p>
+	{/if}
+
 	{#if showPhaseForm}
 		<form class="phase-create-form" onsubmit={e => { e.preventDefault(); createPhase(); }}>
-			<input type="text" placeholder="Phase name..." bind:value={newPhaseName} />
-			<button type="submit" class="btn-xs">Create</button>
+			<input type="text" placeholder="Phase name..." bind:value={newPhaseName} disabled={isReadOnly} />
+			<button type="submit" class="btn-xs" disabled={isReadOnly}>Create</button>
 		</form>
 	{/if}
 
@@ -927,6 +946,8 @@
 				</div>
 				<button
 					class="btn-xs"
+					disabled={isReadOnly}
+					title={isReadOnly ? 'Template project: copy it to assign phases.' : 'Assign a naming to this phase'}
 					onclick={() => assigningToPhase = assigningToPhase === phase.id ? null : phase.id}
 				>
 					{assigningToPhase === phase.id ? 'done' : 'assign'}
@@ -1031,6 +1052,12 @@
 	}
 	.phase-create-form input:focus { outline: none; border-color: #8b9cf7; }
 	.phase-empty { color: #6b7280; font-size: 0.8rem; }
+	.phase-readonly-hint {
+		font-size: 0.75rem; color: #f59e0b; line-height: 1.35; margin: 0 0 0.5rem;
+	}
+	.phase-error {
+		font-size: 0.75rem; color: #f87171; line-height: 1.35; margin: 0 0 0.5rem;
+	}
 	.phase-item {
 		background: #161822; border: 1px solid #2a2d3a; border-radius: 6px;
 		padding: 0.4rem 0.6rem; margin-bottom: 0.3rem;

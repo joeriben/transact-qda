@@ -5,7 +5,6 @@ name: tqda-work
 services:
   db:
     image: pgvector/pgvector:pg16
-    container_name: tqda-work-db
     restart: unless-stopped
     environment:
       POSTGRES_DB: transact_qda
@@ -20,11 +19,7 @@ services:
       retries: 20
 
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: tqda-work/app:dev
-    container_name: tqda-work-app
+    image: ${TQDA_IMAGE:-ghcr.io/joeriben/transact-qda:latest}
     restart: unless-stopped
     depends_on:
       db:

@@ -379,39 +379,35 @@ export async function getAggregatedNaming(namingId: string, projectId: string) {
 		),
 		getNamingStack(namingId, projectId),
 		// All map perspectives this naming appears on (excluding self-refs and infrastructure)
-		query<{
-			perspective_id: string; perspective_label: string; map_type: string;
-			mode: string; valence: string | null; properties: Record<string, any>;
-			directed_from: string | null; directed_to: string | null;
-			phase_id: string | null; phase_label: string | null;
-		}>(
-			`SELECT a.perspective_id, m.inscription as perspective_label,
-			        ma.properties->>'mapType' as map_type,
-			        a.mode, a.valence, a.properties,
-			        a.directed_from, a.directed_to,
-			        -- Phase membership (if any)
-			        (SELECT ch.naming_id FROM phase_memberships ch
-			         JOIN appearances cha ON cha.naming_id = ch.phase_id AND cha.perspective_id = a.perspective_id
-			         WHERE ch.naming_id = $1 AND ch.action = 'assign'
-			           AND NOT EXISTS (SELECT 1 FROM phase_memberships ch2
-			             WHERE ch2.phase_id = ch.phase_id AND ch2.naming_id = ch.naming_id
-			               AND ch2.action = 'remove' AND ch2.seq > ch.seq)
-			         ORDER BY ch.seq DESC LIMIT 1) as phase_id,
-			        (SELECT chn.inscription FROM phase_memberships ch
-			         JOIN namings chn ON chn.id = ch.phase_id
-			         JOIN appearances cha ON cha.naming_id = ch.phase_id AND cha.perspective_id = a.perspective_id
-			         WHERE ch.naming_id = $1 AND ch.action = 'assign'
-			           AND NOT EXISTS (SELECT 1 FROM phase_memberships ch2
-			             WHERE ch2.phase_id = ch.phase_id AND ch2.naming_id = ch.naming_id
-			               AND ch2.action = 'remove' AND ch2.seq > ch.seq)
-			         ORDER BY ch.seq DESC LIMIT 1) as phase_label
-			 FROM appearances a
-			 JOIN namings m ON m.id = a.perspective_id AND m.deleted_at IS NULL
-			 JOIN appearances ma ON ma.naming_id = m.id AND ma.perspective_id = m.id
-			   AND ma.mode = 'perspective' AND ma.properties ? 'mapType'
-			 WHERE a.naming_id = $1 AND a.perspective_id != $1`,
-			[namingId]
-		),
+			query<{
+				perspective_id: string; perspective_label: string; map_type: string;
+				mode: string; valence: string | null; properties: Record<string, any>;
+				directed_from: string | null; directed_to: string | null;
+				phase_id: string | null; phase_label: string | null;
+			}>(
+				`SELECT a.perspective_id, m.inscription as perspective_label,
+				        ma.properties->>'mapType' as map_type,
+				        a.mode, a.valence, a.properties,
+				        a.directed_from, a.directed_to,
+				        current_phase.phase_id,
+				        current_phase.phase_label
+				 FROM appearances a
+				 JOIN namings m ON m.id = a.perspective_id AND m.deleted_at IS NULL
+				 JOIN appearances ma ON ma.naming_id = m.id AND ma.perspective_id = m.id
+				   AND ma.mode = 'perspective' AND ma.properties ? 'mapType'
+				 LEFT JOIN LATERAL (
+				   SELECT ph.id as phase_id, ph.inscription as phase_label
+				   FROM appearances phase_app
+				   JOIN namings ph ON ph.id = phase_app.perspective_id AND ph.deleted_at IS NULL
+				   WHERE phase_app.naming_id = a.naming_id
+				     AND phase_app.naming_id != phase_app.perspective_id
+				     AND tqda_analytic_form(phase_app.perspective_id) = 'phase'
+				   ORDER BY phase_app.updated_at DESC, ph.seq DESC
+				   LIMIT 1
+				 ) current_phase ON true
+				 WHERE a.naming_id = $1 AND a.perspective_id != $1`,
+				[namingId]
+			),
 		// All participations (relations this naming is involved in)
 		query<{
 			relation_id: string; relation_inscription: string;

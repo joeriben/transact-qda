@@ -23,7 +23,7 @@ export async function getOrCreateGroundingWorkspace(projectId: string, userId: s
 	if (!perspective) {
 		const n = await createNaming(projectId, userId, 'Grounding Workspace');
 		await setAppearance(n.id, n.id, 'perspective', {
-			properties: { role: 'grounding-workspace' }
+			properties: { role: 'grounding-workspace', groundingRegime: 'infrastructural' }
 		});
 		perspective = { id: n.id };
 	}

@@ -19,7 +19,7 @@ async function getOrCreateMemoSystemPerspective(projectId: string, userId: strin
 	if (!perspective) {
 		const n = await createNaming(projectId, userId, 'Memo System');
 		await setAppearance(n.id, n.id, 'perspective', {
-			properties: { role: 'memo-system' }
+			properties: { role: 'memo-system', groundingRegime: 'infrastructural' }
 		});
 		perspective = { id: n.id };
 	}

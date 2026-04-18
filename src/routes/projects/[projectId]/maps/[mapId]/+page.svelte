@@ -63,15 +63,27 @@
 	});
 
 	let displayMode = $state<'entities' | 'relations' | 'full'>('full');
-	let listGroupBy = $state<'mode' | 'designation' | 'phase' | 'provenance' | 'flat'>('mode');
+	let listGroupBy = $state<'mode' | 'designation' | 'phase' | 'provenance' | 'flat'>('flat');
+	let prefsLoadedForMapId = $state<string | null>(null);
+
+	function defaultListGroupBy() {
+		if (ms.mapType === 'situational') return 'phase' as const;
+		return 'mode' as const;
+	}
 
 	// Restore preferences from localStorage
 	$effect(() => {
 		const mapId = data.map.id;
+		if (prefsLoadedForMapId === mapId) return;
 		const savedMode = localStorage.getItem(`map:${mapId}:displayMode`);
 		if (savedMode === 'entities' || savedMode === 'relations' || savedMode === 'full') displayMode = savedMode;
 		const savedGroup = localStorage.getItem(`map:${mapId}:listGroupBy`);
-		if (savedGroup) listGroupBy = savedGroup as typeof listGroupBy;
+		if (savedGroup === 'mode' || savedGroup === 'designation' || savedGroup === 'phase' || savedGroup === 'provenance' || savedGroup === 'flat') {
+			listGroupBy = savedGroup;
+		} else {
+			listGroupBy = defaultListGroupBy();
+		}
+		prefsLoadedForMapId = mapId;
 	});
 
 	// ─── Position init (reset on map navigation) ───
@@ -199,7 +211,8 @@
 
 	const groupedItems = $derived.by(() => {
 		const items = ms.allItems.filter((n: any) => !ms.isHiddenByFilter(n)).filter((n: any) => ms.filterItem(n));
-		switch (listGroupBy) {
+		const effectiveGroupBy = listGroupBy === 'phase' && ms.phases.length === 0 ? 'flat' : listGroupBy;
+		switch (effectiveGroupBy) {
 			case 'mode':
 				return [
 					{ label: 'Elements', items: items.filter((n: any) => n.mode === 'entity') },
@@ -212,13 +225,27 @@
 					items: items.filter((n: any) => (n.designation || 'cue') === d)
 				})).filter(g => g.items.length > 0);
 			case 'phase': {
-				const groups: Array<{ label: string; items: any[] }> = [];
-				for (const phase of ms.phases) {
-					groups.push({ label: phase.label, items: items.filter((n: any) => n.phase_ids?.includes(phase.id)) });
+				const groups: Array<{ id: string; label: string; items: any[] }> = [];
+				const phaseOrder = new Map(ms.phases.map((phase: any, index: number) => [phase.id, index]));
+				for (const phase of ms.phases) groups.push({ id: phase.id, label: phase.label, items: [] });
+				const groupsById = new Map(groups.map((group) => [group.id, group]));
+				const unassigned: any[] = [];
+
+				for (const item of items) {
+					const memberships = (item.phase_ids ?? [])
+						.filter((id: string) => phaseOrder.has(id))
+						.sort((a: string, b: string) => (phaseOrder.get(a) ?? 0) - (phaseOrder.get(b) ?? 0));
+
+					if (memberships.length === 0) {
+						unassigned.push(item);
+						continue;
+					}
+
+					const primaryPhaseId = memberships[0];
+					groupsById.get(primaryPhaseId)?.items.push(item);
 				}
-				const assigned = new Set(ms.phases.flatMap((c: any) => items.filter((n: any) => n.phase_ids?.includes(c.id)).map((n: any) => n.naming_id)));
-				const unassigned = items.filter((n: any) => !assigned.has(n.naming_id));
-				if (unassigned.length > 0) groups.push({ label: 'Unassigned', items: unassigned });
+
+				if (unassigned.length > 0) groups.push({ id: '__unassigned__', label: 'Unassigned', items: unassigned });
 				return groups.filter(g => g.items.length > 0);
 			}
 			case 'provenance':
@@ -231,6 +258,80 @@
 			default:
 				return [{ label: '', items }];
 		}
+	});
+
+	function includeBounds(
+		bounds: { minX: number; minY: number; maxX: number; maxY: number },
+		cx: number,
+		cy: number,
+		halfW: number,
+		halfH: number
+	) {
+		bounds.minX = Math.min(bounds.minX, cx - halfW);
+		bounds.minY = Math.min(bounds.minY, cy - halfH);
+		bounds.maxX = Math.max(bounds.maxX, cx + halfW);
+		bounds.maxY = Math.max(bounds.maxY, cy + halfH);
+	}
+
+	const canvasContentBounds = $derived.by(() => {
+		if (ms.mapType === 'positional') {
+			return { minX: -100, minY: -cp.POS_AXIS_LEN - 40, maxX: cp.POS_AXIS_LEN + 40, maxY: 80 };
+		}
+
+		const bounds = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+		let hasContent = false;
+
+		if (displayMode !== 'relations') {
+			for (const el of ms.elements) {
+				if (ms.isHiddenByFilter(el)) continue;
+				const pos = cp.positions.get(el.naming_id);
+				if (!pos) continue;
+
+				hasContent = true;
+				if (ms.mapType === 'social-worlds' && el.sw_role) {
+					const rx = el.properties?.rx || 150;
+					const ry = el.properties?.ry || 100;
+					const rotation = ((el.properties?.rotation || 0) * Math.PI) / 180;
+					const cos = Math.abs(Math.cos(rotation));
+					const sin = Math.abs(Math.sin(rotation));
+					const halfW = Math.max(120, (rx * cos) + (ry * sin)) + 44;
+					const halfH = Math.max(90, (rx * sin) + (ry * cos)) + 52;
+					includeBounds(bounds, pos.x, pos.y, halfW, halfH);
+				} else {
+					const halfW = Math.min(180, Math.max(90, 32 + String(el.inscription || '').length * 4.2));
+					includeBounds(bounds, pos.x, pos.y, halfW, 56);
+				}
+			}
+
+			for (const silence of ms.silences) {
+				if (ms.isHiddenByFilter(silence)) continue;
+				const pos = cp.positions.get(silence.naming_id);
+				if (!pos) continue;
+				hasContent = true;
+				const halfW = Math.min(170, Math.max(80, 28 + String(silence.inscription || '').length * 4));
+				includeBounds(bounds, pos.x, pos.y, halfW, 50);
+			}
+		}
+
+		if (displayMode !== 'entities') {
+			for (const rel of ms.relations.filter((r: any) => !r.properties?.spatiallyDerived)) {
+				if (ms.isHiddenByFilter(rel)) continue;
+				const srcId = rel.directed_from || rel.part_source_id;
+				const tgtId = rel.directed_to || rel.part_target_id;
+				if (!srcId || !tgtId || !cp.positions.has(srcId) || !cp.positions.has(tgtId)) continue;
+				const src = cp.nodeCenter(srcId);
+				const tgt = cp.nodeCenter(tgtId);
+				const cx = (src.x + tgt.x) / 2;
+				const cy = (src.y + tgt.y) / 2;
+				hasContent = true;
+				const halfW = rel.inscription
+					? Math.min(170, Math.max(85, 34 + String(rel.inscription).length * 3.8))
+					: 120;
+				includeBounds(bounds, cx, cy, halfW, 44);
+			}
+		}
+
+		return hasContent ? bounds : null;
 	});
 
 	// ─── Keyboard ───
@@ -309,7 +410,7 @@
 		<!-- Canvas -->
 		<div class="canvas-container" bind:this={canvasContainerEl} style="{viewMode !== 'canvas' ? 'display: none;' : ''}">
 			<UnplacedPanel {viewport} />
-			<InfiniteCanvas {viewport} oncanvasclick={handleCanvasClick} oncanvascontextmenu={handleCanvasContextMenu}
+			<InfiniteCanvas {viewport} contentBounds={canvasContentBounds} oncanvasclick={handleCanvasClick} oncanvascontextmenu={handleCanvasContextMenu}
 				onreset={ms.mapType === 'positional' ? fitPosMap : undefined}>
 				{#if displayMode === 'full'}
 				{#each ms.relations.filter((r: any) => !r.properties?.spatiallyDerived) as rel}
@@ -390,15 +491,13 @@
 							oncontextmenu={handleNodeContextMenu}
 						>
 							{#if ms.mapType === 'social-worlds' && el.sw_role}
-								<FormationNode
-									label={el.inscription}
-									swRole={el.sw_role}
-									designation={el.designation}
-									color={ms.designationColor(el.designation)}
-									memoCount={el.memo_previews?.length || 0}
-									rx={el.properties?.rx || 150}
-									ry={el.properties?.ry || 100}
-									rotation={el.properties?.rotation || 0}
+									<FormationNode
+										label={el.inscription}
+										swRole={el.sw_role}
+										color={ms.designationColor(el.designation)}
+										rx={el.properties?.rx || 150}
+										ry={el.properties?.ry || 100}
+										rotation={el.properties?.rotation || 0}
 									selected={selection.isSelected(el.naming_id)}
 									withdrawn={ms.isWithdrawn(el.properties)}
 									zoom={viewport.zoom}
@@ -490,9 +589,9 @@
 			<div class="list-grouping-bar">
 				<span class="grouping-label">Group by</span>
 				<select class="grouping-select" value={listGroupBy} onchange={e => { listGroupBy = (e.target as HTMLSelectElement).value as typeof listGroupBy; localStorage.setItem(`map:${data.map.id}:listGroupBy`, listGroupBy); }}>
+					<option value="phase">Phase</option>
 					<option value="mode">Mode (entity / relation / silence)</option>
 					<option value="designation">Designation (cue / char / spec)</option>
-					<option value="phase">Phase</option>
 					<option value="provenance">Provenance</option>
 					<option value="flat">Flat (all mixed)</option>
 				</select>

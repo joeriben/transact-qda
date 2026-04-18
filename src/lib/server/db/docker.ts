@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 
 const execAsync = promisify(exec);
 
-const CONTAINER_NAME = 'transact-qda-db';
+const DB_SERVICE = 'db';
 const READY_TIMEOUT_MS = 30_000;
 const READY_POLL_MS = 500;
 
@@ -52,7 +52,7 @@ async function doStart(): Promise<boolean> {
 	while (Date.now() < deadline) {
 		try {
 			await execAsync(
-				`docker exec ${CONTAINER_NAME} pg_isready -U tqda -d transact_qda`,
+				`docker compose exec -T ${DB_SERVICE} pg_isready -U tqda -d transact_qda`,
 				{ timeout: 3000 }
 			);
 			status = 'healthy';

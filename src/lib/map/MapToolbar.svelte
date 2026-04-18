@@ -134,6 +134,9 @@
 	<a href="/projects/{ms.projectId}/maps" class="back">&larr; Maps</a>
 	<h2>{ms.mapLabel}</h2>
 	<span class="map-type-badge">{ms.mapType}</span>
+	{#if ms.isReadOnly}
+		<span class="read-only-badge" title="Template map: copy the project to make changes.">template / read only</span>
+	{/if}
 
 	{#if ms.designationProfile.length > 0}
 		<div class="designation-profile">
@@ -175,12 +178,12 @@
 						<span>absent</span>
 					</label>
 				{/if}
-				<input type="text" placeholder={ms.mapType === 'social-worlds' ? 'Formation name...' : ms.mapType === 'positional' ? 'Position...' : 'Name or search...'} bind:value={newInscription} bind:this={addInputRef} disabled={adding}
+				<input type="text" placeholder={ms.mapType === 'social-worlds' ? 'Formation name...' : ms.mapType === 'positional' ? 'Position...' : 'Name or search...'} bind:value={newInscription} bind:this={addInputRef} disabled={adding || ms.isReadOnly}
 					oninput={(e) => onAddInputChange((e.target as HTMLInputElement).value)}
 					onfocus={() => { if (newInscription.trim().length >= 2) onAddInputChange(newInscription); }}
 					onblur={() => { setTimeout(() => closePlacementDropdown(), 200); }}
 				/>
-				<button type="submit" class="btn-primary" disabled={adding || !newInscription.trim()}>Add</button>
+				<button type="submit" class="btn-primary" disabled={adding || ms.isReadOnly || !newInscription.trim()}>Add</button>
 			</form>
 			{#if placementOpen}
 				<div class="placement-dropdown">
@@ -214,7 +217,7 @@
 		</div>
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div class="import-wrapper" onclick={(e) => e.stopPropagation()}>
-			<button class="btn-sm" onclick={openImportDropdown} title="Import namings from a document">Import</button>
+			<button class="btn-sm" onclick={openImportDropdown} title={ms.isReadOnly ? 'Template map: copy the project to make changes.' : 'Import namings from a document'} disabled={ms.isReadOnly}>Import</button>
 			{#if importDropdownOpen}
 				<div class="import-dropdown">
 					{#if importLoading}
@@ -300,6 +303,11 @@
 	.map-type-badge {
 		font-size: 0.7rem; color: #8b9cf7; text-transform: uppercase;
 		background: rgba(139, 156, 247, 0.1); padding: 0.15rem 0.5rem; border-radius: 4px;
+	}
+	.read-only-badge {
+		font-size: 0.7rem; color: #f59e0b; text-transform: uppercase;
+		background: rgba(245, 158, 11, 0.08); padding: 0.15rem 0.5rem; border-radius: 4px;
+		border: 1px solid rgba(245, 158, 11, 0.3);
 	}
 	.designation-profile { display: flex; gap: 0.75rem; font-size: 0.8rem; }
 	.dp-item { font-weight: 500; }

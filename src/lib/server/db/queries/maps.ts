@@ -13,6 +13,12 @@ import { getAnnotationsByCode } from './codes.js';
 
 // ---- Primary Situational Map ----
 
+const phaseSelfFormExpr = (alias: string) =>
+	`COALESCE(${alias}.properties->>'analyticForm', CASE WHEN ${alias}.properties->>'role' = 'phase' THEN 'phase' ELSE NULL END)`;
+
+const phaseSelfPredicate = (alias: string) =>
+	`${alias}.mode = 'perspective' AND ${phaseSelfFormExpr(alias)} = 'phase'`;
+
 /**
  * Get or create the primary Situational Map for a project.
  * The primary map is the default target for all coding namings.
@@ -60,7 +66,15 @@ export async function createMap(
 		await client.query(
 			`INSERT INTO appearances (naming_id, perspective_id, mode, properties)
 			 VALUES ($1, $1, 'perspective', $2)`,
-			[map.id, JSON.stringify({ mapType, ...properties })]
+			[
+				map.id,
+				JSON.stringify({
+					mapType,
+					groundingRegime: 'analytic',
+					analyticForm: 'map',
+					...properties
+				})
+			]
 		);
 
 		// Initial act
@@ -82,6 +96,14 @@ export async function createMap(
 					`INSERT INTO appearances (naming_id, perspective_id, mode, properties)
 					 VALUES ($1, $2, 'entity', $3)`,
 					[axisRes.rows[0].id, map.id, JSON.stringify({ isAxis: true, axisDimension: dim })]
+				);
+				await client.query(
+					`INSERT INTO appearances (naming_id, perspective_id, mode, properties)
+					 VALUES ($1, $1, 'perspective', $2)`,
+					[
+						axisRes.rows[0].id,
+						JSON.stringify({ groundingRegime: 'analytic', analyticForm: 'axis' })
+					]
 				);
 				await client.query(
 					`INSERT INTO naming_acts (naming_id, designation, by)
@@ -124,7 +146,14 @@ export async function duplicateMap(
 		await client.query(
 			`INSERT INTO appearances (naming_id, perspective_id, mode, properties)
 			 VALUES ($1, $1, 'perspective', $2)`,
-			[newMapId, JSON.stringify(srcApp.properties)]
+			[
+				newMapId,
+				JSON.stringify({
+					...(srcApp.properties || {}),
+					groundingRegime: 'analytic',
+					analyticForm: 'map'
+				})
+			]
 		);
 
 		// 4. Initial naming act
@@ -174,8 +203,16 @@ export async function duplicateMap(
 			// Phase's self-referential appearance
 			await client.query(
 				`INSERT INTO appearances (naming_id, perspective_id, mode, properties)
-				 VALUES ($1, $1, 'perspective', '{}')`,
-				[newPhaseId]
+				 VALUES ($1, $1, 'perspective', $2)`,
+				[
+					newPhaseId,
+					JSON.stringify({
+						role: 'phase',
+						parentMapId: newMapId,
+						groundingRegime: 'analytic',
+						analyticForm: 'phase'
+					})
+				]
 			);
 
 			// Initial naming act for the phase
@@ -238,6 +275,14 @@ export async function addElementToMap(
 ) {
 	return transaction(async (client) => {
 		const researcherNamingId = await getOrCreateResearcherNaming(projectId, userId);
+		const mapSelf = (
+			await client.query<{ properties: Record<string, unknown> }>(
+				`SELECT properties FROM appearances
+				 WHERE naming_id = $1 AND perspective_id = $1 AND mode = 'perspective'
+				 LIMIT 1`,
+				[mapId]
+			)
+		).rows[0];
 
 		// Create the naming
 		const namingRes = await client.query(
@@ -253,6 +298,17 @@ export async function addElementToMap(
 			 VALUES ($1, $2, 'entity', $3)`,
 			[naming.id, mapId, JSON.stringify(properties || {})]
 		);
+
+		if (mapSelf?.properties?.mapType === 'positional') {
+			await client.query(
+				`INSERT INTO appearances (naming_id, perspective_id, mode, properties)
+				 VALUES ($1, $1, 'perspective', $2)`,
+				[
+					naming.id,
+					JSON.stringify({ groundingRegime: 'analytic', analyticForm: 'position' })
+				]
+			);
+		}
 
 		// Initial act: cue (just registered, not yet determined)
 		await client.query(
@@ -470,7 +526,7 @@ export async function createPhase(
 		const existing = await client.query(
 			`SELECT n.id FROM namings n
 			 JOIN appearances a ON a.naming_id = n.id AND a.perspective_id = n.id
-			   AND a.mode = 'perspective' AND a.properties->>'role' = 'phase'
+			   AND ${phaseSelfPredicate('a')}
 			 WHERE n.project_id = $1 AND n.inscription = $2 AND n.deleted_at IS NULL
 			 LIMIT 1`,
 			[projectId, inscription]
@@ -493,7 +549,16 @@ export async function createPhase(
 		await client.query(
 			`INSERT INTO appearances (naming_id, perspective_id, mode, properties)
 			 VALUES ($1, $1, 'perspective', $2)`,
-			[phase.id, JSON.stringify({ role: 'phase', parentMapId: mapId, ...properties })]
+			[
+				phase.id,
+				JSON.stringify({
+					role: 'phase',
+					parentMapId: mapId,
+					groundingRegime: 'analytic',
+					analyticForm: 'phase',
+					...properties
+				})
+			]
 		);
 
 		// The phase also appears on the map as a perspective-naming
@@ -829,16 +894,15 @@ export async function getMapAppearances(mapId: string, projectId: string) {
 			   -- Project-level phase memberships of this naming (for dots on the node).
 			   -- Phases have a self-referential role='phase' perspective on the grounding
 			   -- workspace, not on this map, so we detect them by that role.
-			   ARRAY(
-			     SELECT sub.perspective_id::text
-			     FROM appearances sub
-			     JOIN appearances ph ON ph.naming_id = sub.perspective_id
-			       AND ph.perspective_id = sub.perspective_id
-			       AND ph.mode = 'perspective'
-			       AND ph.properties->>'role' = 'phase'
-			     WHERE sub.naming_id = a.naming_id
-			       AND sub.naming_id != sub.perspective_id
-			   ) as phase_ids,
+				   ARRAY(
+				     SELECT sub.perspective_id::text
+				     FROM appearances sub
+				     JOIN appearances ph ON ph.naming_id = sub.perspective_id
+				       AND ph.perspective_id = sub.perspective_id
+				       AND ${phaseSelfPredicate('ph')}
+				     WHERE sub.naming_id = a.naming_id
+				       AND sub.naming_id != sub.perspective_id
+				   ) as phase_ids,
 			   -- Documents this naming is anchored in (via valence='codes' annotations)
 			   COALESCE(
 			     (SELECT json_agg(d)
@@ -998,13 +1062,13 @@ export async function getMapPhases(_mapId: string, projectId: string) {
 	).rows;
 }
 
-// Shared CTE for finding project phases (positive match on role='phase')
+// Shared CTE for finding project phases.
 // Parameter $1 is the project id.
 const PROJECT_PHASES_CTE = `
   SELECT DISTINCT ON (n.id) n.id, n.inscription as label
   FROM namings n
   JOIN appearances a ON a.naming_id = n.id AND a.perspective_id = n.id
-    AND a.mode = 'perspective' AND a.properties->>'role' = 'phase'
+    AND ${phaseSelfPredicate('a')}
   WHERE n.project_id = $1
     AND n.deleted_at IS NULL
   ORDER BY n.id, n.seq
@@ -1214,7 +1278,7 @@ export async function createProjectPhase(
 		const existing = await client.query(
 			`SELECT n.id, n.inscription FROM namings n
 			 JOIN appearances a ON a.naming_id = n.id AND a.perspective_id = n.id
-			   AND a.mode = 'perspective' AND a.properties->>'role' = 'phase'
+			   AND ${phaseSelfPredicate('a')}
 			 WHERE n.project_id = $1 AND n.inscription = $2 AND n.deleted_at IS NULL
 			 LIMIT 1`,
 			[projectId, inscription]
@@ -1239,7 +1303,15 @@ export async function createProjectPhase(
 		await client.query(
 			`INSERT INTO appearances (naming_id, perspective_id, mode, properties)
 			 VALUES ($1, $1, 'perspective', $2)`,
-			[phase.id, JSON.stringify({ role: 'phase', parentMapId: gwId })]
+			[
+				phase.id,
+				JSON.stringify({
+					role: 'phase',
+					parentMapId: gwId,
+					groundingRegime: 'analytic',
+					analyticForm: 'phase'
+				})
+			]
 		);
 
 		// Appear on grounding workspace as sub-perspective
