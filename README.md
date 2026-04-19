@@ -36,7 +36,7 @@ For most users, the easiest setup is:
 - **Docker Engine** on Linux
 - **Git**
 
-If you do not know what **Homebrew**, **daemon**, or **headless** mean,
+If you do not know what **Homebrew** or **daemon** mean,
 ignore the optional Colima note below and use Docker Desktop.
 
 ```bash
@@ -68,11 +68,17 @@ On macOS you need a running Docker background service before
 
 - **Docker Desktop**: the recommended path for most users. Install it,
   launch it once, accept the macOS permission dialogs, and enable
-  **Start Docker Desktop when you sign in** in its settings.
+  **Start Docker Desktop when you sign in** in its settings. Then
+  Docker starts automatically after a restart and transact-qda can be
+  used again without extra setup.
 - **Colima**: an advanced macOS alternative for users who explicitly do
   not want Docker Desktop. It runs Docker in the background without a
-  desktop app window. Install with `brew install docker colima`, then
+  separate desktop window. Install with `brew install docker colima`, then
   enable autostart once with `brew services start colima`.
+
+If Docker Desktop autostart is disabled, or if Colima is not running
+after a restart, transact-qda will not start until Docker is started
+again.
 
 If both Docker Desktop and Colima are installed, select the Colima
 daemon explicitly once with `docker context use colima`.
