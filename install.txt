@@ -46,17 +46,24 @@ Prerequisites
 Install and start
 -----------------
 
-  1. Clone the repository:
+  1. Open Terminal and go to your Downloads folder:
+         cd ~/Downloads
+
+  2. Download the project files from GitHub:
          git clone https://github.com/joeriben/transact-qda.git
          cd transact-qda
 
-  2. Set a session secret:
+     This creates a normal folder named `transact-qda` inside your
+     Downloads folder. It is not installed automatically into
+     Applications.
+
+  3. Set a session secret:
          echo "SESSION_SECRET=$(openssl rand -hex 32)" > .env
 
-  3. Optional: pin a tested release tag:
+  4. Optional: pin a tested release tag:
          echo "TQDA_IMAGE=ghcr.io/joeriben/transact-qda:<tag>" >> .env
 
-  4. Start:
+  5. Start:
          docker compose pull
          docker compose up -d
 

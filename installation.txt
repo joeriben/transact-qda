@@ -47,17 +47,24 @@ Voraussetzungen
 Installieren und starten
 ------------------------
 
-  1. Repository klonen:
+  1. Terminal öffnen und in den Downloads-Ordner wechseln:
+         cd ~/Downloads
+
+  2. Projektdateien von GitHub herunterladen:
          git clone https://github.com/joeriben/transact-qda.git
          cd transact-qda
 
-  2. Session-Secret setzen:
+     Dadurch entsteht im Downloads-Ordner ein normaler Ordner namens
+     `transact-qda`. Es wird nicht automatisch eine App in
+     „Programme/Applications“ installiert.
+
+  3. Session-Secret setzen:
          echo "SESSION_SECRET=$(openssl rand -hex 32)" > .env
 
-  3. Optional auf getesteten Release-Tag pinnen:
+  4. Optional auf getesteten Release-Tag pinnen:
          echo "TQDA_IMAGE=ghcr.io/joeriben/transact-qda:<tag>" >> .env
 
-  4. Starten:
+  5. Starten:
          docker compose pull
          docker compose up -d
 

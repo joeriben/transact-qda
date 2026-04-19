@@ -40,6 +40,7 @@ If you do not know what **Homebrew** or **daemon** mean,
 ignore the optional Colima note below and use Docker Desktop.
 
 ```bash
+cd ~/Downloads
 git clone https://github.com/joeriben/transact-qda.git
 cd transact-qda
 cp .env.example .env
@@ -49,6 +50,11 @@ docker compose up -d
 ```
 
 Open <http://localhost:5174> in your browser.
+
+The first line moves the terminal into your **Downloads** folder. The
+`git clone ...` command then creates a normal folder named
+`transact-qda` there. This is not a macOS app bundle and it does not
+appear automatically in `Applications`.
 
 This Compose-based path is the supported runtime on macOS, Linux, and
 Windows (Docker Desktop / Docker Engine). It runs the app and the
