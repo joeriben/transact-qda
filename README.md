@@ -30,9 +30,14 @@ Breaking changes between point releases are possible until v1.0.
 
 ## Quick start (official runtime)
 
-Prerequisites:
-- **Docker Engine/daemon + Docker Compose**
+For most users, the easiest setup is:
+
+- **Docker Desktop** on macOS or Windows
+- **Docker Engine** on Linux
 - **Git**
+
+If you do not know what **Homebrew**, **daemon**, or **headless** mean,
+ignore the optional Colima note below and use Docker Desktop.
 
 ```bash
 git clone https://github.com/joeriben/transact-qda.git
@@ -52,14 +57,22 @@ and stores project data in Docker volumes. The app is shipped as a
 prebuilt multi-arch container image from GHCR:
 `ghcr.io/joeriben/transact-qda`.
 
-On macOS you need a running Docker daemon before `docker compose` can
-work. Two supported options:
+The commands above are pasted into a terminal:
 
-- **Docker Desktop**: convenient GUI runtime. Enable its "start at login"
-  option so the daemon is available after sign-in.
-- **Colima**: headless background daemon, no Docker Desktop window
-  required. Install with `brew install docker colima`, then enable
-  autostart once with `brew services start colima`.
+- macOS: **Terminal**
+- Windows: **Windows Terminal** or **PowerShell**
+- Linux: your normal terminal
+
+On macOS you need a running Docker background service before
+`docker compose` can work. Two supported options:
+
+- **Docker Desktop**: the recommended path for most users. Install it,
+  launch it once, accept the macOS permission dialogs, and enable
+  **Start Docker Desktop when you sign in** in its settings.
+- **Colima**: an advanced macOS alternative for users who explicitly do
+  not want Docker Desktop. It runs Docker in the background without a
+  desktop app window. Install with `brew install docker colima`, then
+  enable autostart once with `brew services start colima`.
 
 If both Docker Desktop and Colima are installed, select the Colima
 daemon explicitly once with `docker context use colima`.

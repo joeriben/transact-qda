@@ -4,6 +4,10 @@ transact-qda — Installation
 Prerequisites
 -------------
 
+  For most users, the easiest setup is:
+      macOS / Windows: Docker Desktop
+      Linux:            Docker Engine
+
   Docker — install for your platform:
       Linux:   https://docs.docker.com/engine/install/
       macOS:   either Docker Desktop
@@ -18,12 +22,19 @@ Prerequisites
      Wait until the whale icon in the menu bar stops animating before
      continuing. The Docker Desktop window itself is not used to run
      transact-qda; it only provides the daemon in the background.
+     If you do not know what Homebrew or "headless" means, ignore
+     Colima and use Docker Desktop.
      On macOS with Colima: `brew services start colima` enables the
      daemon and its autostart without a GUI app.
      If both Docker Desktop and Colima are installed, select Colima
      explicitly once:
          docker context use colima
   Git
+
+  The commands below go into a terminal:
+      macOS:   Terminal
+      Windows: Windows Terminal or PowerShell
+      Linux:   your normal terminal
 
 
 Install and start
@@ -46,6 +57,9 @@ Install and start
      The app image is pulled as a prebuilt multi-arch GHCR container.
      The first AI request downloads the embedding model
      nomic-embed-text-v1.5 (~150 MB). That happens only once.
+
+     If `docker compose` says it cannot connect to the Docker daemon,
+     Docker Desktop / Colima is not running yet.
 
 To use a host port other than 5174, add TQDA_PORT=... to .env.
 
