@@ -6,16 +6,24 @@ Voraussetzungen
 
   Docker — plattformspezifisch installieren:
       Linux:   https://docs.docker.com/engine/install/
-      macOS:   https://www.docker.com/products/docker-desktop/
+      macOS:   entweder Docker Desktop
+               (https://www.docker.com/products/docker-desktop/)
+               oder headless mit Colima:
+                   brew install docker colima
+                   brew services start colima
       Windows: https://www.docker.com/products/docker-desktop/
                (bei der Installation WSL-2-Backend aktivieren)
-     Unter macOS und Windows nach der Installation Docker Desktop
-     einmal starten und die System-Berechtigungsdialoge bestätigen.
-     Warten, bis das Wal-Symbol in der Menüleiste bzw. im Tray nicht
-     mehr animiert, bevor es weitergeht.
+     Unter macOS mit Docker Desktop: nach der Installation einmal
+     starten, die System-Berechtigungsdialoge bestätigen und
+     "Beim Anmelden starten" aktivieren. Warten, bis das Wal-Symbol
+     in der Menüleiste nicht mehr animiert, bevor es weitergeht.
      Das Docker-Desktop-Fenster selbst wird nicht benutzt, um
-     transact-qda zu starten; es muss nur im Hintergrund laufen.
-     Alle folgenden Befehle werden im Terminal eingegeben.
+     transact-qda zu starten; es stellt nur den Daemon im Hintergrund.
+     Unter macOS mit Colima aktiviert `brew services start colima`
+     den Daemon samt Autostart ohne GUI-App.
+     Wenn Docker Desktop und Colima parallel installiert sind, den
+     Colima-Kontext einmal explizit setzen:
+         docker context use colima
   Git
 
 

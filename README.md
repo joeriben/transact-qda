@@ -31,7 +31,7 @@ Breaking changes between point releases are possible until v1.0.
 ## Quick start (official runtime)
 
 Prerequisites:
-- **Docker + Docker Compose**
+- **Docker Engine/daemon + Docker Compose**
 - **Git**
 
 ```bash
@@ -51,6 +51,18 @@ PostgreSQL/pgvector database together, applies migrations on startup,
 and stores project data in Docker volumes. The app is shipped as a
 prebuilt multi-arch container image from GHCR:
 `ghcr.io/joeriben/transact-qda`.
+
+On macOS you need a running Docker daemon before `docker compose` can
+work. Two supported options:
+
+- **Docker Desktop**: convenient GUI runtime. Enable its "start at login"
+  option so the daemon is available after sign-in.
+- **Colima**: headless background daemon, no Docker Desktop window
+  required. Install with `brew install docker colima`, then enable
+  autostart once with `brew services start colima`.
+
+If both Docker Desktop and Colima are installed, select the Colima
+daemon explicitly once with `docker context use colima`.
 
 For a controlled test rollout, pin a specific tested tag in `.env`:
 
