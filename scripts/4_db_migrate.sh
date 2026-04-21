@@ -1,6 +1,15 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# shellcheck disable=SC1091
+. scripts/lib/load_env.sh
+
 echo "Running migrations..."
-DATABASE_URL=postgresql://tqda:tqda_dev@localhost:5432/transact_qda node scripts/migrate.js
+
+if [ -z "${DATABASE_URL:-}" ]; then
+  echo "ERROR: DATABASE_URL is not set. Copy .env.example to .env and adjust it."
+  exit 1
+fi
+
+node scripts/migrate.js

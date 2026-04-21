@@ -1,22 +1,32 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 cd "$(dirname "$0")/.."
+
+# shellcheck disable=SC1091
+. scripts/lib/load_env.sh
 
 echo "Starting transact-qda production..."
 
-# Start PostgreSQL
-docker compose up -d
+if [ -z "${DATABASE_URL:-}" ]; then
+  echo "ERROR: DATABASE_URL is not set. Copy .env.example to .env and adjust it."
+  exit 1
+fi
 
-# Wait for PostgreSQL
+echo "  Waiting for database..."
 for i in {1..30}; do
-  if docker compose exec -T postgres pg_isready -U tqda -d transact_qda > /dev/null 2>&1; then
+  if pg_isready -d "$DATABASE_URL" > /dev/null 2>&1; then
     break
   fi
   sleep 1
 done
 
+if ! pg_isready -d "$DATABASE_URL" > /dev/null 2>&1; then
+  echo "ERROR: Database is not reachable via DATABASE_URL."
+  exit 1
+fi
+
 # Run migrations
-DATABASE_URL=postgresql://tqda:tqda_dev@localhost:5432/transact_qda node scripts/migrate.js
+node scripts/migrate.js
 
 # Build and run
 npm run build

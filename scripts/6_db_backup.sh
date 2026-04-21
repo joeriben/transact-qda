@@ -1,6 +1,9 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 cd "$(dirname "$0")/.."
+
+# shellcheck disable=SC1091
+. scripts/lib/load_env.sh
 
 BACKUP_DIR="$HOME/backups/transact-qda"
 KEEP_DAYS=30
@@ -9,14 +12,18 @@ BACKUP_FILE="$BACKUP_DIR/transact_qda_${TIMESTAMP}.sql.gz"
 
 mkdir -p "$BACKUP_DIR"
 
-# Check if the container is running
-if ! docker compose ps --status running | grep -q postgres; then
-  echo "ERROR: PostgreSQL container is not running. Skipping backup."
+if [ -z "${DATABASE_URL:-}" ]; then
+  echo "ERROR: DATABASE_URL is not set. Copy .env.example to .env and adjust it."
+  exit 1
+fi
+
+if ! pg_isready -d "$DATABASE_URL" > /dev/null 2>&1; then
+  echo "ERROR: PostgreSQL is not reachable via DATABASE_URL. Skipping backup."
   exit 1
 fi
 
 echo "Backing up transact_qda → $BACKUP_FILE"
-docker compose exec -T postgres pg_dump -U tqda --clean --if-exists transact_qda | gzip > "$BACKUP_FILE"
+pg_dump --dbname="$DATABASE_URL" --clean --if-exists | gzip > "$BACKUP_FILE"
 
 # Verify the backup is non-empty
 if [ ! -s "$BACKUP_FILE" ]; then

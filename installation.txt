@@ -4,7 +4,7 @@ transact-qda — Installation
 Voraussetzungen
 ---------------
 
-  Docker Engine 24+ oder Docker Desktop
+  PostgreSQL 16+
   Node.js 20+ und npm
   Git
   bash (nativ unter Linux/macOS; unter Windows via WSL2)
@@ -13,56 +13,57 @@ Voraussetzungen
 Linux
 -----
 
-  1. Docker gemäß https://docs.docker.com/engine/install/ installieren.
-     Den eigenen Benutzer in die docker-Gruppe aufnehmen (der Ausdruck
-     $USER wird von der Shell automatisch ersetzt):
-
-         sudo usermod -aG docker $USER
-         newgrp docker
-
-  2. Node.js 20 und Git installieren.
+  1. PostgreSQL 16, Node.js 20 und Git installieren.
 
      Debian/Ubuntu:
          curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-         sudo apt-get install -y nodejs git
+         sudo apt-get install -y nodejs git postgresql postgresql-contrib
 
      Fedora:
-         sudo dnf install nodejs npm git
+         sudo dnf install nodejs npm git postgresql-server postgresql-contrib
+
+  2. Datenbank und Benutzer anlegen:
+
+         sudo -u postgres psql
+         CREATE USER tqda WITH PASSWORD 'change-me';
+         CREATE DATABASE transact_qda OWNER tqda;
+         \q
 
   3. Klonen und konfigurieren:
          git clone https://github.com/joeriben/transact-qda.git
          cd transact-qda
          cp .env.example .env
 
-     In .env den Wert SESSION_SECRET auf eine zufällige Zeichenkette
-     mit mindestens 30 Zeichen setzen.
+     In .env `DATABASE_URL` und `SESSION_SECRET` setzen.
 
   4. Installieren und starten:
          npm install
-         ./scripts/2_start_dev.sh
+         ./scripts/4_db_migrate.sh
+         ./scripts/3_start_prod.sh
 
 
 macOS
 -----
 
-  1. Docker Desktop installieren:
-     https://www.docker.com/products/docker-desktop/
-     Einmal starten und auf vollständigen Start warten.
+  1. PostgreSQL, Node.js und Git via Homebrew installieren:
+         brew install postgresql@16 node git
+         brew services start postgresql@16
 
-  2. Node.js und Git via Homebrew installieren:
-         brew install node git
+  2. Datenbank und Benutzer anlegen:
+         createuser -s tqda
+         createdb transact_qda
 
   3. Klonen und konfigurieren:
          git clone https://github.com/joeriben/transact-qda.git
          cd transact-qda
          cp .env.example .env
 
-     In .env den Wert SESSION_SECRET auf eine zufällige Zeichenkette
-     mit mindestens 30 Zeichen setzen.
+     In .env `DATABASE_URL` und `SESSION_SECRET` setzen.
 
   4. Installieren und starten:
          npm install
-         ./scripts/2_start_dev.sh
+         ./scripts/4_db_migrate.sh
+         ./scripts/3_start_prod.sh
 
 
 Windows
@@ -75,10 +76,7 @@ Setup unter WSL2 ausführen.
      Bei Aufforderung neu starten. Beim Erststart Benutzer und
      Passwort festlegen.
 
-  2. Docker Desktop für Windows mit aktiviertem WSL-2-Backend
-     installieren.
-
-  3. Ubuntu-Terminal aus dem Startmenü öffnen. Ab Schritt 2 des
+  2. Ubuntu-Terminal aus dem Startmenü öffnen. Ab Schritt 1 des
      Linux-Abschnitts fortfahren.
 
 
@@ -97,19 +95,35 @@ Starten und stoppen
 -------------------
 
 Starten:
+    ./scripts/3_start_prod.sh
+
+Entwicklung:
     ./scripts/2_start_dev.sh
 
 Stoppen:
-    Strg+C im Terminal, dann ./scripts/1_stop_all.sh
+    Strg+C im Terminal oder ./scripts/1_stop_all.sh
 
 
 Aktualisieren
 -------------
 
+    ./scripts/6_db_backup.sh
     ./scripts/1_stop_all.sh
     git pull
     npm install
-    ./scripts/2_start_dev.sh
+    ./scripts/4_db_migrate.sh
+    ./scripts/3_start_prod.sh
+
+
+Parallelinstallation auf demselben Host
+---------------------------------------
+
+    git clone https://github.com/joeriben/transact-qda.git transact-qda-next
+    cd transact-qda-next
+    cp .env.example .env
+
+Für die zweite Instanz eine eigene `DATABASE_URL` und bei Bedarf einen
+eigenen App-Port verwenden.
 
 
 Fehler melden

@@ -28,18 +28,21 @@ AI personas, and export pipelines work end-to-end. Rough edges remain
 (some UI polish, a few known bugs tracked in the memory notes).
 Breaking changes between point releases are possible until v1.0.
 
-## Quick start (local research workstation)
+## Quick start (native host install)
 
 Prerequisites:
-- **Docker + Docker Compose** (for the PostgreSQL/pgvector database)
+- **PostgreSQL 16+**
 - **Node.js 20+** and **npm**
+- **Git**
 
 ```bash
 git clone https://github.com/joeriben/transact-qda.git
 cd transact-qda
-cp .env.example .env          # adjust SESSION_SECRET if you wish
+cp .env.example .env
+# adjust DATABASE_URL and SESSION_SECRET in .env
 npm install
-./scripts/2_start_dev.sh      # starts Postgres, runs migrations, then dev server
+./scripts/4_db_migrate.sh
+./scripts/3_start_prod.sh
 ```
 
 Open <http://localhost:5174> in your browser.
@@ -65,10 +68,51 @@ social-worlds, and positional maps.
 
 ### Other scripts
 
-- `./scripts/1_stop_all.sh` — stop the dev server and the database
+- `./scripts/1_stop_all.sh` — stop locally started dev/prod Node processes
+- `./scripts/2_start_dev.sh` — run migrations, then start the dev server
 - `./scripts/3_start_prod.sh` — build and start in production mode
 - `./scripts/4_db_migrate.sh` — run pending migrations
-- `./scripts/6_db_backup.sh` — dump the database to `backups/`
+- `./scripts/5_db_seed.sh` — seed the database with demo content
+- `./scripts/6_db_backup.sh` — dump the database via `pg_dump`
+
+### Parallel installation on the same host
+
+To install a new version next to an existing instance, use a separate directory,
+database, and port. Do not let two instances point at the same PostgreSQL
+database while testing.
+
+Example:
+
+```bash
+git clone https://github.com/joeriben/transact-qda.git transact-qda-next
+cd transact-qda-next
+cp .env.example .env
+# set DATABASE_URL to a separate database, e.g. transact_qda_next
+# optionally run on another port, e.g. PORT=5175
+npm install
+./scripts/4_db_migrate.sh
+./scripts/3_start_prod.sh
+```
+
+### Linux installer
+
+For Linux servers or workstations, a first-pass native installer is included:
+
+```bash
+sudo APP_PORT=5174 bash installer/install.sh
+```
+
+Optional installer variables:
+
+- `INSTALL_DIR=/opt/transact-qda`
+- `APP_USER=transact-qda`
+- `DB_NAME=transact_qda`
+- `DB_USER=tqda`
+- `DB_PASSWORD=...`
+- `APP_HOST=127.0.0.1`
+- `APP_PORT=5174`
+- `BRANCH=main`
+- `RUN_DEMO_SEED=yes`
 
 ## Configuration
 
@@ -97,6 +141,9 @@ transact-qda is primarily designed for **local research workstations**.
 If you plan to run it as a networked service for other people:
 
 - Read [`SECURITY.md`](./SECURITY.md) carefully.
+- Install PostgreSQL separately and back up both the database and local state
+  files such as `.env`, `ai-settings.json`, `*.key`, `static/brand/`, and
+  `uploads/`.
 - Set a long random `SESSION_SECRET`, put the app behind HTTPS, and
   delete/rename the default `admin` account after creating your own.
 - **The AGPL-3.0 requires that any modifications you run as a network
