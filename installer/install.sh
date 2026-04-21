@@ -7,6 +7,8 @@ INSTALL_DIR="${INSTALL_DIR:-/opt/transact-qda}"
 DB_NAME="${DB_NAME:-transact_qda}"
 DB_USER="${DB_USER:-tqda}"
 DB_PASSWORD="${DB_PASSWORD:-}"
+DB_HOST="${DB_HOST:-127.0.0.1}"
+DB_PORT="${DB_PORT:-5432}"
 APP_PORT="${APP_PORT:-5174}"
 APP_HOST="${APP_HOST:-127.0.0.1}"
 REPO_URL="${REPO_URL:-https://github.com/joeriben/transact-qda.git}"
@@ -119,18 +121,18 @@ ensure_runtime_dirs() {
 
 create_database() {
   log "creating PostgreSQL role and database if needed"
-  runuser -u postgres -- psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='${DB_USER}'" | grep -q 1 || \
-    runuser -u postgres -- psql -c "CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';"
+  runuser -u postgres -- psql -p "$DB_PORT" -tAc "SELECT 1 FROM pg_roles WHERE rolname='${DB_USER}'" | grep -q 1 || \
+    runuser -u postgres -- psql -p "$DB_PORT" -c "CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';"
 
-  runuser -u postgres -- psql -tAc "SELECT 1 FROM pg_database WHERE datname='${DB_NAME}'" | grep -q 1 || \
-    runuser -u postgres -- psql -c "CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};"
+  runuser -u postgres -- psql -p "$DB_PORT" -tAc "SELECT 1 FROM pg_database WHERE datname='${DB_NAME}'" | grep -q 1 || \
+    runuser -u postgres -- psql -p "$DB_PORT" -c "CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};"
 }
 
 write_env_file() {
   local env_file="$INSTALL_DIR/.env"
   log "writing $env_file"
   cat >"$env_file" <<EOF
-DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@127.0.0.1:5432/${DB_NAME}
+DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}
 SESSION_SECRET=${SESSION_SECRET}
 HOST=${APP_HOST}
 PORT=${APP_PORT}
