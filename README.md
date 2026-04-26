@@ -92,6 +92,7 @@ an **app-managed local runtime**:
 - no manual database creation
 - service manager integration (`systemd` on Linux, `launchd` on macOS)
 - launcher helper (`transact-qda-open` on Linux, `~/Applications/transact-qda-open.command` on macOS)
+- updater helper (`sudo transact-qda-update` on Linux, `~/Applications/transact-qda-update.command` on macOS)
 
 ### Seeding a demo project
 
@@ -108,6 +109,20 @@ you can still use:
 This creates the `admin` account (if absent), an empty *Sample Project*, and
 the *Clarke Abstract Maps (Demo)* project illustrating situational,
 social-worlds, and positional maps.
+
+### Updating installer-managed local installs
+
+Linux:
+
+```bash
+sudo transact-qda-update
+```
+
+macOS:
+
+```bash
+bash ~/Applications/transact-qda/installer/update_macos.sh
+```
 
 ### Other scripts
 

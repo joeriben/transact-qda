@@ -22,6 +22,7 @@ APP_PLIST_LABEL="ai.transact-qda.app"
 DB_PLIST_PATH="$LAUNCH_AGENTS_DIR/${DB_PLIST_LABEL}.plist"
 APP_PLIST_PATH="$LAUNCH_AGENTS_DIR/${APP_PLIST_LABEL}.plist"
 LAUNCHER_PATH="$HOME/Applications/transact-qda-open.command"
+UPDATE_HELPER_PATH="$HOME/Applications/transact-qda-update.command"
 
 PGDATA="$STATE_DIR/postgres"
 PGRUN="$STATE_DIR/run"
@@ -364,6 +365,15 @@ EOF
   chmod 755 "$LAUNCHER_PATH"
 }
 
+write_update_helper() {
+  log "installing update helper"
+  cat >"$UPDATE_HELPER_PATH" <<EOF
+#!/bin/sh
+exec bash "${INSTALL_DIR}/installer/update_macos.sh"
+EOF
+  chmod 755 "$UPDATE_HELPER_PATH"
+}
+
 open_after_install() {
   if [ "$OPEN_AFTER_INSTALL" = "yes" ]; then
     open "http://${APP_HOST}:${APP_PORT}" || true
@@ -380,12 +390,55 @@ print_summary() {
 [install-macos] app url: http://${APP_HOST}:${APP_PORT}
 [install-macos] launch agents: ${DB_PLIST_LABEL}, ${APP_PLIST_LABEL}
 
-Next steps:
-  1. Open http://${APP_HOST}:${APP_PORT} or run: ${LAUNCHER_PATH}
-  2. Log in with admin / adminadmin
-  3. Change the admin password immediately
-  4. Add branding files under ${PGBRAND} if needed
-  5. Configure AI keys and settings through the app
+************************************************************
+transact-qda macOS local install: what to do next
+************************************************************
+
+Open the app in your browser:
+  open "http://${APP_HOST}:${APP_PORT}"
+  or:
+  ${LAUNCHER_PATH}
+
+Start the database manually, if needed:
+  launchctl kickstart -k "gui/\$(id -u)/${DB_PLIST_LABEL}"
+
+Ensure the database starts again after a reboot:
+  This installer already registered a LaunchAgent with RunAtLoad+KeepAlive.
+  That means after you log into macOS again, the DB and app should restart
+  automatically in your user session.
+
+Start the frontend/app service manually, if needed:
+  launchctl kickstart -k "gui/\$(id -u)/${APP_PLIST_LABEL}"
+
+Make it feel like an app icon:
+  1. Open http://${APP_HOST}:${APP_PORT} in Safari or Chrome
+  2. Use "Add to Dock" / "Install as App"
+  3. That gives you a normal clickable app-like launcher
+
+How to log in:
+  Username: admin
+  Password: adminadmin
+  You do NOT need a separate user account first.
+  Log in once as admin and change the password immediately.
+
+How to update later:
+  ${UPDATE_HELPER_PATH}
+  or in Terminal:
+  bash "${INSTALL_DIR}/installer/update_macos.sh"
+
+Demo content:
+  The installer should create:
+  - Sample Project
+  - Clarke Abstract Maps (Demo)
+  If they are missing, run:
+    cd "$INSTALL_DIR" && node scripts/bootstrap.js
+
+Branding files, if needed:
+  ${PGBRAND}
+
+AI settings and keys:
+  Configure them through the app after login.
+************************************************************
 EOF
 }
 
@@ -418,6 +471,7 @@ main() {
   run_seed_if_requested
   load_app_service
   write_launcher
+  write_update_helper
   open_after_install
   print_summary
 }

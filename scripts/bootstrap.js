@@ -25,10 +25,10 @@ async function bootstrap() {
 		const result = await client.query('SELECT COUNT(*)::text AS count FROM users');
 		const userCount = Number(result.rows[0]?.count || '0');
 		if (userCount > 0) {
-			console.log(`[bootstrap] ${userCount} user(s) present, seed not needed.`);
-			return;
+			console.log(`[bootstrap] ${userCount} user(s) present, ensuring admin/demo baseline exists.`);
+		} else {
+			console.log('[bootstrap] Empty database detected, running initial seed.');
 		}
-		console.log('[bootstrap] Empty database detected, running seed.');
 	} finally {
 		await client.end();
 	}

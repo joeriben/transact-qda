@@ -20,6 +20,7 @@ OPEN_LAUNCHER="${OPEN_LAUNCHER:-yes}"
 DB_SERVICE_NAME="transact-qda-db.service"
 APP_SERVICE_NAME="transact-qda.service"
 LAUNCHER_PATH="/usr/local/bin/transact-qda-open"
+UPDATE_HELPER_PATH="/usr/local/bin/transact-qda-update"
 DESKTOP_ENTRY_PATH="/usr/share/applications/transact-qda.desktop"
 
 PGDATA="$STATE_DIR/postgres"
@@ -372,6 +373,15 @@ EOF
   chmod 644 "$DESKTOP_ENTRY_PATH"
 }
 
+write_update_helper() {
+  log "installing update helper"
+  cat >"$UPDATE_HELPER_PATH" <<EOF
+#!/bin/sh
+exec bash "${INSTALL_DIR}/installer/update.sh"
+EOF
+  chmod 755 "$UPDATE_HELPER_PATH"
+}
+
 print_summary() {
   cat <<EOF
 
@@ -383,12 +393,49 @@ print_summary() {
 [install-local] app url: http://${APP_HOST}:${APP_PORT}
 [install-local] services: $DB_SERVICE_NAME, $APP_SERVICE_NAME
 
-Next steps:
-  1. Open http://${APP_HOST}:${APP_PORT} or run: transact-qda-open
-  2. Log in with admin / adminadmin
-  3. Change the admin password immediately
-  4. Add branding files under $PGBRAND if needed
-  5. Configure AI keys and settings through the app
+************************************************************
+transact-qda Linux local install: what to do next
+************************************************************
+
+Open the app in your browser:
+  http://${APP_HOST}:${APP_PORT}
+  or:
+  transact-qda-open
+
+Start the database manually, if needed:
+  systemctl start ${DB_SERVICE_NAME}
+
+Ensure the database starts again after a reboot:
+  This installer already enabled ${DB_SERVICE_NAME} and ${APP_SERVICE_NAME}
+  via systemd, so they should restart automatically with the machine.
+
+Start the frontend/app service manually, if needed:
+  systemctl start ${APP_SERVICE_NAME}
+
+How to log in:
+  Username: admin
+  Password: adminadmin
+  You do NOT need a separate user account first.
+  Log in once as admin and change the password immediately.
+
+How to update later:
+  sudo transact-qda-update
+  or:
+  sudo bash "${INSTALL_DIR}/installer/update.sh"
+
+Demo content:
+  The installer should create:
+  - Sample Project
+  - Clarke Abstract Maps (Demo)
+  If they are missing, run:
+    sudo -u ${APP_USER} bash -lc 'cd "${INSTALL_DIR}" && node scripts/bootstrap.js'
+
+Branding files, if needed:
+  ${PGBRAND}
+
+AI settings and keys:
+  Configure them through the app after login.
+************************************************************
 EOF
 }
 
@@ -426,6 +473,7 @@ main() {
   run_seed_if_requested
   enable_app_service
   write_launcher
+  write_update_helper
   print_summary
 }
 

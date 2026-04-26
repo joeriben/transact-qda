@@ -75,6 +75,14 @@ Bei installer-verwalteten macOS-Setups alternativ:
 
     ~/Applications/transact-qda-open.command
 
+Linux-Installer-Setups später aktualisieren mit:
+
+    sudo transact-qda-update
+
+macOS-Installer-Setups später aktualisieren mit:
+
+    bash ~/Applications/transact-qda/installer/update_macos.sh
+
 Mit Benutzername admin und Passwort adminadmin anmelden.
 Passwort am gelben Banner ändern.
 

@@ -19,6 +19,51 @@
 	// QDPX export dialog
 	let qdpxExportId = $state<string | null>(null);
 
+	async function exportProject(projectId: string, projectName: string) {
+		syncing = true;
+		syncMessage = 'Preparing native export...';
+		try {
+			const slug = slugify(projectName);
+			const filename = `${slug || 'project'}.tqda.zip`;
+			const res = await fetch(`/api/projects/${projectId}/native-export`);
+			if (!res.ok) {
+				const text = await res.text();
+				throw new Error(text || 'Native export failed');
+			}
+
+			const blob = await res.blob();
+			const picker = (window as any).showSaveFilePicker;
+			if (typeof picker === 'function') {
+				const handle = await picker({
+					suggestedName: filename,
+					types: [{
+						description: 'transact-qda native project archive',
+						accept: { 'application/zip': ['.zip'] }
+					}]
+				});
+				const writable = await handle.createWritable();
+				await writable.write(blob);
+				await writable.close();
+			} else {
+				const url = URL.createObjectURL(blob);
+				const a = document.createElement('a');
+				a.href = url;
+				a.download = filename;
+				a.style.display = 'none';
+				document.body.appendChild(a);
+				a.click();
+				a.remove();
+				URL.revokeObjectURL(url);
+			}
+
+			syncMessage = `Exported "${projectName}" to your computer`;
+		} catch (e: any) {
+			syncMessage = e.message || 'Native export failed';
+		} finally {
+			syncing = false;
+		}
+	}
+
 	async function syncAction(action: string, body: Record<string, any> = {}) {
 		syncing = true;
 		syncMessage = null;
@@ -36,14 +81,6 @@
 			return null;
 		} finally {
 			syncing = false;
-		}
-	}
-
-	async function exportProject(projectId: string) {
-		const result = await syncAction('export', { projectId });
-		if (result) {
-			syncMessage = `Exported to projekte/${result.slug}/`;
-			await invalidateAll();
 		}
 	}
 
@@ -139,6 +176,7 @@
 	// Import
 	let importing = $state(false);
 	let importError = $state<string | null>(null);
+	let importStatus = $state<string | null>(null);
 
 	async function importQdpx(e: Event) {
 		const input = e.target as HTMLInputElement;
@@ -146,17 +184,25 @@
 		if (!file) return;
 		importing = true;
 		importError = null;
-		const form = new FormData();
-		form.append('file', file);
-		const res = await fetch('/api/projects/import', { method: 'POST', body: form });
-		const result = await res.json();
-		if (res.ok) {
-			goto(`/projects/${result.projectId}`);
-		} else {
-			importError = result.error || 'Import failed';
+		importStatus = `Importing ${file.name} ... this may take a while for large projects.`;
+		try {
+			const form = new FormData();
+			form.append('file', file);
+			const res = await fetch('/api/projects/import', { method: 'POST', body: form });
+			const result = await res.json();
+			if (res.ok) {
+				importStatus = 'Import complete. Opening project...';
+				goto(`/projects/${result.projectId}`);
+			} else {
+				importError = result.error || 'Import failed';
+			}
+		} catch (e: any) {
+			importError = e.message || 'Import failed';
+		} finally {
+			importing = false;
+			if (importError) importStatus = null;
+			input.value = '';
 		}
-		importing = false;
-		input.value = '';
 	}
 
 	// Derive which loaded projects have a directory slug
@@ -217,6 +263,10 @@
 		<div class="import-error">{importError}</div>
 	{/if}
 
+	{#if importStatus}
+		<div class="sync-message">{importStatus}</div>
+	{/if}
+
 	{#if showCreate}
 		<form class="create-form" onsubmit={e => { e.preventDefault(); createProject(); }}>
 			<input type="text" placeholder="Project name" bind:value={name} required />
@@ -241,8 +291,8 @@
 						<span class="meta">{project.role}</span>
 					</div>
 					<div class="card-actions">
-						<button class="action-btn" title="Save to directory"
-							onclick={() => exportProject(project.id)} disabled={syncing}>
+						<button class="action-btn" title="Download native backup to your computer"
+							onclick={() => exportProject(project.id, project.name)} disabled={syncing}>
 							💾
 						</button>
 						<button class="action-btn" title="Duplicate"

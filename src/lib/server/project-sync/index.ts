@@ -10,11 +10,13 @@
  */
 
 import { pool } from '$lib/server/db';
+import archiver from 'archiver';
 import { pipeline } from 'stream/promises';
 import { createWriteStream, createReadStream } from 'fs';
-import { mkdir, rename, readdir, stat, rm, copyFile, open as openFile } from 'fs/promises';
+import { mkdir, rename, readdir, stat, copyFile, open as openFile } from 'fs/promises';
 import { join, basename } from 'path';
 import { from as copyFrom, to as copyTo } from 'pg-copy-streams';
+import { Writable } from 'stream';
 import type pg from 'pg';
 import { getProjectsDir, getUploadsDir } from '$lib/server/paths.js';
 
@@ -193,6 +195,28 @@ export async function exportProjectToDir(projectId: string, projectSlug: string)
 	}
 
 	return dir;
+}
+
+export async function exportProjectArchive(projectId: string, projectSlug: string): Promise<Buffer> {
+	const dir = await exportProjectToDir(projectId, projectSlug);
+
+	return new Promise((resolve, reject) => {
+		const chunks: Buffer[] = [];
+		const writable = new Writable({
+			write(chunk, _encoding, callback) {
+				chunks.push(chunk);
+				callback();
+			}
+		});
+
+		const archive = archiver('zip', { zlib: { level: 9 } });
+		archive.on('error', reject);
+		writable.on('finish', () => resolve(Buffer.concat(chunks)));
+
+		archive.pipe(writable);
+		archive.directory(dir, projectSlug);
+		archive.finalize();
+	});
 }
 
 /**

@@ -75,6 +75,14 @@ On installer-managed macOS setups, you can also run:
 
     ~/Applications/transact-qda-open.command
 
+To update a Linux installer-managed local install later:
+
+    sudo transact-qda-update
+
+To update a macOS installer-managed local install later:
+
+    bash ~/Applications/transact-qda/installer/update_macos.sh
+
 Log in with username admin and password adminadmin.
 Change the password at the yellow banner.
 
