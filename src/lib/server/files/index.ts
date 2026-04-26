@@ -5,10 +5,10 @@ import { mkdir, writeFile, stat } from 'node:fs/promises';
 import { join, basename } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { query } from '$lib/server/db/index.js';
-import { getProjectsDir, getUploadsDir } from '$lib/server/paths.js';
+import { getProjectsDir as getProjectsBaseDir, getUploadsDir as getUploadsBaseDir } from '$lib/server/paths.js';
 
-const UPLOAD_DIR = getUploadsDir();
-const PROJECTS_DIR = getProjectsDir();
+const UPLOAD_DIR = getUploadsBaseDir();
+const PROJECTS_DIR = getProjectsBaseDir();
 
 export function slugify(name: string): string {
 	return name

@@ -22,7 +22,7 @@ async function bootstrap() {
 	const client = new pg.Client({ connectionString: DATABASE_URL });
 	await client.connect();
 	try {
-		const result = await client.query<{ count: string }>('SELECT COUNT(*)::text AS count FROM users');
+		const result = await client.query('SELECT COUNT(*)::text AS count FROM users');
 		const userCount = Number(result.rows[0]?.count || '0');
 		if (userCount > 0) {
 			console.log(`[bootstrap] ${userCount} user(s) present, seed not needed.`);
