@@ -20,8 +20,9 @@ import { join } from 'path';
 import { randomUUID } from 'crypto';
 
 import { slugify } from '../files/index.js';
+import { getProjectsDir } from '../paths.js';
 
-const PROJECTS_DIR = join(process.cwd(), 'projekte');
+const PROJECTS_DIR = getProjectsDir();
 
 // ---- ZIP extraction ----
 

@@ -312,7 +312,8 @@
 								<p>No legal notice has been configured for this instance.</p>
 								<p style="opacity: 0.7; font-size: 0.85rem;">
 									Instance operators: provide an HTML snippet at
-									<code>static/brand/impressum.html</code> or set
+									<code>static/brand/impressum.html</code> (manual installs) or in
+									<code>TQDA_BRAND_DIR</code> (installer-managed local installs), or set
 									<code>PUBLIC_IMPRESSUM_URL</code> in <code>.env</code>.
 									See <code>static/brand/README.md</code>.
 								</p>

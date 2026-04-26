@@ -16,8 +16,10 @@ import { mkdir, rename, readdir, stat, rm, copyFile, open as openFile } from 'fs
 import { join, basename } from 'path';
 import { from as copyFrom, to as copyTo } from 'pg-copy-streams';
 import type pg from 'pg';
+import { getProjectsDir, getUploadsDir } from '$lib/server/paths.js';
 
-const PROJECTS_DIR = join(process.cwd(), 'projekte');
+const PROJECTS_DIR = getProjectsDir();
+const UPLOAD_DIR = getUploadsDir();
 
 /**
  * Tables in FK-safe load order.
@@ -174,7 +176,7 @@ export async function exportProjectToDir(projectId: string, projectSlug: string)
 		}
 
 		// Sync files from legacy uploads/ to project dir if needed
-		const legacyDir = join(process.cwd(), 'uploads', projectId);
+		const legacyDir = join(UPLOAD_DIR, projectId);
 		const legacyExists = await stat(legacyDir).catch(() => null);
 		if (legacyExists?.isDirectory()) {
 			const files = await readdir(legacyDir);

@@ -15,8 +15,9 @@ import { readFileSync, writeFileSync, mkdirSync, renameSync, unlinkSync, existsS
 import { join, basename } from 'node:path';
 import { chat, getModel, getProvider } from './client.js';
 import { logInteraction } from './index.js';
+import { getCoachLibraryDir } from '../paths.js';
 
-const LIBRARY_DIR = join(process.cwd(), 'coach-library');
+const LIBRARY_DIR = getCoachLibraryDir();
 const ORIGINALS_DIR = join(LIBRARY_DIR, 'originals');
 
 function ensureDir(dir: string) {

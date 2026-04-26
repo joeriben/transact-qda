@@ -3,10 +3,11 @@
 
 import pg from 'pg';
 import { hash } from 'argon2';
+import { fileURLToPath } from 'node:url';
 
 const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://tqda:tqda_dev@localhost:5432/transact_qda';
 
-async function seed() {
+export async function seed() {
 	const client = new pg.Client({ connectionString: DATABASE_URL });
 	await client.connect();
 
@@ -292,7 +293,10 @@ async function seedClarkeDemoProject(client, userId) {
 	console.log('  Clarke demo project complete (3 maps, read-only).');
 }
 
-seed().catch((e) => {
-	console.error('Seed failed:', e);
-	process.exit(1);
-});
+const entryFile = process.argv[1];
+if (entryFile && fileURLToPath(import.meta.url) === entryFile) {
+	seed().catch((e) => {
+		console.error('Seed failed:', e);
+		process.exit(1);
+	});
+}

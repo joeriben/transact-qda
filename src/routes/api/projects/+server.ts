@@ -7,6 +7,7 @@ import { transaction } from '$lib/server/db/index.js';
 import { projectSchema } from '$lib/shared/validation.js';
 import { slugify, resolveFilePath } from '$lib/server/files/index.js';
 import { getOrCreatePrimarySitMap } from '$lib/server/db/queries/maps.js';
+import { getProjectsDir } from '$lib/server/paths.js';
 import { mkdir, copyFile } from 'fs/promises';
 import { join, basename } from 'path';
 
@@ -163,7 +164,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 				[sourceProjectId]
 			)).rows;
 
-			const newFilesDir = join(process.cwd(), 'projekte', slugify(newName), 'files');
+			const newFilesDir = join(getProjectsDir(), slugify(newName), 'files');
 			await mkdir(newFilesDir, { recursive: true });
 
 			for (const d of docs) {

@@ -24,11 +24,14 @@ again.
 
 ### Protecting your research data
 
-- The database runs in a Docker container on your machine. Your data
-  never leaves your computer unless you send it somewhere on purpose.
+- In a local installation, your PostgreSQL database and local app state
+  stay on your own machine. Your data never leaves your computer unless
+  you send it somewhere on purpose.
+- In small-group deployments, make sure whoever administers PostgreSQL,
+  backups, and updates understands the local security model.
 - AI provider API keys (if you configure any) are stored in `*.key`
-  files in the project directory. These files are excluded from version
-  control — do not copy them into any shared folder or cloud sync.
+  files in the persistent app state. These files are excluded from
+  version control — do not copy them into any shared folder or cloud sync.
 
 ## For operators hosting transact-qda as a network service
 

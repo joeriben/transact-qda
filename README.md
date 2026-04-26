@@ -28,7 +28,19 @@ AI personas, and export pipelines work end-to-end. Rough edges remain
 (some UI polish, a few known bugs tracked in the memory notes).
 Breaking changes between point releases are possible until v1.0.
 
-## Quick start (native host install)
+## Installation Paths
+
+transact-qda is meant to be distributed in **two ways**, not one:
+
+1. **PostgreSQL-backed installation for small working groups**
+   This is the administrated path. It assumes a coding agent or an
+   informatics person in-house who can manage PostgreSQL, updates,
+   backups, and deployment details.
+2. **Single-user installation on one PC**
+   This should be handled through an installer, not through a manual
+   admin workflow.
+
+## PostgreSQL Path (Admin-Guided)
 
 Prerequisites:
 - **PostgreSQL 16+**
@@ -41,29 +53,60 @@ cd transact-qda
 cp .env.example .env
 # adjust DATABASE_URL and SESSION_SECRET in .env
 npm install
-./scripts/4_db_migrate.sh
 ./scripts/3_start_prod.sh
 ```
 
+`./scripts/3_start_prod.sh` waits for PostgreSQL, runs migrations, and
+bootstraps the initial `admin` account plus demo projects automatically if the
+database is still empty.
+
 Open <http://localhost:5174> in your browser.
 
-On **first login**, use `admin` / `adminadmin`. A prominent yellow
-banner will appear at the top prompting you to change the password;
-please do so immediately. The banner goes away once you have.
+On **first login**, use `admin` / `adminadmin`, then change the password at the
+yellow banner immediately.
 
-On **first AI request**, the embedding model
-`nomic-ai/nomic-embed-text-v1.5` (~150 MB, Apache-2.0) is downloaded
-from the Hugging Face Hub into `.model-cache/`. A toast in the lower
-right corner shows progress. Subsequent starts are fully offline.
+On **first AI request**, the embedding model `nomic-ai/nomic-embed-text-v1.5`
+(~150 MB, Apache-2.0) is downloaded once into the local model cache. Later
+starts are offline.
+
+### Single-User Installer
+
+For Linux and macOS workstations, the repository now contains first-pass native
+installers:
+
+```bash
+sudo APP_PORT=5174 bash installer/install.sh
+```
+
+```bash
+bash installer/install_macos.sh
+```
+
+These installers install PostgreSQL locally, deploy the app, run migrations,
+and bootstrap the initial app data.
+The important difference from the admin path is that PostgreSQL is treated as
+an **app-managed local runtime**:
+
+- dedicated local PostgreSQL cluster under the app state directory
+- local-only bind on `127.0.0.1`
+- no manual database creation
+- service manager integration (`systemd` on Linux, `launchd` on macOS)
+- launcher helper (`transact-qda-open` on Linux, `~/Applications/transact-qda-open.command` on macOS)
 
 ### Seeding a demo project
+
+Seeding now happens automatically on the first empty start via
+`scripts/bootstrap.js`.
+
+If you explicitly want to re-run the demo seed against an existing database,
+you can still use:
 
 ```bash
 ./scripts/5_db_seed.sh
 ```
 
-This creates the `admin` account (if absent), an empty *Sample Project*,
-and the *Clarke Abstract Maps (Demo)* project illustrating situational,
+This creates the `admin` account (if absent), an empty *Sample Project*, and
+the *Clarke Abstract Maps (Demo)* project illustrating situational,
 social-worlds, and positional maps.
 
 ### Other scripts
@@ -102,38 +145,67 @@ For Linux servers or workstations, a first-pass native installer is included:
 sudo APP_PORT=5174 bash installer/install.sh
 ```
 
-Optional installer variables:
+For the single-user installer, the most relevant variables are:
 
 - `INSTALL_DIR=/opt/transact-qda`
+- `STATE_DIR=/var/lib/transact-qda`
 - `APP_USER=transact-qda`
 - `DB_NAME=transact_qda`
 - `DB_USER=tqda`
+- `DB_PORT=15432`
 - `DB_PASSWORD=...`
 - `APP_HOST=127.0.0.1`
 - `APP_PORT=5174`
 - `BRANCH=main`
 - `RUN_DEMO_SEED=yes`
 
+### macOS installer
+
+For macOS workstations, a first-pass user-level installer is included:
+
+```bash
+bash installer/install_macos.sh
+```
+
+It uses Homebrew plus `launchd`, and installs into user-owned paths by default:
+
+- `INSTALL_DIR=~/Applications/transact-qda`
+- `STATE_DIR=~/Library/Application Support/transact-qda`
+- `DB_PORT=15432`
+- `APP_PORT=5174`
+- `BRANCH=main`
+- `RUN_DEMO_SEED=yes`
+
+Unlike the Linux installer, the macOS installer is meant to be run as the
+normal user, not with `sudo`.
+
 ## Configuration
 
-All runtime configuration lives in `.env` (gitignored). Copy
-`.env.example` as a starting point.
+All runtime configuration lives in `.env` (gitignored). Copy `.env.example`
+as a starting point.
 
 | Variable                  | Meaning                                                     |
 |---------------------------|-------------------------------------------------------------|
 | `DATABASE_URL`            | PostgreSQL connection string                                |
 | `SESSION_SECRET`          | Secret for session-cookie signing — **set this**            |
+| `TQDA_BOOTSTRAP`          | `auto` (seed only on empty DB), `seed`, or `none`          |
+| `TQDA_STATE_DIR`          | Advanced: external app state directory                      |
+| `TQDA_BRAND_DIR`          | Advanced: external branding directory                       |
 | `PUBLIC_BRAND_LOGO_URL`   | Operator logo in the header (optional)                      |
 | `PUBLIC_BRAND_NAME`       | Short label shown next to the logo (optional)               |
 | `PUBLIC_BRAND_LINK`       | URL the logo links to (optional)                            |
 | `PUBLIC_IMPRESSUM_URL`    | Path to an HTML snippet for the Legal → Impressum dialog    |
 
-Instance-specific assets (operator logo, Impressum HTML) go under
-`static/brand/` — see `static/brand/README.md`.
+Instance-specific assets (operator logo, Impressum HTML) go under:
 
-AI provider settings live in `ai-settings.json` (gitignored, configured
-through the in-app Settings dialog). API keys are stored in `*.key`
-files in the project root (one per provider), never in JSON.
+- `static/brand/` for manual repo-based installations
+- `${TQDA_BRAND_DIR}` for installer-managed local installations
+
+See `static/brand/README.md`.
+
+AI provider settings live in `ai-settings.json` (gitignored, configured through
+the in-app Settings dialog). API keys are stored in `*.key` files
+(one per provider), never in JSON.
 
 ## Hosting this as a public service
 

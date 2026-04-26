@@ -9,7 +9,7 @@
  */
 
 import { pipeline, env, type FeatureExtractionPipeline } from '@huggingface/transformers';
-import { join } from 'node:path';
+import { getModelCacheDir } from '$lib/server/paths.js';
 
 const EMBED_MODEL = 'nomic-ai/nomic-embed-text-v1.5';
 const EMBED_DIMS = 768;
@@ -17,7 +17,7 @@ const EMBED_DIMS = 768;
 export { EMBED_MODEL, EMBED_DIMS };
 
 // Cache models in project directory (portable, gitignored)
-env.cacheDir = join(process.cwd(), '.model-cache');
+env.cacheDir = getModelCacheDir();
 
 export type EmbedStatus = {
 	phase: 'idle' | 'downloading' | 'ready' | 'error';

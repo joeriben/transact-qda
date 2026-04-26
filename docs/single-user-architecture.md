@@ -235,6 +235,14 @@ The right separation is not two unrelated products, but two runtime modes:
 - no manual port juggling
 - project data still exportable/importable
 
+Current repository step:
+
+- the Linux installer is being aligned toward this local mode by creating an
+  app-managed PostgreSQL cluster plus isolated app state, instead of expecting
+  the user to administer a general host PostgreSQL instance.
+- a first-pass macOS installer can follow the same model with Homebrew and
+  user-level launchd agents instead of systemd.
+
 ## Suggested Implementation Order
 
 1. Stabilize scenario 1 documentation and installer as an admin/self-hosting path.

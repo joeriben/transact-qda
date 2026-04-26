@@ -8,7 +8,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { getAiSettingsFile, getApiKeyFile } from '../paths.js';
 
 // ── Provider definitions ──────────────────────────────────────────
 
@@ -64,7 +64,7 @@ export const SUPPORTED_LANGUAGES: Record<string, string> = {
 	ko: '한국어'
 };
 
-const SETTINGS_FILE = join(process.cwd(), 'ai-settings.json');
+const SETTINGS_FILE = getAiSettingsFile();
 
 const DEFAULT_SETTINGS: AiSettings = { provider: 'openrouter', model: '' };
 
@@ -105,7 +105,7 @@ export function readApiKey(provider: Provider): string | null {
 	const def = PROVIDERS[provider];
 	if (!def.keyFile) return null; // Ollama needs no key
 	try {
-		return readFileSync(join(process.cwd(), def.keyFile), 'utf-8').trim();
+		return readFileSync(getApiKeyFile(def.keyFile), 'utf-8').trim();
 	} catch {
 		return null;
 	}
@@ -114,7 +114,7 @@ export function readApiKey(provider: Provider): string | null {
 export function writeApiKey(provider: Provider, key: string): void {
 	const def = PROVIDERS[provider];
 	if (!def.keyFile) return;
-	writeFileSync(join(process.cwd(), def.keyFile), key.trim() + '\n', 'utf-8');
+	writeFileSync(getApiKeyFile(def.keyFile), key.trim() + '\n', 'utf-8');
 	// Force re-init on next call
 	_initialized = false;
 }

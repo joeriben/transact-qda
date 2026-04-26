@@ -15,6 +15,7 @@ import {
 } from '$lib/server/project-sync/index.js';
 import { slugify } from '$lib/server/files/index.js';
 import { query } from '$lib/server/db/index.js';
+import { getUploadsDir } from '$lib/server/paths.js';
 import { readdir, stat } from 'fs/promises';
 import { join } from 'path';
 
@@ -98,7 +99,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 				}
 
 				// Delete uploads directory
-				const uploadsDir = join(process.cwd(), 'uploads', projectId);
+				const uploadsDir = join(getUploadsDir(), projectId);
 				const { rm: rm2 } = await import('fs/promises');
 				await rm2(uploadsDir, { recursive: true, force: true });
 

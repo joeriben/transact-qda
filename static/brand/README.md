@@ -9,8 +9,8 @@ Files the application looks for at runtime:
 
 | Path                       | Purpose                                             |
 |----------------------------|-----------------------------------------------------|
-| `static/brand/logo.{png,svg}` | Header logo. Path is set via `PUBLIC_BRAND_LOGO_URL` in `.env`. |
-| `static/brand/impressum.html` | HTML snippet shown in the Legal → Impressum dialog. If the file is missing, the dialog shows a neutral placeholder. |
+| `static/brand/logo.{png,svg}` | Manual repo-based installs: header logo. Path is set via `PUBLIC_BRAND_LOGO_URL` in `.env` (for example `/brand/logo.svg`). |
+| `static/brand/impressum.html` | Manual repo-based installs: HTML snippet shown in the Legal → Impressum dialog. If the file is missing, the dialog shows a neutral placeholder. |
 
 Environment variables (`.env`) that control the header:
 
@@ -20,6 +20,10 @@ Environment variables (`.env`) that control the header:
 | `PUBLIC_BRAND_NAME`       | Short name shown next to the logo (e.g. institution lab name).    |
 | `PUBLIC_BRAND_LINK`       | URL the logo links to. Empty → logo is not a link.                |
 | `PUBLIC_IMPRESSUM_URL`    | Optional override for the impressum source (default: `/brand/impressum.html`). |
+
+For installer-managed local installs, branding can live outside the repo
+checkout. The runtime serves files from `TQDA_BRAND_DIR` (configured in
+`.env`), which defaults to the app-managed state directory in that mode.
 
 The hard-coded **About** dialog always shows the attribution credit to the
 original authors of `transact-qda`; that credit cannot be removed by

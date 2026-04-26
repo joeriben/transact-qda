@@ -1,129 +1,91 @@
 transact-qda — Installation
 
 
-Voraussetzungen
----------------
+Zwei unterstützte Wege
+----------------------
+
+  1. PostgreSQL-basierte Installation für kleine Arbeitsgruppen
+     Das ist der administrierte Weg. Er setzt einen Coding Agent oder
+     eine Informatikerin / einen Informatiker im Haus voraus.
+
+  2. Single-user-Installation auf einem einzelnen PC
+     Das sollte über einen Installer laufen.
+
+
+Weg 1: PostgreSQL für kleine Arbeitsgruppen
+-------------------------------------------
+
+Voraussetzungen:
 
   PostgreSQL 16+
   Node.js 20+ und npm
   Git
   bash (nativ unter Linux/macOS; unter Windows via WSL2)
 
+Installieren und starten:
 
-Linux
------
-
-  1. PostgreSQL 16, Node.js 20 und Git installieren.
-
-     Debian/Ubuntu:
-         curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-         sudo apt-get install -y nodejs git postgresql postgresql-contrib
-
-     Fedora:
-         sudo dnf install nodejs npm git postgresql-server postgresql-contrib
-
-  2. Datenbank und Benutzer anlegen:
-
-         sudo -u postgres psql
-         CREATE USER tqda WITH PASSWORD 'change-me';
-         CREATE DATABASE transact_qda OWNER tqda;
-         \q
-
-  3. Klonen und konfigurieren:
+  1. Repository klonen und konfigurieren:
          git clone https://github.com/joeriben/transact-qda.git
          cd transact-qda
          cp .env.example .env
 
-     In .env `DATABASE_URL` und `SESSION_SECRET` setzen.
+     In .env DATABASE_URL und SESSION_SECRET setzen.
 
-  4. Installieren und starten:
+  2. Abhängigkeiten installieren:
          npm install
-         ./scripts/4_db_migrate.sh
+
+  3. Starten:
          ./scripts/3_start_prod.sh
 
-
-macOS
------
-
-  1. PostgreSQL, Node.js und Git via Homebrew installieren:
-         brew install postgresql@16 node git
-         brew services start postgresql@16
-
-  2. Datenbank und Benutzer anlegen:
-         createuser -s tqda
-         createdb transact_qda
-
-  3. Klonen und konfigurieren:
-         git clone https://github.com/joeriben/transact-qda.git
-         cd transact-qda
-         cp .env.example .env
-
-     In .env `DATABASE_URL` und `SESSION_SECRET` setzen.
-
-  4. Installieren und starten:
-         npm install
-         ./scripts/4_db_migrate.sh
-         ./scripts/3_start_prod.sh
+     Das Startskript wartet auf PostgreSQL, führt Migrationen aus und
+     bootstrapped die initialen Admin-/Demo-Daten automatisch, falls die
+     Datenbank noch leer ist.
 
 
-Windows
--------
+Weg 2: Single-user-Installer
+----------------------------
 
-Setup unter WSL2 ausführen.
+Für Linux- und macOS-Workstations existieren bereits erste Installer:
 
-  1. In PowerShell als Administrator:
-         wsl --install
-     Bei Aufforderung neu starten. Beim Erststart Benutzer und
-     Passwort festlegen.
+    sudo APP_PORT=5174 bash installer/install.sh
+    bash installer/install_macos.sh
 
-  2. Ubuntu-Terminal aus dem Startmenü öffnen. Ab Schritt 1 des
-     Linux-Abschnitts fortfahren.
+Diese Installer installieren PostgreSQL lokal, deployen die App, führen
+Migrationen aus und bootstrappen die initialen Daten.
+Zusätzlich legt er einen app-verwalteten lokalen PostgreSQL-Cluster im
+State-Verzeichnis an, so dass der Nutzer PostgreSQL nicht manuell
+administrieren muss.
+
+Unter macOS läuft der entsprechende Weg benutzerlokal über Homebrew und
+launchd statt über sudo + systemd.
+
+Für eine breitere Desktop-Distribution für Endnutzer sollte dieser
+Installer-Weg die Grundlage sein, nicht der Admin-Workflow oben.
 
 
 Erster Start
 ------------
 
 http://localhost:5174 im Browser öffnen.
+Bei installer-verwalteten Linux-Setups geht alternativ auch:
+
+    transact-qda-open
+
+Bei installer-verwalteten macOS-Setups alternativ:
+
+    ~/Applications/transact-qda-open.command
+
 Mit Benutzername admin und Passwort adminadmin anmelden.
 Passwort am gelben Banner ändern.
 
 Der erste KI-Aufruf lädt das Embedding-Modell
-nomic-ai/nomic-embed-text-v1.5 (ca. 150 MB) nach .model-cache/.
+nomic-ai/nomic-embed-text-v1.5 (ca. 150 MB) in den lokalen Model-Cache.
 
 
-Starten und stoppen
--------------------
+Entwicklung
+-----------
 
-Starten:
-    ./scripts/3_start_prod.sh
-
-Entwicklung:
     ./scripts/2_start_dev.sh
-
-Stoppen:
-    Strg+C im Terminal oder ./scripts/1_stop_all.sh
-
-
-Aktualisieren
--------------
-
-    ./scripts/6_db_backup.sh
-    ./scripts/1_stop_all.sh
-    git pull
-    npm install
-    ./scripts/4_db_migrate.sh
-    ./scripts/3_start_prod.sh
-
-
-Parallelinstallation auf demselben Host
----------------------------------------
-
-    git clone https://github.com/joeriben/transact-qda.git transact-qda-next
-    cd transact-qda-next
-    cp .env.example .env
-
-Für die zweite Instanz eine eigene `DATABASE_URL` und bei Bedarf einen
-eigenen App-Port verwenden.
 
 
 Fehler melden
