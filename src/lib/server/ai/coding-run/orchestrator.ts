@@ -3,17 +3,15 @@
 
 // Orchestrator — Run-Management für den Per-Dokument-Coding-Run.
 //
-// Adoption von SARAHs lib/server/pipeline/orchestrator.ts Run-Lifecycle-
-// Schicht (Zeilen 421–797), adaptiert für transact-qdas einfachere
-// Topologie:
+// Die Run-Lifecycle-Schicht stammt aus einem älteren Pipeline-Orchestrator
+// und ist auf die einfachere Topologie hier angepasst:
 //   * (case_id, central_document_id) → (project_id, document_id).
 //   * Heuristik-Phasen (h1/h2/h3/h4/h5/meta + scope) → ein einziger
 //     Sequenz-Walk mit fixer H1↔H2-Konfrontation. Kein User-wählbarer
 //     Modus, kein Sequenz-Cap — der Run läuft über das ganze Dokument,
 //     Begrenzung erfolgt über Pause/Cancel.
 //   * cleanupSynthesisOutputs, snapshotReviewerMemos, H4-Checkpoint-
-//     Cascades: entfallen, weil das alles SARAH-spezifische Substrate sind,
-//     die wir hier nicht haben.
+//     Cascades: entfallen, weil die zugehörigen Substrate hier fehlen.
 //
 // Was wir 1:1 übernehmen:
 //   * Status-Lifecycle (running/paused/completed/failed/cancelled).
@@ -324,7 +322,7 @@ async function markCompleted(runId: string): Promise<void> {
 }
 
 async function markFailed(runId: string, message: string): Promise<void> {
-	// Status-Guard (SARAHs Setzung): nur überschreiben, wenn der Run noch
+	// Status-Guard: nur überschreiben, wenn der Run noch
 	// 'running' ist. Sonst würde markFailed einen vom Cancel-Watcher bereits
 	// finalisierten Run (status='cancelled'/'paused') auf 'failed' zurück-
 	// setzen — z.B. wenn die in-flight chat() durch Cancel-Abort throwt und
@@ -805,7 +803,7 @@ export async function runCodingRunLoop(
 			});
 		} catch (err) {
 			// Fataler Provider-Fehler (401/402/403/non-retryable 429) → Loop
-			// abbrechen, markFailed; SARAH-Setzung. Sonstige Fehler werfen
+			// abbrechen, markFailed. Sonstige Fehler werfen
 			// nach oben, wo +server.ts den catch hat.
 			if (isFatalProviderError(err)) {
 				const msg = err instanceof Error ? err.message : String(err);

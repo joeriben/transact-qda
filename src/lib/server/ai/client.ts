@@ -5,13 +5,13 @@
 // All providers except Anthropic use the OpenAI-compatible SDK.
 // Settings from ai-settings.json, API keys from *.key files (gitignored).
 //
-// Robustness-Schicht (übernommen von SARAH's src/lib/server/ai/client.ts):
+// Robustness-Schicht:
 //   * executeWithNetworkRetry — 11-stufiger Backoff bis ~60 min, fängt
 //     transient socket-Drops (UND_ERR_SOCKET, ECONNRESET) + Provider-5xx
 //     (HTTP-Status + body-internal-5xx über OpenAI-kompatible Proxies wie
 //     OpenRouter) + retryable-429 (Backpressure mit Retry-After-Header).
 //   * withDeadline — Wall-Clock-Failsafe gegen SDK-Hänger, die das
-//     AbortSignal nicht respektieren (beobachtet 2026-05-17 in SARAH).
+//     AbortSignal nicht respektieren (beobachtet 2026-05-17).
 //   * Run-Cancel-Signal-Threading — via AsyncLocalStorage aus
 //     coding-run/activity-tracker.ts; `chat()` kombiniert es mit dem
 //     Timeout-Signal via AbortSignal.any(). Mid-Call-Cancel wird wirksam,
@@ -23,12 +23,12 @@
 //     403, 429 ohne Retry-After) von transienten; Caller können den Loop
 //     nach dem ersten fatalen Treffer abbrechen.
 //
-// Bewusst NICHT von SARAH übernommen:
+// Bewusst NICHT enthalten:
 //   * assertSafeForExternal / document_pii_seeds — transact-qda hat (noch)
 //     kein PII-Seed-System. `opts.documentIds` ist als no-op-Param in der
-//     Signatur, damit Callsites SARAH-konform geschrieben werden können,
-//     wird aber nicht ausgewertet. Wenn das Failsafe-System nachgezogen
-//     wird, hängt sich der Scan hier ein.
+//     Signatur, damit die Signatur stabil bleibt, wird aber nicht
+//     ausgewertet. Wenn das Failsafe-System nachgezogen wird, hängt sich
+//     der Scan hier ein.
 
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
@@ -45,7 +45,7 @@ const DEFAULT_CHAT_TIMEOUT_MS = 180_000;
 // ── Wall-Clock-Deadline ──────────────────────────────────────────────
 //
 // Hard-Failsafe gegen Hänger, bei denen das SDK das übergebene AbortSignal
-// nicht respektiert (beobachtet in SARAH 2026-05-17: 2h 39min stiller Hang
+// nicht respektiert (beobachtet 2026-05-17: 2h 39min stiller Hang
 // trotz Default-3-min-Timeout-Signal). Diese Race-Wrapper setzt eine
 // zweite, unabhängige Deadline über setTimeout, die vom Event-Loop
 // garantiert gefeuert wird, selbst wenn der zugrundeliegende fetch in
@@ -73,7 +73,7 @@ function withDeadline<T>(promise: Promise<T>, ms: number, label: string): Promis
 
 // ── Network-Retry-Layer ───────────────────────────────────────────
 //
-// Übernommen von SARAH (Setzungen 2026-05-09 + 2026-05-13). Bei Coding-Runs
+// Setzungen vom 09.05. und 13.05.2026. Bei Coding-Runs
 // auf langen Dokumenten (140 Sequenzen × 4 Calls = 560 Calls/Run) sind
 // transient socket-Drops statistisch garantiert. Ohne Retry rauscht
 // `TypeError: fetch failed { cause: terminated, code: UND_ERR_SOCKET }`
@@ -284,7 +284,7 @@ export interface AiSettings {
 	/** Analysis language — codes, memos, and AI output will use this language */
 	language?: string;
 	/**
-	 * Per-tier model routing (adopted from SARAH). Keyed by tier ID
+	 * Per-tier model routing. Keyed by tier ID
 	 * (e.g. 'coding-run.h1'); each entry overrides that tier's registry
 	 * recommendation. See coding-run/model-tiers.ts.
 	 */
@@ -329,7 +329,7 @@ export function loadSettings(): AiSettings {
 		if (parsed.language && parsed.language in SUPPORTED_LANGUAGES) {
 			settings.language = parsed.language;
 		}
-		// Load per-tier model routing (adopted from SARAH). Each entry
+		// Load per-tier model routing. Each entry
 		// must name a known provider and a non-empty model string.
 		if (parsed.tiers && typeof parsed.tiers === 'object') {
 			const tiers: Partial<Record<string, { provider: Provider; model: string }>> = {};
@@ -434,7 +434,7 @@ export function getProvider(): Provider {
 
 // ── Anthropic model max output (only place with max_tokens set) ──
 //
-// Übernommen von SARAH (Setzung 2026-05-18): Anthropic's Messages API
+// Setzung vom 18.05.2026: Anthropic's Messages API
 // verlangt `max_tokens` als required body parameter. Wert wird intern auf
 // Modell-Max aus der offiziellen Anthropic-Doku gesetzt, nicht von außen
 // steuerbar. transact-qda's bisheriger `opts.maxTokens` wird auf dem
@@ -456,8 +456,8 @@ export function anthropicModelMaxOutput(model: string): number {
 		default:
 			// Fallback statt throw — transact-qda hat Bestands-Callsites mit
 			// unbekannten Anthropic-IDs, die wir nicht versehentlich brechen
-			// wollen. SARAH wirft hier; bei uns ist der konservative 64k-
-			// Fallback der niedrige-Risiko-Weg.
+			// wollen. Der konservative 64k-Fallback ist der Weg mit dem
+			// geringsten Risiko.
 			return 64_000;
 	}
 }
@@ -497,12 +497,12 @@ export async function chat(opts: {
 	tools?: ToolDef[];
 	/**
 	 * Optional. Backwards-Compat-Param für transact-qda-Callsites, die noch
-	 * `maxTokens` setzen. SARAHs Setzung 2026-05-18 schafft Hartbegrenzungen
+	 * `maxTokens` setzen. Die Setzung vom 18.05.2026 schafft Hartbegrenzungen
 	 * ab; im Anthropic-Pfad wird stattdessen `anthropicModelMaxOutput(model)`
 	 * genutzt, im OpenAI-Pfad kein max_tokens gesendet (Provider regelt
 	 * selbst). Hier behalten wir das Feld optional, damit Bestands-Callsites
 	 * compilieren — wenn gesetzt, wird der Wert auf BEIDEN Pfaden als
-	 * max_tokens-Cap genutzt; wenn ungesetzt, greift die SARAH-Setzung.
+	 * max_tokens-Cap genutzt; wenn ungesetzt, greift die Setzung.
 	 */
 	maxTokens?: number;
 	/**
@@ -532,10 +532,10 @@ export async function chat(opts: {
 	 */
 	responseFormat?: 'json';
 	/**
-	 * Anonymisierungs-Failsafe-Hook. Aktuell NO-OP in transact-qda — das
-	 * PII-Seed-System aus SARAH ist nicht portiert. Signatur-Treue: Callsites,
-	 * die SARAH-konform geschrieben sind, kompilieren ohne Anpassung. Wenn
-	 * das Failsafe nachgezogen wird, hängt sich der Scan hier ein.
+	 * Anonymisierungs-Failsafe-Hook. Aktuell NO-OP — ein PII-Seed-System
+	 * gibt es hier noch nicht. Die Signatur bleibt stabil, damit Bestands-
+	 * Callsites ohne Anpassung kompilieren. Wenn das Failsafe nachgezogen
+	 * wird, hängt sich der Scan hier ein.
 	 */
 	documentIds?: string[];
 	/**
@@ -618,7 +618,7 @@ export async function chat(opts: {
 			}
 
 			// max_tokens: Callsite-Override gewinnt; sonst Modell-Max aus
-			// anthropicModelMaxOutput (SARAH-Setzung).
+			// anthropicModelMaxOutput.
 			const maxTokensValue = opts.maxTokens ?? anthropicModelMaxOutput(model);
 
 			const response = await withDeadline(
@@ -714,8 +714,8 @@ export async function chat(opts: {
 				}
 			}));
 
-			// max_tokens: nur senden, wenn explizit gesetzt. SARAH-Setzung
-			// 2026-05-18: keine Hartbegrenzungen mehr im OpenAI-Pfad
+			// max_tokens: nur senden, wenn explizit gesetzt. Setzung vom
+			// 18.05.2026: keine Hartbegrenzungen mehr im OpenAI-Pfad
 			// (Provider regelt selbst). Bestands-Callsites in transact-qda,
 			// die `maxTokens` setzen, werden weiter respektiert.
 			const tokenParam = opts.maxTokens !== undefined

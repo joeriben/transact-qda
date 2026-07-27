@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
 // Model-Tiers — per-faculty model routing for the per-document coding run.
-// Adopted from SARAH's ai/model-tiers.ts (the tier mechanism, scoped here
-// to the coding run's two faculties).
+// The tier mechanism is adopted from an earlier routing layer, scoped here
+// to the coding run's two faculties.
 //
 // The coding run confronts two faculties per sequence — a thematic span
 // computed algorithmically, see segmentation.ts (and prompts.ts):
@@ -148,7 +148,7 @@ export const TIER_REGISTRY: Record<Tier, TierMeta> = {
 		candidates: [
 			{
 				...MIMO,
-				note: 'Empfehlung: Reasoning-Klasse, in SARAH für das synthetische Per-Absatz-Memo (ri.paragraph) validiert — ≈ Sonnet im Inhalt, 3× günstiger. Trägt die konnektive Comprehension und die Konfrontation.'
+				note: 'Empfehlung: Reasoning-Klasse, für synthetische Per-Absatz-Memos validiert — ≈ Sonnet im Inhalt, 3× günstiger. Trägt die konnektive Comprehension und die Konfrontation.'
 			},
 			{
 				...SONNET_OR,

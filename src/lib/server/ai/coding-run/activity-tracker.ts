@@ -3,9 +3,9 @@
 
 // Live-Activity-Tracker für laufende Coding-Runs.
 //
-// 1:1 von SARAHs lib/server/pipeline/activity-tracker.ts übernommen — der
-// Mechanismus ist dort über die volle SARAH-Pipeline erprobt und unverändert
-// portierbar, weil er rein generisch ist (kein Bezug auf Pipeline-Phasen).
+// Unverändert aus einem älteren Pipeline-Tracker übernommen — der
+// Mechanismus ist rein generisch (kein Bezug auf Pipeline-Phasen) und
+// deshalb ohne Anpassung portierbar.
 //
 // Beantwortet die Frage „was tut der Server gerade konkret?" für einen
 // laufenden Run, ohne dass die Callsites das durchreichen müssen. Über

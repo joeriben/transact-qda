@@ -3,12 +3,11 @@
 
 -- Migration 027: coding_runs — State-Persistenz für den Per-Dokument-Coding-Run
 --
--- Adoption von SARAHs Migration 038 (pipeline_runs) + 056 (cancelled-Status)
--- für transact-qdas SA-agnostischen Coding-Run pro Dokument. Wir folgen
--- SARAHs Run-Management 1:1 (start/resume, pause/cancel, status-Lifecycle,
--- partial-unique-Slot, accumulated tokens, last_event_at als Heartbeat-
--- Anker für den Stuck-Watchdog) und passen nur an, was strukturell
--- transact-qda statt SARAH ist:
+-- Das Run-Management ist aus einem älteren Pipeline-Schema übernommen
+-- (start/resume, pause/cancel, status-Lifecycle, partial-unique-Slot,
+-- accumulated tokens, last_event_at als Heartbeat-Anker für den Stuck-
+-- Watchdog). Angepasst wurde nur, was für den dokumentbezogenen Coding-Run
+-- strukturell anders ist:
 --
 --   * (case_id, central_document_id) → (project_id, document_id).
 --     Coding-Run ist projektgebunden und dokumentbezogen, kein „Case".
@@ -31,7 +30,7 @@
 --       b) sequence_status (Loop-seitig, vermeidet die Re-Berechnung
 --          des LLM-Trips für bereits erledigte Sequenzen).
 --
--- Status-Lifecycle (1:1 SARAH):
+-- Status-Lifecycle:
 --   'running'   — Loop aktiv
 --   'paused'    — User-Pause; Resume durch erneuten Start möglich
 --   'completed' — alle Sequenzen abgeschlossen
@@ -40,7 +39,7 @@
 --                 ein erneutes POST startet einen frischen Run (cancelled
 --                 ist im partial-unique-index ausgeschlossen).
 --
--- Cancel-Signal-Trennung (SARAH Migration 056):
+-- Cancel-Signal-Trennung:
 --   cancel_intent='pause'  → bei nächster Idempotenz-Grenze status='paused'
 --   cancel_intent='cancel' → bei nächster Idempotenz-Grenze status='cancelled'
 --   cancel_intent=NULL     → kein Cancel angefordert
@@ -104,7 +103,7 @@ CREATE INDEX IF NOT EXISTS idx_coding_runs_project_document
     ON coding_runs(project_id, document_id, started_at DESC);
 
 -- Genau ein nicht-terminaler Run pro (project, document). 'cancelled' ist
--- aus dem partial-unique-Index ausgeschlossen (1:1 SARAH-Setzung Mig 056):
+-- aus dem partial-unique-Index ausgeschlossen:
 -- ein cancelled Run gibt den Slot frei, ein neuer Lauf darf gestartet
 -- werden. 'paused' bleibt im Index, weil ein pausierter Run resumierbar
 -- ist und der Slot belegt bleiben muss.

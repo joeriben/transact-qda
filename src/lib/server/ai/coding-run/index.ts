@@ -3,8 +3,8 @@
 
 // Per-document coding run — Typen + gemeinsam genutzte Helper.
 //
-// Den Loop selbst besitzt jetzt orchestrator.ts (SARAH-1:1-Adoption mit
-// Run-Persistenz, Pause/Resume, Cancel-Intent, Stuck-Watchdog-Anker). Diese
+// Den Loop selbst besitzt jetzt orchestrator.ts (Run-Persistenz,
+// Pause/Resume, Cancel-Intent, Stuck-Watchdog-Anker). Diese
 // Datei ist nur noch:
 //   * das Vokabular (H1Code, H2Verdict, H1Reaction, Survivor, SequenceTrace,
 //     CodingRunResult, CodingRunEvent), das orchestrator, +server.ts und die
@@ -143,8 +143,8 @@ export interface CodingRunResult {
 }
 
 /**
- * Live-Progress-Events für den SSE-Stream (Streaming-Pattern von SARAHs
- * Pipeline-Run adoptiert). Der Loop in orchestrator.ts emittiert run-init /
+ * Live-Progress-Events für den SSE-Stream (Streaming-Pattern aus dem
+ * älteren Pipeline-Run). Der Loop in orchestrator.ts emittiert run-init /
  * segmented / sequence-start / sequence-done; +server.ts framet die
  * terminalen completed / failed / paused / cancelled und feuert alive als
  * Heartbeat. Wire-Format: `data: <json>\n\n`.

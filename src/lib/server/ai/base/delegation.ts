@@ -226,8 +226,8 @@ async function delegateChat(
 		const outputTokens = response.usage.output_tokens;
 		// delegation.ts konfiguriert kein Prompt-Caching — falls Anthropic
 		// dennoch Cache-Felder mitschickt (z.B. wenn der Hash matchet), lesen
-		// wir sie defensiv aus; sonst 0. Der ChatResponse-Vertrag (Mig auf
-		// SARAH-Robustness in client.ts) verlangt beide Felder.
+		// wir sie defensiv aus; sonst 0. Der ChatResponse-Vertrag der
+		// Robustness-Schicht in client.ts verlangt beide Felder.
 		const cacheCreationTokens = response.usage.cache_creation_input_tokens ?? 0;
 		const cacheReadTokens = response.usage.cache_read_input_tokens ?? 0;
 

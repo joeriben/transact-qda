@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
 // Coding-Run-Endpoint — Per-Dokument-Lauf der H1↔H2-Konfrontation mit Live-
-// Status via Server-Sent Events. Adoption 1:1 von SARAHs pipeline/run-Route
+// Status via Server-Sent Events. Übernommen aus der älteren Pipeline-Route
 // (mid-call Cancel via ALS-AbortSignal, Cancel-Watcher 500ms, Stuck-Watchdog
 // 30s/10min, Heartbeat 10s, run-init/paused/cancelled/completed/failed-
-// Framing), angepasst auf (projectId, docId) statt (caseId).
+// Framing), angepasst auf (projectId, docId).
 //
 //   POST   — startet einen neuen Run oder resumed den aktiven (paused/running);
 //            antwortet mit text/event-stream bis 'completed', 'paused',
@@ -56,7 +56,7 @@ import { withRun, endRun, getActivity } from '$lib/server/ai/coding-run/activity
 /**
  * Zugriffs-Check: Dokument existiert im Projekt UND der User ist Mitglied
  * des Projekts. Wirft 404 bei fehlendem Dokument, 403 bei fehlender
- * Mitgliedschaft. Adaption von SARAHs ensureCaseAccess.
+ * Mitgliedschaft.
  */
 async function ensureDocAccess(projectId: string, docId: string, userId: string): Promise<void> {
 	const doc = await queryOne<{ id: string }>(
@@ -109,9 +109,9 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			send({ type: 'run-init', runId: run.id });
 			// Wenn wir einen pausierten/laufenden Run wieder aufgenommen haben,
 			// zeigt die UI den aktuellen Stand mit `resumed` an. Das ist hier
-			// implizit über run.current_index/sequence_status sichtbar; SARAH
-			// reicht das Flag mit, wir lassen es weg, weil unsere Event-Form
-			// schlanker ist und der initiale Loop-Tick ohnehin `segmented` mit
+			// implizit über run.current_index/sequence_status sichtbar; ein
+			// eigenes Flag lassen wir weg, weil unsere Event-Form schlanker
+			// ist und der initiale Loop-Tick ohnehin `segmented` mit
 			// totalSequences emittiert.
 			void resumed;
 
@@ -163,10 +163,9 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 
 			// Stuck-Run-Watchdog: System-Failsafe gegen Hänger, die weder den
 			// per-Call-Timeout (wall-clock + AbortSignal in chat()) noch das
-			// Cancel-Signal greifen. SARAH-Setzung: Schwelle 10min last_event_at-
-			// Staleness, Poll 30s — Reaktion innerhalb ~30s nach Überschreitung.
-			// Verbirgt KEINE Fehler, zeigt sie als failed-Run an (vgl. SARAHs
-			// feedback_hardening_must_expose_not_hide).
+			// Cancel-Signal greifen. Schwelle 10min last_event_at-Staleness,
+			// Poll 30s — Reaktion innerhalb ~30s nach Überschreitung.
+			// Verbirgt KEINE Fehler, sondern zeigt sie als failed-Run an.
 			const STUCK_THRESHOLD_MS = 10 * 60 * 1000;
 			const STUCK_POLL_MS = 30_000;
 			let stuckHandled = false;
