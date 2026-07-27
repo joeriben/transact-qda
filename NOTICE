@@ -1,0 +1,48 @@
+transact-qda
+Copyright (C) 2024–2026 Benjamin Jörissen
+
+This product is licensed under the GNU Affero General Public License,
+Version 3 or (at your option) any later version. See the LICENSE file for
+the full license text. A commercial license is also available on request
+(see COMMERCIAL-LICENSE.md).
+
+This product includes software developed by third parties. Required
+attributions for those components are collected in THIRD_PARTY_NOTICES.md.
+
+The following Apache-2.0 components require their NOTICE contents to be
+passed along with redistributions. Where an upstream NOTICE file exists,
+this NOTICE file incorporates it by reference:
+
+  - @huggingface/transformers
+    Copyright (c) Hugging Face
+    Source: https://github.com/huggingface/transformers.js
+    Upstream NOTICE: https://github.com/huggingface/transformers.js/blob/main/NOTICE
+
+  - nomic-ai/nomic-embed-text-v1.5 (embedding model, downloaded at runtime, not bundled)
+    Copyright (c) Nomic, Inc. and contributors
+    Licensed under Apache-2.0
+    Model card: https://huggingface.co/nomic-ai/nomic-embed-text-v1.5
+
+  - sharp, @img/sharp-*, @img/colour
+    Copyright 2013 Lovell Fuller and others
+    Source: https://github.com/lovell/sharp
+
+  - Google Material Symbols (icons in static/icons/)
+    Copyright Google LLC
+    Licensed under Apache-2.0
+    Source: https://fonts.google.com/icons
+
+  - ONNX Runtime (onnxruntime-node, onnxruntime-web, onnxruntime-common)
+    Copyright (c) Microsoft Corporation
+    Source: https://github.com/microsoft/onnxruntime
+
+  - openai
+    Copyright (c) OpenAI
+    Source: https://github.com/openai/openai-node
+
+  - pdfjs-dist
+    Copyright Mozilla Foundation and contributors
+    Source: https://github.com/mozilla/pdf.js
+
+See THIRD_PARTY_NOTICES.md for the complete list of third-party packages
+and their licenses.

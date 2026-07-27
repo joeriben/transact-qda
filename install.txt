@@ -1,0 +1,102 @@
+transact-qda — Installation
+
+
+Two supported paths
+-------------------
+
+  1. PostgreSQL-backed installation for small working groups
+     This is the administrated path. It assumes a coding agent or an
+     in-house informatics person.
+
+  2. Single-user installation on one PC
+     This should be handled through an installer.
+
+
+Path 1: PostgreSQL for small working groups
+-------------------------------------------
+
+Prerequisites:
+
+  PostgreSQL 16+
+  Node.js 20+ and npm
+  Git
+  bash (native on Linux/macOS; on Windows via WSL2)
+
+Install and start:
+
+  1. Clone and configure:
+         git clone https://github.com/joeriben/transact-qda.git
+         cd transact-qda
+         cp .env.example .env
+
+     Set DATABASE_URL and SESSION_SECRET in .env.
+
+  2. Install dependencies:
+         npm install
+
+  3. Start:
+         ./scripts/3_start_prod.sh
+
+     The start script waits for PostgreSQL, runs migrations, and
+     bootstraps the initial admin/demo data automatically if the
+     database is still empty.
+
+
+Path 2: single-user installer
+-----------------------------
+
+For Linux and macOS workstations, first-pass installers already exist:
+
+    sudo APP_PORT=5174 bash installer/install.sh
+    bash installer/install_macos.sh
+
+These installers install PostgreSQL locally, deploy the app, run migrations,
+and bootstrap initial data.
+It also creates an app-managed local PostgreSQL cluster under the app state
+directory, so the user does not have to create databases or manage PostgreSQL
+manually.
+
+On macOS the equivalent path is user-level and uses Homebrew plus launchd
+instead of sudo + systemd.
+
+For broader end-user desktop distribution, this installer path should be
+the basis rather than the admin workflow above.
+
+
+First run
+---------
+
+Open http://localhost:5174 in a browser.
+On installer-managed Linux setups, you can also run:
+
+    transact-qda-open
+
+On installer-managed macOS setups, you can also run:
+
+    ~/Applications/transact-qda-open.command
+
+To update a Linux installer-managed local install later:
+
+    sudo transact-qda-update
+
+To update a macOS installer-managed local install later:
+
+    bash ~/Applications/transact-qda/installer/update_macos.sh
+
+Log in with username admin and password adminadmin.
+Change the password at the yellow banner.
+
+The first AI request downloads the embedding model
+nomic-ai/nomic-embed-text-v1.5 (~150 MB) to the local model cache.
+
+
+Development
+-----------
+
+    ./scripts/2_start_dev.sh
+
+
+Issues
+------
+
+https://github.com/joeriben/transact-qda/issues

@@ -1,0 +1,70 @@
+node_modules
+
+# Output
+.output
+.vercel
+.netlify
+.wrangler
+/.svelte-kit
+/build
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.*
+!.env.example
+!.env.test
+
+# Vite
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+# API keys & local settings
+*.key
+ai-settings.json
+
+# Uploads
+/uploads/
+/coach-library/
+
+# ML model cache
+/.model-cache/
+
+# Instance-specific branding (operator logo, impressum HTML, etc.)
+# Each deployment provides its own files here; public repo keeps it empty.
+/static/brand/*
+!/static/brand/.gitkeep
+!/static/brand/README.md
+
+# PostgreSQL data
+/pgdata/
+projekte/
+backup-*.sql
+
+# DB-Dumps enthalten Nutzerkonten (Hashes), Session-Tokens und Forschungsdaten —
+# niemals tracken, auch nicht im privaten Repo.
+/backups/
+
+# Dev-only A/B/C/D/E-Forensik-Traces (cname-forensic.ts schreibt pro Run hierher)
+/.tmp-forensic-trace/
+
+# Dev-only Critfriend-Batchtests (enthalten echte Forschungsdaten — nie tracken)
+/.tmp-critfriend/
+/.tmp-*/
+/.dev-server.log
+/logdatei
+/HANDOVER.md
+
+# Research data, DB dumps and internal working material must never enter this
+# repository. Kept here as a guard, not because these paths are expected.
+/backups/
+/docs/sessions/
+/scripts/strauss-lab/
+/CLAUDE.md
+/.claude/
+*.dump
+*.sql.gz
+pg_dump*

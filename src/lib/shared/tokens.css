@@ -1,0 +1,31 @@
+/* SOURCE OF TRUTH — edit BOTH if you change a CCS color. */
+/* Counterpart: src/lib/shared/tokens.ts */
+
+:root {
+	/* CCS gradient */
+	--ccs-cue:    #6b7280;
+	--ccs-char:   #f59e0b;
+	--ccs-spec:   #10b981;
+
+	/* Provenance / memo */
+	--memo:       #f59e0b;
+
+	/* Accents */
+	--accent:     #8b9cf7;
+	--warning:    #e8a54b;
+
+	/* Surfaces */
+	--surface-0:  #0f1117;
+	--surface-1:  #161822;
+	--surface-2:  #1e2030;
+
+	/* Borders */
+	--border:     #2a2d3a;
+	--border-hi:  #3a3d4a;
+
+	/* Text */
+	--text-1:     #e1e4e8;
+	--text-2:     #c9cdd5;
+	--text-3:     #8b8fa3;
+	--text-4:     #6b7280;
+}
