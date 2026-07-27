@@ -3,8 +3,8 @@
 
 // Empty-Retry-with-Escalation für die 4 chat()-Calls pro Sequenz.
 //
-// Warum es das gibt — Lab-Befund 2026-05-24 (strauss-lab/v1-strauss-strict
-// auf assessment-2026-03-21.md, dt.): MiMo (xiaomi/mimo-v2.5-pro) hat auf
+// Warum es das gibt — Befund aus einer internen Teststrecke (2026-05-24,
+// deutsche Quelle): MiMo (xiaomi/mimo-v2.5-pro) hat auf
 // langen deutschen Sequenzen gelegentlich einen Token-Level-Meltdown — das
 // SDK-Response-Objekt kommt sauber zurück, aber der Text ist
 // unparseable garbage ("Transaktionale Ontologie ** Metadaten in-T Prozelleichtungen

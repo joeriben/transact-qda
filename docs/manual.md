@@ -1,4 +1,6 @@
-# transact-qda — Manual -- Claude Opus 4.6, derived from full coding session protocols (expt technical bughunting), redacted by Benjamin Jörissen. March 14, 2026 - Manual Version: 2.0 (March 24, 2026)
+# transact-qda — Manual
+
+*Version 2.0 (March 2026). Drafted with Claude Opus 4.6, edited by Benjamin Jörissen. Parts of this manual predate the current release and are being revised.*
 
 A qualitative data analysis platform grounded in Situational Analysis (Clarke) and transactional philosophy (Dewey/Bentley), designed for research at the intersection of Science and Technology Studies and educational theory (*Erziehungswissenschaft*, Sünkel). Open-source, self-hosted, with an AI co-researcher that operates within the same data ontology as the human analyst.
 

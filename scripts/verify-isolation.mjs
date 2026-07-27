@@ -340,7 +340,7 @@ async function createMemoInA(cookie, projectId, namingId) {
 
 async function cleanup() {
 	// Only ever touch objects we created (captured IDs) that still carry the
-	// isotest_ marker. Real projects (e.g. AI4ArtsEd) are never referenced.
+	// isotest_ marker. Real research projects are never referenced.
 	try {
 		if (created.projectIds.length > 0) {
 			// topology_snapshots.map_id is ON DELETE NO ACTION -> clear first.

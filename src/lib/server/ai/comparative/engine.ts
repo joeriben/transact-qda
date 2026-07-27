@@ -468,7 +468,7 @@ export async function runComparativeDimensionalization(params: ComparativeParams
 	const result = base();
 	result.verified = Object.fromEntries(cases.map((c) => [c.name, verified[c.name].length]));
 
-	// silence: any case with no verified instance is a positive finding (Barad / CLAUDE.md §5)
+	// silence: any case with no verified instance is a positive finding (Barad; see design-begleiten.md)
 	const anchorCase = cases[0];
 	const missing = cases.find((c) => verified[c.name].length === 0);
 	if (missing) {
@@ -541,8 +541,8 @@ export async function runComparativeDimensionalization(params: ComparativeParams
  * Mirrors findOrCreateNaming (coding-run/write.ts): createOrphanNaming (provenance via the
  * shared provenanceProps → {aiPersona,aiRunId}) → 'cue' act → one memo-act per axis carrying
  * the dimensional analysis. cue-only — NO auto-promotion to characterization: that gradient
- * step is the researcher's terminal act, not the engine's (design-begleiten Satz I / CLAUDE.md
- * C). The {aiPersona,aiRunId} stamp makes the write hide-filterable (queries/namings.ts) and
+ * step is the researcher's terminal act, not the engine's (design-begleiten.md, Satz I).
+ * The {aiPersona,aiRunId} stamp makes the write hide-filterable (queries/namings.ts) and
  * rollback-addressable (reset-coding), exactly like every other AI write.
  * Returns the concept-naming id (undo: DELETE FROM namings WHERE id = … cascades).
  */

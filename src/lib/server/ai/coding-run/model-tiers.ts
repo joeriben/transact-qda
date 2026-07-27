@@ -87,7 +87,7 @@ export interface TierMeta {
 	/**
 	 * Escalation target wenn der primary tier auf eine Sequenz hin zweimal
 	 * leer/unparsebar antwortet (MiMo-Token-Meltdown-Pattern, beobachtet in
-	 * strauss-lab v1-DE seg 2/3). null = kein Fallback, Helper gibt nach 2
+	 * internen Testläufen auf deutscher Quelle). null = kein Fallback, Helper gibt nach 2
 	 * leeren Versuchen auf und der Loop arbeitet mit der leeren Antwort
 	 * weiter (Status-quo-Verhalten vor 2026-05-24).
 	 */
@@ -116,11 +116,11 @@ export const TIER_REGISTRY: Record<Tier, TierMeta> = {
 		candidates: [
 			{
 				...MIMO,
-				note: 'Empfehlung: hält den Sprach-Lock (PASSAGE-Sprache → Output-Sprache) zuverlässig. In strauss-lab v1/v2 lang_match=true, gerund_ratio=1.0, memo_connective=1.0 auf englischer und deutscher Quelle. Reasoning-Klasse, geeignet für die Strauss-Process-Code-Disziplin.'
+				note: 'Empfehlung: hält den Sprach-Lock (PASSAGE-Sprache → Output-Sprache) zuverlässig. In internen Testläufen lang_match=true, gerund_ratio=1.0, memo_connective=1.0 auf englischer und deutscher Quelle. Reasoning-Klasse, geeignet für die Strauss-Process-Code-Disziplin.'
 			},
 			{
 				...MISTRAL,
-				note: 'Günstiger und EU-DSGVO — driftet aber unter Last die Sprache: in strauss-lab v0 (Sprach-Direktive im Footer) defaultete auf Französisch, in v3 (front-anchored STEP-0-Direktive) auf Deutsch. Kein Prompt-Position kuriert den Drift. Nur einsetzen, wenn Sprache pro Projekt fix konfiguriert ist UND eine Drift-Prüfung läuft.'
+				note: 'Günstiger und EU-DSGVO — driftet aber unter Last die Sprache: mit der Sprach-Direktive im Footer defaultete er auf Französisch, mit front-anchored STEP-0-Direktive auf Deutsch. Kein Prompt-Position kuriert den Drift. Nur einsetzen, wenn Sprache pro Projekt fix konfiguriert ist UND eine Drift-Prüfung läuft.'
 			},
 			{
 				...KIMI_MAMMOUTH,

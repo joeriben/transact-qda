@@ -5,8 +5,8 @@ import { defineConfig } from 'vite';
 //
 // Browser scopen Cookies und (faktisch) auch den Passwort-Manager nach Host-
 // name, nicht nach Port. Auf demselben „localhost" mit verschiedenen Ports
-// teilen sich SARAH, transact-qda etc. denselben Cookie-Topf — und der Auto-
-// fill schlägt gespeicherte Credentials der jeweils anderen App vor. Daher
+// teilen sich alle lokal laufenden Anwendungen denselben Cookie-Topf — und der
+// Autofill schlägt gespeicherte Credentials der jeweils anderen App vor. Daher
 // rufen wir transact-qda über einen separaten Hostname auf:
 //
 //   http://tqda.localhost:5174
@@ -15,14 +15,19 @@ import { defineConfig } from 'vite';
 // auf — kein /etc/hosts-Eintrag nötig.
 //
 // `server.host: '127.0.0.1'` bindet das Listening explizit auf Loopback (nicht
-// auf alle Interfaces). `allowedHosts` erlaubt zusätzlich den Production-
-// Hostname (transact.ucdcae.org) und das `.localhost`-Pattern für jedes
-// `*.localhost`-Alias, das jemand verwenden will.
+// auf alle Interfaces). `allowedHosts` erlaubt das `.localhost`-Pattern für
+// jedes `*.localhost`-Alias. Wer den Dev-Server hinter einem eigenen Hostnamen
+// betreibt, ergänzt ihn über TQDA_ALLOWED_HOSTS (kommagetrennt).
+const extraHosts = (process.env.TQDA_ALLOWED_HOSTS ?? '')
+	.split(',')
+	.map((h) => h.trim())
+	.filter(Boolean);
+
 export default defineConfig({
 	plugins: [sveltekit()],
 	server: {
 		port: 5174,
 		host: '127.0.0.1',
-		allowedHosts: ['transact.ucdcae.org', '.localhost']
+		allowedHosts: ['.localhost', ...extraHosts]
 	}
 });

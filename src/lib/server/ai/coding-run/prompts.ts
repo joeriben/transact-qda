@@ -15,8 +15,8 @@
 // faculty to restrain itself does not work — H2's independent reading
 // is the measure that does.
 //
-// History — the strauss-lab harness (scripts/strauss-lab/) tested four
-// strategies (v0..v3) against this document set:
+// History — an internal test harness compared four strategies (v0..v3)
+// on an English and a German source document:
 //   • v0 (Mistral H1 + footer-position language directive): drifted to
 //     French on English source — Mistral's default-language bias
 //     overrode a non-anchored instruction.
