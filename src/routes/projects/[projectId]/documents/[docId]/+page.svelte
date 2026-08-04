@@ -7,8 +7,11 @@
 	import ImageAnnotationViewer from '$lib/components/ImageAnnotationViewer.svelte';
 	import ComparisonPanel from './ComparisonPanel.svelte';
 	// AI-Evaluation audit layer (separable): verdict control shown only on
-	// AI-produced codes. Remove with the ai-eval module to drop the layer.
+	// AI-produced codes, plus the shared verdict state that greys out a rejected
+	// cue. Remove with the ai-eval module to drop the layer — every usage site in
+	// this file is marked "ai-eval".
 	import AiEvalControl from '$lib/components/ai-eval/AiEvalControl.svelte';
+	import { verdicts } from '$lib/components/ai-eval/verdicts.svelte.js';
 	import NamingContextMenu from './NamingContextMenu.svelte';
 	import PhaseAssignDialog from './PhaseAssignDialog.svelte';
 	import CodingRunPanel from './CodingRunPanel.svelte';
@@ -44,12 +47,38 @@
 	// einer Material-Ebene als „Inhaltsverzeichnis" organisieren (linke TOC-
 	// Spalte). Die beiden Klassen dürfen nicht vermischt werden (siehe
 	// docs/design-mother-map-and-coding-flow.md sowie Migration 030).
+	// ai-eval: ausgeblendete Passagen verschwinden aus Liste, Margin und Text —
+	// nicht gelöscht, nur unsichtbar; der Panel-Footer holt sie zurück.
+	let showHidden = $state(false);
+	const hiddenAnnotations = $derived(
+		annotations.filter((a: any) => (a.valence ?? 'codes') === 'codes' && a.properties?.hidden)
+	);
 	const codeAnnotations = $derived(
-		annotations.filter((a: any) => (a.valence ?? 'codes') === 'codes')
+		annotations.filter(
+			(a: any) =>
+				(a.valence ?? 'codes') === 'codes' && (showHidden || !a.properties?.hidden)
+		)
 	);
 	const sequenceNamingAnnotations = $derived(
 		annotations.filter((a: any) => a.valence === 'thematizes')
 	);
+
+	// ai-eval: Urteile des Dokuments einmal laden; ein verworfener Cue wird in
+	// Liste und Namings-Spalte ausgegraut.
+	$effect(() => {
+		verdicts.load(data.projectId, doc.id);
+	});
+	function isRejectedAnn(ann: any): boolean {
+		return (
+			!!(ann.properties?.aiPersona || ann.properties?.aiSuggested) &&
+			verdicts.isRejected(ann.code_id, ann.properties?.anchor)
+		);
+	}
+	/** Ein Cue gilt als verworfen, wenn keine seiner sichtbaren Passagen mehr steht. */
+	function isRejectedNaming(codeId: string): boolean {
+		const anns = codeAnnotations.filter((a: any) => a.code_id === codeId);
+		return anns.length > 0 && anns.every(isRejectedAnn);
+	}
 
 	// TOC-Sortierung: nach sequenceMeta.seq (vom coding-run gesetzt, in
 	// write.ts via extraProperties in `properties` gespreadet), Fallback
@@ -852,6 +881,17 @@
 		}
 	}
 
+	// ai-eval: eine Revision wurde als eigenes Naming übernommen oder eine Passage
+	// aus-/eingeblendet. Remove with the ai-eval layer (see AiEvalControl.svelte).
+	async function refreshAfterAiEval() {
+		const [annRes, candidatesRes] = await Promise.all([
+			fetch(`/api/projects/${data.projectId}/documents/${doc.id}/annotations`),
+			fetch(`/api/projects/${data.projectId}/codes`)
+		]);
+		if (annRes.ok) annotations = await annRes.json();
+		if (candidatesRes.ok) candidates = await candidatesRes.json();
+	}
+
 	async function deleteAnnotation(annId: string, codeId: string, codeLabel: string) {
 		// First check: would this also delete the code?
 		const checkRes = await fetch(
@@ -1131,7 +1171,7 @@
 							<span class="naming-group-label">{group.label}</span>
 							{#each group.items as c (c.id)}
 								<!-- svelte-ignore a11y_no_static_element_interactions -->
-								<div class="naming-row" class:naming-expanded={expandedNamingId === c.id} class:naming-selected={selectedNamingIds.has(c.id)} class:apply-mode={hasSelection} data-naming-id={c.id} draggable="true" ondragstart={(e) => handleNamingDragStart(c.id, e)}>
+								<div class="naming-row" class:naming-expanded={expandedNamingId === c.id} class:naming-selected={selectedNamingIds.has(c.id)} class:naming-rejected={isRejectedNaming(c.id)} class:apply-mode={hasSelection} data-naming-id={c.id} draggable="true" ondragstart={(e) => handleNamingDragStart(c.id, e)}>
 									<div class="naming-main" onclick={(e) => handleNamingClick(c.id, e)} oncontextmenu={(e) => handleNamingContextMenu(c.id, e)}>
 										<span class="color-dot" style="background: {c.color || '#8b9cf7'}"></span>
 										<span
@@ -1317,6 +1357,8 @@
 								data-ann-id={ann.id}
 								class:ann-highlighted={highlightedAnnotationId === ann.id}
 								class:ann-expanded={expandedAnnId === ann.id}
+								class:ann-rejected={isRejectedAnn(ann)}
+								class:ann-hidden={ann.properties?.hidden}
 								onmouseenter={() => { highlightedAnnotationId = ann.id; }}
 								onmouseleave={() => { highlightedAnnotationId = null; }}
 							>
@@ -1367,9 +1409,13 @@
 											<AiEvalControl
 												projectId={data.projectId}
 												docId={doc.id}
+												annotationId={ann.id}
 												subjectNamingId={ann.code_id}
 												subjectLabel={ann.code_label}
 												anchor={ann.properties?.anchor ?? null}
+												hidden={!!ann.properties?.hidden}
+												onadopt={refreshAfterAiEval}
+												onhide={refreshAfterAiEval}
 											/>
 										{/if}
 									{:else if getSnippet(ann)}
@@ -1379,6 +1425,15 @@
 						{/each}
 					{/if}
 				</div>
+				<!-- ai-eval: ausgeblendete Cues bleiben erreichbar — sonst wäre „ausblenden" ein Verschwinden ohne Rückweg. -->
+				{#if hiddenAnnotations.length > 0 || showHidden}
+					<div class="hidden-note">
+						<span>{hiddenAnnotations.length} ausgeblendet</span>
+						<button class="btn-show-hidden" onclick={() => { showHidden = !showHidden; }}>
+							{showHidden ? 'wieder ausblenden' : 'einblenden'}
+						</button>
+					</div>
+				{/if}
 			{/if}
 		</div>
 
@@ -2008,6 +2063,14 @@
 	.naming-row.naming-selected {
 		background: rgba(139, 156, 247, 0.12);
 	}
+	/* ai-eval: verworfener Cue in der Namings-Spalte. */
+	.naming-row.naming-rejected .naming-label {
+		color: #6b7280;
+	}
+	.naming-row.naming-rejected .color-dot {
+		filter: grayscale(1);
+		opacity: 0.5;
+	}
 	.naming-row.naming-selected .naming-label {
 		color: #a5b4fc;
 	}
@@ -2135,6 +2198,38 @@
 
 	.annotation-card.ann-highlighted {
 		border-color: #8b9cf7;
+	}
+
+	/* ai-eval: verworfener Cue — steht noch da, trägt aber nicht mehr. */
+	.annotation-card.ann-rejected .code-name,
+	.annotation-card.ann-rejected .ann-text,
+	.annotation-card.ann-rejected .ann-doc-label {
+		color: #6b7280;
+	}
+	.annotation-card.ann-rejected .color-dot {
+		filter: grayscale(1);
+		opacity: 0.5;
+	}
+	.annotation-card.ann-hidden {
+		border-style: dashed;
+		opacity: 0.6;
+	}
+	.hidden-note {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		padding: 0.3rem 0.1rem 0;
+		font-size: 0.72rem;
+		color: #6b7280;
+	}
+	.btn-show-hidden {
+		background: none;
+		border: none;
+		padding: 0;
+		color: #8b9cf7;
+		font: inherit;
+		cursor: pointer;
+		text-decoration: underline;
 	}
 
 	.ann-header {

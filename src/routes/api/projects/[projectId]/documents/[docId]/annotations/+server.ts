@@ -3,7 +3,7 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { getAnnotationsByDocument, createAnnotation, deleteAnnotation, countCodeUsages, addAnnotationMemo } from '$lib/server/db/queries/codes.js';
+import { getAnnotationsByDocument, createAnnotation, deleteAnnotation, countCodeUsages, addAnnotationMemo, setAnnotationHidden } from '$lib/server/db/queries/codes.js';
 
 export const GET: RequestHandler = async ({ params }) => {
 	const annotations = await getAnnotationsByDocument(params.projectId, params.docId);
@@ -29,8 +29,19 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 };
 
 export const PATCH: RequestHandler = async ({ params, request, locals }) => {
-	const { annotationId, codeId, memo } = await request.json();
-	if (!annotationId || !codeId || !memo?.trim()) {
+	const { annotationId, codeId, memo, hidden } = await request.json();
+	if (!annotationId) {
+		return json({ error: 'annotationId required' }, { status: 400 });
+	}
+
+	// Ausblenden/Einblenden — kein Memo, keine Löschung, nur Sichtbarkeit.
+	if (typeof hidden === 'boolean') {
+		const ok = await setAnnotationHidden(params.projectId, annotationId, hidden);
+		if (!ok) return json({ error: 'Annotation not found in this project' }, { status: 404 });
+		return json({ ok: true, hidden });
+	}
+
+	if (!codeId || !memo?.trim()) {
 		return json({ error: 'annotationId, codeId, and memo required' }, { status: 400 });
 	}
 	await addAnnotationMemo(params.projectId, locals.user!.id, annotationId, codeId, memo);

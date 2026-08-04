@@ -418,6 +418,30 @@ export async function addAnnotationMemo(
 	);
 }
 
+/**
+ * Blendet eine Passage aus oder wieder ein (`properties.hidden`).
+ *
+ * Kein Löschen: der Akt bleibt in der Datenstruktur, ausweisbar und rückholbar
+ * (Invariante „jeder KI-Akt ist ausweisbar, rückholbar, ausblendbar"). Nur die
+ * Sichtbarkeit im Reader ändert sich. Auf das Projekt gescopt, damit eine
+ * fremde annotationId nicht ausblendbar ist.
+ */
+export async function setAnnotationHidden(
+	projectId: string,
+	annotationId: string,
+	hidden: boolean
+): Promise<boolean> {
+	const res = await query(
+		`UPDATE appearances a
+		 SET properties = a.properties || $3::jsonb, updated_at = now()
+		 FROM namings n
+		 WHERE a.naming_id = $1 AND n.id = a.naming_id
+		   AND n.project_id = $2 AND n.deleted_at IS NULL`,
+		[annotationId, projectId, JSON.stringify({ hidden })]
+	);
+	return (res.rowCount ?? 0) > 0;
+}
+
 export async function deleteAnnotation(annotationId: string, projectId: string) {
 	return transaction(async (client) => {
 		// Find the code this annotation references
