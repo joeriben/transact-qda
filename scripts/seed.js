@@ -67,6 +67,13 @@ export async function seed() {
 	console.log('Seed complete.');
 }
 
+/**
+ * Als researcherId übergeben, wenn der Akt sich selbst zugeschrieben werden
+ * muss — das gilt genau für das Forscher-Naming, vor dem es noch keinen
+ * Aktanten gibt, dem man ihn zuschreiben könnte.
+ */
+const SELF = Symbol('self-attributed');
+
 // ── Helper: create a naming with initial designation ──
 async function createNaming(client, projectId, userId, researcherId, inscription, designation = 'cue') {
 	const res = await client.query(
@@ -78,7 +85,7 @@ async function createNaming(client, projectId, userId, researcherId, inscription
 	await client.query(
 		`INSERT INTO naming_acts (naming_id, designation, "by")
 		 VALUES ($1, $2, $3)`,
-		[id, designation, researcherId]
+		[id, designation, researcherId === SELF ? id : researcherId]
 	);
 	return id;
 }
@@ -158,13 +165,10 @@ async function seedClarkeDemoProject(client, userId) {
 	);
 	console.log(`  Created Clarke demo project: ${projectId}`);
 
-	// Researcher naming (every project needs one)
-	const researcherId = await createNaming(client, projectId, userId, null, 'admin (Researcher)', 'cue');
-	// Fix: the researcher naming_act needs a "by" — use itself
-	await client.query(
-		`UPDATE naming_acts SET "by" = $1 WHERE naming_id = $1`,
-		[researcherId]
-	);
+	// Researcher naming (every project needs one). Its first act is attributed
+	// to itself; naming_acts."by" is NOT NULL, so inserting null and repairing
+	// it afterwards does not work — the insert fails first.
+	const researcherId = await createNaming(client, projectId, userId, SELF, 'admin (Researcher)', 'cue');
 
 	// ────────────────────────────────────────────────
 	// Fig. 5.1: Abstract Situational Map
