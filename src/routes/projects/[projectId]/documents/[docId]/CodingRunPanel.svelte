@@ -77,6 +77,7 @@
 		projectId,
 		docId,
 		distinctNamings = 0,
+		compact = false,
 		oncompleted,
 		onsequencedone
 	}: {
@@ -87,6 +88,11 @@
 		 * Unterscheidet sich von codes_committed: das zählt die Verankerungen
 		 * DIESES Laufs; ein Naming kann mehrfach verankert sein. */
 		distinctNamings?: number;
+		/** Toolbar-Variante: der Streifen ist Werkzeugleiste, kein eigenes Panel.
+		 * Im Ruhezustand rahmenlos und einzeilig, damit der Funktionsbefehl nicht
+		 * als Spalte neben dem Material steht; ein laufender Run klappt in voller
+		 * Breite auf und bekommt sein Panel-Gehäuse zurück. */
+		compact?: boolean;
 		oncompleted?: () => void;
 		/** Wird nach jedem committed-Sequence-Event aufgerufen, wenn Codes neu hinzugefügt
 		 * wurden — die Parent-Page kann darauf die Code-Liste invalidieren. */
@@ -340,7 +346,7 @@
 	}
 </script>
 
-<section class="coding-run-panel" class:expanded={isExpanded}>
+<section class="coding-run-panel" class:expanded={isExpanded} class:compact>
 	<div class="crp-row">
 		<div class="crp-title-line">
 			<span class="crp-title">KI-Lauf</span>
@@ -419,6 +425,37 @@
 	}
 	.coding-run-panel.expanded {
 		padding: 0.45rem 0.6rem 0.55rem;
+	}
+
+	/* Toolbar-Variante: im Ruhezustand kein Gehäuse — der Streifen ist dann nur
+	   ein Bedienelement in der Kopfzeile. Titel, Status-Pill und Hinweis stehen
+	   nebeneinander in einer Zeile. Läuft ein Run, holt sich der Streifen sein
+	   Panel-Gehäuse zurück und nimmt die volle Breite der Kopfzeile ein. */
+	.coding-run-panel.compact {
+		display: flex;
+		align-items: center;
+		gap: 0.45rem;
+		background: none;
+		border: none;
+		border-radius: 0;
+		padding: 0;
+	}
+	.coding-run-panel.compact.expanded {
+		display: block;
+		width: 100%;
+		background: #161822;
+		border: 1px solid #2a2d3a;
+		border-radius: 8px;
+		padding: 0.45rem 0.6rem 0.55rem;
+	}
+	.coding-run-panel.compact .crp-hint {
+		margin-top: 0;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.coding-run-panel.compact .crp-title {
+		font-size: 0.68rem;
 	}
 
 	.crp-row {

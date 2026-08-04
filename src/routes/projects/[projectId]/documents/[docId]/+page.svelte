@@ -15,7 +15,7 @@
 	import NamingContextMenu from './NamingContextMenu.svelte';
 	import PhaseAssignDialog from './PhaseAssignDialog.svelte';
 	import CodingRunPanel from './CodingRunPanel.svelte';
-	import { goto, invalidateAll } from '$app/navigation';
+	import { invalidateAll } from '$app/navigation';
 
 	let { data } = $props();
 	const doc = $derived(data.document);
@@ -246,6 +246,21 @@
 	// Similar passages from ComparisonPanel (replaces Passages list when active)
 	let similarPassages = $state<any[] | null>(null);
 
+	// Right-panel mode: 'code' = passages of the selected naming, 'similar' =
+	// embedding-near passages of the current text selection. Explicit, so the
+	// active relation stays legible (was an implicit "show similar" toggle).
+	let panelMode = $state<'code' | 'similar'>('code');
+	// Follow the user's focus: opening a text selection switches to "Ähnliche
+	// Stellen"; clearing it returns to "Code-Passagen". Manual segment clicks
+	// (which don't change `selection`) are preserved.
+	$effect(() => {
+		// Only flip to Similar when the selection is long enough for retrieval
+		// (matches ComparisonPanel's ≥10-char guard); shorter marks stay on
+		// Code-Passagen rather than showing an empty similar view.
+		if (selection && selection.text.length >= 10) panelMode = 'similar';
+		else panelMode = 'code';
+	});
+
 	// Phase data
 	const phases = $derived(data.phases ?? []);
 	const phaseMemberMap = $derived<Record<string, string[]>>(data.phaseMemberMap ?? {});
@@ -289,6 +304,13 @@
 				|| (a.properties?.anchor?.text || '').toLowerCase().includes(q));
 		}
 		return result;
+	});
+
+	// Selected naming label — for the panel's anchor hint in Code-Passagen mode.
+	const selectedNamingLabel = $derived.by(() => {
+		if (selectedNamingIds.size !== 1) return null;
+		const id = [...selectedNamingIds][0];
+		return scopedCandidates.find((c: any) => c.id === id)?.label ?? null;
 	});
 
 	// Auto-expand: when a single naming is selected and resolves to exactly
@@ -703,10 +725,89 @@
 		window.addEventListener('mouseup', onUp);
 	}
 
+	// ── Spaltenlayout ─────────────────────────────────────────────────────
+	// Hauptaktant der Seite ist das Transkript. Die Nebenspalten dürfen ihm
+	// Raum nehmen, aber nur so viel, wie der Forscher ihnen zugesteht: jede
+	// Spalte ist ausblendbar und in der Breite ziehbar, beides persistent.
+	let showToc = $state(true);
+	let showNamings = $state(true);
+	let showPassages = $state(true);
+	let tocWidth = $state(200);
+	let namingsWidth = $state(260);
+	let passagesWidth = $state(320);
+
+	// Reihenfolge zählt: dieser Effekt läuft vor dem Speicher-Effekt, sonst
+	// überschriebe der Default die gespeicherte Wahl (wie bei namings-sort).
+	$effect(() => {
+		if (typeof window === 'undefined') return;
+		try {
+			const raw = window.localStorage?.getItem('doc-layout');
+			if (!raw) return;
+			const l = JSON.parse(raw);
+			if (typeof l.showToc === 'boolean') showToc = l.showToc;
+			if (typeof l.showNamings === 'boolean') showNamings = l.showNamings;
+			if (typeof l.showPassages === 'boolean') showPassages = l.showPassages;
+			if (typeof l.tocWidth === 'number') tocWidth = l.tocWidth;
+			if (typeof l.namingsWidth === 'number') namingsWidth = l.namingsWidth;
+			if (typeof l.passagesWidth === 'number') passagesWidth = l.passagesWidth;
+		} catch {
+			// defekter Eintrag → Defaults stehen lassen
+		}
+	});
+	$effect(() => {
+		if (typeof window === 'undefined') return;
+		window.localStorage?.setItem(
+			'doc-layout',
+			JSON.stringify({ showToc, showNamings, showPassages, tocWidth, namingsWidth, passagesWidth })
+		);
+	});
+
+	// Die Sequenz-Spalte liegt links vom Text (Ziehen nach rechts verbreitert),
+	// Namings und Verankerungen liegen rechts (Ziehen nach links verbreitert).
+	function startColResize(e: MouseEvent, col: 'toc' | 'namings' | 'passages') {
+		e.preventDefault();
+		const startX = e.clientX;
+		const startWidth = col === 'toc' ? tocWidth : col === 'namings' ? namingsWidth : passagesWidth;
+		const sign = col === 'toc' ? 1 : -1;
+		function onMove(ev: MouseEvent) {
+			const w = Math.max(140, Math.min(560, startWidth + sign * (ev.clientX - startX)));
+			if (col === 'toc') tocWidth = w;
+			else if (col === 'namings') namingsWidth = w;
+			else passagesWidth = w;
+		}
+		function onUp() {
+			window.removeEventListener('mousemove', onMove);
+			window.removeEventListener('mouseup', onUp);
+		}
+		window.addEventListener('mousemove', onMove);
+		window.addEventListener('mouseup', onUp);
+	}
+
+	// ── Sequenz-Titel umschreiben ─────────────────────────────────────────
+	// Sequenz-Titel stammen aus dem KI-Lauf und sind damit Cues. Der Forscher
+	// schreibt sie um wie jedes andere Naming: 'rename' hängt einen Akt an den
+	// Stack, der alte Wortlaut bleibt in der Kette stehen (append-only).
+	let renamingSeqId = $state<string | null>(null);
+	let renameSeqValue = $state('');
+
+	async function saveSeqRename(ann: any) {
+		const next = renameSeqValue.trim();
+		renamingSeqId = null;
+		if (!next || next === ann.code_label) return;
+		const res = await fetch(`/api/projects/${data.projectId}/namings`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			credentials: 'same-origin',
+			body: JSON.stringify({ action: 'rename', namingId: ann.code_id, inscription: next })
+		});
+		if (res.ok) await invalidateAll();
+	}
+
 	function jumpToSimilar(sp: any) {
-		// Cross-document hit → open that document; same-document → scroll to the element.
+		// Cross-document hit → open that document in a NEW TAB so the current
+		// coding view is never lost; same-document → scroll to the element.
 		if (sp.documentId && sp.documentId !== doc.id) {
-			goto(`/projects/${data.projectId}/documents/${sp.documentId}`);
+			window.open(`/projects/${data.projectId}/documents/${sp.documentId}`, '_blank', 'noopener');
 			return;
 		}
 		const el = textEl?.querySelector(`[data-element-id="${sp.elementId}"]`);
@@ -973,33 +1074,90 @@
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="doc-viewer" onclick={() => { ctxMenuNamingIds = null; }}>
+	<!-- Kopfzeile: Werkzeuge und Spaltenschalter. Alles, was Funktionsbefehl
+	     ist — auch der KI-Lauf —, steht hier und nicht in einer Spalte neben
+	     dem Material. -->
+	<div class="doc-toolbar">
+		{#if !isImage && sortedSequenceNamings.length > 0}
+			<button
+				class="tb-toggle"
+				class:tb-on={showToc}
+				onclick={() => { showToc = !showToc; }}
+				title="Sequenz-Spalte ein- oder ausblenden"
+			>{showToc ? '⟨' : '⟩'} Sequenzen <span class="tb-count">{sortedSequenceNamings.length}</span></button>
+		{/if}
+		<span class="tb-title" title={doc.label}>{doc.label}</span>
+		<button
+			class="tb-toggle"
+			class:tb-on={showNamings}
+			onclick={() => { showNamings = !showNamings; }}
+			title="Namings-Spalte ein- oder ausblenden"
+		>Namings <span class="tb-count">{scopedCandidates.length}</span></button>
+		<button
+			class="tb-toggle"
+			class:tb-on={showPassages}
+			onclick={() => { showPassages = !showPassages; }}
+			title="Verankerungs-Spalte ein- oder ausblenden"
+		>Verankerungen <span class="tb-count">{filteredAnnotations.length}</span></button>
+		<!-- AI-Coding-Run trigger + live progress (Coding-Run-Subsystem). -->
+		<CodingRunPanel
+			compact
+			projectId={data.projectId}
+			docId={doc.id}
+			distinctNamings={uniqueCodeCount}
+			oncompleted={() => invalidateAll()}
+			onsequencedone={() => scheduleLiveRefresh()}
+		/>
+	</div>
+
 	<div class="doc-body">
 		<!-- TOC-Spalte: Begründete Sequenz-Namings als „Inhaltsverzeichnis" des
 		     Dokuments. Material-Ebene (vgl. Migration 030 / coding-flow-Design).
 		     Wird nur angezeigt, wenn Sequenz-Namings existieren. -->
-		{#if !isImage && sortedSequenceNamings.length > 0}
-			<aside class="toc-column" aria-label="Sequenz-Namings">
+		{#if !isImage && showToc && sortedSequenceNamings.length > 0}
+			<aside class="toc-column" style="width: {tocWidth}px;" aria-label="Sequenzen">
 				<div class="toc-header">
-					<h3>Sequenz <span class="count">({sortedSequenceNamings.length})</span></h3>
+					<h3>Sequenzen <span class="count">({sortedSequenceNamings.length})</span></h3>
+					<button class="toc-hide" onclick={() => { showToc = false; }} title="Spalte ausblenden">⟨</button>
+				</div>
+				<!-- Legende: die beiden Zahlen am Eintrag sind sonst nicht lesbar. -->
+				<div class="toc-legend">
+					<span class="tl-seq">Nr.</span>
+					<span class="tl-label">Titel · Doppelklick zum Umschreiben</span>
+					<span class="tl-meta">Sätze</span>
 				</div>
 				<div class="toc-scroll">
 					{#each sortedSequenceNamings as ann (ann.id)}
 						{@const seq = ann.properties?.sequenceMeta?.seq}
 						{@const sCount = ann.properties?.sequenceMeta?.sentenceCount}
-						<button
-							type="button"
-							class="toc-entry"
-							class:toc-active={highlightedSeqId === ann.id}
-							title={ann.code_label}
-							onclick={() => scrollToSequence(ann.id)}
-						>
-							{#if typeof seq === 'number'}<span class="toc-seq">{seq}</span>{/if}
-							<span class="toc-label">{ann.code_label}</span>
-							{#if typeof sCount === 'number'}<span class="toc-meta">{sCount}</span>{/if}
-						</button>
+						{#if renamingSeqId === ann.id}
+							<!-- svelte-ignore a11y_autofocus -->
+							<input
+								class="toc-rename"
+								bind:value={renameSeqValue}
+								autofocus
+								onkeydown={(e) => { if (e.key === 'Enter') saveSeqRename(ann); if (e.key === 'Escape') renamingSeqId = null; }}
+								onblur={() => saveSeqRename(ann)}
+							/>
+						{:else}
+							<button
+								type="button"
+								class="toc-entry"
+								class:toc-active={highlightedSeqId === ann.id}
+								title={ann.code_label}
+								onclick={() => scrollToSequence(ann.id)}
+								ondblclick={() => { renamingSeqId = ann.id; renameSeqValue = ann.code_label; }}
+							>
+								{#if typeof seq === 'number'}<span class="toc-seq" title="Sequenz-Nr. im Dokument">{seq}</span>{/if}
+								<span class="toc-label">{ann.code_label}</span>
+								{#if typeof sCount === 'number'}<span class="toc-meta" title="{sCount} Sätze in dieser Sequenz">{sCount}</span>{/if}
+							</button>
+						{/if}
 					{/each}
 				</div>
 			</aside>
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div class="col-divider" onmousedown={(e) => startColResize(e, 'toc')} title="Breite ziehen"></div>
 		{/if}
 
 		<div class="doc-with-margin">
@@ -1014,7 +1172,7 @@
 					/>
 				{:else if doc.full_text}
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
-					<pre class="document-text" class:drop-target-active={dragOverDoc && hasSelection} bind:this={textEl} onmouseup={handleMouseUp} ondragover={handleDocDragOver} ondragleave={handleDocDragLeave} ondrop={handleDocDrop}>{#each textSegments as seg, i}{#if seg.codes.length > 0}{@const isAnnStart = i === 0 || !textSegments[i - 1].codes.some(c => c.annId === seg.codes[0].annId)}<span
+					<pre class="document-text" class:sel-similar={panelMode === 'similar'} class:drop-target-active={dragOverDoc && hasSelection} bind:this={textEl} onmouseup={handleMouseUp} ondragover={handleDocDragOver} ondragleave={handleDocDragLeave} ondrop={handleDocDrop}>{#each textSegments as seg, i}{#if seg.codes.length > 0}{@const isAnnStart = i === 0 || !textSegments[i - 1].codes.some(c => c.annId === seg.codes[0].annId)}<span
 						class="coded-text"
 						class:coded-highlighted={seg.codes.some(c => c.annId === highlightedAnnotationId)}
 						class:selection-highlight={selection && seg.start < selection.pos1 && seg.end > selection.pos0}
@@ -1049,18 +1207,12 @@
 			{/if}
 		</div>
 
-		<!-- Namings-Column: AI-Coding-Run-Streifen ÜBER dem Namings-Panel.
-		     Beide teilen sich die linke Schmalspalte neben Passages. -->
-		<div class="namings-column">
-			<!-- AI-Coding-Run trigger + live progress (Coding-Run-Subsystem). -->
-			<CodingRunPanel
-				projectId={data.projectId}
-				docId={doc.id}
-				distinctNamings={uniqueCodeCount}
-				oncompleted={() => invalidateAll()}
-				onsequencedone={() => scheduleLiveRefresh()}
-			/>
-
+		<!-- Namings-Column: rein empirische Spalte — der KI-Lauf-Streifen sitzt
+		     als Funktionsbefehl in der Kopfzeile, nicht mehr hier. -->
+		{#if showNamings}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class="col-divider" onmousedown={(e) => startColResize(e, 'namings')} title="Breite ziehen"></div>
+		<div class="namings-column" style="width: {namingsWidth}px;">
 			<!-- Namings: permanent code overview -->
 			<div class="namings-panel">
 			<div class="panel-header">
@@ -1252,23 +1404,52 @@
 
 		</div>
 		<!-- /namings-column -->
+		{/if}
 
-		<!-- Passages: permanent overview of coded text passages -->
-		<div class="passages-panel">
+		<!-- Verankerungen: permanente Übersicht der verankerten Textstellen -->
+		{#if showPassages}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class="col-divider" onmousedown={(e) => startColResize(e, 'passages')} title="Breite ziehen"></div>
+		<div class="passages-panel" class:panel-similar={selection && panelMode === 'similar'} style="width: {passagesWidth}px;">
 			<div class="panel-header">
-				<h3>{similarPassages ? 'Similar' : 'Passages'} <span class="count">({similarPassages ? similarPassages.length : `${filteredAnnotations.length}/${scopedAnnotations.length}`})</span></h3>
-				<div class="scope-toggle">
-					<button class="scope-btn" class:active={passagesScope === 'this'} onclick={() => passagesScope = 'this'}>Document</button>
-					<div class="scope-right">
-						<button class="scope-btn" class:active={passagesScope !== 'this'} onclick={() => passagesScope = 'all'}>All</button>
-						<select class="scope-doc-pick" value="" onchange={(e) => { const v = (e.target as HTMLSelectElement).value; if (v) passagesScope = v; (e.target as HTMLSelectElement).value = ''; }}>
-							<option value="">▾</option>
-							{#each projectDocuments.filter(d => d.id !== doc.id) as d}
-								<option value={d.id}>{d.label}</option>
-							{/each}
-						</select>
+				{#if selection}
+					<!-- Zwei Bezüge, zwei Farben: Indigo = ein Naming aus der Namings-
+					     Spalte, Türkis = die eigene Markierung im Text. Die Farbe zieht
+					     sich durch Reiter, Bezugszeile und Karten. -->
+					<div class="mode-toggle" role="tablist" aria-label="Anzeigemodus">
+						<button class="mode-btn mode-anchor" class:active={panelMode === 'code'} role="tab" aria-selected={panelMode === 'code'} onclick={() => panelMode = 'code'}>
+							Verankerungen <span class="mode-count">{filteredAnnotations.length}</span>
+						</button>
+						<button class="mode-btn mode-similar" class:active={panelMode === 'similar'} role="tab" aria-selected={panelMode === 'similar'} onclick={() => panelMode = 'similar'}>
+							Ähnliche Stellen{#if similarPassages} <span class="mode-count">{similarPassages.length}</span>{/if}
+						</button>
 					</div>
-				</div>
+					<div class="anchor-hint" class:hint-similar={panelMode === 'similar'}>
+						{#if panelMode === 'similar'}
+							ähnlich zur markierten Stelle „{truncate(selection.text, 34)}“
+						{:else if selectedNamingLabel}
+							verankert unter Naming „{truncate(selectedNamingLabel, 30)}“
+						{:else}
+							alle Verankerungen im gewählten Bereich
+						{/if}
+					</div>
+				{:else}
+					<h3>Verankerungen <span class="count">({filteredAnnotations.length}/{scopedAnnotations.length})</span></h3>
+				{/if}
+				{#if panelMode === 'code'}
+					<div class="scope-toggle">
+						<button class="scope-btn" class:active={passagesScope === 'this'} onclick={() => passagesScope = 'this'}>Document</button>
+						<div class="scope-right">
+							<button class="scope-btn" class:active={passagesScope !== 'this'} onclick={() => passagesScope = 'all'}>All</button>
+							<select class="scope-doc-pick" value="" onchange={(e) => { const v = (e.target as HTMLSelectElement).value; if (v) passagesScope = v; (e.target as HTMLSelectElement).value = ''; }}>
+								<option value="">▾</option>
+								{#each projectDocuments.filter(d => d.id !== doc.id) as d}
+									<option value={d.id}>{d.label}</option>
+								{/each}
+							</select>
+						</div>
+					</div>
+				{/if}
 			</div>
 			{#if phases.length > 0}
 				<div class="phase-filter-row">
@@ -1291,17 +1472,20 @@
 						projectId={data.projectId}
 						docId={doc.id}
 						{selection}
+						mode={panelMode}
 						onannotate={(codeId) => annotate(codeId)}
 						documentTitle={doc.label}
 						onsimilar={(passages) => { similarPassages = passages; }}
 					/>
 				</div>
 			{/if}
-			{#if similarPassages}
+			{#if panelMode === 'similar'}
 				<!-- Similar mode: shows embedding-similar passages -->
 				<div class="passages-scroll">
-					{#if similarPassages.length === 0}
-						<p class="empty">No similar passages found.</p>
+					{#if !similarPassages}
+						<p class="empty">{selection && selection.text.length < 10 ? 'Markierung zu kurz für Ähnlichkeitssuche.' : 'Lädt ähnliche Stellen…'}</p>
+					{:else if similarPassages.length === 0}
+						<p class="empty">Keine ähnlichen Stellen gefunden.</p>
 					{:else}
 						{#each similarPassages as sp, i (i)}
 							<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -1324,7 +1508,7 @@
 									<button
 										class="btn-expand-ann"
 										onclick={() => jumpToSimilar(sp)}
-										title={sp.documentId === doc.id ? 'Scroll to passage' : 'Open in its document'}
+										title={sp.documentId === doc.id ? 'Scroll to passage' : 'Open in new tab'}
 									>▶</button>
 									<span class="similar-score">{(sp.similarity * 100).toFixed(0)}%</span>
 								</div>
@@ -1372,8 +1556,8 @@
 									>{expandedAnnId === ann.id ? '▽' : '▼'}</button>
 									<button
 										class="btn-expand-ann"
-										onclick={() => ann.document_id === doc.id ? scrollToPassage(ann.id) : goto(`/projects/${data.projectId}/documents/${ann.document_id}`)}
-										title={ann.document_id === doc.id ? 'Scroll to passage' : 'Open in its document'}
+										onclick={() => ann.document_id === doc.id ? scrollToPassage(ann.id) : window.open(`/projects/${data.projectId}/documents/${ann.document_id}`, '_blank', 'noopener')}
+										title={ann.document_id === doc.id ? 'Scroll to passage' : 'Open in new tab'}
 									>▶</button>
 									<button
 										class="btn-delete-ann"
@@ -1437,6 +1621,8 @@
 				{/if}
 			{/if}
 		</div>
+		<!-- /passages-panel -->
+		{/if}
 
 	</div>
 </div>
@@ -1482,8 +1668,76 @@
 		flex: 1;
 		min-height: 0;
 		display: flex;
-		gap: 1rem;
+		gap: 0;
 		overflow: hidden;
+	}
+
+	/* Kopfzeile: Dokumenttitel, Spaltenschalter, KI-Lauf. Umbricht, damit der
+	   aufgeklappte KI-Lauf-Streifen eine eigene Zeile bekommt statt die
+	   Schalter zu verdrängen. */
+	.doc-toolbar {
+		flex-shrink: 0;
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.4rem;
+		padding: 0 0 0.5rem;
+	}
+	.tb-title {
+		flex: 1;
+		min-width: 3rem;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		color: #c9cdd5;
+		font-size: 0.82rem;
+		font-weight: 600;
+		padding: 0 0.3rem;
+	}
+	.tb-toggle {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3rem;
+		flex-shrink: 0;
+		background: none;
+		border: 1px solid #2a2d3a;
+		border-radius: 5px;
+		padding: 0.2rem 0.5rem;
+		color: #6b7280;
+		font-family: inherit;
+		font-size: 0.7rem;
+		cursor: pointer;
+		transition: color 0.12s, border-color 0.12s, background 0.12s;
+	}
+	.tb-toggle:hover { color: #c9cdd5; border-color: #3a3f52; }
+	.tb-toggle.tb-on {
+		color: #c9cdd5;
+		background: #1a1d29;
+		border-color: #3a3f52;
+	}
+	.tb-count {
+		font-size: 0.62rem;
+		font-weight: 600;
+		line-height: 1;
+		padding: 0.12rem 0.32rem;
+		border-radius: 999px;
+		background: #252840;
+		color: #9ca3af;
+	}
+	.tb-toggle.tb-on .tb-count { color: #c9cdd5; }
+
+	/* Ziehleiste zwischen den Spalten. Trägt zugleich den Abstand, den vorher
+	   der gap der doc-body übernommen hat. */
+	.col-divider {
+		width: 9px;
+		flex-shrink: 0;
+		cursor: col-resize;
+		background:
+			linear-gradient(#2a2d3a, #2a2d3a) center / 1px 100% no-repeat;
+		transition: background-image 0.15s;
+	}
+	.col-divider:hover {
+		background-image: linear-gradient(#8b9cf7, #8b9cf7);
 	}
 
 	.doc-with-margin {
@@ -1627,7 +1881,6 @@
 	 * Material-Ebene-Organisation (Session 33), getrennt von der rekonstruktiv-
 	 * analytischen Namings-Liste rechts. */
 	.toc-column {
-		width: 200px;
 		flex-shrink: 0;
 		display: flex;
 		flex-direction: column;
@@ -1641,6 +1894,10 @@
 		padding: 0.4rem 0.6rem;
 		border-bottom: 1px solid #2a2d3a;
 		flex-shrink: 0;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.4rem;
 	}
 	.toc-header h3 {
 		font-size: 0.8rem;
@@ -1651,6 +1908,45 @@
 		color: #6b7280;
 		font-weight: 400;
 	}
+	.toc-hide {
+		background: none;
+		border: none;
+		color: #6b7280;
+		font-size: 0.75rem;
+		line-height: 1;
+		cursor: pointer;
+		padding: 0.1rem 0.2rem;
+	}
+	.toc-hide:hover { color: #a5b4fc; }
+	/* Legende: benennt die beiden Zahlen, die sonst unerklärt am Eintrag stehen. */
+	.toc-legend {
+		display: flex;
+		align-items: baseline;
+		gap: 0.4rem;
+		padding: 0.2rem 0.6rem 0.25rem;
+		border-bottom: 1px solid #21242f;
+		font-size: 0.58rem;
+		color: #5a6070;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		flex-shrink: 0;
+	}
+	.tl-seq { flex-shrink: 0; min-width: 1.4rem; }
+	.tl-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: none; letter-spacing: 0; }
+	.tl-meta { flex-shrink: 0; }
+	.toc-rename {
+		display: block;
+		width: calc(100% - 1.2rem);
+		margin: 0.2rem 0.6rem;
+		background: #0f1117;
+		border: 1px solid #8b9cf7;
+		border-radius: 4px;
+		padding: 0.25rem 0.35rem;
+		color: #e1e4e8;
+		font-family: inherit;
+		font-size: 0.72rem;
+	}
+	.toc-rename:focus { outline: none; }
 	.toc-scroll {
 		flex: 1;
 		overflow-y: auto;
@@ -1658,10 +1954,10 @@
 	}
 	.toc-entry {
 		display: flex;
-		align-items: baseline;
+		align-items: flex-start;
 		gap: 0.4rem;
 		width: 100%;
-		padding: 0.3rem 0.6rem;
+		padding: 0.35rem 0.6rem;
 		background: none;
 		border: none;
 		border-left: 2px solid transparent;
@@ -1689,18 +1985,25 @@
 		font-size: 0.65rem;
 		min-width: 1.4rem;
 	}
+	/* Zwei Zeilen statt Ellipse: ein Sequenz-Titel ist ein Satzfragment und
+	   auf 18 Zeichen abgeschnitten nicht lesbar. */
 	.toc-label {
 		flex: 1;
 		min-width: 0;
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		-webkit-box-orient: vertical;
 		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+		line-height: 1.35;
+		overflow-wrap: anywhere;
 	}
 	.toc-meta {
 		flex-shrink: 0;
 		color: #6b7280;
 		font-size: 0.6rem;
 		font-variant-numeric: tabular-nums;
+		padding-top: 0.1rem;
 	}
 	/* Kurzer Flash auf dem getroffenen Segment nach Klick. */
 	.seq-flash {
@@ -1713,7 +2016,6 @@
 	}
 
 	.namings-column {
-		width: 260px;
 		flex-shrink: 0;
 		display: flex;
 		flex-direction: column;
@@ -1774,6 +2076,84 @@
 		background: rgba(139, 156, 247, 0.15);
 		color: #a5b4fc;
 	}
+	/* Modus-Umschalter (Verankerungen ⇄ Ähnliche Stellen) — zwei gleichrangige
+	   Zustände mit VERSCHIEDENEN Bezügen, deshalb verschiedene Farben:
+	     Indigo  #8b9cf7 = Bezug ist ein Naming aus der Namings-Spalte
+	     Türkis  #2dd4bf = Bezug ist die eigene Markierung im Transkript
+	   Die Farbe trägt durch: Reiter → Bezugszeile → Karten → Untermenü. */
+	.mode-toggle {
+		display: flex;
+		gap: 2px;
+		background: #14161f;
+		border: 1px solid #2a2d3a;
+		border-radius: 5px;
+		padding: 2px;
+	}
+	.mode-btn {
+		flex: 1;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 5px;
+		padding: 0.3rem 0.4rem;
+		background: transparent;
+		border: none;
+		border-radius: 4px;
+		color: #8b8fa3;
+		font-size: 0.72rem;
+		font-family: inherit;
+		cursor: pointer;
+		transition: background 0.12s, color 0.12s;
+	}
+	.mode-btn:hover:not(.active) { color: #c9cdd5; }
+	.mode-btn.active {
+		color: #fff;
+		font-weight: 600;
+	}
+	.mode-btn.mode-anchor.active {
+		background: rgba(139, 156, 247, 0.22);
+		box-shadow: inset 0 -2px 0 #8b9cf7;
+	}
+	.mode-btn.mode-similar.active {
+		background: rgba(45, 212, 191, 0.2);
+		box-shadow: inset 0 -2px 0 #2dd4bf;
+	}
+	.mode-count {
+		font-size: 0.62rem;
+		font-weight: 600;
+		line-height: 1;
+		padding: 0.1rem 0.32rem;
+		border-radius: 999px;
+		background: #252840;
+		color: #c9cdd5;
+	}
+	.mode-btn.mode-anchor.active .mode-count { background: #8b9cf7; color: #0f1117; }
+	.mode-btn.mode-similar.active .mode-count { background: #2dd4bf; color: #0f1117; }
+	/* Bezugszeile: trägt die Farbe des aktiven Reiters, damit sichtbar ist,
+	   worauf sich die Liste darunter bezieht. */
+	.anchor-hint {
+		font-size: 0.66rem;
+		color: #8b8fa3;
+		margin: 0 0.1rem;
+		padding: 0.1rem 0 0.1rem 0.4rem;
+		border-left: 2px solid #8b9cf7;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.anchor-hint.hint-similar { border-left-color: #2dd4bf; }
+	/* Ähnliche-Stellen-Modus färbt die ganze Spalte ein: Untermenü (Scope +
+	   Vergleich per LLM) und Trefferkarten gehören sichtbar zu diesem Bezug. */
+	.passages-panel.panel-similar .comparison-section {
+		border-left: 2px solid #2dd4bf;
+		background: rgba(45, 212, 191, 0.04);
+	}
+	.passages-panel.panel-similar .annotation-card {
+		border-left: 2px solid rgba(45, 212, 191, 0.55);
+	}
+	.passages-panel.panel-similar .similar-score {
+		color: #2dd4bf;
+	}
 	.scope-right {
 		display: flex;
 		align-items: center;
@@ -1830,7 +2210,6 @@
 
 	/* Passages panel: permanent passage overview — flex item, height handled by parent */
 	.passages-panel {
-		width: 320px;
 		flex-shrink: 0;
 		display: flex;
 		flex-direction: column;
@@ -2349,9 +2728,14 @@
 		outline-offset: -2px;
 	}
 
-	/* Selection highlight (persists after DOM re-render) */
+	/* Selection highlight (persists after DOM re-render). Im Ähnliche-Stellen-
+	   Modus türkis — dieselbe Farbe wie Reiter und Trefferkarten, damit die
+	   markierte Stelle als deren Bezug erkennbar ist. */
 	.selection-highlight {
 		background: rgba(139, 156, 247, 0.25) !important;
+	}
+	.document-text.sel-similar .selection-highlight {
+		background: rgba(45, 212, 191, 0.28) !important;
 	}
 
 	/* Small utility button */
