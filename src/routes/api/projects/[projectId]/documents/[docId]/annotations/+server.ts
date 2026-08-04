@@ -11,10 +11,22 @@ export const GET: RequestHandler = async ({ params }) => {
 };
 
 export const POST: RequestHandler = async ({ params, request, locals }) => {
-	const { codeId, anchorType, anchor, comment } = await request.json();
+	const { codeId, anchorType, anchor, comment, valence, sequenceMeta } = await request.json();
 	if (!codeId || !anchorType || !anchor) {
 		return json({ error: 'codeId, anchorType, and anchor required' }, { status: 400 });
 	}
+
+	// valence='thematizes' = Sequenz-Naming (die Klasse, die die Gliederung des
+	// Dokuments trägt). Der Forscher braucht diesen Weg, um eine Sequenz zu
+	// benennen, die der KI-Lauf ohne Titel gelassen hat. Nur dieser eine Wert
+	// ist von außen setzbar; alles andere bleibt die Default-Klasse 'codes'.
+	const opts =
+		valence === 'thematizes'
+			? {
+					valence: 'thematizes' as const,
+					extraProperties: sequenceMeta ? { sequenceMeta } : {}
+				}
+			: undefined;
 
 	const annotation = await createAnnotation(
 		params.projectId,
@@ -23,7 +35,9 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		params.docId,
 		anchorType,
 		anchor,
-		comment
+		comment,
+		undefined,
+		opts
 	);
 	return json(annotation, { status: 201 });
 };

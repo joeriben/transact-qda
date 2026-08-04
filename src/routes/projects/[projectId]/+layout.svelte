@@ -7,6 +7,7 @@
 	import { page } from '$app/stores';
 	import CoachPanel from '$lib/coach/CoachPanel.svelte';
 	import { createCoachState, setCoachState } from '$lib/coach/coachState.svelte.js';
+	import { docOutline, type OutlineEntry } from '$lib/stores/docOutline.svelte.js';
 
 	let { data, children }: { data: any; children: Snippet } = $props();
 	const p = $derived(data.project);
@@ -16,9 +17,62 @@
 	const documents = $derived(data.documents as { id: string; label: string }[]);
 	const pathname = $derived($page.url.pathname);
 
+	// Sidebar: einklappbar und in der Breite ziehbar, beides persistent. Sie ist
+	// Navigation, nicht Material — auf einem schmalen Bildschirm muss sie dem
+	// Dokument weichen können.
+	let sidebarOpen = $state(true);
+	let sidebarWidth = $state(200);
+
+	$effect(() => {
+		if (typeof window === 'undefined') return;
+		try {
+			const raw = window.localStorage?.getItem('project-sidebar');
+			if (!raw) return;
+			const s = JSON.parse(raw);
+			if (typeof s.open === 'boolean') sidebarOpen = s.open;
+			if (typeof s.width === 'number') sidebarWidth = s.width;
+		} catch {
+			// defekter Eintrag → Defaults stehen lassen
+		}
+	});
+	$effect(() => {
+		if (typeof window === 'undefined') return;
+		window.localStorage?.setItem(
+			'project-sidebar',
+			JSON.stringify({ open: sidebarOpen, width: sidebarWidth })
+		);
+	});
+
+	function startSidebarResize(e: MouseEvent) {
+		e.preventDefault();
+		const startX = e.clientX;
+		const startWidth = sidebarWidth;
+		function onMove(ev: MouseEvent) {
+			sidebarWidth = Math.max(150, Math.min(480, startWidth + (ev.clientX - startX)));
+		}
+		function onUp() {
+			window.removeEventListener('mousemove', onMove);
+			window.removeEventListener('mouseup', onUp);
+		}
+		window.addEventListener('mousemove', onMove);
+		window.addEventListener('mouseup', onUp);
+	}
+
 	// Inline doc rename
 	let renamingDocId = $state<string | null>(null);
 	let renameValue = $state('');
+
+	// Sequenz benennen oder umschreiben — dieselbe Geste wie beim Dokumentnamen,
+	// aber der Schreibweg gehört der Dokumentseite (siehe docOutline).
+	let renamingSeqKey = $state<string | null>(null);
+	let renameSeqValue = $state('');
+
+	async function saveSeqRename(entry: OutlineEntry) {
+		const next = renameSeqValue.trim();
+		renamingSeqKey = null;
+		if (!next || next === entry.label) return;
+		await docOutline.onname?.(entry, next);
+	}
 
 	async function saveDocRename(docId: string) {
 		if (!renameValue.trim()) { renamingDocId = null; return; }
@@ -85,8 +139,14 @@
 </script>
 
 <div class="project-layout">
-	<div class="project-sidebar">
-		<h2><a href={base} class:active={pathname === base} class="project-name-link">{p.name}</a></h2>
+	{#if !sidebarOpen}
+		<button class="sidebar-rail" onclick={() => { sidebarOpen = true; }} title="Menüspalte einblenden">⟩</button>
+	{/if}
+	<div class="project-sidebar" class:sidebar-hidden={!sidebarOpen} style="width: {sidebarWidth}px;">
+		<h2>
+			<a href={base} class:active={pathname === base} class="project-name-link">{p.name}</a>
+			<button class="sidebar-hide" onclick={() => { sidebarOpen = false; }} title="Menüspalte ausblenden">⟨</button>
+		</h2>
 		{#if p.description}
 			<p class="desc">{p.description}</p>
 		{/if}
@@ -108,9 +168,42 @@
 						href="{base}/documents/{d.id}"
 						class="doc-link"
 						class:active={pathname === `${base}/documents/${d.id}`}
-						title={d.label}
+						title="{d.label} — Doppelklick: Anzeigenamen ändern (die Datei bleibt unberührt)"
 						ondblclick={(e) => { e.preventDefault(); renamingDocId = d.id; renameValue = d.label; }}
 					>{d.label}</a>
+				{/if}
+				<!-- Sequenz-Gliederung des offenen Dokuments: sein Inhaltsverzeichnis
+				     gehört unter das Dokument, nicht in eine eigene Spalte neben das
+				     Transkript. Doppelklick schreibt einen Sequenz-Titel um. -->
+				{#if docOutline.docId === d.id && docOutline.entries.length > 0}
+					<div class="seq-list">
+						{#each docOutline.entries as entry (entry.key)}
+							{#if renamingSeqKey === entry.key}
+								<!-- svelte-ignore a11y_autofocus -->
+								<input
+									class="seq-rename-input"
+									placeholder="Titel für diese Sequenz…"
+									bind:value={renameSeqValue}
+									autofocus
+									onkeydown={(e) => { if (e.key === 'Enter') saveSeqRename(entry); if (e.key === 'Escape') renamingSeqKey = null; }}
+									onblur={() => saveSeqRename(entry)}
+								/>
+							{:else}
+								<button
+									type="button"
+									class="seq-link"
+									class:active={docOutline.activeKey === entry.key}
+									class:seq-unnamed={!entry.label}
+									title={entry.label ?? 'Diese Sequenz hat keinen Titel — Doppelklick, um sie zu benennen'}
+									onclick={() => docOutline.select(entry)}
+									ondblclick={() => { renamingSeqKey = entry.key; renameSeqValue = entry.label ?? ''; }}
+								>
+									{#if entry.seq != null}<span class="seq-num">{entry.seq}</span>{/if}
+									<span class="seq-text">{entry.label ?? 'unbenannt'}</span>
+								</button>
+							{/if}
+						{/each}
+					</div>
 				{/if}
 			{/each}
 			<a href="{base}/namings" class:active={pathname.startsWith(`${base}/namings`)}>Namings</a>
@@ -157,6 +250,10 @@
 			<a href="/projects" class="back-link">← Projects</a>
 		</nav>
 	</div>
+	{#if sidebarOpen}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class="sidebar-divider" onmousedown={startSidebarResize} title="Breite ziehen"></div>
+	{/if}
 
 	<div class="project-content">
 		{@render children()}
@@ -176,19 +273,124 @@
 	}
 
 	.project-sidebar {
-		width: 200px;
 		flex-shrink: 0;
 		padding: 1.25rem;
-		border-right: 1px solid #2a2d3a;
 		background: #13151e;
 		overflow-y: auto;
 	}
+	.project-sidebar.sidebar-hidden { display: none; }
+
+	/* Ziehleiste an der Sidebar-Kante — trägt zugleich deren Trennlinie. */
+	.sidebar-divider {
+		width: 5px;
+		flex-shrink: 0;
+		cursor: col-resize;
+		background: linear-gradient(#2a2d3a, #2a2d3a) center / 1px 100% no-repeat;
+		transition: background-image 0.15s;
+	}
+	.sidebar-divider:hover { background-image: linear-gradient(#8b9cf7, #8b9cf7); }
+
+	/* Schiene bei eingeklappter Sidebar: der einzige Weg zurück. */
+	.sidebar-rail {
+		width: 18px;
+		flex-shrink: 0;
+		background: #13151e;
+		border: none;
+		border-right: 1px solid #2a2d3a;
+		color: #6b7280;
+		font-size: 0.75rem;
+		cursor: pointer;
+		padding: 0;
+	}
+	.sidebar-rail:hover { color: #a5b4fc; background: #171a25; }
 
 	.project-sidebar h2 {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 0.4rem;
 		font-size: 0.95rem;
 		font-weight: 600;
 		margin-bottom: 0.25rem;
 	}
+	.sidebar-hide {
+		background: none;
+		border: none;
+		color: #6b7280;
+		font-size: 0.75rem;
+		line-height: 1;
+		cursor: pointer;
+		padding: 0.1rem 0.2rem;
+		flex-shrink: 0;
+	}
+	.sidebar-hide:hover { color: #a5b4fc; }
+
+	/* Sequenz-Gliederung unter dem Dokument: eingerückt, kleiner, mit Faden
+	   zum Dokument — sie ist dessen Inhaltsverzeichnis, kein Geschwisterpunkt. */
+	.seq-list {
+		display: flex;
+		flex-direction: column;
+		margin: 0.1rem 0 0.4rem 1.45rem;
+		padding-left: 0.5rem;
+		border-left: 1px solid #2a2d3a;
+	}
+	.seq-link {
+		display: flex;
+		align-items: baseline;
+		gap: 0.35rem;
+		width: 100%;
+		text-align: left;
+		background: none;
+		border: none;
+		border-left: 2px solid transparent;
+		margin-left: -0.5rem;
+		padding: 0.22rem 0.3rem 0.22rem 0.5rem;
+		color: #8b8fa3;
+		font-family: inherit;
+		font-size: 0.7rem;
+		line-height: 1.35;
+		cursor: pointer;
+		overflow-wrap: anywhere;
+		transition: color 0.12s, background 0.12s, border-color 0.12s;
+	}
+	.seq-link:hover {
+		color: #c9cdd5;
+		background: rgba(139, 156, 247, 0.07);
+		border-left-color: rgba(139, 156, 247, 0.5);
+	}
+	.seq-link.active {
+		color: #e1e4e8;
+		background: rgba(139, 156, 247, 0.14);
+		border-left-color: #8b9cf7;
+	}
+	.seq-num {
+		flex-shrink: 0;
+		color: #4b5563;
+		font-size: 0.62rem;
+		font-variant-numeric: tabular-nums;
+		min-width: 1.1rem;
+		text-align: right;
+	}
+	.seq-text { flex: 1; min-width: 0; }
+	/* Unbenannte Sequenz: sichtbar als Lücke, nicht als Eintrag — sie soll
+	   auffallen, ohne sich vor die benannten zu drängen. */
+	.seq-link.seq-unnamed .seq-text {
+		color: #5a6070;
+		font-style: italic;
+	}
+	.seq-link.seq-unnamed:hover .seq-text { color: #9ca3af; }
+	.seq-rename-input {
+		width: 100%;
+		margin: 0.15rem 0;
+		background: #0f1117;
+		border: 1px solid #8b9cf7;
+		border-radius: 4px;
+		padding: 0.2rem 0.3rem;
+		color: #e1e4e8;
+		font-family: inherit;
+		font-size: 0.7rem;
+	}
+	.seq-rename-input:focus { outline: none; }
 	.project-name-link {
 		color: inherit;
 		text-decoration: none;

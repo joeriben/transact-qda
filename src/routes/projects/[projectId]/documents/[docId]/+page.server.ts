@@ -7,6 +7,14 @@ import { getAnnotationsByDocument, getAnnotationsByProject, getAnnotationCandida
 import { getProjectPhases, getPhaseMembers } from '$lib/server/db/queries/maps.js';
 import { error } from '@sveltejs/kit';
 
+/** Eine Sequenz aus `coding_runs.segmentation_snapshot` (siehe segmentation.ts). */
+export interface SegmentSnapshot {
+	seq: number;
+	charStart: number;
+	charEnd: number;
+	sentenceCount: number;
+}
+
 export interface DocumentElement {
 	id: string;
 	element_type: string;
@@ -34,7 +42,7 @@ export const load: PageServerLoad = async ({ params }) => {
 
 	if (!doc) error(404, 'Document not found');
 
-	const [annotations, candidates, elementsResult, projectAnnotations, documentsResult, stackResult, phases] = await Promise.all([
+	const [annotations, candidates, elementsResult, projectAnnotations, documentsResult, stackResult, phases, runRow] = await Promise.all([
 		getAnnotationsByDocument(params.projectId, params.docId),
 		getAnnotationCandidates(params.projectId),
 		query<DocumentElement>(
@@ -60,7 +68,20 @@ export const load: PageServerLoad = async ({ params }) => {
 			 ORDER BY na.naming_id, na.seq`,
 			[params.projectId]
 		),
-		getProjectPhases(params.projectId)
+		getProjectPhases(params.projectId),
+		// Segmentierung des jüngsten KI-Laufs. Sie ist die vollständige Einteilung
+		// des Dokuments; Sequenz-Namings entstehen nur dort, wo im Lauf ein Titel
+		// überlebt hat. Ohne diese Liste wären die übrigen Sequenzen unsichtbar —
+		// der Leser sähe eine lückenhafte Gliederung und wüsste nicht, dass sie
+		// lückenhaft ist. Deshalb kommt sie mit und trägt die Nummerierung.
+		queryOne<{ segmentation_snapshot: SegmentSnapshot[] }>(
+			`SELECT segmentation_snapshot
+			 FROM coding_runs
+			 WHERE document_id = $1 AND project_id = $2
+			   AND jsonb_array_length(segmentation_snapshot) > 0
+			 ORDER BY started_at DESC LIMIT 1`,
+			[params.docId, params.projectId]
+		)
 	]);
 
 	// Resolve phase members for filter support
@@ -80,6 +101,12 @@ export const load: PageServerLoad = async ({ params }) => {
 		documents: documentsResult.rows,
 		namingStacks: stackResult.rows,
 		phases,
-		phaseMemberMap
+		phaseMemberMap,
+		segments: (runRow?.segmentation_snapshot ?? []).map((s) => ({
+			seq: s.seq,
+			charStart: s.charStart,
+			charEnd: s.charEnd,
+			sentenceCount: s.sentenceCount
+		}))
 	};
 };
