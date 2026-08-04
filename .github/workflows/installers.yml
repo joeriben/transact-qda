@@ -1,0 +1,103 @@
+# Installer CI — proves the documented install paths work from a clean machine.
+#
+# The installers clone the repo themselves from origin/<ref>, so these jobs test
+# whatever is currently on the triggering ref. For a push to main that is the
+# commit just pushed — i.e. exactly what a user would `git clone` and install.
+#
+# Coverage:
+#   lint           — syntax + shellcheck + the PDF smoke test (all fast, no mutation)
+#   linux-install  — runs installer/install.sh end-to-end on a throwaway VM
+#                    (sudo + systemd are available on GitHub's ubuntu runners)
+#   macos-install  — runs installer/install_macos.sh with SKIP_SERVICE_LOAD=yes
+#                    (headless runners have no GUI/Aqua session for launchd, so the
+#                     DB is started via pg_ctl and the app LaunchAgent is skipped)
+#
+# Both full installs apply all DB migrations, including 019 which needs the
+# pgvector `vector` extension — so they also verify pgvector provisioning
+# (apt postgresql-N-pgvector on Linux, brew pgvector + postgresql@17 on macOS).
+
+name: installers
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'installer/**'
+      - 'migrations/**'
+      - 'scripts/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'src/lib/server/documents/**'
+      - '.github/workflows/installers.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: installers-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint installers + PDF smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: bash -n (syntax — hard gate)
+        run: |
+          bash -n installer/install.sh
+          bash -n installer/install_macos.sh
+      - name: shellcheck (informational)
+        continue-on-error: true
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y shellcheck
+          shellcheck installer/install.sh installer/install_macos.sh
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - name: verify:pdf (hard gate)
+        run: npm run verify:pdf
+
+  linux-install:
+    name: Linux full install (ubuntu VM)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run installer end-to-end
+        run: |
+          sudo APP_PORT=5174 RUN_DEMO_SEED=no BRANCH='${{ github.ref_name }}' \
+            bash installer/install.sh
+      - name: Smoke — app responds on :5174
+        run: |
+          up=
+          for _ in $(seq 1 30); do
+            if curl -fsS -o /dev/null http://127.0.0.1:5174/; then up=1; echo "app is up"; break; fi
+            sleep 2
+          done
+          [ -n "$up" ] || { echo "::error::app did not respond on :5174"; exit 1; }
+      - name: Smoke — PDF extraction (hard gate)
+        run: sudo bash -lc 'cd /opt/transact-qda && npm run verify:pdf'
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          sudo systemctl status transact-qda-db.service --no-pager 2>&1 | tail -30 || true
+          sudo systemctl status transact-qda.service --no-pager 2>&1 | tail -30 || true
+          sudo journalctl -u transact-qda.service --no-pager 2>&1 | tail -80 || true
+
+  macos-install:
+    name: macOS install (SKIP_SERVICE_LOAD)
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run installer (skip launchd; pg_ctl direct)
+        run: |
+          SKIP_SERVICE_LOAD=yes OPEN_AFTER_INSTALL=no RUN_DEMO_SEED=no \
+            BRANCH='${{ github.ref_name }}' \
+            bash installer/install_macos.sh
+      - name: Smoke — PDF extraction in the installed app (hard gate)
+        run: |
+          cd "$HOME/Applications/transact-qda"
+          npm run verify:pdf
