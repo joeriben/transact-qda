@@ -4,13 +4,40 @@
 import { json, error } from '@sveltejs/kit';
 import { query } from '$lib/server/db/index.js';
 
-export async function PATCH({ params, request }) {
+/**
+ * Das Etikett eines Dokuments ändern.
+ *
+ * Dateien zu benennen ist kein Naming. Weder der Scanner-Name
+ * („895503ngfi_qx3.docx") noch ein sorgfältig gesetzter („Interview Frau K.,
+ * 3.4.") zeichnet etwas am Material aus — beide adressieren einen Behälter,
+ * damit man ihn wiederfindet. Der Designations-Gradient handelt davon, was im
+ * Material als etwas angesprochen wird; ein Behälteretikett steht außerhalb.
+ * Deshalb entsteht hier KEIN naming_act, in keinem Fall.
+ *
+ * Dass Dokumente als Zeile in `namings` liegen, ist eine Eigenschaft der
+ * Speicherung — `namings` ist die universelle Knotentabelle dieser Anlage.
+ * Ein Dokument bekommt keine `entity`-Appearance und taucht folgerichtig in
+ * keiner Namings-Liste und auf keiner Map auf.
+ *
+ * Was hier trotzdem zu schützen war: bis Migration 035 stand der Importname
+ * einzig in dieser Inskription — die Datei auf der Platte heißt
+ * `files/<uuid>.<ext>` und trägt ihn nicht. Umbenennen löschte ihn ersatzlos.
+ * Er liegt jetzt in `document_content.original_filename` bei den übrigen
+ * technischen Angaben zur Datei; das Etikett kann sich darüber frei ändern.
+ */
+export async function PATCH({ params, request, locals }) {
 	const { projectId, docId } = params;
 	const { label } = await request.json();
 	if (!label?.trim()) throw error(400, 'Label required');
 
+	// Auf Dokumente des Projekts gescopt — der Join auf document_content
+	// verhindert, dass hier ein beliebiges Naming umgeschrieben wird.
 	const result = await query(
-		`UPDATE namings SET inscription = $1 WHERE id = $2 AND project_id = $3 AND deleted_at IS NULL RETURNING id`,
+		`UPDATE namings n SET inscription = $1
+		 FROM document_content dc
+		 WHERE dc.naming_id = n.id
+		   AND n.id = $2 AND n.project_id = $3 AND n.deleted_at IS NULL
+		 RETURNING n.id`,
 		[label.trim(), docId, projectId]
 	);
 	if (result.rows.length === 0) throw error(404, 'Document not found');

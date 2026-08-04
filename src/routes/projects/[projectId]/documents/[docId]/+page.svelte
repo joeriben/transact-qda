@@ -7,12 +7,16 @@
 	import ImageAnnotationViewer from '$lib/components/ImageAnnotationViewer.svelte';
 	import ComparisonPanel from './ComparisonPanel.svelte';
 	// AI-Evaluation audit layer (separable): verdict control shown only on
-	// AI-produced codes. Remove with the ai-eval module to drop the layer.
+	// AI-produced codes, plus the shared verdict state that greys out a rejected
+	// cue. Remove with the ai-eval module to drop the layer — every usage site in
+	// this file is marked "ai-eval".
 	import AiEvalControl from '$lib/components/ai-eval/AiEvalControl.svelte';
+	import { verdicts } from '$lib/components/ai-eval/verdicts.svelte.js';
 	import NamingContextMenu from './NamingContextMenu.svelte';
 	import PhaseAssignDialog from './PhaseAssignDialog.svelte';
 	import CodingRunPanel from './CodingRunPanel.svelte';
-	import { goto, invalidateAll } from '$app/navigation';
+	import { docOutline } from '$lib/stores/docOutline.svelte.js';
+	import { invalidateAll } from '$app/navigation';
 
 	let { data } = $props();
 	const doc = $derived(data.document);
@@ -44,12 +48,38 @@
 	// einer Material-Ebene als „Inhaltsverzeichnis" organisieren (linke TOC-
 	// Spalte). Die beiden Klassen dürfen nicht vermischt werden (siehe
 	// docs/design-mother-map-and-coding-flow.md sowie Migration 030).
+	// ai-eval: ausgeblendete Passagen verschwinden aus Liste, Margin und Text —
+	// nicht gelöscht, nur unsichtbar; der Panel-Footer holt sie zurück.
+	let showHidden = $state(false);
+	const hiddenAnnotations = $derived(
+		annotations.filter((a: any) => (a.valence ?? 'codes') === 'codes' && a.properties?.hidden)
+	);
 	const codeAnnotations = $derived(
-		annotations.filter((a: any) => (a.valence ?? 'codes') === 'codes')
+		annotations.filter(
+			(a: any) =>
+				(a.valence ?? 'codes') === 'codes' && (showHidden || !a.properties?.hidden)
+		)
 	);
 	const sequenceNamingAnnotations = $derived(
 		annotations.filter((a: any) => a.valence === 'thematizes')
 	);
+
+	// ai-eval: Urteile des Dokuments einmal laden; ein verworfener Cue wird in
+	// Liste und Namings-Spalte ausgegraut.
+	$effect(() => {
+		verdicts.load(data.projectId, doc.id);
+	});
+	function isRejectedAnn(ann: any): boolean {
+		return (
+			!!(ann.properties?.aiPersona || ann.properties?.aiSuggested) &&
+			verdicts.isRejected(ann.code_id, ann.properties?.anchor)
+		);
+	}
+	/** Ein Cue gilt als verworfen, wenn keine seiner sichtbaren Passagen mehr steht. */
+	function isRejectedNaming(codeId: string): boolean {
+		const anns = codeAnnotations.filter((a: any) => a.code_id === codeId);
+		return anns.length > 0 && anns.every(isRejectedAnn);
+	}
 
 	// TOC-Sortierung: nach sequenceMeta.seq (vom coding-run gesetzt, in
 	// write.ts via extraProperties in `properties` gespreadet), Fallback
@@ -71,6 +101,13 @@
 
 	// Document elements (parsed structure)
 	const elements = $derived(data.elements || []);
+
+	// Vollständige Sequenz-Einteilung des jüngsten KI-Laufs (siehe
+	// +page.server.ts). Grundlage der Gliederung — auch für die Sequenzen, die
+	// im Lauf keinen Titel bekommen haben.
+	const runSegments = $derived(
+		(data.segments || []) as Array<{ seq: number; charStart: number; charEnd: number; sentenceCount: number }>
+	);
 
 	// Text selection state
 	let selection = $state<{ pos0: number; pos1: number; text: string } | null>(null);
@@ -217,6 +254,21 @@
 	// Similar passages from ComparisonPanel (replaces Passages list when active)
 	let similarPassages = $state<any[] | null>(null);
 
+	// Right-panel mode: 'code' = passages of the selected naming, 'similar' =
+	// embedding-near passages of the current text selection. Explicit, so the
+	// active relation stays legible (was an implicit "show similar" toggle).
+	let panelMode = $state<'code' | 'similar'>('code');
+	// Follow the user's focus: opening a text selection switches to "Ähnliche
+	// Stellen"; clearing it returns to "Code-Passagen". Manual segment clicks
+	// (which don't change `selection`) are preserved.
+	$effect(() => {
+		// Only flip to Similar when the selection is long enough for retrieval
+		// (matches ComparisonPanel's ≥10-char guard); shorter marks stay on
+		// Code-Passagen rather than showing an empty similar view.
+		if (selection && selection.text.length >= 10) panelMode = 'similar';
+		else panelMode = 'code';
+	});
+
 	// Phase data
 	const phases = $derived(data.phases ?? []);
 	const phaseMemberMap = $derived<Record<string, string[]>>(data.phaseMemberMap ?? {});
@@ -244,6 +296,18 @@
 	let passageMemoText = $state('');
 	let namingTooltipText = $state('');
 	let namingTooltipStyle = $state('display:none');
+	let namingTooltipEl = $state<HTMLDivElement>();
+
+	// Der Naming-Tooltip ist inhaltsbreit (nowrap), seine Breite steht erst
+	// nach dem Rendern fest: erst unsichtbar setzen, messen, dann platzieren.
+	async function showNamingTooltip(e: MouseEvent, label: string) {
+		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+		namingTooltipText = label;
+		namingTooltipStyle = 'left:-9999px;top:0;display:block';
+		await tick();
+		const width = namingTooltipEl?.offsetWidth ?? 240;
+		namingTooltipStyle = placeTooltip(rect, width) + 'display:block';
+	}
 	let expandedAnnId = $state<string | null>(null);
 	const filteredAnnotations = $derived.by(() => {
 		let result = scopedAnnotations;
@@ -260,6 +324,13 @@
 				|| (a.properties?.anchor?.text || '').toLowerCase().includes(q));
 		}
 		return result;
+	});
+
+	// Selected naming label — for the panel's anchor hint in Code-Passagen mode.
+	const selectedNamingLabel = $derived.by(() => {
+		if (selectedNamingIds.size !== 1) return null;
+		const id = [...selectedNamingIds][0];
+		return scopedCandidates.find((c: any) => c.id === id)?.label ?? null;
 	});
 
 	// Auto-expand: when a single naming is selected and resolves to exactly
@@ -323,11 +394,14 @@
 	}
 
 	function getOffsetsFromRange(container: HTMLElement, range: Range): { pos0: number; pos1: number } | null {
-		// Walk only visible text nodes, skipping tooltip spans (which contain code labels)
+		// Walk only visible text nodes. Übersprungen wird, was im Transkript steht,
+		// aber nicht zum Dokumenttext gehört: Tooltips (Naming-Labels) und die
+		// Sequenzmarken (Nummer an der gepunkteten Linie). Zählte man sie mit,
+		// verschöben sich alle Anker hinter der ersten Marke.
 		const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
 			acceptNode(node) {
 				const parent = node.parentElement;
-				if (parent?.classList.contains('code-tooltip')) return NodeFilter.FILTER_REJECT;
+				if (parent?.closest('.code-tooltip, .seq-divider')) return NodeFilter.FILTER_REJECT;
 				return NodeFilter.FILTER_ACCEPT;
 			}
 		});
@@ -376,6 +450,10 @@
 		codes: { id: string; annId: string; label: string; color: string }[];
 		elementId?: string;
 		seqAnchorIds?: string[];
+		/** Sequenznummer, wenn hier eine Sequenz der Segmentierung beginnt.
+		 *  Trägt den Sprung auch für Sequenzen ohne Titel — die haben keine
+		 *  Annotation und wären sonst nicht anspringbar. */
+		segStart?: number;
 		start: number;
 		end: number;
 	};
@@ -400,13 +478,19 @@
 			}
 		}
 
+		// Sequenzstarts der Segmentierung — auch die der unbenannten Sequenzen.
+		const segStarts = new Map<number, number>();
+		for (const s of runSegments) {
+			if (s.charStart >= 0 && s.charStart <= text.length) segStarts.set(s.charStart, s.seq);
+		}
+
 		// Short-circuit ONLY when there is nothing to split on at all. With parsed
 		// elements present we segment element-grained; with an active selection we
 		// split exactly at its boundaries (below). Otherwise an uncoded document
 		// collapses to a single [0, text.length] segment, and the selection-
 		// highlight predicate (interval overlap) paints the WHOLE document for any
 		// selection.
-		if (textAnns.length === 0 && seqAnchors.size === 0 && elements.length === 0 && !selection) {
+		if (textAnns.length === 0 && seqAnchors.size === 0 && segStarts.size === 0 && elements.length === 0 && !selection) {
 			return [{ text, codes: [], start: 0, end: text.length }];
 		}
 
@@ -420,6 +504,7 @@
 			if (pos1 >= 0 && pos1 <= text.length) points.add(pos1);
 		}
 		for (const p0 of seqAnchors.keys()) points.add(p0);
+		for (const p0 of segStarts.keys()) points.add(p0);
 		// Add element boundaries for data-element-id mapping
 		for (const el of elements) {
 			if (el.char_start >= 0 && el.char_start <= text.length) points.add(el.char_start);
@@ -458,27 +543,52 @@
 			const el = leafElements.find((e: any) => e.char_start <= start && e.char_end >= end);
 
 			const seqAnchorIds = seqAnchors.get(start);
-			segments.push({ text: text.slice(start, end), codes: activeCodes, elementId: el?.id, seqAnchorIds, start, end });
+			segments.push({
+				text: text.slice(start, end),
+				codes: activeCodes,
+				elementId: el?.id,
+				seqAnchorIds,
+				segStart: segStarts.get(start),
+				start,
+				end
+			});
 		}
 		return segments;
 	});
 
 	// Margin annotations: positioned by actual DOM coordinates
-	function shortLabel(label: string): string {
-		const words = label.split(/\s+/);
-		return words.length <= 2 ? label : words.slice(0, 2).join(' ') + '…';
-	}
+	// Kein Kürzen auf Verdacht: die Marginalie zeigt den vollen Wortlaut, und
+	// erst wenn die Spalte zu schmal ist, schneidet CSS mit Ellipse ab. Die
+	// Spaltenbreite ist ziehbar — die Entscheidung liegt damit beim Leser.
 
 	// Margin labels with measured Y positions + tooltip data
 	let marginLabels = $state<Array<{
-		annId: string; label: string; fullLabel: string; color: string; top: number;
+		annId: string; codeId: string; label: string; fullLabel: string; color: string; top: number;
 		comment: string; snippet: string;
 	}>>([]);
 	let tooltipStyle = $state('');
 
+	// Tooltips liegen position:fixed und wurden bisher blind rechts neben den
+	// Anker gesetzt. Die Marginalie steht am rechten Rand der Textspalte, die
+	// Namings-Liste noch weiter rechts — der Kasten lief dort regelmäßig aus
+	// dem Fenster. Jetzt: rechts, wenn Platz ist, sonst links davon, und in
+	// jedem Fall in den sichtbaren Rahmen geklemmt. Unterhalb der Fenstermitte
+	// hängt der Kasten am unteren Ankerrand, damit er nicht nach unten austritt.
+	function placeTooltip(rect: DOMRect, width: number): string {
+		const gap = 8;
+		const vw = window.innerWidth;
+		const vh = window.innerHeight;
+		let left = rect.right + gap;
+		if (left + width + gap > vw) left = rect.left - width - gap;
+		left = Math.max(gap, Math.min(left, vw - width - gap));
+		return rect.top > vh / 2
+			? `left: ${left}px; bottom: ${Math.max(gap, vh - rect.bottom)}px;`
+			: `left: ${left}px; top: ${rect.top}px;`;
+	}
+
 	function showTooltip(e: MouseEvent) {
-		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-		tooltipStyle = `left: ${rect.right + 8}px; top: ${rect.top}px;`;
+		// 240px = feste Breite von .margin-tooltip
+		tooltipStyle = placeTooltip((e.currentTarget as HTMLElement).getBoundingClientRect(), 240);
 	}
 	function hideTooltip() { tooltipStyle = ''; }
 	let marginEl = $state<HTMLDivElement>();
@@ -519,7 +629,8 @@
 
 			labels.push({
 				annId,
-				label: shortLabel(ann.code_label),
+				codeId: ann.code_id,
+				label: ann.code_label,
 				fullLabel: ann.code_label,
 				color: ann.code_color || '#8b9cf7',
 				top,
@@ -674,10 +785,197 @@
 		window.addEventListener('mouseup', onUp);
 	}
 
+	// ── Spaltenlayout ─────────────────────────────────────────────────────
+	// Hauptaktant der Seite ist das Transkript. Die Nebenspalten dürfen ihm
+	// Raum nehmen, aber nur so viel, wie der Forscher ihnen zugesteht: jede
+	// Spalte ist ausblendbar und in der Breite ziehbar, beides persistent.
+	let showNamings = $state(true);
+	let showPassages = $state(true);
+	let namingsWidth = $state(260);
+	let passagesWidth = $state(320);
+
+	// Reihenfolge zählt: dieser Effekt läuft vor dem Speicher-Effekt, sonst
+	// überschriebe der Default die gespeicherte Wahl (wie bei namings-sort).
+	$effect(() => {
+		if (typeof window === 'undefined') return;
+		try {
+			const raw = window.localStorage?.getItem('doc-layout');
+			if (!raw) return;
+			const l = JSON.parse(raw);
+			if (typeof l.showNamings === 'boolean') showNamings = l.showNamings;
+			if (typeof l.showPassages === 'boolean') showPassages = l.showPassages;
+			if (typeof l.namingsWidth === 'number') namingsWidth = l.namingsWidth;
+			if (typeof l.passagesWidth === 'number') passagesWidth = l.passagesWidth;
+		} catch {
+			// defekter Eintrag → Defaults stehen lassen
+		}
+	});
+	$effect(() => {
+		if (typeof window === 'undefined') return;
+		window.localStorage?.setItem(
+			'doc-layout',
+			JSON.stringify({ showNamings, showPassages, namingsWidth, passagesWidth })
+		);
+	});
+
+	// Beide Spalten liegen rechts vom Text: Ziehen nach links verbreitert sie.
+	function startColResize(e: MouseEvent, col: 'namings' | 'passages') {
+		e.preventDefault();
+		const startX = e.clientX;
+		const startWidth = col === 'namings' ? namingsWidth : passagesWidth;
+		function onMove(ev: MouseEvent) {
+			const w = Math.max(140, Math.min(560, startWidth - (ev.clientX - startX)));
+			if (col === 'namings') namingsWidth = w;
+			else passagesWidth = w;
+		}
+		function onUp() {
+			window.removeEventListener('mousemove', onMove);
+			window.removeEventListener('mouseup', onUp);
+		}
+		window.addEventListener('mousemove', onMove);
+		window.addEventListener('mouseup', onUp);
+	}
+
+	// ── Sequenz-Gliederung ────────────────────────────────────────────────
+	// Die Gliederung hängt in der Projekt-Sidebar unter diesem Dokument. Sie
+	// listet ALLE Sequenzen der Segmentierung, nicht nur die benannten: der
+	// KI-Lauf teilt das Dokument vollständig ein, aber nur ein Teil der
+	// Sequenzen trägt am Ende einen Titel. Die übrigen als unbenannt zu zeigen
+	// ist der Unterschied zwischen Orientierung und einer Liste, die ihre
+	// eigenen Lücken verschweigt.
+	const outlineEntries = $derived.by(() => {
+		// Benannte Sequenzen nach Sequenznummer, ersatzweise nach Startposition.
+		const byKey = new Map<string, any[]>();
+		for (const a of sortedSequenceNamings) {
+			const seq = a.properties?.sequenceMeta?.seq;
+			const key = typeof seq === 'number' ? `seq:${seq}` : `pos:${a.properties?.anchor?.pos0}`;
+			if (!byKey.has(key)) byKey.set(key, []);
+			byKey.get(key)!.push(a);
+		}
+
+		const entries: any[] = [];
+		const usedKeys = new Set<string>();
+		for (const s of runSegments) {
+			const named = byKey.get(`seq:${s.seq}`) ?? byKey.get(`pos:${s.charStart}`) ?? [];
+			if (named.length > 0) {
+				usedKeys.add(`seq:${s.seq}`);
+				usedKeys.add(`pos:${s.charStart}`);
+				// H1 schlägt pro Sequenz mehrere Titel vor; alle hängen am selben Anker.
+				for (const a of named) {
+					entries.push({
+						key: `ann:${a.id}`,
+						seq: s.seq,
+						label: a.code_label,
+						annId: a.id,
+						namingId: a.code_id,
+						charStart: s.charStart,
+						charEnd: s.charEnd
+					});
+				}
+			} else {
+				entries.push({
+					key: `seq:${s.seq}`,
+					seq: s.seq,
+					label: null,
+					annId: null,
+					namingId: null,
+					charStart: s.charStart,
+					charEnd: s.charEnd
+				});
+			}
+		}
+
+		// Benannte Sequenzen, die zu keinem Segment des jüngsten Laufs passen
+		// (älterer Lauf, andere Segmentierung) — nicht unterschlagen, anhängen.
+		for (const a of sortedSequenceNamings) {
+			const seq = a.properties?.sequenceMeta?.seq;
+			const key = typeof seq === 'number' ? `seq:${seq}` : `pos:${a.properties?.anchor?.pos0}`;
+			if (usedKeys.has(key)) continue;
+			entries.push({
+				key: `ann:${a.id}`,
+				seq: null,
+				label: a.code_label,
+				annId: a.id,
+				namingId: a.code_id,
+				charStart: a.properties?.anchor?.pos0 ?? null,
+				charEnd: a.properties?.anchor?.pos1 ?? null
+			});
+		}
+		return entries;
+	});
+
+	// Sequenz-Titel aus dem KI-Lauf sind Cues. Der Forscher schreibt sie um wie
+	// jedes andere Naming: 'rename' hängt einen Akt an den Stack, der alte
+	// Wortlaut bleibt in der Kette stehen (append-only).
+	async function renameSequenceNaming(namingId: string, inscription: string) {
+		const res = await fetch(`/api/projects/${data.projectId}/namings`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			credentials: 'same-origin',
+			body: JSON.stringify({ action: 'rename', namingId, inscription })
+		});
+		if (res.ok) await invalidateAll();
+	}
+
+	// Eine unbenannte Sequenz benennen: ein eigenes Naming des Forschers, an die
+	// ganze Sequenzspanne verankert (valence 'thematizes' — dieselbe Klasse wie
+	// die Titel aus dem Lauf, damit sie in derselben Gliederung stehen).
+	async function nameSequence(entry: any, label: string) {
+		if (entry.charStart == null || entry.charEnd == null) return;
+		// Trägt ein Naming diesen Wortlaut bereits, wird es wiederverwendet —
+		// sonst scheiterte das Anlegen an der Dublettenprüfung und der Titel
+		// wäre verloren.
+		const existing = candidates.find(
+			(c: any) => c.label.toLowerCase() === label.toLowerCase()
+		);
+		let namingId: string | undefined = existing?.id;
+		if (!namingId) {
+			const codeRes = await fetch(`/api/projects/${data.projectId}/codes`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				credentials: 'same-origin',
+				body: JSON.stringify({ label, color: '#8b9cf7' })
+			});
+			if (!codeRes.ok) return;
+			namingId = (await codeRes.json()).id;
+		}
+		const annRes = await fetch(`/api/projects/${data.projectId}/documents/${doc.id}/annotations`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			credentials: 'same-origin',
+			body: JSON.stringify({
+				codeId: namingId,
+				anchorType: 'text',
+				anchor: {
+					pos0: entry.charStart,
+					pos1: entry.charEnd,
+					text: doc.full_text?.slice(entry.charStart, entry.charEnd) ?? ''
+				},
+				valence: 'thematizes',
+				sequenceMeta: entry.seq != null ? { seq: entry.seq } : undefined
+			})
+		});
+		if (annRes.ok) await invalidateAll();
+	}
+
+	$effect(() => {
+		docOutline.set(doc.id, outlineEntries);
+		docOutline.onselect = (entry) => {
+			// Unbenannte Sequenzen haben keine Annotation — über die Segmentnummer
+			// anspringen; benannte fallen darauf zurück, wenn das Segment fehlt.
+			if (entry.seq != null && scrollToSegment(entry.seq)) return;
+			if (entry.annId) scrollToSequence(entry.annId);
+		};
+		docOutline.onname = (entry, label) =>
+			entry.namingId ? renameSequenceNaming(entry.namingId, label) : nameSequence(entry, label);
+		return () => docOutline.clear();
+	});
+
 	function jumpToSimilar(sp: any) {
-		// Cross-document hit → open that document; same-document → scroll to the element.
+		// Cross-document hit → open that document in a NEW TAB so the current
+		// coding view is never lost; same-document → scroll to the element.
 		if (sp.documentId && sp.documentId !== doc.id) {
-			goto(`/projects/${data.projectId}/documents/${sp.documentId}`);
+			window.open(`/projects/${data.projectId}/documents/${sp.documentId}`, '_blank', 'noopener');
 			return;
 		}
 		const el = textEl?.querySelector(`[data-element-id="${sp.elementId}"]`);
@@ -708,6 +1006,26 @@
 		setTimeout(() => { highlightedSeqId = null; }, 2200);
 	}
 
+	// Sprung über die Sequenznummer — der Weg für unbenannte Sequenzen, die
+	// keine Annotation haben, an die man scrollen könnte. Liefert false, wenn
+	// die Sequenz im gerenderten Text nicht auftaucht.
+	//
+	// Ziel ist die gepunktete Linie, nicht der erste Textspan: die Linie steht
+	// VOR ihm, und wer den Span an den oberen Rand holt, schiebt sie darüber
+	// hinaus. Man landete am Anfang der Sequenz, ohne ihre Grenze zu sehen.
+	// Den nötigen Abstand darüber gibt scroll-margin-top an .seq-divider.
+	let highlightedSegSeq = $state<number | null>(null);
+	function scrollToSegment(seq: number): boolean {
+		const el =
+			textEl?.querySelector(`[data-seg-divider="${seq}"]`) ??
+			textEl?.querySelector(`[data-seg-start="${seq}"]`);
+		if (!el) return false;
+		el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+		highlightedSegSeq = seq;
+		setTimeout(() => { highlightedSegSeq = null; }, 2200);
+		return true;
+	}
+
 	// Naming click handler: select naming(s) to show their passages
 	function handleNamingClick(namingId: string, e: MouseEvent) {
 		if (e.shiftKey && lastClickedNamingId) {
@@ -734,6 +1052,21 @@
 			selectedNamingIds = new Set([namingId]);
 			lastClickedNamingId = namingId;
 		}
+	}
+
+	// Ein Naming außerhalb der Namings-Spalte anklicken — in der Marginalie, im
+	// Transkript, auf einer Verankerungs-Karte — holt es in der Spalte hervor.
+	// Ist die Spalte ausgeblendet, wird sie dafür geöffnet: sonst führte der
+	// Klick ins Leere, seit die Spalte wegklappbar ist.
+	async function revealNamings(namingIds: string[]) {
+		if (namingIds.length === 0) return;
+		showNamings = true;
+		selectedNamingIds = new Set(namingIds);
+		lastClickedNamingId = namingIds[0];
+		await tick();
+		document
+			.querySelector(`.naming-row[data-naming-id="${namingIds[0]}"]`)
+			?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 	}
 
 	// Context menu on naming right-click
@@ -852,6 +1185,17 @@
 		}
 	}
 
+	// ai-eval: eine Revision wurde als eigenes Naming übernommen oder eine Passage
+	// aus-/eingeblendet. Remove with the ai-eval layer (see AiEvalControl.svelte).
+	async function refreshAfterAiEval() {
+		const [annRes, candidatesRes] = await Promise.all([
+			fetch(`/api/projects/${data.projectId}/documents/${doc.id}/annotations`),
+			fetch(`/api/projects/${data.projectId}/codes`)
+		]);
+		if (annRes.ok) annotations = await annRes.json();
+		if (candidatesRes.ok) candidates = await candidatesRes.json();
+	}
+
 	async function deleteAnnotation(annId: string, codeId: string, codeLabel: string) {
 		// First check: would this also delete the code?
 		const checkRes = await fetch(
@@ -933,35 +1277,35 @@
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="doc-viewer" onclick={() => { ctxMenuNamingIds = null; }}>
-	<div class="doc-body">
-		<!-- TOC-Spalte: Begründete Sequenz-Namings als „Inhaltsverzeichnis" des
-		     Dokuments. Material-Ebene (vgl. Migration 030 / coding-flow-Design).
-		     Wird nur angezeigt, wenn Sequenz-Namings existieren. -->
-		{#if !isImage && sortedSequenceNamings.length > 0}
-			<aside class="toc-column" aria-label="Sequenz-Namings">
-				<div class="toc-header">
-					<h3>Sequenz <span class="count">({sortedSequenceNamings.length})</span></h3>
-				</div>
-				<div class="toc-scroll">
-					{#each sortedSequenceNamings as ann (ann.id)}
-						{@const seq = ann.properties?.sequenceMeta?.seq}
-						{@const sCount = ann.properties?.sequenceMeta?.sentenceCount}
-						<button
-							type="button"
-							class="toc-entry"
-							class:toc-active={highlightedSeqId === ann.id}
-							title={ann.code_label}
-							onclick={() => scrollToSequence(ann.id)}
-						>
-							{#if typeof seq === 'number'}<span class="toc-seq">{seq}</span>{/if}
-							<span class="toc-label">{ann.code_label}</span>
-							{#if typeof sCount === 'number'}<span class="toc-meta">{sCount}</span>{/if}
-						</button>
-					{/each}
-				</div>
-			</aside>
-		{/if}
+	<!-- Kopfzeile: Werkzeuge und Spaltenschalter. Alles, was Funktionsbefehl
+	     ist — auch der KI-Lauf —, steht hier und nicht in einer Spalte neben
+	     dem Material. -->
+	<div class="doc-toolbar">
+		<span class="tb-title" title={doc.label}>{doc.label}</span>
+		<button
+			class="tb-toggle"
+			class:tb-on={showNamings}
+			onclick={() => { showNamings = !showNamings; }}
+			title="Namings-Spalte ein- oder ausblenden"
+		>Namings <span class="tb-count">{scopedCandidates.length}</span></button>
+		<button
+			class="tb-toggle"
+			class:tb-on={showPassages}
+			onclick={() => { showPassages = !showPassages; }}
+			title="Verankerungs-Spalte ein- oder ausblenden"
+		>Verankerungen <span class="tb-count">{filteredAnnotations.length}</span></button>
+		<!-- AI-Coding-Run trigger + live progress (Coding-Run-Subsystem). -->
+		<CodingRunPanel
+			compact
+			projectId={data.projectId}
+			docId={doc.id}
+			distinctNamings={uniqueCodeCount}
+			oncompleted={() => invalidateAll()}
+			onsequencedone={() => scheduleLiveRefresh()}
+		/>
+	</div>
 
+	<div class="doc-body">
 		<div class="doc-with-margin">
 			<div class="content-panel" class:image-mode={isImage}>
 				{#if isImage}
@@ -974,18 +1318,20 @@
 					/>
 				{:else if doc.full_text}
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
-					<pre class="document-text" class:drop-target-active={dragOverDoc && hasSelection} bind:this={textEl} onmouseup={handleMouseUp} ondragover={handleDocDragOver} ondragleave={handleDocDragLeave} ondrop={handleDocDrop}>{#each textSegments as seg, i}{#if seg.codes.length > 0}{@const isAnnStart = i === 0 || !textSegments[i - 1].codes.some(c => c.annId === seg.codes[0].annId)}<span
+					<pre class="document-text" class:sel-similar={panelMode === 'similar'} class:drop-target-active={dragOverDoc && hasSelection} bind:this={textEl} onmouseup={handleMouseUp} ondragover={handleDocDragOver} ondragleave={handleDocDragLeave} ondrop={handleDocDrop}>{#each textSegments as seg, i}{#if seg.segStart != null}<span class="seq-divider" data-seg-divider={seg.segStart} aria-hidden="true"><span class="seq-divider-num">{seg.segStart}</span></span>{/if}{#if seg.codes.length > 0}{@const isAnnStart = i === 0 || !textSegments[i - 1].codes.some(c => c.annId === seg.codes[0].annId)}<span
 						class="coded-text"
 						class:coded-highlighted={seg.codes.some(c => c.annId === highlightedAnnotationId)}
 						class:selection-highlight={selection && seg.start < selection.pos1 && seg.end > selection.pos0}
-						class:seq-flash={seg.seqAnchorIds && highlightedSeqId && seg.seqAnchorIds.includes(highlightedSeqId)}
+						class:seq-flash={(seg.seqAnchorIds && highlightedSeqId && seg.seqAnchorIds.includes(highlightedSeqId)) || (seg.segStart != null && highlightedSegSeq === seg.segStart)}
 						style="background: {codedBackground(seg.codes)}; border-bottom: 2px solid {seg.codes[0].color};"
 						data-element-id={seg.elementId || undefined}
 						data-ann-start={isAnnStart ? seg.codes[0].annId : undefined}
 						data-seq-anchor={seg.seqAnchorIds?.join(' ') || undefined}
+						data-seg-start={seg.segStart ?? undefined}
+						onclick={() => { if (window.getSelection()?.isCollapsed !== false) revealNamings(seg.codes.map(c => c.id)); }}
 						onmouseenter={() => { highlightedAnnotationId = seg.codes[0].annId; }}
 						onmouseleave={() => { highlightedAnnotationId = null; }}
-					>{seg.text}<span class="code-tooltip">{seg.codes.map(c => c.label).join(', ')}</span></span>{:else}<span data-element-id={seg.elementId || undefined} data-seq-anchor={seg.seqAnchorIds?.join(' ') || undefined} class:selection-highlight={selection && seg.start < selection.pos1 && seg.end > selection.pos0} class:seq-flash={seg.seqAnchorIds && highlightedSeqId && seg.seqAnchorIds.includes(highlightedSeqId)}>{seg.text}</span>{/if}{/each}</pre>
+					>{seg.text}<span class="code-tooltip">{seg.codes.map(c => c.label).join(', ')}</span></span>{:else}<span data-element-id={seg.elementId || undefined} data-seq-anchor={seg.seqAnchorIds?.join(' ') || undefined} data-seg-start={seg.segStart ?? undefined} class:selection-highlight={selection && seg.start < selection.pos1 && seg.end > selection.pos0} class:seq-flash={(seg.seqAnchorIds && highlightedSeqId && seg.seqAnchorIds.includes(highlightedSeqId)) || (seg.segStart != null && highlightedSegSeq === seg.segStart)}>{seg.text}</span>{/if}{/each}</pre>
 				{:else}
 					<p class="placeholder">No text content available</p>
 				{/if}
@@ -997,10 +1343,12 @@
 				<div class="code-margin" bind:this={marginEl} style="width: {marginWidth}px;">
 					{#each marginLabels as ml (ml.annId)}
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
+						<!-- svelte-ignore a11y_click_events_have_key_events -->
 						<span
 							class="margin-label"
 							class:margin-highlighted={highlightedAnnotationId === ml.annId}
 							style="color: {ml.color}; top: {ml.top}px;"
+							onclick={() => revealNamings([ml.codeId])}
 							onmouseenter={(e) => { highlightedAnnotationId = ml.annId; showTooltip(e); }}
 							onmouseleave={() => { highlightedAnnotationId = null; hideTooltip(); }}
 						>{ml.label}<span class="margin-tooltip" style={tooltipStyle}><strong>{ml.fullLabel}</strong>{#if ml.comment}<em>{ml.comment}</em>{/if}{#if ml.snippet}<span class="mt-snippet">{ml.snippet}</span>{/if}</span></span>
@@ -1009,18 +1357,12 @@
 			{/if}
 		</div>
 
-		<!-- Namings-Column: AI-Coding-Run-Streifen ÜBER dem Namings-Panel.
-		     Beide teilen sich die linke Schmalspalte neben Passages. -->
-		<div class="namings-column">
-			<!-- AI-Coding-Run trigger + live progress (Coding-Run-Subsystem). -->
-			<CodingRunPanel
-				projectId={data.projectId}
-				docId={doc.id}
-				distinctNamings={uniqueCodeCount}
-				oncompleted={() => invalidateAll()}
-				onsequencedone={() => scheduleLiveRefresh()}
-			/>
-
+		<!-- Namings-Column: rein empirische Spalte — der KI-Lauf-Streifen sitzt
+		     als Funktionsbefehl in der Kopfzeile, nicht mehr hier. -->
+		{#if showNamings}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class="col-divider" onmousedown={(e) => startColResize(e, 'namings')} title="Breite ziehen"></div>
+		<div class="namings-column" style="width: {namingsWidth}px;">
 			<!-- Namings: permanent code overview -->
 			<div class="namings-panel">
 			<div class="panel-header">
@@ -1131,12 +1473,12 @@
 							<span class="naming-group-label">{group.label}</span>
 							{#each group.items as c (c.id)}
 								<!-- svelte-ignore a11y_no_static_element_interactions -->
-								<div class="naming-row" class:naming-expanded={expandedNamingId === c.id} class:naming-selected={selectedNamingIds.has(c.id)} class:apply-mode={hasSelection} data-naming-id={c.id} draggable="true" ondragstart={(e) => handleNamingDragStart(c.id, e)}>
+								<div class="naming-row" class:naming-expanded={expandedNamingId === c.id} class:naming-selected={selectedNamingIds.has(c.id)} class:naming-rejected={isRejectedNaming(c.id)} class:apply-mode={hasSelection} data-naming-id={c.id} draggable="true" ondragstart={(e) => handleNamingDragStart(c.id, e)}>
 									<div class="naming-main" onclick={(e) => handleNamingClick(c.id, e)} oncontextmenu={(e) => handleNamingContextMenu(c.id, e)}>
 										<span class="color-dot" style="background: {c.color || '#8b9cf7'}"></span>
 										<span
 										class="naming-label"
-										onmouseenter={(e) => { namingTooltipText = c.label; const r = (e.target as HTMLElement).getBoundingClientRect(); namingTooltipStyle = `left:${r.right + 6}px;top:${r.top}px;display:block`; }}
+										onmouseenter={(e) => showNamingTooltip(e, c.label)}
 										onmouseleave={() => { namingTooltipStyle = 'display:none'; }}
 									>{c.label}</span>
 										<button
@@ -1212,23 +1554,52 @@
 
 		</div>
 		<!-- /namings-column -->
+		{/if}
 
-		<!-- Passages: permanent overview of coded text passages -->
-		<div class="passages-panel">
+		<!-- Verankerungen: permanente Übersicht der verankerten Textstellen -->
+		{#if showPassages}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class="col-divider" onmousedown={(e) => startColResize(e, 'passages')} title="Breite ziehen"></div>
+		<div class="passages-panel" class:panel-similar={selection && panelMode === 'similar'} style="width: {passagesWidth}px;">
 			<div class="panel-header">
-				<h3>{similarPassages ? 'Similar' : 'Passages'} <span class="count">({similarPassages ? similarPassages.length : `${filteredAnnotations.length}/${scopedAnnotations.length}`})</span></h3>
-				<div class="scope-toggle">
-					<button class="scope-btn" class:active={passagesScope === 'this'} onclick={() => passagesScope = 'this'}>Document</button>
-					<div class="scope-right">
-						<button class="scope-btn" class:active={passagesScope !== 'this'} onclick={() => passagesScope = 'all'}>All</button>
-						<select class="scope-doc-pick" value="" onchange={(e) => { const v = (e.target as HTMLSelectElement).value; if (v) passagesScope = v; (e.target as HTMLSelectElement).value = ''; }}>
-							<option value="">▾</option>
-							{#each projectDocuments.filter(d => d.id !== doc.id) as d}
-								<option value={d.id}>{d.label}</option>
-							{/each}
-						</select>
+				{#if selection}
+					<!-- Zwei Bezüge, zwei Farben: Indigo = ein Naming aus der Namings-
+					     Spalte, Türkis = die eigene Markierung im Text. Die Farbe zieht
+					     sich durch Reiter, Bezugszeile und Karten. -->
+					<div class="mode-toggle" role="tablist" aria-label="Anzeigemodus">
+						<button class="mode-btn mode-anchor" class:active={panelMode === 'code'} role="tab" aria-selected={panelMode === 'code'} onclick={() => panelMode = 'code'}>
+							Verankerungen <span class="mode-count">{filteredAnnotations.length}</span>
+						</button>
+						<button class="mode-btn mode-similar" class:active={panelMode === 'similar'} role="tab" aria-selected={panelMode === 'similar'} onclick={() => panelMode = 'similar'}>
+							Ähnliche Stellen{#if similarPassages} <span class="mode-count">{similarPassages.length}</span>{/if}
+						</button>
 					</div>
-				</div>
+					<div class="anchor-hint" class:hint-similar={panelMode === 'similar'}>
+						{#if panelMode === 'similar'}
+							ähnlich zur markierten Stelle „{truncate(selection.text, 34)}“
+						{:else if selectedNamingLabel}
+							verankert unter Naming „{truncate(selectedNamingLabel, 30)}“
+						{:else}
+							alle Verankerungen im gewählten Bereich
+						{/if}
+					</div>
+				{:else}
+					<h3>Verankerungen <span class="count">({filteredAnnotations.length}/{scopedAnnotations.length})</span></h3>
+				{/if}
+				{#if panelMode === 'code'}
+					<div class="scope-toggle">
+						<button class="scope-btn" class:active={passagesScope === 'this'} onclick={() => passagesScope = 'this'}>Document</button>
+						<div class="scope-right">
+							<button class="scope-btn" class:active={passagesScope !== 'this'} onclick={() => passagesScope = 'all'}>All</button>
+							<select class="scope-doc-pick" value="" onchange={(e) => { const v = (e.target as HTMLSelectElement).value; if (v) passagesScope = v; (e.target as HTMLSelectElement).value = ''; }}>
+								<option value="">▾</option>
+								{#each projectDocuments.filter(d => d.id !== doc.id) as d}
+									<option value={d.id}>{d.label}</option>
+								{/each}
+							</select>
+						</div>
+					</div>
+				{/if}
 			</div>
 			{#if phases.length > 0}
 				<div class="phase-filter-row">
@@ -1251,17 +1622,20 @@
 						projectId={data.projectId}
 						docId={doc.id}
 						{selection}
+						mode={panelMode}
 						onannotate={(codeId) => annotate(codeId)}
 						documentTitle={doc.label}
 						onsimilar={(passages) => { similarPassages = passages; }}
 					/>
 				</div>
 			{/if}
-			{#if similarPassages}
+			{#if panelMode === 'similar'}
 				<!-- Similar mode: shows embedding-similar passages -->
 				<div class="passages-scroll">
-					{#if similarPassages.length === 0}
-						<p class="empty">No similar passages found.</p>
+					{#if !similarPassages}
+						<p class="empty">{selection && selection.text.length < 10 ? 'Markierung zu kurz für Ähnlichkeitssuche.' : 'Lädt ähnliche Stellen…'}</p>
+					{:else if similarPassages.length === 0}
+						<p class="empty">Keine ähnlichen Stellen gefunden.</p>
 					{:else}
 						{#each similarPassages as sp, i (i)}
 							<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -1284,7 +1658,7 @@
 									<button
 										class="btn-expand-ann"
 										onclick={() => jumpToSimilar(sp)}
-										title={sp.documentId === doc.id ? 'Scroll to passage' : 'Open in its document'}
+										title={sp.documentId === doc.id ? 'Scroll to passage' : 'Open in new tab'}
 									>▶</button>
 									<span class="similar-score">{(sp.similarity * 100).toFixed(0)}%</span>
 								</div>
@@ -1317,12 +1691,16 @@
 								data-ann-id={ann.id}
 								class:ann-highlighted={highlightedAnnotationId === ann.id}
 								class:ann-expanded={expandedAnnId === ann.id}
+								class:ann-rejected={isRejectedAnn(ann)}
+								class:ann-hidden={ann.properties?.hidden}
 								onmouseenter={() => { highlightedAnnotationId = ann.id; }}
 								onmouseleave={() => { highlightedAnnotationId = null; }}
 							>
 								<div class="ann-header">
 									<span class="color-dot" style="background: {ann.code_color || '#8b9cf7'}"></span>
-									<span class="code-name">{ann.code_label}</span>
+									<!-- svelte-ignore a11y_click_events_have_key_events -->
+									<!-- svelte-ignore a11y_no_static_element_interactions -->
+									<span class="code-name code-name-clickable" title="Naming in der Namings-Spalte zeigen" onclick={() => revealNamings([ann.code_id])}>{ann.code_label}</span>
 									<button
 										class="btn-expand-ann"
 										onclick={() => { expandedAnnId = expandedAnnId === ann.id ? null : ann.id; }}
@@ -1330,8 +1708,8 @@
 									>{expandedAnnId === ann.id ? '▽' : '▼'}</button>
 									<button
 										class="btn-expand-ann"
-										onclick={() => ann.document_id === doc.id ? scrollToPassage(ann.id) : goto(`/projects/${data.projectId}/documents/${ann.document_id}`)}
-										title={ann.document_id === doc.id ? 'Scroll to passage' : 'Open in its document'}
+										onclick={() => ann.document_id === doc.id ? scrollToPassage(ann.id) : window.open(`/projects/${data.projectId}/documents/${ann.document_id}`, '_blank', 'noopener')}
+										title={ann.document_id === doc.id ? 'Scroll to passage' : 'Open in new tab'}
 									>▶</button>
 									<button
 										class="btn-delete-ann"
@@ -1367,9 +1745,14 @@
 											<AiEvalControl
 												projectId={data.projectId}
 												docId={doc.id}
+												annotationId={ann.id}
 												subjectNamingId={ann.code_id}
 												subjectLabel={ann.code_label}
 												anchor={ann.properties?.anchor ?? null}
+												hidden={!!ann.properties?.hidden}
+												passageCount={codeAnnotations.filter((a: any) => a.code_id === ann.code_id).length}
+												onadopt={refreshAfterAiEval}
+												onhide={refreshAfterAiEval}
 											/>
 										{/if}
 									{:else if getSnippet(ann)}
@@ -1379,14 +1762,25 @@
 						{/each}
 					{/if}
 				</div>
+				<!-- ai-eval: ausgeblendete Cues bleiben erreichbar — sonst wäre „ausblenden" ein Verschwinden ohne Rückweg. -->
+				{#if hiddenAnnotations.length > 0 || showHidden}
+					<div class="hidden-note">
+						<span>{hiddenAnnotations.length} ausgeblendet</span>
+						<button class="btn-show-hidden" onclick={() => { showHidden = !showHidden; }}>
+							{showHidden ? 'wieder ausblenden' : 'einblenden'}
+						</button>
+					</div>
+				{/if}
 			{/if}
 		</div>
+		<!-- /passages-panel -->
+		{/if}
 
 	</div>
 </div>
 
 <!-- Naming tooltip: fixed position, outside overflow containers -->
-<div class="naming-tooltip-fixed" style={namingTooltipStyle}>{namingTooltipText}</div>
+<div class="naming-tooltip-fixed" bind:this={namingTooltipEl} style={namingTooltipStyle}>{namingTooltipText}</div>
 
 {#if ctxMenuNamingIds}
 	<NamingContextMenu
@@ -1426,8 +1820,76 @@
 		flex: 1;
 		min-height: 0;
 		display: flex;
-		gap: 1rem;
+		gap: 0;
 		overflow: hidden;
+	}
+
+	/* Kopfzeile: Dokumenttitel, Spaltenschalter, KI-Lauf. Umbricht, damit der
+	   aufgeklappte KI-Lauf-Streifen eine eigene Zeile bekommt statt die
+	   Schalter zu verdrängen. */
+	.doc-toolbar {
+		flex-shrink: 0;
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.4rem;
+		padding: 0 0 0.5rem;
+	}
+	.tb-title {
+		flex: 1;
+		min-width: 3rem;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		color: #c9cdd5;
+		font-size: 0.82rem;
+		font-weight: 600;
+		padding: 0 0.3rem;
+	}
+	.tb-toggle {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3rem;
+		flex-shrink: 0;
+		background: none;
+		border: 1px solid #2a2d3a;
+		border-radius: 5px;
+		padding: 0.2rem 0.5rem;
+		color: #6b7280;
+		font-family: inherit;
+		font-size: 0.7rem;
+		cursor: pointer;
+		transition: color 0.12s, border-color 0.12s, background 0.12s;
+	}
+	.tb-toggle:hover { color: #c9cdd5; border-color: #3a3f52; }
+	.tb-toggle.tb-on {
+		color: #c9cdd5;
+		background: #1a1d29;
+		border-color: #3a3f52;
+	}
+	.tb-count {
+		font-size: 0.62rem;
+		font-weight: 600;
+		line-height: 1;
+		padding: 0.12rem 0.32rem;
+		border-radius: 999px;
+		background: #252840;
+		color: #9ca3af;
+	}
+	.tb-toggle.tb-on .tb-count { color: #c9cdd5; }
+
+	/* Ziehleiste zwischen den Spalten. Trägt zugleich den Abstand, den vorher
+	   der gap der doc-body übernommen hat. */
+	.col-divider {
+		width: 9px;
+		flex-shrink: 0;
+		cursor: col-resize;
+		background:
+			linear-gradient(#2a2d3a, #2a2d3a) center / 1px 100% no-repeat;
+		transition: background-image 0.15s;
+	}
+	.col-divider:hover {
+		background-image: linear-gradient(#8b9cf7, #8b9cf7);
 	}
 
 	.doc-with-margin {
@@ -1505,7 +1967,7 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		max-width: calc(100% - 0.5rem);
-		cursor: default;
+		cursor: pointer;
 		opacity: 0.8;
 	}
 	.margin-label:hover, .margin-label.margin-highlighted {
@@ -1567,85 +2029,42 @@
 	 * Namings-Panel (Hauptfläche, scrollt). Sitzt als ein Flex-Item neben
 	 * doc-with-margin und passages-panel — gleicher Höhenstrang wie die
 	 * anderen Spalten. */
-	/* TOC-Spalte: Sequenz-Naming-Inhaltsverzeichnis links vom Dokument.
-	 * Material-Ebene-Organisation (Session 33), getrennt von der rekonstruktiv-
-	 * analytischen Namings-Liste rechts. */
-	.toc-column {
-		width: 200px;
-		flex-shrink: 0;
-		display: flex;
-		flex-direction: column;
+	/* Sequenzgrenze im Transkript. Ohne sie war die Einteilung nur in der
+	   Gliederung sichtbar, im Text aber nicht — man sah nicht, wo eine Sequenz
+	   anfängt und die vorige aufhört. Die Nummer ist dieselbe wie dort.
+	   Der Streifen trägt keinen Dokumenttext; getOffsetsFromRange überspringt
+	   ihn, damit die Zahl keine Anker verschiebt. */
+	.seq-divider {
+		display: block;
+		position: relative;
+		height: 0;
+		margin: 1rem 0 0.75rem;
+		border-top: 1px dotted #3a3f52;
+		user-select: none;
+		/* Platz über der Linie beim Anspringen — die Nummer sitzt oberhalb von
+		   ihr und stünde sonst über dem Rand des Scrollbereichs. */
+		scroll-margin-top: 1.4rem;
+	}
+	.seq-divider-num {
+		position: absolute;
+		top: -0.62rem;
+		left: 0;
+		/* Hintergrund von .doc-with-margin — die Linie setzt hinter der Zahl aus. */
 		background: #161822;
-		border: 1px solid #2a2d3a;
-		border-radius: 8px;
-		overflow: hidden;
-		min-height: 0;
-	}
-	.toc-header {
-		padding: 0.4rem 0.6rem;
-		border-bottom: 1px solid #2a2d3a;
-		flex-shrink: 0;
-	}
-	.toc-header h3 {
-		font-size: 0.8rem;
-		color: #8b8fa3;
-		margin: 0;
-	}
-	.toc-header .count {
-		color: #6b7280;
-		font-weight: 400;
-	}
-	.toc-scroll {
-		flex: 1;
-		overflow-y: auto;
-		padding: 0.25rem 0;
-	}
-	.toc-entry {
-		display: flex;
-		align-items: baseline;
-		gap: 0.4rem;
-		width: 100%;
-		padding: 0.3rem 0.6rem;
-		background: none;
-		border: none;
-		border-left: 2px solid transparent;
-		color: #c9cdd5;
-		font-family: inherit;
-		font-size: 0.72rem;
-		text-align: left;
-		cursor: pointer;
-		transition: background 0.12s, border-color 0.12s, color 0.12s;
-	}
-	.toc-entry:hover {
-		background: rgba(139, 156, 247, 0.08);
-		color: #e1e4e8;
-		border-left-color: rgba(139, 156, 247, 0.5);
-	}
-	.toc-entry.toc-active {
-		background: rgba(139, 156, 247, 0.18);
-		border-left-color: #8b9cf7;
-		color: #e1e4e8;
-	}
-	.toc-seq {
-		flex-shrink: 0;
-		color: #6b7280;
+		padding-right: 0.45rem;
+		color: #5a6070;
+		font-family: system-ui, sans-serif;
+		font-size: 0.62rem;
 		font-variant-numeric: tabular-nums;
-		font-size: 0.65rem;
-		min-width: 1.4rem;
+		line-height: 1;
 	}
-	.toc-label {
-		flex: 1;
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+
+	/* Sequenz-Namings ohne eigene Linie (aus einem Lauf mit anderer
+	   Segmentierung) bekommen beim Anspringen dieselbe Luft nach oben. */
+	.document-text [data-seq-anchor] {
+		scroll-margin-top: 1.4rem;
 	}
-	.toc-meta {
-		flex-shrink: 0;
-		color: #6b7280;
-		font-size: 0.6rem;
-		font-variant-numeric: tabular-nums;
-	}
+
 	/* Kurzer Flash auf dem getroffenen Segment nach Klick. */
 	.seq-flash {
 		animation: seqFlash 2.2s ease-out;
@@ -1657,7 +2076,6 @@
 	}
 
 	.namings-column {
-		width: 260px;
 		flex-shrink: 0;
 		display: flex;
 		flex-direction: column;
@@ -1718,6 +2136,84 @@
 		background: rgba(139, 156, 247, 0.15);
 		color: #a5b4fc;
 	}
+	/* Modus-Umschalter (Verankerungen ⇄ Ähnliche Stellen) — zwei gleichrangige
+	   Zustände mit VERSCHIEDENEN Bezügen, deshalb verschiedene Farben:
+	     Indigo  #8b9cf7 = Bezug ist ein Naming aus der Namings-Spalte
+	     Türkis  #2dd4bf = Bezug ist die eigene Markierung im Transkript
+	   Die Farbe trägt durch: Reiter → Bezugszeile → Karten → Untermenü. */
+	.mode-toggle {
+		display: flex;
+		gap: 2px;
+		background: #14161f;
+		border: 1px solid #2a2d3a;
+		border-radius: 5px;
+		padding: 2px;
+	}
+	.mode-btn {
+		flex: 1;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 5px;
+		padding: 0.3rem 0.4rem;
+		background: transparent;
+		border: none;
+		border-radius: 4px;
+		color: #8b8fa3;
+		font-size: 0.72rem;
+		font-family: inherit;
+		cursor: pointer;
+		transition: background 0.12s, color 0.12s;
+	}
+	.mode-btn:hover:not(.active) { color: #c9cdd5; }
+	.mode-btn.active {
+		color: #fff;
+		font-weight: 600;
+	}
+	.mode-btn.mode-anchor.active {
+		background: rgba(139, 156, 247, 0.22);
+		box-shadow: inset 0 -2px 0 #8b9cf7;
+	}
+	.mode-btn.mode-similar.active {
+		background: rgba(45, 212, 191, 0.2);
+		box-shadow: inset 0 -2px 0 #2dd4bf;
+	}
+	.mode-count {
+		font-size: 0.62rem;
+		font-weight: 600;
+		line-height: 1;
+		padding: 0.1rem 0.32rem;
+		border-radius: 999px;
+		background: #252840;
+		color: #c9cdd5;
+	}
+	.mode-btn.mode-anchor.active .mode-count { background: #8b9cf7; color: #0f1117; }
+	.mode-btn.mode-similar.active .mode-count { background: #2dd4bf; color: #0f1117; }
+	/* Bezugszeile: trägt die Farbe des aktiven Reiters, damit sichtbar ist,
+	   worauf sich die Liste darunter bezieht. */
+	.anchor-hint {
+		font-size: 0.66rem;
+		color: #8b8fa3;
+		margin: 0 0.1rem;
+		padding: 0.1rem 0 0.1rem 0.4rem;
+		border-left: 2px solid #8b9cf7;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.anchor-hint.hint-similar { border-left-color: #2dd4bf; }
+	/* Ähnliche-Stellen-Modus färbt die ganze Spalte ein: Untermenü (Scope +
+	   Vergleich per LLM) und Trefferkarten gehören sichtbar zu diesem Bezug. */
+	.passages-panel.panel-similar .comparison-section {
+		border-left: 2px solid #2dd4bf;
+		background: rgba(45, 212, 191, 0.04);
+	}
+	.passages-panel.panel-similar .annotation-card {
+		border-left: 2px solid rgba(45, 212, 191, 0.55);
+	}
+	.passages-panel.panel-similar .similar-score {
+		color: #2dd4bf;
+	}
 	.scope-right {
 		display: flex;
 		align-items: center;
@@ -1774,7 +2270,6 @@
 
 	/* Passages panel: permanent passage overview — flex item, height handled by parent */
 	.passages-panel {
-		width: 320px;
 		flex-shrink: 0;
 		display: flex;
 		flex-direction: column;
@@ -2008,6 +2503,14 @@
 	.naming-row.naming-selected {
 		background: rgba(139, 156, 247, 0.12);
 	}
+	/* ai-eval: verworfener Cue in der Namings-Spalte. */
+	.naming-row.naming-rejected .naming-label {
+		color: #6b7280;
+	}
+	.naming-row.naming-rejected .color-dot {
+		filter: grayscale(1);
+		opacity: 0.5;
+	}
 	.naming-row.naming-selected .naming-label {
 		color: #a5b4fc;
 	}
@@ -2059,7 +2562,11 @@
 		padding: 0.35rem 0.5rem;
 		font-size: 0.72rem;
 		color: #d1d5db;
-		white-space: nowrap;
+		/* Lange Namings umbrechen statt aus dem Kasten zu laufen. */
+		max-width: min(420px, 45vw);
+		white-space: normal;
+		overflow-wrap: anywhere;
+		line-height: 1.4;
 		z-index: 200;
 		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
 		pointer-events: none;
@@ -2137,6 +2644,38 @@
 		border-color: #8b9cf7;
 	}
 
+	/* ai-eval: verworfener Cue — steht noch da, trägt aber nicht mehr. */
+	.annotation-card.ann-rejected .code-name,
+	.annotation-card.ann-rejected .ann-text,
+	.annotation-card.ann-rejected .ann-doc-label {
+		color: #6b7280;
+	}
+	.annotation-card.ann-rejected .color-dot {
+		filter: grayscale(1);
+		opacity: 0.5;
+	}
+	.annotation-card.ann-hidden {
+		border-style: dashed;
+		opacity: 0.6;
+	}
+	.hidden-note {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		padding: 0.3rem 0.1rem 0;
+		font-size: 0.72rem;
+		color: #6b7280;
+	}
+	.btn-show-hidden {
+		background: none;
+		border: none;
+		padding: 0;
+		color: #8b9cf7;
+		font: inherit;
+		cursor: pointer;
+		text-decoration: underline;
+	}
+
 	.ann-header {
 		display: flex;
 		align-items: center;
@@ -2149,6 +2688,8 @@
 		color: #e1e4e8;
 		flex: 1;
 	}
+	.code-name-clickable { cursor: pointer; }
+	.code-name-clickable:hover { color: #a5b4fc; }
 
 	.btn-remove {
 		background: none;
@@ -2253,9 +2794,14 @@
 		outline-offset: -2px;
 	}
 
-	/* Selection highlight (persists after DOM re-render) */
+	/* Selection highlight (persists after DOM re-render). Im Ähnliche-Stellen-
+	   Modus türkis — dieselbe Farbe wie Reiter und Trefferkarten, damit die
+	   markierte Stelle als deren Bezug erkennbar ist. */
 	.selection-highlight {
 		background: rgba(139, 156, 247, 0.25) !important;
+	}
+	.document-text.sel-similar .selection-highlight {
+		background: rgba(45, 212, 191, 0.28) !important;
 	}
 
 	/* Small utility button */

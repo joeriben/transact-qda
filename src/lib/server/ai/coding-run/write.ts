@@ -11,11 +11,18 @@
 //    Open Coding). Bekommt KEINE SitMap-Bridge, da TOC-Klasse, keine
 //    analytische Karte.
 //
-// 2. CName (Code-Naming, valence='codes', annotationKind='code-naming'):
-//    Klassische in-vivo / Strauss-zeilenweise offene Codes. Land auf dem
-//    Grounding-Workspace und — über die system-weite Coding→Mapping-Bridge
+// 2. CName (Cue-Naming, valence='codes', annotationKind='code-naming'):
+//    Das Naming, das aufmerken lässt — "hier ist etwas bemerkenswert".
+//    Landet auf dem Grounding-Workspace und — über die system-weite Bridge
 //    in createAnnotation — unresolved auf der primären Situational Map,
-//    genau wie menschliches In-vivo-Coding.
+//    genau wie ein von Hand gesetztes in-vivo-Naming.
+//    Cue, nicht Cut: den Schnitt vollzieht der Mensch, die Maschine
+//    schreibt nie oberhalb der Cue-Höhe. Deshalb heißt das
+//    C hier Cue — es benennt, was das Naming tut, nicht was der Mensch
+//    daraus macht.
+//    Die Literale 'codes' / 'code-naming' bleiben stehen: sie liegen so in
+//    den Daten. Der Rückbau von "Code" betrifft die Sprache, nicht das
+//    Schema.
 //
 // Beide Pfade gehen über createOrphanNaming + createAnnotation, der
 // Unterschied steckt in valence/annotationKind/placeOnPrimaryMap.

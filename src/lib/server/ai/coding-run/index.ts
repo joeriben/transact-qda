@@ -359,9 +359,9 @@ export async function loadExistingCNameLabels(
 
 /**
  * Eine dokument-interne Memo-Quelle für die forensische CName-Pipeline.
- * `source` unterscheidet CName- (an Code-Naming gehängt) von SName-Memos
+ * `source` unterscheidet CName- (an Cue-Naming gehängt) von SName-Memos
  * (an Sequenz-Thematisierung gehängt). `label` ist das Naming-Label
- * (= Code-Bezeichner / Sequenz-Thema); `memo` ist der naming_act.memo_text.
+ * (= Cue-Bezeichner / Sequenz-Thema); `memo` ist der naming_act.memo_text.
  */
 export interface DocumentMemo {
 	source: 'cname' | 'sname';

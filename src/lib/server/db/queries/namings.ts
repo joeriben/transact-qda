@@ -87,6 +87,14 @@ export async function createNaming(
 	return naming;
 }
 
+/**
+ * Ein Naming umschreiben — der Akt tritt in die Designations-Kette ein.
+ *
+ * Nur für Namings, die etwas AM MATERIAL auszeichnen: Cues aus dem Lauf,
+ * in-vivo-Namings, Sequenz-Titel. NICHT für Dokumente: deren Anzeigename ist
+ * ein Behälteretikett, kein Zuschreiben, und gehört nicht in den Gradienten
+ * (siehe api/projects/[projectId]/documents/[docId]/+server.ts).
+ */
 export async function renameNaming(
 	namingId: string,
 	projectId: string,
@@ -96,6 +104,39 @@ export async function renameNaming(
 	const researcherNamingId = await getOrCreateResearcherNaming(projectId, userId);
 
 	return transaction(async (client) => {
+		// Was bisher dastand, festhalten, BEVOR es überschrieben wird. Namings aus
+		// Coding-Run und in-vivo entstehen ohne Inskriptions-Akt (nur Designation);
+		// ohne diesen Nachtrag ginge beim Umschreiben verloren, was umgeschrieben
+		// wurde — die Kette begänne mit der neuen Lesart. Der Nachtrag geht dem
+		// Umschreib-Akt in der seq voraus, trägt aber das Datum der Entstehung.
+		const prior = await client.query(
+			`SELECT 1 FROM naming_acts WHERE naming_id = $1 AND inscription IS NOT NULL LIMIT 1`,
+			[namingId]
+		);
+		if (prior.rowCount === 0) {
+			const cur = await client.query(
+				`SELECT inscription, created_at FROM namings
+				 WHERE id = $1 AND project_id = $2 AND deleted_at IS NULL`,
+				[namingId, projectId]
+			);
+			const origin = await client.query(
+				`SELECT by FROM naming_acts WHERE naming_id = $1 ORDER BY seq ASC LIMIT 1`,
+				[namingId]
+			);
+			if (cur.rows[0]?.inscription && cur.rows[0].inscription !== inscription) {
+				await client.query(
+					`INSERT INTO naming_acts (naming_id, by, inscription, created_at)
+					 VALUES ($1, $2, $3, $4)`,
+					[
+						namingId,
+						origin.rows[0]?.by ?? researcherNamingId,
+						cur.rows[0].inscription,
+						cur.rows[0].created_at
+					]
+				);
+			}
+		}
+
 		// Update current inscription
 		const result = await client.query(
 			`UPDATE namings SET inscription = $1

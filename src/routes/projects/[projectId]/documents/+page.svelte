@@ -47,6 +47,32 @@
 		}, 3000);
 	}
 
+	// Umbenennen = das Etikett ändern, unter dem das Dokument in der Liste
+	// steht. Kein Naming-Akt. Der Importname bleibt als technischer Zeiger
+	// daneben stehen (document_content.original_filename), damit nie unklar
+	// ist, was man ändert und was unberührt bleibt.
+	let renamingDocId = $state<string | null>(null);
+	let renameValue = $state('');
+
+	function startRename(doc: any) {
+		renamingDocId = doc.id;
+		renameValue = doc.label;
+	}
+
+	async function saveRename(doc: any) {
+		const next = renameValue.trim();
+		renamingDocId = null;
+		if (!next || next === doc.label) return;
+		const res = await fetch(`/api/projects/${data.projectId}/documents/${doc.id}`, {
+			method: 'PATCH',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ label: next })
+		});
+		if (!res.ok) return;
+		doc.label = next;
+		documents = [...documents];
+	}
+
 	function formatSize(bytes: number): string {
 		if (bytes < 1024) return bytes + ' B';
 		if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
@@ -315,7 +341,8 @@
 			<table>
 				<thead>
 					<tr>
-						<th>Name</th>
+						<th>Anzeigename</th>
+						<th>Datei beim Import</th>
 						<th>Type</th>
 						<th>Size</th>
 						<th>Parsed</th>
@@ -326,7 +353,30 @@
 				<tbody>
 					{#each documents as doc}
 						<tr>
-							<td><a href="/projects/{data.projectId}/documents/{doc.id}">{doc.label}</a></td>
+							<td>
+								{#if renamingDocId === doc.id}
+									<!-- svelte-ignore a11y_autofocus -->
+									<input
+										class="doc-rename-input"
+										bind:value={renameValue}
+										autofocus
+										onkeydown={(e) => { if (e.key === 'Enter') saveRename(doc); if (e.key === 'Escape') renamingDocId = null; }}
+										onblur={() => saveRename(doc)}
+									/>
+								{:else}
+									<a href="/projects/{data.projectId}/documents/{doc.id}">{doc.label}</a>
+									<button class="btn-rename" onclick={() => startRename(doc)} title="Anzeigenamen ändern — die Datei bleibt unberührt">umbenennen</button>
+								{/if}
+							</td>
+							<!-- Der Dateiname beim Import. Steht er, wurde umbenannt; die Datei
+							     auf der Platte heißt ohnehin <uuid>.<ext>. -->
+							<td class="meta filename">
+								{#if doc.original_filename && doc.original_filename !== doc.label}
+									<span title="Dateiname beim Import — der Anzeigename daneben ist ein Alias">{doc.original_filename}</span>
+								{:else}
+									<span class="same-as-file" title="nicht umbenannt — Anzeigename ist der Dateiname">—</span>
+								{/if}
+							</td>
 							<td class="meta">{doc.mime_type?.split('/')[1] || 'unknown'}</td>
 							<td class="meta">{formatSize(doc.file_size)}</td>
 							<td class="meta">
@@ -355,7 +405,31 @@
 </div>
 
 <style>
-	.documents-page { max-width: 900px; }
+	.documents-page { max-width: 1040px; }
+
+	.btn-rename {
+		background: none;
+		border: none;
+		color: #4b5563;
+		font-size: 0.68rem;
+		cursor: pointer;
+		padding: 0 0.25rem;
+		font-family: inherit;
+	}
+	.btn-rename:hover { color: #a5b4fc; }
+	.doc-rename-input {
+		width: 100%;
+		background: #0f1117;
+		border: 1px solid #8b9cf7;
+		border-radius: 4px;
+		padding: 0.2rem 0.35rem;
+		color: #e1e4e8;
+		font-family: inherit;
+		font-size: 0.8rem;
+	}
+	.doc-rename-input:focus { outline: none; }
+	.filename { font-size: 0.72rem; }
+	.same-as-file { color: #4b5563; }
 
 	h2 { font-size: 1rem; color: #e1e4e8; margin: 0; }
 	.count { color: #6b7280; font-weight: 400; }

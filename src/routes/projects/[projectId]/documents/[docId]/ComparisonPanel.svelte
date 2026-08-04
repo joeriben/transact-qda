@@ -9,7 +9,8 @@
 		selection,
 		onannotate,
 		documentTitle,
-		onsimilar
+		onsimilar,
+		mode = 'similar'
 	}: {
 		projectId: string;
 		docId: string;
@@ -17,6 +18,7 @@
 		onannotate: (codeId: string) => void;
 		documentTitle?: string;
 		onsimilar?: (passages: any[] | null) => void;
+		mode?: 'code' | 'similar';
 	} = $props();
 
 	let loading = $state(false);
@@ -25,8 +27,7 @@
 	let comparison = $state<any>(null);
 	let error = $state<string | null>(null);
 
-	// UI toggle states
-	let showSimilar = $state(false);
+	// Retrieval scope for the Similar mode
 	let scope = $state<'in-document' | 'cross-document'>('in-document');
 
 	// Inline memo state
@@ -41,11 +42,6 @@
 	let discussInput = $state('');
 	let discussing = $state(false);
 
-	// Derived counts
-	const similarCount = $derived(
-		!retrieval ? 0 : retrieval.similarPassages.filter((sp: any) => sp.similarity >= 0.75).length
-	);
-
 	// Fetch retrieval data when selection or scope changes
 	$effect(() => {
 		const currentScope = scope; // explicit dependency — triggers refetch on scope change
@@ -53,8 +49,6 @@
 		if (!selection || !selection.text || selection.text.length < 10) {
 			retrieval = null;
 			comparison = null;
-			showSimilar = false;
-			onsimilar?.(null);
 			showMemoForm = false;
 			memoSaved = false;
 			linkedCodeIds = new Set();
@@ -76,13 +70,20 @@
 		return () => clearTimeout(timeout);
 	});
 
+	// Surface the filtered similar passages to the parent whenever retrieval
+	// changes, so it can render them in "Ähnliche Stellen" mode (the parent
+	// owns the explicit mode switch).
+	$effect(() => {
+		onsimilar?.(retrieval
+			? retrieval.similarPassages.filter((sp: any) => sp.similarity >= 0.75)
+			: null);
+	});
+
 	async function fetchRetrieval(text: string, currentScope: string) {
 		loading = true;
 		error = null;
 		retrieval = null;
 		comparison = null;
-		showSimilar = false;
-		onsimilar?.(null); // clear stale similar view when a new selection starts loading
 		showMemoForm = false;
 		memoSaved = false;
 
@@ -241,6 +242,7 @@
 	}
 </script>
 
+{#if mode === 'similar'}
 <div class="comparison-panel">
 	{#if loading}
 		<div class="loading">Retrieving…</div>
@@ -261,28 +263,13 @@
 			>Cross-Document</button>
 		</div>
 
-		<!-- Action buttons -->
+		<!-- Compare: a distinct ACTION (stateless), not a mode -->
 		<div class="action-row">
-			<button
-				class="action-btn toggle-btn"
-				class:active={showSimilar}
-				aria-pressed={showSimilar}
-				onclick={() => {
-					showSimilar = !showSimilar;
-					onsimilar?.(showSimilar
-						? (retrieval?.similarPassages || []).filter((sp: any) => sp.similarity >= 0.75)
-						: null);
-				}}
-			>
-				<span class="toggle-dot" aria-hidden="true"></span>
-				show similar
-				{#if similarCount > 0}<span class="count-badge">{similarCount}</span>{/if}
-			</button>
 			<button
 				class="action-btn compare-btn"
 				onclick={runComparison}
 				disabled={comparing || !!comparison}
-			>{comparing ? 'Comparing…' : comparison ? 'Compare ✓' : 'Compare (LLM)'}</button>
+			>{comparing ? 'Vergleiche…' : comparison ? 'Verglichen ✓' : 'Vergleich per LLM'}</button>
 		</div>
 
 
@@ -386,6 +373,7 @@
 		{/if}
 	{/if}
 </div>
+{/if}
 
 <style>
 	.comparison-panel {
@@ -453,38 +441,8 @@
 	.action-btn:hover { background: rgba(139, 156, 247, 0.15); border-color: #8b9cf7; }
 	.action-btn:disabled { opacity: 0.5; cursor: default; }
 
-	/* Toggle (state): graphical on/off — dot lights up + pressed fill */
-	.toggle-dot {
-		flex: none;
-		width: 7px;
-		height: 7px;
-		border-radius: 50%;
-		border: 1px solid #6b7280;
-		background: transparent;
-		transition: all 0.15s;
-	}
-	.toggle-btn.active {
-		background: rgba(139, 156, 247, 0.22);
-		border-color: #8b9cf7;
-		color: #fff;
-		box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
-	}
-	.toggle-btn.active .toggle-dot {
-		background: #8b9cf7;
-		border-color: #8b9cf7;
-		box-shadow: 0 0 4px rgba(139, 156, 247, 0.8);
-	}
-	.count-badge {
-		flex: none;
-		font-size: 0.62rem;
-		font-weight: 600;
-		line-height: 1;
-		padding: 0.12rem 0.3rem;
-		border-radius: 999px;
-		background: #252840;
-		color: #c9cdd5;
-	}
-	.toggle-btn.active .count-badge { background: #8b9cf7; color: #0f1117; }
+	/* Mode switch (Code-Passagen ⇄ Ähnliche Stellen) now lives in the parent
+	   panel header; this component renders only the Similar-mode controls. */
 
 	/* Compare (action): stateless — neutral at rest, fill ONLY on hover/press.
 	   A persistent fill would read as an "on" state, like the toggle. */

@@ -8,7 +8,13 @@ import { getDocNetsByProject } from '$lib/server/db/queries/docnets.js';
 export const load: PageServerLoad = async ({ params }) => {
 	const [result, docnets] = await Promise.all([
 		query(
+			// original_filename = der Importname, ein technischer Zeiger neben
+			// file_path (Migration 035). Die Datei auf der Platte heißt
+			// <uuid>.<ext> und trägt ihn nicht, deshalb steht er in der DB —
+			// aber nicht im Designations-Stack, wo er ein Zuschreiben
+			// behaupten würde, das niemand vollzogen hat.
 			`SELECT n.id, n.inscription as label, n.created_at, dc.mime_type, dc.file_size,
+			        dc.original_filename,
 			        (SELECT COUNT(*) FROM document_elements e WHERE e.document_id = n.id AND e.content IS NOT NULL)::int AS element_count,
 			        (SELECT COUNT(*) FROM document_elements e WHERE e.document_id = n.id AND e.embedding IS NOT NULL)::int AS embedded_count
 			 FROM namings n
