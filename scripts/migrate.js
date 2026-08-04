@@ -28,11 +28,14 @@ if (existsSync(envFile)) {
 		const key = line.slice(0, eq).trim();
 		if (!key || key in process.env) continue;
 		let val = line.slice(eq + 1).trim();
-		// Optional umschließende Quotes abstreifen (bash-kompatibel).
-		if (
-			(val.startsWith('"') && val.endsWith('"')) ||
-			(val.startsWith("'") && val.endsWith("'"))
-		) {
+		// Optional umschließende Quotes abstreifen (bash-kompatibel). Die
+		// Installer schreiben einfach gequotete Werte — Pfade unter
+		// ~/Library/Application Support/ enthalten Leerzeichen, ungequotet
+		// zerfällt die Zeile beim Sourcen. Ein eingebettetes Apostroph steht
+		// darin als '\'' (das Standard-Escape); das hier zurückübersetzen.
+		if (val.startsWith("'") && val.endsWith("'") && val.length > 1) {
+			val = val.slice(1, -1).replaceAll("'\\''", "'");
+		} else if (val.startsWith('"') && val.endsWith('"') && val.length > 1) {
 			val = val.slice(1, -1);
 		}
 		process.env[key] = val;

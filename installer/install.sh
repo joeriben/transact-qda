@@ -243,17 +243,29 @@ checkout_repo() {
   fi
 }
 
+# The .env is read by `set -a; . .env` (scripts/lib/load_env.sh) and by the
+# equivalent loader in scripts/migrate.js. Both treat it as shell syntax, so a
+# value containing a space, a quote or a `$` must arrive quoted — otherwise the
+# line breaks apart and the variable ends up wrong or the source fails outright.
+# Single quotes with the standard '\'' escape are the only form that survives
+# every value unchanged; migrate.js strips the surrounding pair again.
+env_line() {
+  printf "%s='%s'\n" "$1" "$(printf '%s' "$2" | sed "s/'/'\\\\''/g")"
+}
+
 write_env_file() {
   local env_file="$INSTALL_DIR/.env"
   log "writing $env_file"
-  cat >"$env_file" <<EOF
-DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@127.0.0.1:${DB_PORT}/${DB_NAME}
-SESSION_SECRET=${SESSION_SECRET}
-HOST=${APP_HOST}
-PORT=${APP_PORT}
-TQDA_BOOTSTRAP=${TQDA_BOOTSTRAP_MODE}
-TQDA_STATE_DIR=${STATE_DIR}
-TQDA_BRAND_DIR=${PGBRAND}
+  {
+    env_line DATABASE_URL "postgresql://${DB_USER}:${DB_PASSWORD}@127.0.0.1:${DB_PORT}/${DB_NAME}"
+    env_line SESSION_SECRET "$SESSION_SECRET"
+    env_line HOST "$APP_HOST"
+    env_line PORT "$APP_PORT"
+    env_line TQDA_BOOTSTRAP "$TQDA_BOOTSTRAP_MODE"
+    env_line TQDA_STATE_DIR "$STATE_DIR"
+    env_line TQDA_BRAND_DIR "$PGBRAND"
+  } >"$env_file"
+  cat >>"$env_file" <<EOF
 
 # Instance branding (optional; empty = public/neutral defaults).
 # For local installer setups, place branding files under ${PGBRAND}/
@@ -416,6 +428,13 @@ create_database() {
     runuser -u "$APP_USER" -- "$PSQL_BIN" -h "$PGRUN" -p "$DB_PORT" -U postgres -d postgres -v ON_ERROR_STOP=1 \
       -c "CREATE DATABASE ${DB_NAME} OWNER ${DB_USER}"
   fi
+
+  # pgvector is not a trusted extension, so CREATE EXTENSION needs superuser
+  # rights. Migration 019 asks for it, but the migrations run as the app role —
+  # which would fail. Create it here as postgres; 019 then finds it in place.
+  log "enabling the pgvector extension in ${DB_NAME}"
+  runuser -u "$APP_USER" -- "$PSQL_BIN" -h "$PGRUN" -p "$DB_PORT" -U postgres -d "$DB_NAME" -v ON_ERROR_STOP=1 \
+    -c "CREATE EXTENSION IF NOT EXISTS vector"
 }
 
 run_migrations() {
