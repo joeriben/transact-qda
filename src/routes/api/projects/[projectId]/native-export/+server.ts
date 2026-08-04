@@ -27,7 +27,7 @@ export const GET: RequestHandler = async ({ params, locals }) => {
 	const buffer = await exportProjectArchive(params.projectId, slug);
 	const filename = `${slug || 'project'}.tqda.zip`;
 
-	return new Response(buffer, {
+	return new Response(buffer as unknown as BodyInit, {
 		headers: {
 			'Content-Type': 'application/zip',
 			'Content-Disposition': `attachment; filename="${filename}"`,
