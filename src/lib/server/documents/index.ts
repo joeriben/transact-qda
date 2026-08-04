@@ -172,11 +172,12 @@ export async function extractText(buffer: Buffer, mimeType: string): Promise<str
 
 	if (mimeType === 'application/pdf') {
 		try {
-			const pdfParse = (await import('pdf-parse')) as any;
-			const parseFn = pdfParse.default || pdfParse;
-			const data = await parseFn(buffer);
-			return data.text;
-		} catch {
+			const { PDFParse } = await import('pdf-parse');
+			const parser = new PDFParse({ data: new Uint8Array(buffer) });
+			const result = await parser.getText();
+			return result.text;
+		} catch (err) {
+			console.error('[documents] PDF text extraction failed:', err);
 			return '[PDF text extraction failed]';
 		}
 	}

@@ -193,6 +193,21 @@ It uses Homebrew plus `launchd`, and installs into user-owned paths by default:
 Unlike the Linux installer, the macOS installer is meant to be run as the
 normal user, not with `sudo`.
 
+### Verifying PDF support
+
+PDF text extraction depends on the `pdf-parse` package. The installers run a
+post-install smoke test and print a warning if it is broken; you can run the
+same check manually at any time:
+
+```bash
+npm run verify:pdf
+```
+
+If it reports a problem, re-run `npm install` (do **not** disable optional
+dependencies — avoid `--omit=optional` / `--no-optional`) and run
+`npm run verify:pdf` again. Text extraction itself is pure JavaScript and works
+on macOS, Linux and Windows (WSL) without any native build tools.
+
 ## Configuration
 
 All runtime configuration lives in `.env` (gitignored). Copy `.env.example`

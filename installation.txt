@@ -96,6 +96,20 @@ Entwicklung
     ./scripts/2_start_dev.sh
 
 
+Fehlerbehebung
+--------------
+
+PDF-Upload erzeugt leere oder "[PDF text extraction failed]"-Dokumente:
+  Die Installer prüfen die PDF-Textextraktion automatisch und geben eine
+  Warnung aus, falls sie nicht funktioniert. Manuell prüfen (jederzeit):
+
+      npm run verify:pdf
+
+  Meldet das Skript ein Problem, "npm install" erneut ausführen (optionale
+  Abhängigkeiten dabei NICHT deaktivieren — kein --omit=optional /
+  --no-optional) und danach erneut "npm run verify:pdf" laufen lassen.
+
+
 Fehler melden
 -------------
 

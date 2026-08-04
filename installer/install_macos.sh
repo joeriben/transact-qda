@@ -8,6 +8,12 @@ DB_NAME="${DB_NAME:-transact_qda}"
 DB_USER="${DB_USER:-tqda}"
 DB_PASSWORD="${DB_PASSWORD:-}"
 DB_PORT="${DB_PORT:-15432}"
+# Homebrew PostgreSQL formula. Must be one that Homebrew's `pgvector` bottle is
+# built for (postgresql@17 or postgresql@18) so `brew install pgvector` provides
+# the `vector` extension that migration 019 requires. postgresql@16 has NO brew
+# pgvector bottle. Note: changing this on a host that already has an app-managed
+# cluster of a different major requires re-initialising that cluster.
+PG_FORMULA="${PG_FORMULA:-postgresql@17}"
 APP_PORT="${APP_PORT:-5174}"
 APP_HOST="${APP_HOST:-127.0.0.1}"
 REPO_URL="${REPO_URL:-https://github.com/joeriben/transact-qda.git}"
@@ -15,6 +21,11 @@ BRANCH="${BRANCH:-main}"
 SESSION_SECRET="${SESSION_SECRET:-}"
 RUN_DEMO_SEED="${RUN_DEMO_SEED:-no}"
 OPEN_AFTER_INSTALL="${OPEN_AFTER_INSTALL:-yes}"
+# Headless/CI escape hatch. When "yes", do not register launchd services (which
+# require a logged-in GUI/Aqua session that CI runners lack). PostgreSQL is then
+# started directly via pg_ctl so migrations and bootstrap still run; the app
+# LaunchAgent is skipped. Used by the installer CI workflow.
+SKIP_SERVICE_LOAD="${SKIP_SERVICE_LOAD:-no}"
 
 LAUNCH_AGENTS_DIR="$HOME/Library/LaunchAgents"
 DB_PLIST_LABEL="ai.transact-qda.db"
@@ -76,12 +87,12 @@ detect_brew() {
 
 install_packages() {
   log "installing Homebrew packages"
-  brew install git node postgresql@16
+  brew install git node "$PG_FORMULA" pgvector
 }
 
 detect_binaries() {
   detect_brew
-  PG_BIN_DIR="$(brew --prefix postgresql@16)/bin"
+  PG_BIN_DIR="$(brew --prefix "$PG_FORMULA")/bin"
   NODE_BIN="$(command -v node)"
   PSQL_BIN="$PG_BIN_DIR/psql"
   PG_ISREADY_BIN="$PG_BIN_DIR/pg_isready"
@@ -176,6 +187,17 @@ install_node_deps() {
 build_app() {
   log "building app"
   (cd "$INSTALL_DIR" && npm run build)
+}
+
+verify_pdf_support() {
+  log "verifying PDF text extraction"
+  if (cd "$INSTALL_DIR" && "$NODE_BIN" installer/check-pdf-support.mjs); then
+    log "PDF text extraction OK"
+  else
+    log "WARNING: PDF text extraction is NOT working on this machine."
+    log "WARNING: the app still installed fine; only PDF uploads are affected."
+    log "WARNING: to retry, run: cd \"$INSTALL_DIR\" && npm install && npm run verify:pdf"
+  fi
 }
 
 initialize_local_cluster() {
@@ -292,6 +314,11 @@ launchctl_remove_if_loaded() {
 }
 
 load_db_service() {
+  if [ "$SKIP_SERVICE_LOAD" = "yes" ]; then
+    log "SKIP_SERVICE_LOAD=yes — starting PostgreSQL directly via pg_ctl (no launchd)"
+    "$PG_CTL_BIN" -D "$PGDATA" -l "$PGLOG/postgres-direct.log" -w start
+    return
+  fi
   log "loading LaunchAgent ${DB_PLIST_LABEL}"
   launchctl_remove_if_loaded "$DB_PLIST_LABEL"
   launchctl bootstrap "gui/$(id -u)" "$DB_PLIST_PATH"
@@ -349,6 +376,10 @@ run_seed_if_requested() {
 }
 
 load_app_service() {
+  if [ "$SKIP_SERVICE_LOAD" = "yes" ]; then
+    log "SKIP_SERVICE_LOAD=yes — skipping app LaunchAgent (no GUI session); app not auto-started"
+    return
+  fi
   log "loading LaunchAgent ${APP_PLIST_LABEL}"
   launchctl_remove_if_loaded "$APP_PLIST_LABEL"
   launchctl bootstrap "gui/$(id -u)" "$APP_PLIST_PATH"
@@ -459,6 +490,7 @@ main() {
   checkout_repo
   write_env_file
   install_node_deps
+  verify_pdf_support
   build_app
   initialize_local_cluster
   write_db_plist

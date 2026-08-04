@@ -277,6 +277,17 @@ build_app() {
   as_app_user "npm run build"
 }
 
+verify_pdf_support() {
+  log "verifying PDF text extraction"
+  if as_app_user "node installer/check-pdf-support.mjs"; then
+    log "PDF text extraction OK"
+  else
+    log "WARNING: PDF text extraction is NOT working on this machine."
+    log "WARNING: the app still installed fine; only PDF uploads are affected."
+    log "WARNING: to retry, run: sudo -u ${APP_USER} bash -lc 'cd \"${INSTALL_DIR}\" && npm install && npm run verify:pdf'"
+  fi
+}
+
 initialize_local_cluster() {
   if [ -f "$PGDATA/PG_VERSION" ]; then
     log "using existing app-managed PostgreSQL cluster"
@@ -564,6 +575,7 @@ main() {
   checkout_repo
   write_env_file
   install_node_deps
+  verify_pdf_support
   build_app
   initialize_local_cluster
   write_db_systemd_unit

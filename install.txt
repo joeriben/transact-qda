@@ -96,6 +96,20 @@ Development
     ./scripts/2_start_dev.sh
 
 
+Troubleshooting
+---------------
+
+PDF upload produces empty or "[PDF text extraction failed]" documents:
+  The installers verify PDF text extraction automatically and print a
+  warning if it is broken. To check (or re-check) it manually at any time:
+
+      npm run verify:pdf
+
+  If it reports a problem, re-run `npm install` (do NOT disable optional
+  dependencies — avoid --omit=optional / --no-optional), then run
+  `npm run verify:pdf` again.
+
+
 Issues
 ------
 
