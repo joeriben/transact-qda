@@ -87,6 +87,14 @@ export async function createNaming(
 	return naming;
 }
 
+/**
+ * Ein Naming umschreiben — der Akt tritt in die Designations-Kette ein.
+ *
+ * Nur für Namings, die etwas AM MATERIAL auszeichnen: Cues aus dem Lauf,
+ * in-vivo-Namings, Sequenz-Titel. NICHT für Dokumente: deren Anzeigename ist
+ * ein Behälteretikett, kein Zuschreiben, und gehört nicht in den Gradienten
+ * (siehe api/projects/[projectId]/documents/[docId]/+server.ts).
+ */
 export async function renameNaming(
 	namingId: string,
 	projectId: string,

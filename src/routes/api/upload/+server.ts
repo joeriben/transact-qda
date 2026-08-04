@@ -35,11 +35,15 @@ export const POST: RequestHandler = async ({ request, locals, url }) => {
 		);
 		const namingId = namingRes.rows[0].id;
 
-		// Store content
+		// Store content. original_filename ist ein technischer Zeiger, kein
+		// Naming — er steht deshalb hier bei file_path/mime_type und nicht im
+		// Designations-Stack. Die Inskription des Dokument-Namings wird damit
+		// nur vorbelegt: sie ist das Etikett, unter dem das Dokument in der
+		// Liste steht, und weder Vorbelegung noch späteres Ändern ist ein Akt.
 		await client.query(
-			`INSERT INTO document_content (naming_id, full_text, file_path, mime_type, file_size)
-			 VALUES ($1, $2, $3, $4, $5)`,
-			[namingId, fullText, filePath, mimeType, buffer.length]
+			`INSERT INTO document_content (naming_id, full_text, file_path, mime_type, file_size, original_filename)
+			 VALUES ($1, $2, $3, $4, $5, $6)`,
+			[namingId, fullText, filePath, mimeType, buffer.length, file.name]
 		);
 
 		// Parse into addressable elements (paragraphs, sentences, ...)
