@@ -8,6 +8,9 @@
  */
 
 import pg from 'pg';
+import { loadEnv } from './lib/load-env.js';
+
+loadEnv();
 
 const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://tqda:tqda_dev@localhost:5432/transact_qda';
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';

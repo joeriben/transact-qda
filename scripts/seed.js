@@ -4,6 +4,12 @@
 import pg from 'pg';
 import { hash } from 'argon2';
 import { fileURLToPath } from 'node:url';
+import { loadEnv } from './lib/load-env.js';
+
+// Muss hier stehen und nicht nur im aufrufenden bootstrap.js: importierte
+// Module werden vor dem Rumpf des Importeurs ausgewertet, die Konstante unten
+// stünde sonst schon fest, bevor die .env gelesen ist.
+loadEnv();
 
 const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://tqda:tqda_dev@localhost:5432/transact_qda';
 

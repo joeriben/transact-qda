@@ -3,6 +3,12 @@
 
 import pg from 'pg';
 import { seed } from './seed.js';
+import { loadEnv } from './lib/load-env.js';
+
+// Der Installer ruft dieses Skript direkt auf, nicht über einen Shell-Wrapper,
+// der die .env sourct — ohne das hier liefe der Bootstrap gegen die Default-
+// Datenbank auf localhost:5432 statt gegen die installierte.
+loadEnv();
 
 const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://tqda:tqda_dev@localhost:5432/transact_qda';
 const BOOTSTRAP_MODE = process.env.TQDA_BOOTSTRAP || 'auto';
