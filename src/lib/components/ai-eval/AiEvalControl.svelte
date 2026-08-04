@@ -11,14 +11,15 @@
     · audit  — the verdict is written to ai_naming_evaluations. Never a naming_act.
       A `reject` greys the cue out; that greying is a consequence of the audit
       record, so it disappears with this layer and leaves the material as it was.
-    · material — a revision only becomes a naming through a separate click by the
-      researcher ("Als eigenes Naming übernehmen"): a HUMAN naming on the same
-      passage, authored by them, alongside the AI cue, which stays untouched and
-      auditable. Nothing here writes on behalf of the AI.
-    · visibility — "Ausblenden" is the fourth, separate switch: it takes the cue
-      out of the reader for good and is therefore only offered on an already
-      rejected cue. It sets `properties.hidden` on the core row through the core
-      endpoint — no deletion, so the act stays ausweisbar and rückholbar.
+    · material — `revise` OVERWRITES: the better reading becomes the researcher's
+      own naming at that passage and the cue steps down there (hidden, never
+      deleted, so the AI act stays ausweisbar and rückholbar via the panel footer).
+      Both halves are one act of the researcher — typing their naming and saving
+      the verdict. Without a better reading, `revise` stays a note. Nothing here
+      writes on behalf of the AI.
+    · visibility — "Ausblenden" is the fourth, separate switch, for the case where
+      no revision replaces the cue: only offered on an already rejected cue,
+      because it costs the cue its visibility. Same `properties.hidden` flag.
 
   The verdict is only an exercise of responsibility if it can be seen afterwards,
   so the history is loaded from the server — it survives collapsing the card and
@@ -174,6 +175,9 @@
 			verdict = null;
 			rationale = '';
 			betterReading = '';
+			// Revidieren heißt überschreiben: das Naming des Forschers tritt an der
+			// Passage an die Stelle des Cues. Ohne bessere Lesart bleibt es eine Notiz.
+			if (sentBetterReading && canAdopt) await enact(sentBetterReading);
 		} catch (e) {
 			errorMsg = e instanceof Error ? e.message : String(e);
 		} finally {
@@ -182,53 +186,71 @@
 	}
 
 	/**
-	 * The researcher's act: the better reading becomes THEIR naming on this
-	 * passage. The AI cue is left as it is — the revision stands beside it, both
-	 * remain readable. Idempotent: an existing naming is reused, and an identical
-	 * passage anchor is deduplicated server-side.
+	 * Die Revision vollziehen: die bessere Lesart wird als Naming DES FORSCHERS an
+	 * dieser Passage angelegt, und der Cue verschwindet dort — ausgeblendet, nicht
+	 * gelöscht, damit der KI-Akt ausweisbar und rückholbar bleibt (Panel-Fuß).
+	 * Idempotent: ein bestehendes Naming wird wiederverwendet, ein identischer
+	 * Anker serverseitig dedupliziert.
 	 */
-	async function adopt(row: EvalRow) {
+	async function enact(betterReadingLabel: string) {
+		const label = betterReadingLabel.trim();
+		if (!label || !canAdopt) return;
+		let codeId: string | null = null;
+		const created = await fetch(`/api/projects/${projectId}/codes`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ label, color: '#7fd1b9' })
+		});
+		if (created.ok) {
+			codeId = ((await created.json()) as { id: string }).id;
+		} else if (created.status === 409) {
+			const list = await fetch(`/api/projects/${projectId}/codes`);
+			if (!list.ok) throw new Error(`HTTP ${list.status}`);
+			const all = (await list.json()) as { id: string; label: string }[];
+			codeId = all.find((c) => (c.label ?? '').toLowerCase() === label.toLowerCase())?.id ?? null;
+			if (!codeId) throw new Error(`Naming „${label}" existiert, ist aber nicht auffindbar`);
+		} else {
+			const e = await created.json().catch(() => ({}));
+			throw new Error(e?.error || `HTTP ${created.status}`);
+		}
+
+		const ann = await fetch(`/api/projects/${projectId}/documents/${docId}/annotations`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				codeId,
+				anchorType: 'text',
+				anchor: { pos0: anchor!.pos0, pos1: anchor!.pos1, text: anchor!.text ?? '' },
+				comment: `Revision von „${subjectLabel}"`
+			})
+		});
+		if (!ann.ok) {
+			const e = await ann.json().catch(() => ({}));
+			throw new Error(e?.error || `HTTP ${ann.status}`);
+		}
+		labelsOnPassage = [...labelsOnPassage, label.toLowerCase()];
+
+		// Der Cue tritt an dieser Passage ab.
+		const hideRes = await fetch(`/api/projects/${projectId}/documents/${docId}/annotations`, {
+			method: 'PATCH',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ annotationId, hidden: true })
+		});
+		if (!hideRes.ok) {
+			const e = await hideRes.json().catch(() => ({}));
+			throw new Error(e?.error || `HTTP ${hideRes.status}`);
+		}
+		onadopt?.(label);
+	}
+
+	/** Nachträglich vollziehen — für Revisionen, die als Urteil schon vorliegen. */
+	async function enactRow(row: EvalRow) {
 		const label = (row.betterReading ?? '').trim();
 		if (!label || adoptingId || !canAdopt) return;
 		adoptingId = row.id;
 		errorMsg = null;
 		try {
-			let codeId: string | null = null;
-			const created = await fetch(`/api/projects/${projectId}/codes`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ label, color: '#7fd1b9' })
-			});
-			if (created.ok) {
-				codeId = ((await created.json()) as { id: string }).id;
-			} else if (created.status === 409) {
-				const list = await fetch(`/api/projects/${projectId}/codes`);
-				if (!list.ok) throw new Error(`HTTP ${list.status}`);
-				const all = (await list.json()) as { id: string; label: string }[];
-				codeId =
-					all.find((c) => (c.label ?? '').toLowerCase() === label.toLowerCase())?.id ?? null;
-				if (!codeId) throw new Error(`Naming „${label}" existiert, ist aber nicht auffindbar`);
-			} else {
-				const e = await created.json().catch(() => ({}));
-				throw new Error(e?.error || `HTTP ${created.status}`);
-			}
-
-			const ann = await fetch(`/api/projects/${projectId}/documents/${docId}/annotations`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					codeId,
-					anchorType: 'text',
-					anchor: { pos0: anchor!.pos0, pos1: anchor!.pos1, text: anchor!.text ?? '' },
-					comment: `Revision von „${row.subjectLabel}"`
-				})
-			});
-			if (!ann.ok) {
-				const e = await ann.json().catch(() => ({}));
-				throw new Error(e?.error || `HTTP ${ann.status}`);
-			}
-			labelsOnPassage = [...labelsOnPassage, label.toLowerCase()];
-			onadopt?.(label);
+			await enact(label);
 		} catch (e) {
 			errorMsg = e instanceof Error ? e.message : String(e);
 		} finally {
@@ -298,7 +320,19 @@
 			placeholder="Begründung – warum das Naming trägt oder nicht (das trainierbare Signal)…"
 		></textarea>
 		{#if verdict === 'revise'}
-			<input class="ai-eval-better" bind:value={betterReading} placeholder="Bessere Lesart…" />
+			<input
+				class="ai-eval-better"
+				bind:value={betterReading}
+				placeholder="Dein Naming – tritt an dieser Passage an die Stelle des Cues…"
+			/>
+			{#if betterReading.trim() && canAdopt}
+				<div class="ai-eval-hint">
+					„{betterReading.trim()}" wird dein Naming an dieser Passage; der Cue „{subjectLabel}"
+					tritt dort ab (ausgeblendet, nicht gelöscht).
+				</div>
+			{:else if betterReading.trim() && !canAdopt}
+				<div class="ai-eval-hint">Passage ohne Textanker – es bleibt bei der Notiz.</div>
+			{/if}
 		{/if}
 		<div class="ai-eval-actions">
 			<button class="ai-eval-save" onclick={submit} disabled={saving}>
@@ -334,18 +368,18 @@
 					{/if}
 					{#if row.verdict === 'revise' && row.betterReading}
 						{#if isAdopted(row)}
-							<span class="ai-eval-adopted">✓ als eigenes Naming übernommen</span>
+							<span class="ai-eval-adopted">✓ steht als dein Naming an dieser Passage</span>
 						{:else if canAdopt}
 							<button
 								class="ai-eval-adopt"
-								onclick={() => adopt(row)}
+								onclick={() => enactRow(row)}
 								disabled={adoptingId !== null}
-								title="Legt die bessere Lesart als eigenes Naming auf dieser Passage an – neben dem KI-Cue, unter deiner Autorschaft."
+								title="Setzt dein Naming an dieser Passage an die Stelle des Cues – der Cue wird ausgeblendet, nicht gelöscht."
 							>
-								{adoptingId === row.id ? 'Übernehme…' : 'Als eigenes Naming übernehmen'}
+								{adoptingId === row.id ? 'Setze ein…' : 'Revision jetzt vollziehen'}
 							</button>
 						{:else}
-							<span class="ai-eval-hint">Passage ohne Textanker – nicht übernehmbar.</span>
+							<span class="ai-eval-hint">Passage ohne Textanker – nicht vollziehbar.</span>
 						{/if}
 					{/if}
 				</li>
