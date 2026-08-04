@@ -53,16 +53,20 @@ backup-*.sql
 
 # Dev-only Critfriend-Batchtests (enthalten echte Forschungsdaten — nie tracken)
 /.tmp-critfriend/
+
+# Alles mit .tmp-Präfix ist Wegwerf-Arbeitsstand und enthält regelmäßig echte
+# Forschungsdaten.
 /.tmp-*/
 /.dev-server.log
 /logdatei
 /HANDOVER.md
 
-# Research data, DB dumps and internal working material must never enter this
-# repository. Kept here as a guard, not because these paths are expected.
+# Forschungsmaterial, Datenbank-Abzüge und interne Arbeitsstände gehören nicht
+# in dieses Repository. Steht hier als Sperre, nicht weil es erwartet würde.
 /backups/
 /docs/sessions/
 /scripts/strauss-lab/
+/eval/
 /CLAUDE.md
 /.claude/
 *.dump

@@ -23,6 +23,7 @@ import {
 	type ChatWithEmptyRetryResult
 } from './chat-with-retry.js';
 import { isFatalProviderError } from '../client.js';
+import { findRelatedToText } from '../../corpus-structure/relatedness.js';
 import { type DocumentMemo } from './index.js';
 import { commitCodedPassage, type CommitResult } from './write.js';
 import { appendFileSync, mkdirSync } from 'node:fs';
@@ -45,6 +46,7 @@ import {
 	parseAdvocate,
 	parseJudge,
 	type AbduktorOutput,
+	type AdvocatePassageHit,
 	type GatekeeperOutput,
 	type AdvocateOutput,
 	type JudgeOutput,
@@ -111,6 +113,9 @@ export interface ActantRaws {
 	// der Memo-Abruf nicht nachvollziehbar.
 	'C-2-memoHits'?: { label: string; memo: string; source: 'cname' | 'sname' }[];
 	'D-2-memoHits'?: { label: string; memo: string; source: 'cname' | 'sname' }[];
+	// Dasselbe für die Passagen: welches Material der Anwalt gesehen hat,
+	// und mit welchem ausgewiesenen Grund es ihm vorlag.
+	'C-2-passageHits'?: AdvocatePassageHit[];
 }
 
 function writeSequenceTrace(
@@ -269,6 +274,49 @@ function findMemoHits(
 		}
 	}
 	return hits;
+}
+
+// ── Passagen-Lookup (lexikalisch, mit ausgewiesenem Grund) ────────────
+//
+// Die zweite Hälfte der Anwalt-Eskalation. Memos sind, was schon gedeutet
+// wurde; hier kommt das Material selbst. Gesucht wird mit den Termen, die
+// der Anwalt selbst erklärt hat — nicht mit einer Ähnlichkeit zur Sequenz.
+// Der Unterschied ist der Punkt: eine Nachbarschaft im Vektorraum liefert
+// das, dem die Hypothese ohnehin gleicht, und damit Bestätigung statt
+// Prüfung. Die erklärten Terme sind eine Frage; sie kann leer ausgehen.
+//
+// Die Quellsequenz und ihre unmittelbaren Nachbarn fallen heraus — die
+// stehen bereits im Prompt.
+//
+// Der Abduktor bekommt hiervon nichts. Vergleichsmaterial vor der
+// Hypothese verwandelt Abduktion in Subsumtion; nach der Hypothese ist es
+// genau das, was der Beleg-Schritt verlangt.
+const ADVOCATE_PASSAGE_LIMIT = 5;
+
+async function findAdvocatePassages(
+	opts: RunForensicOptions,
+	terms: string[]
+): Promise<AdvocatePassageHit[]> {
+	const queryText = terms.filter((t) => (t ?? '').trim().length > 0).join(' ');
+	if (!queryText) return [];
+	try {
+		const seq = opts.sequence.seq;
+		const { passages } = await findRelatedToText(opts.projectId, queryText, {
+			limit: ADVOCATE_PASSAGE_LIMIT,
+			excludeSequences: { documentId: opts.documentId, seqs: [seq - 1, seq, seq + 1] }
+		});
+		return passages.map((p) => ({
+			documentTitle: p.documentTitle,
+			seq: p.seq,
+			sameDocument: p.documentId === opts.documentId,
+			sharedTerms: p.sharedTerms,
+			text: p.text
+		}));
+	} catch {
+		// Ein fehlender Passagen-Abruf darf die Pipeline nicht anhalten: der
+		// Anwalt hat weiterhin Kontext und Memos.
+		return [];
+	}
 }
 
 // ── Token-Bookkeeping ─────────────────────────────────────────────────
@@ -563,7 +611,7 @@ async function continueAtCDE(
 		});
 	}
 
-	// ── C-2 (Eskalation auf Memo-Treffer) ──────────────────────────
+	// ── C-2 (Eskalation auf Memo- und Passagen-Treffer) ────────────
 	if (advocacy.kind === 'need-memo-search') {
 		const searchTerms = advocacy.searchTerms;
 		const memoHits = findMemoHits(opts.documentMemos, searchTerms, MEMO_HITS_LIMIT_C);
@@ -572,6 +620,8 @@ async function continueAtCDE(
 			memo: m.memo,
 			source: m.source
 		}));
+		const passageHits = await findAdvocatePassages(opts, searchTerms);
+		raws['C-2-passageHits'] = passageHits;
 		let c2Resp: ChatWithEmptyRetryResult | null = null;
 		const c2Phase = PHASE_LABEL(opts, 'C-2 advocate-memo');
 		try {
@@ -588,7 +638,8 @@ async function continueAtCDE(
 							opts.nextSequenceText,
 							abductorRaw,
 							searchTerms,
-							memoHits
+							memoHits,
+							passageHits
 						)
 					}
 				]

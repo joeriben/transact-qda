@@ -1,6 +1,19 @@
 // SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+// @deprecated Autonoma-Endpoint — NICHT WIEDER ANSCHLIESSEN.
+//
+// Kein UI ruft diese Route mehr auf, und das ist Absicht: Der autonome
+// Massenlauf produzierte hunderte unsystematischer Namings, deren Sichtung
+// vollständig beim Menschen landete. Begründung in
+// src/lib/server/ai/personas/autonomous.ts, Gegenentwurf in
+// docs/design-begleiten.md. Der Schalter „autonomaEnabled" ist aus den
+// Projekteinstellungen entfernt; ein Projekt, in dem das Flag aus alten
+// Beständen noch true steht, kann diese Route technisch weiterhin auslösen.
+//
+// Die Route bleibt für Nachvollzug und für den Rollback alter Läufe
+// (autonoma-runs) erhalten — nicht als Einstiegspunkt für neue Arbeit.
+
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { runAutonomousAnalysis, type AutonomousProgress } from '$lib/server/ai/runtime/index.js';

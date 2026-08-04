@@ -7,6 +7,11 @@
 import type { ToolDef } from '../client.js';
 import { query } from '../../db/index.js';
 import { MANUAL } from './manual.js';
+import {
+	findRelatedToText,
+	findRelatedToSequence,
+	type RelatedPassage
+} from '../../corpus-structure/relatedness.js';
 
 // ── Tool definitions (for AI tool calling) ────────────────────────
 
@@ -69,6 +74,49 @@ export const SEARCH_TOOLS: ToolDef[] = [
 		}
 	},
 	{
+		name: 'search_related_passages',
+		description:
+			'Find passages elsewhere in the project that share DISTINCTIVE (rare) vocabulary with a query text, or with a passage you name — and get those shared terms back as the reason. ' +
+			'This is the tool to reach for when you want to know whether a reading holds beyond the one passage in front of you, where a theme recurs far away in a long document, or how two cases differ. ' +
+			'Unlike search_documents (full-text, document-level, unranked) every hit here states WHY it was returned, so the ground is quotable rather than asserted. ' +
+			'Words that occur in more than a tenth of the passages are ignored by construction — discourse markers and topic words of the whole corpus cannot produce a hit. The result reports which of your words counted and which were dropped as too common or too rare. ' +
+			'Neighbouring sequences are excluded: adjacency is the default, not a finding. ' +
+			'This tool only reads. It creates no naming and designates nothing.',
+		input_schema: {
+			type: 'object' as const,
+			properties: {
+				query: {
+					type: 'string',
+					description:
+						'Free text: a formulation, a hypothesis in your own words, or a quoted passage. Use content words — function words are dropped. Omit if you give document_id + seq instead.'
+				},
+				document_id: {
+					type: 'string',
+					description: 'UUID of a document, when you want the neighbours of one of its sequences.'
+				},
+				seq: {
+					type: 'number',
+					description: '1-based sequence number within that document. Requires document_id.'
+				},
+				scope: {
+					type: 'string',
+					enum: ['project', 'in-document'],
+					description:
+						"'project' (default) searches all documents; 'in-document' stays inside document_id — use it to find recurrence within one interview."
+				},
+				cross_document_only: {
+					type: 'boolean',
+					description:
+						'Exclude the source document entirely. Use for case comparison: what do OTHER cases say in these terms.'
+				},
+				max_results: {
+					type: 'number',
+					description: 'Maximum number of passages (default: 8, max: 25)'
+				}
+			}
+		}
+	},
+	{
 		name: 'search_manual',
 		description:
 			'Search the transact-qda platform manual for information about features, concepts, and how to use the application.',
@@ -99,6 +147,8 @@ export async function executeSearchTool(
 			return searchNamings(projectId, input.query as string, Math.min((input.max_results as number) || 10, 50));
 		case 'search_memos':
 			return searchMemos(projectId, input.query as string, Math.min((input.max_results as number) || 5, 20));
+		case 'search_related_passages':
+			return searchRelatedPassages(projectId, input);
 		case 'search_manual':
 			return searchManual(input.query as string);
 		default:
@@ -215,6 +265,91 @@ async function searchMemos(projectId: string, searchQuery: string, limit: number
 		return { success: true, result: parts.join('\n') };
 	} catch (e) {
 		return { success: false, result: `Search failed: ${e instanceof Error ? e.message : String(e)}` };
+	}
+}
+
+// Verwandte Passagen mit ausgewiesenem Grund.
+//
+// Der Rückgabetext nennt zu jedem Treffer die geteilten seltenen Terme. Das
+// ist nicht Zierrat: ein Aktant, der eine Stelle als Beleg anführt, muss
+// sagen können, woran sie hängt — eine Zahl allein ist keine Auskunft. Die
+// Termliste ist zugleich der Kandidat für die unterscheidende Dimension.
+async function searchRelatedPassages(
+	projectId: string,
+	input: Record<string, unknown>
+): Promise<{ success: boolean; result: string }> {
+	const limit = Math.min((input.max_results as number) || 8, 25);
+	const documentId = typeof input.document_id === 'string' ? input.document_id : undefined;
+	const opts = {
+		scope: input.scope === 'in-document' ? ('in-document' as const) : ('project' as const),
+		scopeDocumentId: documentId,
+		crossDocumentOnly: input.cross_document_only === true,
+		limit
+	};
+
+	try {
+		let passages: RelatedPassage[];
+		let header: string;
+		let termNote = '';
+
+		if (documentId && typeof input.seq === 'number') {
+			const r = await findRelatedToSequence(projectId, documentId, input.seq, opts);
+			if (!r.source) {
+				return { success: false, result: `No sequence ${input.seq} in that document.` };
+			}
+			passages = r.passages;
+			header = `Passages related to sequence ${input.seq} (of ${r.corpusUnits} sequences searched):`;
+		} else if (typeof input.query === 'string' && input.query.trim().length > 0) {
+			const r = await findRelatedToText(projectId, input.query, opts);
+			passages = r.passages;
+			header = `Passages related to "${input.query}" (of ${r.corpusUnits} sequences searched):`;
+			const dropped: string[] = [];
+			if (r.queryTerms.tooCommon.length > 0)
+				dropped.push(`too common to distinguish: ${r.queryTerms.tooCommon.join(', ')}`);
+			if (r.queryTerms.tooRare.length > 0)
+				dropped.push(`not in this corpus: ${r.queryTerms.tooRare.join(', ')}`);
+			termNote =
+				r.queryTerms.used.length === 0
+					? '\nNONE of your words could be counted' +
+						(dropped.length ? ` (${dropped.join('; ')})` : '') +
+						'. Try more specific content words.'
+					: `\nCounted: ${r.queryTerms.used.join(', ')}` +
+						(dropped.length ? ` — dropped (${dropped.join('; ')})` : '');
+		} else {
+			return {
+				success: false,
+				result: 'Provide either query, or document_id together with seq.'
+			};
+		}
+
+		if (passages.length === 0) {
+			return {
+				success: true,
+				result:
+					'No related passages found — nothing in this project shares enough distinctive vocabulary.' +
+					termNote +
+					'\nThat is itself informative: the formulation may be singular to its place.'
+			};
+		}
+
+		const parts = [header + termNote, ''];
+		for (const p of passages) {
+			const excerpt = p.text.replace(/\s+/g, ' ').slice(0, 400);
+			parts.push(
+				`📄 ${p.documentTitle} · sequence ${p.seq} · shared: ${p.sharedTerms.join(' · ')}`
+			);
+			parts.push(`   "${excerpt}${p.text.length > 400 ? '…' : ''}"`);
+			parts.push('');
+		}
+		parts.push(
+			'The shared terms are the ground of each hit — name them when you use a passage as evidence.'
+		);
+		return { success: true, result: parts.join('\n') };
+	} catch (e) {
+		return {
+			success: false,
+			result: `Related-passage search failed: ${e instanceof Error ? e.message : String(e)}`
+		};
 	}
 }
 

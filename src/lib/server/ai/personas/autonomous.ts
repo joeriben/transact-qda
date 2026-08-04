@@ -1,6 +1,26 @@
 // SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+// @deprecated Autonoma (Persona „autonomous", früher Raichel) — NICHT REAKTIVIEREN.
+//
+// Abgeschaltet am 04.08.2026 aus einem empirischen Befund, nicht aus Vorsicht:
+// Der autonome Lauf erzeugte hunderte textnaher, oberflächlich plausibler
+// Namings ohne Komparation und ohne Relevanzsinn — eine Facta-bruta-Kodierung
+// mit Erkenntnisanschein. Die gesamte Sichtungslast fiel damit auf den
+// Menschen, der die Pseudo-Plausibilität erst durchschauen und die wenigen
+// brauchbaren Namings aus aleatorisch entstandenen Kategorien lösen musste.
+// Das ist kein Modellqualitäts-, sondern ein Positionsproblem: Ein Aktant ohne
+// terminale Verantwortungsposition kann nicht codieren, nur Materialmuster
+// bearbeiten (docs/design-begleiten.md, Verfassungssätze I–V).
+//
+// Der Gegenentwurf heißt begleiten statt codieren: Cue-Höhe, Schweigen als
+// Default, Hinweise außerhalb des Datenraums bis zu einem Akt des Menschen.
+// Wer hier weiterbauen will, baut am Begleiter (coding-companion, Concepts/
+// Comparative, Critfriend), nicht an dieser Persona.
+//
+// Code bleibt für Rollback und Nachvollzug alter Läufe stehen. Kein UI-Pfad
+// führt mehr hierher; Trigger und Settings-Schalter sind entfernt.
+//
 // Autonomous persona definition: autonomous researcher.
 // Acts like a human researcher: codes documents, creates namings,
 // draws relations, writes memos — fully autonomously.

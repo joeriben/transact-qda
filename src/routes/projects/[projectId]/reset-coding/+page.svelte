@@ -9,11 +9,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 </script>
 
 <svelte:head>
-	<title>Coding-Daten zurücksetzen — {data.projectName}</title>
+	<title>KI-Namings zurücksetzen — {data.projectName}</title>
 </svelte:head>
 
 <main style="max-width: 600px; margin: 4rem auto; padding: 0 1.5rem; font-family: system-ui;">
-	<h1 style="margin-bottom: 0.5rem;">Coding-Daten zurücksetzen</h1>
+	<h1 style="margin-bottom: 0.5rem;">KI-Namings zurücksetzen</h1>
 	<p style="color: #666; margin-top: 0;">
 		Projekt: <strong>{data.projectName}</strong>
 	</p>
@@ -22,9 +22,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 		<strong>Was passiert:</strong>
 		<ul style="margin: 0.5rem 0 0 1rem; padding: 0;">
 			<li>Alle <em>AI-erzeugten</em> Annotationen (CName + SName) werden soft-gelöscht.</li>
-			<li>Codes, die danach keine Annotation mehr haben, werden soft-gelöscht.</li>
+			<li>Namings, die danach keine Verankerung mehr haben, werden soft-gelöscht.</li>
 			<li>Die <code>coding_runs</code>-Historie wird hart gelöscht.</li>
-			<li>Dokumente, Embeddings und hand-typed Codes bleiben unangetastet.</li>
+			<li>Dokumente, Embeddings und von Hand angelegte Namings bleiben unangetastet.</li>
 		</ul>
 	</div>
 
@@ -34,7 +34,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 			<ul style="margin: 0.5rem 0 0 1rem; padding: 0;">
 				<li>Dokumente verarbeitet: {form.documentsProcessed}</li>
 				<li>Annotationen gelöscht: {form.annotationsDeleted}</li>
-				<li>Codes gelöscht: {form.codesDeleted}</li>
+				<li>Namings gelöscht: {form.codesDeleted}</li>
 				<li>Runs gelöscht: {form.runsDeleted}</li>
 			</ul>
 		</div>

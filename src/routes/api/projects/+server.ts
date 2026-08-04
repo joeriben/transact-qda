@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { json } from '@sveltejs/kit';
+import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { transaction } from '$lib/server/db/index.js';
 import { isProjectMember } from '$lib/server/auth/authz.js';
@@ -32,7 +32,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			// Get source project — scoped to the caller's membership so a user
 			// cannot duplicate (and thereby read) a project they do not belong to.
 			const src = (await client.query(
-				`SELECT p.name, p.description FROM projects p
+				`SELECT p.name, p.description, p.properties FROM projects p
 				 JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = $2
 				 WHERE p.id = $1`,
 				[sourceProjectId, userId]
@@ -42,9 +42,11 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			// Create new project
 			const newName = name || `${src.name} (copy)`;
 			const pRes = await client.query(
-				`INSERT INTO projects (name, description, created_by)
-				 VALUES ($1, $2, $3) RETURNING id, name, description, created_at`,
-				[newName, src.description, userId]
+				// properties mitkopieren: Projekteinstellungen (z. B. autonomaEnabled)
+				// gehören zum Projekt, eine Kopie ohne sie ist keine Kopie.
+				`INSERT INTO projects (name, description, properties, created_by)
+				 VALUES ($1, $2, COALESCE($3, '{}'::jsonb), $4) RETURNING id, name, description, created_at`,
+				[newName, src.description, src.properties, userId]
 			);
 			const newProjectId = pRes.rows[0].id;
 
@@ -196,6 +198,44 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 				);
 			}
 
+			// Copy document_elements — die Satz-/Parse-Ebene samt Embeddings.
+			// Ohne sie hat die Kopie zwar Dokumenttexte, aber keine Sätze: ein
+			// Coding-Run segmentiert über element_type='sentence' und bricht mit
+			// „Document has no sentence elements" ab, die Embedding-Suche läuft
+			// leer. Set-basiert statt zeilenweise — das sind zehntausende Zeilen
+			// mit 768-dim Vektoren. Die Temp-Tabelle hält alte→neue Element-ID
+			// für parent_id und die Ref-Kanten.
+			const namingIdsOld = [...idMap.keys()];
+			const namingIdsNew = [...idMap.values()];
+			await client.query(
+				`CREATE TEMP TABLE elem_id_map ON COMMIT DROP AS
+				 SELECT de.id AS old_id, gen_random_uuid() AS new_id
+				 FROM document_elements de
+				 JOIN namings n ON n.id = de.document_id
+				 WHERE n.project_id = $1 AND n.deleted_at IS NULL`,
+				[sourceProjectId]
+			);
+			await client.query(
+				`INSERT INTO document_elements
+				   (id, document_id, element_type, parent_id, seq, content,
+				    char_start, char_end, properties, embedding)
+				 SELECT m.new_id, dmap.new_id, de.element_type, pm.new_id, de.seq,
+				        de.content, de.char_start, de.char_end, de.properties, de.embedding
+				 FROM document_elements de
+				 JOIN elem_id_map m ON m.old_id = de.id
+				 JOIN unnest($1::uuid[], $2::uuid[]) AS dmap(old_id, new_id)
+				   ON dmap.old_id = de.document_id
+				 LEFT JOIN elem_id_map pm ON pm.old_id = de.parent_id`,
+				[namingIdsOld, namingIdsNew]
+			);
+			await client.query(
+				`INSERT INTO document_element_refs (from_id, to_id, ref_type, properties)
+				 SELECT f.new_id, t.new_id, r.ref_type, r.properties
+				 FROM document_element_refs r
+				 JOIN elem_id_map f ON f.old_id = r.from_id
+				 JOIN elem_id_map t ON t.old_id = r.to_id`
+			);
+
 			// Copy phase_memberships
 			const cms = (await client.query(
 				`SELECT cm.phase_id, cm.naming_id, cm.action, cm.mode, cm.by, cm.properties
@@ -253,8 +293,28 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			if (srcCount !== tgtCount) {
 				throw new Error(`Integrity check failed: source has ${srcCount} namings, copy has ${tgtCount}`);
 			}
+			const countElements = async (pid: string) =>
+				(await client.query(
+					`SELECT COUNT(*) FROM document_elements de
+					 JOIN namings n ON n.id = de.document_id
+					 WHERE n.project_id = $1 AND n.deleted_at IS NULL`,
+					[pid]
+				)).rows[0].count;
+			const srcElements = await countElements(sourceProjectId);
+			const tgtElements = await countElements(newProjectId);
+			if (srcElements !== tgtElements) {
+				throw new Error(
+					`Integrity check failed: source has ${srcElements} document elements, copy has ${tgtElements}`
+				);
+			}
 
 			return pRes.rows[0];
+		}).catch((err: unknown) => {
+			// Klartext statt SvelteKits generischem „Internal Error": die
+			// Abbruchgründe hier (Quellprojekt weg, Integritätsprüfung, Dateikopie)
+			// sind Auskünfte, die die UI anzeigen können muss.
+			console.error('[api/projects] duplicate failed:', err);
+			error(400, err instanceof Error ? err.message : String(err));
 		});
 
 		return json(project, { status: 201 });

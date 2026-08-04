@@ -7,7 +7,11 @@ import { query, queryOne } from '$lib/server/db/index.js';
 
 // Whitelist of keys writable from the client. Anything else is silently dropped
 // so a malformed PATCH cannot stuff arbitrary state into the project bag.
-const ALLOWED_KEYS = new Set(['coworkReactive', 'autonomaEnabled']);
+// 'autonomaEnabled' ist hier bewusst NICHT mehr enthalten: Autonoma ist
+// deprecated (src/lib/server/ai/personas/autonomous.ts), der Schalter ist aus
+// den Projekteinstellungen entfernt und soll auch per API nicht mehr gesetzt
+// werden können.
+const ALLOWED_KEYS = new Set(['coworkReactive']);
 
 async function assertMember(projectId: string, userId: string) {
 	const m = await queryOne(

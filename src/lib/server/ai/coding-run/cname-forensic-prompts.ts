@@ -317,12 +317,16 @@ You will receive the passage and the immediately surrounding sequences (i-1 and 
 
 ESCALATION DISCIPLINE:
 - If i-1/i+1 provide sufficient evidence → write the advocacy (3-5 sentences of plain prose) and end with the tag [EVIDENCE-FROM-CONTEXT].
-- If i-1/i+1 do NOT provide sufficient grounding → state briefly why (1-2 sentences) and end with [NEED-MEMO-SEARCH: term1; term2; term3] — up to 5 regex search terms, semicolon-separated. The pipeline will run these against all document-internal CName + SName memos and re-call you with the hits.
+- If i-1/i+1 do NOT provide sufficient grounding → state briefly why (1-2 sentences) and end with [NEED-MEMO-SEARCH: term1; term2; term3] — up to 5 regex search terms, semicolon-separated. The pipeline runs these TWO ways and re-calls you with both: (a) against all document-internal CName + SName memos, (b) against the raw material of the whole project, returning PASSAGES that share distinctive (rare) vocabulary with your terms. Each passage arrives with the shared terms named.
 
 ADVOCACY DISCIPLINE:
 - You are an ADVOCATE: build the strongest defensible reading the evidence permits.
 - You are NOT a judge: do not weigh whether the hypothesis is right — that is the RICHTER's job downstream.
 - If the evidence does NOT actually support the hypothesis, say so HONESTLY in the prose. The judge will weigh weak advocacy correctly.
+- When you use a returned passage, NAME the shared terms it came with. A passage cited without its ground is an assertion, not evidence.
+- The passages are constant-comparison material — a cheap access path into the corpus, NOT an authority. Use them to LOCATE the hypothesis in the material, never to defer to them.
+- Build the case BY CONTRAST rather than by isolated assertion: either show that the hypothesis names the SAME move the other passage makes, or name the DISCRIMINATING DIMENSION along which this passage's move differs from the similar one. A sharply named contrast is POSITIVE evidence for the hypothesis, not a reason to abandon it.
+- A passage that shares vocabulary but makes a different move does NOT by itself refute the hypothesis. Shared words are a lead, not a verdict.
 
 OUTPUT FORMAT:
 Plain prose (3-5 sentences) followed by ONE final tag on its own line:
@@ -362,6 +366,30 @@ ${gatekeeperReasoning}
 Build the advocacy. End with [EVIDENCE-FROM-CONTEXT] or [NEED-MEMO-SEARCH: term1; term2; term3].`;
 }
 
+/** Eine Passage aus dem Material samt dem Grund, aus dem sie hier steht. */
+export interface AdvocatePassageHit {
+	documentTitle: string;
+	seq: number;
+	sameDocument: boolean;
+	sharedTerms: string[];
+	text: string;
+}
+
+const PASSAGE_EXCERPT = 700;
+
+function passageHitsBlock(hits: AdvocatePassageHit[]): string {
+	if (hits.length === 0) {
+		return '(no passage elsewhere in the project shares enough distinctive vocabulary with your terms — that is itself informative: the formulation may be singular to its place)';
+	}
+	return hits
+		.map((h) => {
+			const where = h.sameDocument ? 'SAME document' : `OTHER document: ${h.documentTitle}`;
+			const excerpt = h.text.replace(/\s+/g, ' ').slice(0, PASSAGE_EXCERPT);
+			return `[${where}, sequence ${h.seq}] shares: ${h.sharedTerms.join(', ')}\n"""\n${excerpt}${h.text.length > PASSAGE_EXCERPT ? '…' : ''}\n"""`;
+		})
+		.join('\n\n');
+}
+
 export function buildCnameAdvocateMemoMessage(
 	seq: number,
 	text: string,
@@ -369,7 +397,8 @@ export function buildCnameAdvocateMemoMessage(
 	next: string | null,
 	abductorOutput: string,
 	previousSearchTerms: string[],
-	memoHits: { source: 'cname' | 'sname'; label: string; memo: string }[]
+	memoHits: { source: 'cname' | 'sname'; label: string; memo: string }[],
+	passageHits: AdvocatePassageHit[] = []
 ): string {
 	const prevBlock = prev
 		? `SEQUENCE ${seq - 1} (preceding context):\n"""\n${prev}\n"""\n\n`
@@ -389,12 +418,15 @@ ${text}
 ${nextBlock}ABDUKTOR's output:
 ${abductorOutput}
 
-You previously asked for memo searches: ${JSON.stringify(previousSearchTerms)}
+You previously asked for searches: ${JSON.stringify(previousSearchTerms)}
 
 MEMO HITS from document-internal CName + SName memos:
 ${hitsBlock}
 
-Build the FINAL advocacy in 3-5 sentences of prose, honestly integrating the surrounding-context evidence AND the memo hits. No further search possible. End with the tag [EVIDENCE-COMPLETE].`;
+PASSAGE HITS from the raw material of the project — passages that share distinctive (rare) vocabulary with your terms. Common words cannot produce a hit; the shared terms are named per passage and are the ground on which each one is offered. Adjacent sequences are excluded, so a hit from this document is a genuine recurrence at a distance, not the neighbourhood you already see above:
+${passageHitsBlock(passageHits)}
+
+Build the FINAL advocacy in 3-5 sentences of prose, honestly integrating the surrounding-context evidence, the memo hits AND the passage hits. Name the shared terms of any passage you use. No further search possible. End with the tag [EVIDENCE-COMPLETE].`;
 }
 
 // ── D — Richter ───────────────────────────────────────────────────────

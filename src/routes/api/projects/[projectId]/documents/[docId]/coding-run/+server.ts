@@ -5,7 +5,7 @@
 // Status via Server-Sent Events. Übernommen aus der älteren Pipeline-Route
 // (mid-call Cancel via ALS-AbortSignal, Cancel-Watcher 500ms, Stuck-Watchdog
 // 30s/10min, Heartbeat 10s, run-init/paused/cancelled/completed/failed-
-// Framing), angepasst auf (projectId, docId).
+// Framing), angepasst auf (projectId, docId) statt (caseId).
 //
 //   POST   — startet einen neuen Run oder resumed den aktiven (paused/running);
 //            antwortet mit text/event-stream bis 'completed', 'paused',
@@ -79,7 +79,14 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const userId = locals.user.id;
 	await ensureDocAccess(projectId, docId, userId);
 
-	const { run, resumed } = await startOrResumeRun(projectId, docId, userId);
+	// Vorbedingungen (Dokument im Projekt? geparste Sätze vorhanden?) sind
+	// Aussagen an die Nutzerin, keine Server-Panne. Ungefangen macht SvelteKit
+	// daraus ein generisches „Internal Error" und die eigentliche Auskunft
+	// („parse the document before running a coding run") landet nur im
+	// Server-Log — die UI zeigt sie dann nicht mehr an.
+	const { run, resumed } = await startOrResumeRun(projectId, docId, userId).catch((err) => {
+		error(400, err instanceof Error ? err.message : String(err));
+	});
 
 	const stream = new ReadableStream<Uint8Array>({
 		async start(controller) {
@@ -110,8 +117,8 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			// Wenn wir einen pausierten/laufenden Run wieder aufgenommen haben,
 			// zeigt die UI den aktuellen Stand mit `resumed` an. Das ist hier
 			// implizit über run.current_index/sequence_status sichtbar; ein
-			// eigenes Flag lassen wir weg, weil unsere Event-Form schlanker
-			// ist und der initiale Loop-Tick ohnehin `segmented` mit
+			// eigenes Flag lassen wir weg, weil unsere Event-Form
+			// schlanker ist und der initiale Loop-Tick ohnehin `segmented` mit
 			// totalSequences emittiert.
 			void resumed;
 
@@ -163,9 +170,9 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 
 			// Stuck-Run-Watchdog: System-Failsafe gegen Hänger, die weder den
 			// per-Call-Timeout (wall-clock + AbortSignal in chat()) noch das
-			// Cancel-Signal greifen. Schwelle 10min last_event_at-Staleness,
-			// Poll 30s — Reaktion innerhalb ~30s nach Überschreitung.
-			// Verbirgt KEINE Fehler, sondern zeigt sie als failed-Run an.
+			// Cancel-Signal greifen. Schwelle 10min last_event_at-
+			// Staleness, Poll 30s — Reaktion innerhalb ~30s nach Überschreitung.
+			// Verbirgt KEINE Fehler, zeigt sie als failed-Run an.
 			const STUCK_THRESHOLD_MS = 10 * 60 * 1000;
 			const STUCK_POLL_MS = 30_000;
 			let stuckHandled = false;

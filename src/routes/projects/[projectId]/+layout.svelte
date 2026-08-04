@@ -67,114 +67,14 @@
 		}
 	}
 
-	// Autonomous: autonomous researcher
-	let autonomousRunning = $state(false);
-	let autonomousStatus = $state('');
-	let autonomousLog = $state<string[]>([]);
-	let autonomousOpen = $state(false);
-	let autonomousMapId = $state<string | null>(null);
-	let logContainer: HTMLElement = undefined as any;
-
-	function scrollLog() {
-		if (logContainer) logContainer.scrollTop = logContainer.scrollHeight;
-	}
-
-	async function startAutonomous() {
-		if (autonomousRunning) return;
-		autonomousRunning = true;
-		autonomousOpen = true;
-		autonomousLog = [];
-		autonomousStatus = 'Starting...';
-		autonomousMapId = null;
-
-		try {
-			const res = await fetch(`/api/projects/${p.id}/autonomous`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ action: 'start' })
-			});
-
-			if (!res.body) {
-				autonomousStatus = 'Error: no response stream';
-				autonomousRunning = false;
-				return;
-			}
-
-			const reader = res.body.getReader();
-			const decoder = new TextDecoder();
-			let buffer = '';
-
-			while (true) {
-				const { done, value } = await reader.read();
-				if (done) break;
-
-				buffer += decoder.decode(value, { stream: true });
-				const lines = buffer.split('\n');
-				buffer = lines.pop() || '';
-
-				let eventType = '';
-				for (const line of lines) {
-					if (line.startsWith('event: ')) {
-						eventType = line.slice(7);
-					} else if (line.startsWith('data: ') && eventType) {
-						try {
-							const data = JSON.parse(line.slice(6));
-							handleAutonomousEvent(eventType, data);
-						} catch {}
-						eventType = '';
-					}
-				}
-			}
-		} catch (e) {
-			autonomousStatus = `Error: ${e instanceof Error ? e.message : String(e)}`;
-			autonomousLog.push(`ERROR: ${autonomousStatus}`);
-			autonomousLog = autonomousLog;
-		} finally {
-			autonomousRunning = false;
-		}
-	}
-
-	function handleAutonomousEvent(event: string, data: any) {
-		if (event === 'progress') {
-			if (data.message) {
-				autonomousStatus = data.message;
-				autonomousLog.push(`── ${data.message}`);
-			}
-			if (data.thinking) {
-				autonomousLog.push(data.thinking);
-			}
-			if (data.toolCall) {
-				const tc = data.toolCall;
-				if (tc.name === 'code_passage') {
-					autonomousLog.push(`  [code] "${tc.input.code_label}" ← "${(tc.input.passage || '').slice(0, 80)}..."`);
-				} else if (tc.name === 'suggest_relation') {
-					autonomousLog.push(`  [relation] ${tc.input.source_id?.slice(0, 8)} → ${tc.input.target_id?.slice(0, 8)}: ${tc.input.inscription || ''}`);
-				} else if (tc.name === 'write_memo') {
-					autonomousLog.push(`  [memo] "${tc.input.title}"`);
-				} else if (tc.name === 'designate') {
-					autonomousLog.push(`  [designate] → ${tc.input.designation}`);
-				} else if (tc.name === 'identify_silence') {
-					autonomousLog.push(`  [silence] "${tc.input.inscription}"`);
-				} else if (tc.name === 'read_document') {
-					autonomousLog.push(`  [reading document...]`);
-				} else {
-					autonomousLog.push(`  [${tc.name}]`);
-				}
-			}
-			autonomousLog = autonomousLog;
-			requestAnimationFrame(scrollLog);
-		} else if (event === 'done') {
-			autonomousMapId = data.mapId;
-			autonomousStatus = 'Analysis complete';
-			autonomousLog.push(`\n── Analysis complete. Map ready.`);
-			autonomousLog = autonomousLog;
-			requestAnimationFrame(scrollLog);
-		} else if (event === 'error') {
-			autonomousStatus = `Error: ${data.error}`;
-			autonomousLog.push(`ERROR: ${data.error}`);
-			autonomousLog = autonomousLog;
-		}
-	}
+	// Autonoma (früher Raichel) ist DEPRECATED — hier steht bewusst kein
+	// Client-Code mehr. Der autonome Massenlauf erzeugte hunderte textnaher,
+	// aber unsystematischer Namings ohne Komparation und ohne Relevanzsinn;
+	// die Sichtungslast landete vollständig beim Menschen. Begründung und
+	// Gegenentwurf (begleiten statt codieren): docs/design-begleiten.md.
+	// Der Start-Code lag nach dem UI-Ausbau im April als toter Code hier und
+	// wurde seither mehrfach versehentlich wieder angeschlossen — deshalb
+	// entfernt statt auskommentiert. Nicht wieder einbauen.
 
 	const mapTypeLabels: Record<string, string> = {
 		situational: 'Sit Map',
@@ -252,7 +152,7 @@
 				{/if}
 			{/if}
 
-			<!-- Autonoma (Raichel) removed from general UI — belongs in dedicated Raichel-projects only (Session 23 design) -->
+			<!-- Kein Autonoma-Trigger: deprecated, siehe Kommentar oben im Script. -->
 
 			<a href="/projects" class="back-link">← Projects</a>
 		</nav>
@@ -264,7 +164,7 @@
 
 	<CoachPanel />
 
-	<!-- Autonoma panel removed — will be reintroduced as part of dedicated Raichel-project mode -->
+	<!-- Kein Autonoma-Panel: deprecated, siehe Kommentar oben im Script. -->
 </div>
 
 <style>
@@ -426,108 +326,6 @@
 		color: #8b9cf7;
 		padding: 0.1rem 0.5rem 0;
 		font-style: italic;
-	}
-
-	.autonomous-toggle {
-		display: flex;
-		align-items: center;
-		padding: 0.45rem 0.65rem;
-		border-radius: 5px;
-		font-size: 0.85rem;
-		color: #f0abfc;
-		background: none;
-		border: 1px solid #2a2d3a;
-		cursor: pointer;
-		margin-top: 0.15rem;
-		font-family: inherit;
-		font-weight: 500;
-	}
-	.autonomous-toggle:hover:not(:disabled) {
-		background: #1e2030;
-		border-color: #f0abfc;
-	}
-	.autonomous-toggle:disabled {
-		opacity: 0.6;
-		cursor: wait;
-	}
-	.autonomous-active {
-		background: rgba(240, 171, 252, 0.1);
-		border-color: #f0abfc;
-	}
-	.autonomous-status {
-		font-size: 0.72rem;
-		color: #9ca3af;
-		padding: 0.1rem 0.65rem;
-		line-height: 1.3;
-	}
-
-	.autonomous-panel {
-		position: fixed;
-		right: 0;
-		top: 0;
-		bottom: 0;
-		width: 420px;
-		background: #13151e;
-		border-left: 1px solid #2a2d3a;
-		display: flex;
-		flex-direction: column;
-		z-index: 50;
-	}
-	.autonomous-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		padding: 0.75rem 1rem;
-		border-bottom: 1px solid #2a2d3a;
-		font-size: 0.85rem;
-		font-weight: 600;
-		color: #f0abfc;
-	}
-	.autonomous-header-actions {
-		display: flex;
-		gap: 0.5rem;
-		align-items: center;
-	}
-	.autonomous-btn {
-		font-size: 0.75rem;
-		padding: 0.25rem 0.5rem;
-		border-radius: 4px;
-		border: 1px solid #2a2d3a;
-		background: none;
-		color: #c9cdd5;
-		cursor: pointer;
-		font-family: inherit;
-		text-decoration: none;
-	}
-	.autonomous-btn:hover {
-		background: #1e2030;
-		border-color: #f0abfc;
-		color: #f0abfc;
-	}
-	.autonomous-close {
-		font-size: 0.85rem;
-		padding: 0.15rem 0.4rem;
-		border-radius: 4px;
-		border: none;
-		background: none;
-		color: #6b7280;
-		cursor: pointer;
-		font-family: inherit;
-	}
-	.autonomous-close:hover { color: #fff; }
-	.autonomous-log {
-		flex: 1;
-		overflow-y: auto;
-		padding: 0.75rem 1rem;
-		font-size: 0.78rem;
-		line-height: 1.5;
-		font-family: 'SF Mono', 'Fira Code', monospace;
-		color: #d1d5db;
-	}
-	.autonomous-line {
-		white-space: pre-wrap;
-		word-break: break-word;
-		margin-bottom: 0.25rem;
 	}
 
 	.back-link {

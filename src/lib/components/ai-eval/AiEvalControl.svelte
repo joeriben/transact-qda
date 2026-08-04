@@ -105,7 +105,7 @@
 			class="ai-eval-memo"
 			bind:value={rationale}
 			rows="2"
-			placeholder="Begründung – warum der Code trägt oder nicht (das trainierbare Signal)…"
+			placeholder="Begründung – warum das Naming trägt oder nicht (das trainierbare Signal)…"
 		></textarea>
 		{#if verdict === 'revise'}
 			<input

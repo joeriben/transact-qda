@@ -82,10 +82,10 @@
 	}: {
 		projectId: string;
 		docId: string;
-		/** Anzahl der DISTINKTEN Namings (Codes) im Dokument — wird vom Parent
-		 * aus den geladenen Annotations berechnet. Unterscheidet sich von
-		 * codes_committed: das ist die Anzahl der einzelnen Codierungen
-		 * (Annotation-Events), während ein Naming mehrfach codiert sein kann. */
+		/** Anzahl der DISTINKTEN Namings im Dokument — wird vom Parent aus den
+		 * geladenen Annotations berechnet, über die ganze Dokumentgeschichte.
+		 * Unterscheidet sich von codes_committed: das zählt die Verankerungen
+		 * DIESES Laufs; ein Naming kann mehrfach verankert sein. */
 		distinctNamings?: number;
 		oncompleted?: () => void;
 		/** Wird nach jedem committed-Sequence-Event aufgerufen, wenn Codes neu hinzugefügt
@@ -261,7 +261,7 @@
 				progress.codesCommitted += e.codesCommitted;
 				progress.cumulativeTokens = e.cumulativeTokens;
 				progress.stepLabel = e.codesCommitted > 0
-					? `Sequenz ${e.index}/${e.total} fertig (+${e.codesCommitted} Codierungen)`
+					? `Sequenz ${e.index}/${e.total} fertig (+${e.codesCommitted} Verankerungen)`
 					: `Sequenz ${e.index}/${e.total} fertig`;
 				if (e.codesCommitted > 0 && onsequencedone) {
 					onsequencedone({ newCodes: e.codesCommitted, totalCodes: progress.codesCommitted });
@@ -277,7 +277,7 @@
 				progress.stepLabel = 'Abgebrochen';
 				break;
 			case 'completed':
-				progress.stepLabel = `Run abgeschlossen — ${progress.codesCommitted} Codierungen`;
+				progress.stepLabel = `Lauf abgeschlossen — ${progress.codesCommitted} Verankerungen`;
 				if (oncompleted) oncompleted();
 				break;
 			case 'failed':
@@ -297,7 +297,7 @@
 		// hier nichts weiter zu tun.
 	}
 	async function requestCancel() {
-		const ok = confirm('Run endgültig abbrechen? Bereits geschriebene Namings bleiben erhalten.');
+		const ok = confirm('Lauf endgültig abbrechen? Bereits geschriebene Namings bleiben erhalten.');
 		if (!ok) return;
 		await fetch(`/api/projects/${projectId}/documents/${docId}/coding-run?mode=cancel`, {
 			method: 'DELETE',
@@ -343,7 +343,7 @@
 <section class="coding-run-panel" class:expanded={isExpanded}>
 	<div class="crp-row">
 		<div class="crp-title-line">
-			<span class="crp-title">AI-Coding</span>
+			<span class="crp-title">KI-Lauf</span>
 			{#if latest}
 				<span class="crp-status crp-status-{latest.status}">{latest.status}</span>
 			{/if}
@@ -358,7 +358,7 @@
 				onclick={startRun}
 				type="button"
 				disabled={!canStart}
-				title="Per-Dokument-Coding-Run starten"
+				title="Lauf für dieses Dokument starten"
 			>{showResume ? 'Resume' : 'Start'}</button>
 		{/if}
 	</div>
@@ -370,7 +370,7 @@
 			<div class="crp-meta">
 				<span class="crp-meta-counter">{displayIndex}/{displayTotal || '?'}</span>
 				<span class="crp-meta-sep">·</span>
-				<span title="Distinkte Namings (Codes) · Codierungen (Annotation-Akte)">{distinctNamings} Namings · {displayCodes} Codierungen</span>
+				<span title="Distinkte Namings im Dokument · Verankerungen in diesem Lauf">{distinctNamings} Namings · {displayCodes} Verankerungen</span>
 				<span class="crp-meta-sep">·</span>
 				<span>{formatNum(displayTokens)} Tokens</span>
 				{#if activity?.kind === 'llm-call' && activity.provider}

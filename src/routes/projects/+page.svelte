@@ -147,7 +147,13 @@
 			syncMessage = `Duplicated "${projectName}"`;
 			await invalidateAll();
 		} else {
-			syncMessage = 'Duplicate failed';
+			// Grund anzeigen, nicht verschlucken. Der Endpoint antwortet je nach
+			// Pfad mit { error } oder (bei SvelteKits error()) mit { message }.
+			const detail = await res
+				.json()
+				.then((d) => d?.error ?? d?.message)
+				.catch(() => null);
+			syncMessage = detail ? `Duplicate failed: ${detail}` : 'Duplicate failed';
 		}
 		syncing = false;
 	}
@@ -398,9 +404,9 @@
 			<div class="loss-section loss-ok">
 				<h3>Preserved</h3>
 				<ul>
-					<li>All codes, documents, annotations</li>
+					<li>All namings, documents, annotations</li>
 					<li>Memos and memo content</li>
-					<li>Relations between codes</li>
+					<li>Relations between namings</li>
 					<li>Document sets (DocNets)</li>
 					<li>One map with positions</li>
 				</ul>

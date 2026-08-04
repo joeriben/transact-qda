@@ -19,7 +19,6 @@ import { DELEGATE_TOOL, executeDelegation, getAvailableAgents, getAvailableAgent
 import { TICKET_TOOL, createTicket } from '../base/tickets.js';
 import { getPersona, type Persona, type PersonaName } from '../personas/index.js';
 import { getOrCreateAiNaming, logAiInteraction } from '../../db/queries/ai.js';
-import { retrieveComparisonMaterial } from '../coding-companion/index.js';
 import { createMemo } from '../../db/queries/memos.js';
 import { getMap } from '../../db/queries/maps.js';
 import { query, transaction } from '../../db/index.js';
@@ -151,7 +150,15 @@ async function executeInfrastructureTool(
 	projectId: string,
 	personaName: PersonaName
 ): Promise<{ success: boolean; result: unknown } | null> {
-	if (['search_documents', 'search_namings', 'search_memos', 'search_manual'].includes(toolName)) {
+	if (
+		[
+			'search_documents',
+			'search_namings',
+			'search_memos',
+			'search_related_passages',
+			'search_manual'
+		].includes(toolName)
+	) {
 		return executeSearchTool(toolName, input, projectId);
 	}
 
@@ -966,36 +973,21 @@ When in doubt, skip — a missed passage can be found later, but code inflation 
 			thinking: `Total elements identified: ${allIdentified.length}. Creating codes...`
 		});
 
-		// ── Constant Comparison: enrich with retrieval context ──
-		// For each passage with element_id, check if similar passages
-		// are already coded. Use embedding similarity as retrieval heuristic
-		// (topical proximity), not as analytical judgement.
-		if (allIdentified.some(p => p.element_id)) {
-			progress({ phase: 'coding', document: doc.title, thinking: 'Constant comparison: retrieving context for code reuse...' });
-			for (const p of allIdentified) {
-				if (!p.element_id || !p.code_label) continue;
-				try {
-					const retrieval = await retrieveComparisonMaterial(projectId, p.element_id, {
-						maxSimilar: 5, maxCodes: 0, maxGroundingsPerCode: 0
-					});
-					// Check if a highly similar passage already carries a code
-					const topCoded = retrieval.similarPassages.find(
-						sp => sp.codes.length > 0 && sp.similarity > 0.85
-					);
-					if (topCoded) {
-						const existingCode = topCoded.codes[0];
-						if (existingCode.label.toLowerCase() !== p.code_label.toLowerCase()) {
-							// Prefer existing code — embedding suggests topical overlap
-							const originalLabel = p.code_label;
-							p.code_label = existingCode.label;
-							p.reasoning = `Reused "${existingCode.label}" (similarity ${topCoded.similarity.toFixed(2)} with coded passage). Original label: "${originalLabel}". ${p.reasoning || ''}`;
-						}
-					}
-				} catch {
-					// Retrieval failure is non-fatal — proceed with original label
-				}
-			}
-		}
+		// ── Entfernt (2026-07-29): der Cosinus-0.85-Überschreiber ──
+		// Hier stand eine Schleife, die nach der Modellentscheidung einen
+		// projektweiten k=5-KNN zog und bei similarity > 0.85 das erzeugte
+		// `code_label` still durch das Label eines vorhandenen Codes
+		// ersetzte. Das war als "constant comparison" kommentiert, war aber
+		// das Gegenteil: Identität per Schwellwert, entschieden hinter dem
+		// Rücken des Modells, ohne dass die Ersetzung als Akt irgendwo
+		// auftauchte — also Subsumtion (match → copy), genau die
+		// inhaltsanalytische Operation, gegen die diese Anlage antritt
+		// (Paradigma Cue/Cut statt Code).
+		//
+		// Konstante Komparation ist ein Vergleich, aus dem eine
+		// unterscheidende Dimension hervorgeht — kein Kopieren des
+		// nächstliegenden Labels. Wo sie stattfinden soll, muss sie am
+		// Material sichtbar werden, nicht am Ergebnis.
 
 		// Execute code_passage for each identified element/passage
 		let codesCreated = 0;

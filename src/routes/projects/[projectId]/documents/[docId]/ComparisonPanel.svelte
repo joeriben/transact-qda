@@ -297,7 +297,7 @@
 							<span
 								class="comp-code clickable"
 								onclick={() => onannotate(comp.codeId)}
-								title="Click to annotate with this code"
+								title="Click to anchor this naming here"
 							>
 								<span class="badge {designationClass(comp.designation)}">{designationBadge(comp.designation)}</span>
 								{comp.codeLabel}
@@ -355,7 +355,7 @@
 						rows="3"
 					></textarea>
 					<div class="memo-links">
-						<span class="memo-links-label">Linked codes:</span>
+						<span class="memo-links-label">Linked namings:</span>
 						{#each comparison.comparisons as comp}
 							<!-- svelte-ignore a11y_click_events_have_key_events -->
 							<!-- svelte-ignore a11y_no_static_element_interactions -->

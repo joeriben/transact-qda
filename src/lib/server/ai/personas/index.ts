@@ -9,4 +9,4 @@ export { type Persona, type PersonaName, getPersona, getAllPersonas } from './ty
 // Side-effect imports: register each persona
 import './coach.js';
 import './cowork.js';
-import './autonomous.js';
+import './autonomous.js'; // @deprecated — Autonoma, kein UI-Pfad; siehe autonomous.ts

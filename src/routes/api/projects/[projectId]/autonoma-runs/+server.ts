@@ -1,6 +1,13 @@
 // SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+// Aufräumwerkzeug für ALTBESTÄNDE: Autonoma ist deprecated (siehe
+// src/lib/server/ai/personas/autonomous.ts). Diese Route listet und rollt
+// zurück, was frühere Läufe hinterlassen haben — sie startet nichts. Die UI
+// dafür ist aus den Projekteinstellungen entfernt; Aufruf per API:
+//   GET  /api/projects/{projectId}/autonoma-runs
+//   POST /api/projects/{projectId}/autonoma-runs  { runId, action: 'rollback' }
+
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { query, queryOne } from '$lib/server/db/index.js';

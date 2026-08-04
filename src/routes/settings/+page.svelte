@@ -435,7 +435,7 @@
 
 			<div class="section">
 				<h2>Analysis Language</h2>
-				<p class="section-hint">Language for codes, memos, and all AI output. "Auto-detect" uses the language of the documents.</p>
+				<p class="section-hint">Language for namings, memos, and all AI output. "Auto-detect" uses the language of the documents.</p>
 				<div class="form-row">
 					<select class="input-field" bind:value={language}>
 						{#each Object.entries(languages) as [code, label]}
