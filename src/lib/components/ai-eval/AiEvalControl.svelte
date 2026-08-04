@@ -11,12 +11,12 @@
     · audit  — the verdict is written to ai_naming_evaluations. Never a naming_act.
       A `reject` greys the cue out; that greying is a consequence of the audit
       record, so it disappears with this layer and leaves the material as it was.
-    · material — `revise` OVERWRITES: the better reading becomes the researcher's
-      own naming at that passage and the cue steps down there (hidden, never
-      deleted, so the AI act stays ausweisbar and rückholbar via the panel footer).
-      Both halves are one act of the researcher — typing their naming and saving
-      the verdict. Without a better reading, `revise` stays a note. Nothing here
-      writes on behalf of the AI.
+    · material — `revise` OVERWRITES, through the stack: the naming's inscription
+      becomes the researcher's wording and their act enters the designation chain,
+      where the agent's cue stays readable as the earlier entry. No second naming,
+      no hiding — a naming IS its designation history. One act of the researcher:
+      typing their naming and saving the verdict. Without a better reading,
+      `revise` stays a note. Nothing here writes on behalf of the AI.
     · visibility — "Ausblenden" is the fourth, separate switch, for the case where
       no revision replaces the cue: only offered on an already rejected cue,
       because it costs the cue its visibility. Same `properties.hidden` flag.
@@ -42,6 +42,7 @@
 		subjectLabel,
 		anchor = null,
 		hidden = false,
+		passageCount = 1,
 		onadopt = undefined,
 		onhide = undefined
 	}: {
@@ -54,7 +55,9 @@
 		anchor?: { pos0?: number; pos1?: number; text?: string } | null;
 		/** Current visibility of that passage — the switch toggles it back. */
 		hidden?: boolean;
-		/** Called after a revision was adopted as a human naming, so the reader can refresh. */
+		/** How many passages this naming holds — an overwrite reaches all of them. */
+		passageCount?: number;
+		/** Called after the cue was overwritten, so the reader can refresh. */
 		onadopt?: (label: string) => void;
 		/** Called after the passage was hidden, so the reader can drop it from the list. */
 		onhide?: () => void;
@@ -69,8 +72,6 @@
 	let errorMsg = $state<string | null>(null);
 
 	let adoptingId = $state<string | null>(null);
-	/** Lower-cased labels already anchored on THIS passage — an adoption is visible as one of them. */
-	let labelsOnPassage = $state<string[]>([]);
 
 	const LABELS: Record<Verdict, string> = {
 		accept: 'Übernehmen',
@@ -82,11 +83,6 @@
 	const latest = $derived(history.length ? history[history.length - 1] : null);
 	const rejected = $derived(latest?.verdict === 'reject');
 
-	/** A revision can only become a naming if the passage has text offsets. */
-	const canAdopt = $derived(
-		!!anchor && Number.isFinite(anchor.pos0) && Number.isFinite(anchor.pos1)
-	);
-
 	function fmt(ts: string): string {
 		const d = new Date(ts);
 		return Number.isNaN(d.getTime())
@@ -94,36 +90,14 @@
 			: d.toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' });
 	}
 
-	function isAdopted(row: EvalRow): boolean {
+	/** Vollzogen ist eine Revision, wenn das Naming ihre Lesart trägt. */
+	function isEnacted(row: EvalRow): boolean {
 		const label = (row.betterReading ?? '').trim().toLowerCase();
-		return !!label && labelsOnPassage.includes(label);
-	}
-
-	/** Which revisions are already in the material — so the state survives a reload. */
-	async function loadPassageLabels() {
-		if (!canAdopt) return;
-		try {
-			const res = await fetch(`/api/projects/${projectId}/documents/${docId}/annotations`);
-			if (!res.ok) return;
-			const anns = (await res.json()) as {
-				code_label: string;
-				properties?: { anchor?: { pos0?: number; pos1?: number } };
-			}[];
-			labelsOnPassage = anns
-				.filter(
-					(a) =>
-						a.properties?.anchor?.pos0 === anchor!.pos0 &&
-						a.properties?.anchor?.pos1 === anchor!.pos1
-				)
-				.map((a) => (a.code_label ?? '').trim().toLowerCase());
-		} catch {
-			// Non-fatal: the adopt button stays offered; adopting twice is idempotent.
-		}
+		return !!label && subjectLabel.trim().toLowerCase() === label;
 	}
 
 	onMount(() => {
 		verdicts.load(projectId, docId);
-		loadPassageLabels();
 	});
 
 	function choose(v: Verdict) {
@@ -175,9 +149,8 @@
 			verdict = null;
 			rationale = '';
 			betterReading = '';
-			// Revidieren heißt überschreiben: das Naming des Forschers tritt an der
-			// Passage an die Stelle des Cues. Ohne bessere Lesart bleibt es eine Notiz.
-			if (sentBetterReading && canAdopt) await enact(sentBetterReading);
+			// Revidieren heißt überschreiben. Ohne Lesart bleibt es eine Notiz.
+			if (sentBetterReading) await enact(sentBetterReading);
 		} catch (e) {
 			errorMsg = e instanceof Error ? e.message : String(e);
 		} finally {
@@ -186,59 +159,22 @@
 	}
 
 	/**
-	 * Die Revision vollziehen: die bessere Lesart wird als Naming DES FORSCHERS an
-	 * dieser Passage angelegt, und der Cue verschwindet dort — ausgeblendet, nicht
-	 * gelöscht, damit der KI-Akt ausweisbar und rückholbar bleibt (Panel-Fuß).
-	 * Idempotent: ein bestehendes Naming wird wiederverwendet, ein identischer
-	 * Anker serverseitig dedupliziert.
+	 * Die Revision vollziehen: die Inskription des Namings wird überschrieben, und
+	 * der Akt tritt als Eintrag des Forschers in den Stack. Kein zweites Naming,
+	 * kein Ausblenden — das Naming IST seine Designations-Geschichte, der Cue des
+	 * Agenten bleibt als früherer Eintrag der Kette lesbar.
 	 */
 	async function enact(betterReadingLabel: string) {
 		const label = betterReadingLabel.trim();
-		if (!label || !canAdopt) return;
-		let codeId: string | null = null;
-		const created = await fetch(`/api/projects/${projectId}/codes`, {
+		if (!label || !subjectNamingId) return;
+		const res = await fetch(`/api/projects/${projectId}/namings`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ label, color: '#7fd1b9' })
+			body: JSON.stringify({ action: 'rename', namingId: subjectNamingId, inscription: label })
 		});
-		if (created.ok) {
-			codeId = ((await created.json()) as { id: string }).id;
-		} else if (created.status === 409) {
-			const list = await fetch(`/api/projects/${projectId}/codes`);
-			if (!list.ok) throw new Error(`HTTP ${list.status}`);
-			const all = (await list.json()) as { id: string; label: string }[];
-			codeId = all.find((c) => (c.label ?? '').toLowerCase() === label.toLowerCase())?.id ?? null;
-			if (!codeId) throw new Error(`Naming „${label}" existiert, ist aber nicht auffindbar`);
-		} else {
-			const e = await created.json().catch(() => ({}));
-			throw new Error(e?.error || `HTTP ${created.status}`);
-		}
-
-		const ann = await fetch(`/api/projects/${projectId}/documents/${docId}/annotations`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				codeId,
-				anchorType: 'text',
-				anchor: { pos0: anchor!.pos0, pos1: anchor!.pos1, text: anchor!.text ?? '' },
-				comment: `Revision von „${subjectLabel}"`
-			})
-		});
-		if (!ann.ok) {
-			const e = await ann.json().catch(() => ({}));
-			throw new Error(e?.error || `HTTP ${ann.status}`);
-		}
-		labelsOnPassage = [...labelsOnPassage, label.toLowerCase()];
-
-		// Der Cue tritt an dieser Passage ab.
-		const hideRes = await fetch(`/api/projects/${projectId}/documents/${docId}/annotations`, {
-			method: 'PATCH',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ annotationId, hidden: true })
-		});
-		if (!hideRes.ok) {
-			const e = await hideRes.json().catch(() => ({}));
-			throw new Error(e?.error || `HTTP ${hideRes.status}`);
+		if (!res.ok) {
+			const e = await res.json().catch(() => ({}));
+			throw new Error(e?.error || `HTTP ${res.status}`);
 		}
 		onadopt?.(label);
 	}
@@ -246,7 +182,7 @@
 	/** Nachträglich vollziehen — für Revisionen, die als Urteil schon vorliegen. */
 	async function enactRow(row: EvalRow) {
 		const label = (row.betterReading ?? '').trim();
-		if (!label || adoptingId || !canAdopt) return;
+		if (!label || adoptingId) return;
 		adoptingId = row.id;
 		errorMsg = null;
 		try {
@@ -323,15 +259,14 @@
 			<input
 				class="ai-eval-better"
 				bind:value={betterReading}
-				placeholder="Dein Naming – tritt an dieser Passage an die Stelle des Cues…"
+				placeholder="Dein Naming – überschreibt den Cue…"
 			/>
-			{#if betterReading.trim() && canAdopt}
+			{#if betterReading.trim()}
 				<div class="ai-eval-hint">
-					„{betterReading.trim()}" wird dein Naming an dieser Passage; der Cue „{subjectLabel}"
-					tritt dort ab (ausgeblendet, nicht gelöscht).
+					Das Naming heißt danach „{betterReading.trim()}"; der Cue „{subjectLabel}" bleibt als
+					früherer Eintrag im Stack{#if passageCount > 1}. Es trägt {passageCount} Passagen — die
+						Umschreibung gilt für alle{/if}.
 				</div>
-			{:else if betterReading.trim() && !canAdopt}
-				<div class="ai-eval-hint">Passage ohne Textanker – es bleibt bei der Notiz.</div>
 			{/if}
 		{/if}
 		<div class="ai-eval-actions">
@@ -367,19 +302,17 @@
 						<div class="ai-eval-rationale">{row.rationale}</div>
 					{/if}
 					{#if row.verdict === 'revise' && row.betterReading}
-						{#if isAdopted(row)}
-							<span class="ai-eval-adopted">✓ steht als dein Naming an dieser Passage</span>
-						{:else if canAdopt}
+						{#if isEnacted(row)}
+							<span class="ai-eval-adopted">✓ das Naming trägt diese Lesart</span>
+						{:else}
 							<button
 								class="ai-eval-adopt"
 								onclick={() => enactRow(row)}
 								disabled={adoptingId !== null}
-								title="Setzt dein Naming an dieser Passage an die Stelle des Cues – der Cue wird ausgeblendet, nicht gelöscht."
+								title="Überschreibt die Inskription des Namings; der Cue bleibt als früherer Eintrag im Stack."
 							>
-								{adoptingId === row.id ? 'Setze ein…' : 'Revision jetzt vollziehen'}
+								{adoptingId === row.id ? 'Schreibe um…' : 'Revision jetzt vollziehen'}
 							</button>
-						{:else}
-							<span class="ai-eval-hint">Passage ohne Textanker – nicht vollziehbar.</span>
 						{/if}
 					{/if}
 				</li>

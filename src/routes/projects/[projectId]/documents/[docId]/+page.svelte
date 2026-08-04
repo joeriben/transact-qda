@@ -1414,6 +1414,7 @@
 												subjectLabel={ann.code_label}
 												anchor={ann.properties?.anchor ?? null}
 												hidden={!!ann.properties?.hidden}
+												passageCount={codeAnnotations.filter((a: any) => a.code_id === ann.code_id).length}
 												onadopt={refreshAfterAiEval}
 												onhide={refreshAfterAiEval}
 											/>
