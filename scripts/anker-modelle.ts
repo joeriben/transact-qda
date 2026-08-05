@@ -9,8 +9,8 @@
 // oft die Antwort unlesbar ist, was es kostet — steht daneben, entscheidet
 // aber nicht.
 //
-// Die Marken gehen dafür MIT in den Suchraum (belegstelleMitpruefen), sonst
-// wäre die Frage nicht stellbar.
+// Die Marken gehen dafür MIT in den Suchraum — das ist inzwischen der
+// Normalfall jedes Laufs (die Probe) und nicht mehr eigens zu bestellen.
 //
 //   npm run anker:modelle
 //   npm run anker:modelle -- --modelle z-ai/glm-5.2,xiaomi/mimo-v2.5-pro
@@ -149,7 +149,6 @@ async function main() {
 			try {
 				const d = await durchgehen(projectId, f.namingId, f.documentId, f.kriterium, {
 					concurrency,
-					belegstelleMitpruefen: true,
 					modell: { provider: 'openrouter', model: modell }
 				});
 				const getroffen = f.marken.filter((m) => d.stellen.some((s) => trifft(s, m)));

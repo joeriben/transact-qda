@@ -33,13 +33,20 @@ export async function ladeKriterium(
 	projectId: string,
 	namingId: string
 ): Promise<AbgelegtesKriterium | null> {
-	const r = await query<{ kriterium: Kriterium; von_hand: boolean; updated_at: string }>(
+	const r = await query<{ kriterium: Kriterium; von_hand: boolean; updated_at: string | Date }>(
 		`SELECT kriterium, von_hand, updated_at FROM anker_kriterien
 		  WHERE naming_id = $1 AND project_id = $2`,
 		[namingId, projectId]
 	);
 	if (r.rows.length === 0) return null;
-	return { kriterium: r.rows[0].kriterium, vonHand: r.rows[0].von_hand, updatedAt: r.rows[0].updated_at };
+	// pg gibt timestamptz als Date zurück. Über HTTP fällt das nicht auf, weil
+	// JSON.stringify daraus einen String macht; direkt aufgerufen kommt ein Date
+	// an, wo ein String zugesagt ist.
+	return {
+		kriterium: r.rows[0].kriterium,
+		vonHand: r.rows[0].von_hand,
+		updatedAt: new Date(r.rows[0].updated_at).toISOString()
+	};
 }
 
 /**

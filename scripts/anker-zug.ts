@@ -49,6 +49,7 @@ import {
 	type Gestalt,
 	type Kriterium,
 	type Stelle,
+	type Probe,
 	type DokumentStand
 } from '../src/lib/server/ai/anchor-expansion/index.js';
 
@@ -71,7 +72,8 @@ const zuegeOnly = flag('zuege');
 const sichtungOnly = flag('sichtung');
 const alleDokumente = flag('alle');
 const forceNew = flag('neu');
-const ankerAuch = flag('anker-auch');
+// Die Probe an den eigenen Marken läuft mit; --ohne-probe schaltet sie ab.
+const ohneProbe = flag('ohne-probe');
 const standOnly = flag('stand');
 const alleDokumenteLaufen = flag('alle-dokumente');
 const erneut = flag('erneut');
@@ -163,12 +165,33 @@ function zeigeErgebnis(
 	geprueft: number,
 	geprueftJePosition: Record<string, number>,
 	kriterium: Kriterium,
-	gestalt: Gestalt
+	gestalt: Gestalt,
+	probe: Probe | null
 ): void {
 	const nachRelation = new Map<string, Stelle[]>();
 	for (const s of stellen) nachRelation.set(s.befund.relation, [...(nachRelation.get(s.befund.relation) ?? []), s]);
 
 	console.log(`\n════ ${stellen.length} Stellen mit Bezug, von ${geprueft} geprüften ════`);
+	// Die Probe zuerst: Trägt das Kriterium die eigene Marke nicht, sagt die
+	// Liste darunter nichts über das Dokument.
+	if (probe) {
+		if (probe.alsFall === probe.marken) {
+			console.log(`     Probe: ${probe.marken}/${probe.marken} eigene Marken kamen als Fall zurück.`);
+		} else {
+			console.log(
+				`\n     PROBE FEHLGESCHLAGEN: ${probe.marken - probe.alsFall} von ${probe.marken} eigenen Marken kamen nicht als Fall zurück.`
+			);
+			console.log('     Das ist eine Aussage über das KRITERIUM, nicht über das Dokument.');
+			for (const a of probe.anders) {
+				console.log(`       [${a.charStart}–${a.charEnd}] kam als „${a.relation}": ${short(a.begruendung, 150)}`);
+			}
+			if (probe.stumm > 0) console.log(`       ${probe.stumm} Marke(n) fielen unter keine Relation.`);
+			console.log(
+				'     Häufigster Grund: Im Kriterium fehlt ein Bestandteil, den das Memo nicht positiv\n' +
+					'     benennt. Ein Memo, das nur von einem Nachbar-Naming abgrenzt, kann keinen ergeben.'
+			);
+		}
+	}
 	// Nicht verschweigen: eine fallengelassene Stelle sieht sonst aus wie eine
 	// geprüfte ohne Bezug.
 	if (unlesbar > 0) console.log(`     ${unlesbar} Stellen kamen nicht auswertbar zurück und sind UNGEPRÜFT.`);
@@ -276,7 +299,7 @@ async function laufeUeberAlle(
 		const t0 = Date.now();
 		process.stdout.write(`  [${i + 1}/${offen.length}] ${d.inscription.slice(-44).padEnd(46)}`);
 		try {
-			const r = await durchgehen(projectId, naming.id, d.documentId, k, { concurrency, belegstelleMitpruefen: ankerAuch });
+			const r = await durchgehen(projectId, naming.id, d.documentId, k, { concurrency, ohneProbe: ohneProbe });
 			const sek = Math.round((Date.now() - t0) / 1000);
 			await verbucheLauf({
 				projectId,
@@ -299,7 +322,13 @@ async function laufeUeberAlle(
 			kosten.cacheGelesen += r.verbrauch.cacheGelesen;
 			kosten.cacheGeschrieben += r.verbrauch.cacheGeschrieben;
 			kosten.aufrufe += r.verbrauch.aufrufe;
-			console.log(`${String(r.stellen.length).padStart(4)} Stellen von ${r.geprueft}   ${sek}s`);
+			const probeSagt =
+				r.probe && r.probe.alsFall < r.probe.marken
+					? `  PROBE ${r.probe.alsFall}/${r.probe.marken}`
+					: r.probe
+						? `  Probe ${r.probe.alsFall}/${r.probe.marken}`
+						: '';
+			console.log(`${String(r.stellen.length).padStart(4)} Stellen von ${r.geprueft}   ${sek}s${probeSagt}`);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
 			const ausfall = err instanceof LaufAbbruch;
@@ -466,7 +495,7 @@ async function main() {
 	const t0 = Date.now();
 	const d = await durchgehen(project.id, naming.id, document.id, v.kriterium, {
 		concurrency,
-		belegstelleMitpruefen: ankerAuch,
+		ohneProbe,
 		onProgress: (done, total) => {
 			if (done % 5 === 0 || done === total) process.stdout.write(`\r  ${done}/${total}`);
 		}
@@ -488,7 +517,7 @@ async function main() {
 		verbrauch: d.verbrauch,
 		sekunden: Math.round((Date.now() - t0) / 1000)
 	});
-	zeigeErgebnis(d.stellen, d.unlesbar.length, d.nichtBelegt.length, d.geprueft, d.geprueftJePosition, v.kriterium, d.gestalt);
+	zeigeErgebnis(d.stellen, d.unlesbar.length, d.nichtBelegt.length, d.geprueft, d.geprueftJePosition, v.kriterium, d.gestalt, d.probe);
 	console.log(
 		`  Verbrauch: ${d.verbrauch.aufrufe} Aufrufe · ${d.verbrauch.eingabe} Eingabe · ` +
 			`${d.verbrauch.cacheGelesen} aus dem Cache · ${d.verbrauch.ausgabe} Ausgabe (Token)\n`

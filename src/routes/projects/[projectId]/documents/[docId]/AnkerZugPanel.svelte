@@ -72,7 +72,17 @@
 	let kriterium = $state<Kriterium | null>(null);
 	let kriteriumVonHand = $state(false);
 	let kriteriumAbgelegtSeit = $state<string | null>(null);
-	let belegstelleMitpruefen = $state(false);
+	/**
+	 * Die Probe auslassen. Aus, weil sie das einzige ist, woran der Lauf sein
+	 * eigenes Versagen bemerken kann.
+	 */
+	let ohneProbe = $state(false);
+	let probe = $state<{
+		marken: number;
+		alsFall: number;
+		stumm: number;
+		anders: { charStart: number; charEnd: number; relation: string; begruendung: string }[];
+	} | null>(null);
 	let sichtungOffen = $state(false);
 
 	let stellen = $state<Stelle[]>([]);
@@ -170,6 +180,7 @@
 		if (ueberDocId === documentId) {
 			stellen = [];
 			ausDerAkte = null;
+			probe = null;
 		}
 		ausfall = false;
 		done = 0;
@@ -186,7 +197,7 @@
 					namingId,
 					documentId: ueberDocId,
 					kriterium,
-					belegstelleMitpruefen
+					ohneProbe
 				}),
 				signal: controller.signal
 			});
@@ -211,6 +222,7 @@
 					else if (ev.kind === 'progress') { done = ev.done; total = ev.total; }
 					else if (ev.kind === 'done') {
 						if (hier) {
+							probe = ev.probe ?? null;
 							stellen = ev.stellen;
 							geprueftJePosition = ev.geprueftJePosition;
 							unlesbar = ev.unlesbar ?? 0;
@@ -492,8 +504,9 @@
 			{/if}
 
 			<label class="schalter">
-				<input type="checkbox" bind:checked={belegstelleMitpruefen} disabled={phase === 'lauf'} />
-				Belegstelle mitprüfen — eine Probe darauf, ob das Kriterium sie wiederfindet
+				<input type="checkbox" bind:checked={ohneProbe} disabled={phase === 'lauf'} />
+				Ohne Probe laufen — deine eigenen Marken bleiben ungeprüft. Nur sinnvoll, wo du sie
+				schon geprüft hast.
 			</label>
 
 			{#if phase === 'lauf'}
@@ -581,6 +594,46 @@
 		<div class="aus-der-akte">
 			Ergebnis vom {ausDerAkte.wann.slice(0, 10)} ({ausDerAkte.model.split('/').pop()}) — aus der Akte,
 			nicht neu gerechnet.
+		</div>
+	{/if}
+
+	<!-- Die Probe steht VOR der Fundliste: Trägt das Kriterium deine eigene Marke
+	     nicht, ist die Liste darunter kein Ergebnis über das Dokument. -->
+	{#if probe && phase === 'fertig'}
+		<div class="probe" class:schlecht={probe.alsFall < probe.marken}>
+			{#if probe.alsFall === probe.marken}
+				Probe: {probe.marken === 1 ? 'Deine Marke kam' : `Alle ${probe.marken} deiner Marken kamen`} als
+				Fall zurück. Das Kriterium trifft, was du selbst markiert hast.
+			{:else}
+				<strong>
+					Probe fehlgeschlagen: {probe.marken - probe.alsFall} von {probe.marken}
+					{probe.marken === 1 ? 'deiner Marke' : 'deiner Marken'} {probe.marken - probe.alsFall === 1 ? 'kam' : 'kamen'}
+					nicht als Fall zurück.
+				</strong>
+				<p>
+					Das ist eine Aussage über das <em>Kriterium</em>, nicht über das Dokument. Solange es
+					deine eigene Marke nicht wiederfindet, sagt die Liste darunter nichts darüber, was hier
+					sonst steht.
+				</p>
+				{#each probe.anders as a}
+					<p class="warum">
+						Deine Marke [{a.charStart}–{a.charEnd}] kam als <em>{a.relation}</em> zurück:
+						„{a.begruendung}"
+						<button class="springen" onclick={() => onjump(a.charStart, a.charEnd)}>ansehen</button>
+					</p>
+				{/each}
+				{#if probe.stumm > 0}
+					<p class="warum">
+						{probe.stumm} {probe.stumm === 1 ? 'Marke fiel' : 'Marken fielen'} unter keine Relation —
+						das Kriterium sieht dort gar nichts.
+					</p>
+				{/if}
+				<p class="warum">
+					Häufigster Grund: Im Kriterium fehlt ein Bestandteil, den dein Memo nicht positiv
+					benennt. Ein Memo, das dein Naming nur von einem Nachbarn abgrenzt („hier nur die ohne
+					X"), kann keinen ergeben — die Ableitung sieht den Nachbarn nie.
+				</p>
+			{/if}
 		</div>
 	{/if}
 
@@ -717,6 +770,17 @@
 	.kopfzeile { display: flex; gap: 0.3rem; align-items: center; }
 	.kriterium-kopf { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; }
 	.hinweis.warnung { color: var(--warning); }
+	.probe {
+		font-size: 0.75rem; line-height: 1.5; border-radius: 6px; padding: 0.5rem 0.6rem;
+		margin-bottom: 0.5rem; border: 1px solid var(--border); color: var(--text-3);
+	}
+	.probe.schlecht { border-color: var(--warning); color: var(--text-2); }
+	.probe p { margin: 0.35rem 0 0; }
+	.probe .warum { color: var(--text-4); }
+	.probe .springen {
+		border: none; background: none; color: var(--accent); cursor: pointer;
+		font-size: 0.72rem; padding: 0 0.2rem; text-decoration: underline;
+	}
 	button.klein {
 		font-size: 0.7rem; padding: 0.15rem 0.45rem; border: 1px solid var(--border);
 		border-radius: 5px; background: var(--surface-1); color: var(--text-3); cursor: pointer;

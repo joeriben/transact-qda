@@ -11,7 +11,7 @@
 //        `neu=1` verwirft das abgelegte und leitet neu ab (ein Aufruf). Der
 //        Lauf beginnt nicht — das Kriterium geht erst an den Forscher zurück.
 //
-//   POST { namingId, documentId, kriterium, belegstelleMitpruefen? }
+//   POST { namingId, documentId, kriterium, ohneProbe? }
 //        Geht das Dokument mit dem freigegebenen Kriterium durch. Antwortet als
 //        text/event-stream, weil ein Durchgang über ein großes Dokument Minuten
 //        läuft und der erste Fund schon etwas wert ist.
@@ -24,7 +24,7 @@
 //   { kind: 'init',     zuegeGesamt, geprueft, geprueftJePosition, gestalt }
 //   { kind: 'stelle',   stelle }            — sofort bei jedem Fund
 //   { kind: 'progress', done, total }
-//   { kind: 'done',     runId, stellen, unlesbar, nichtBelegt, geprueft, geprueftJePosition }
+//   { kind: 'done',     runId, stellen, unlesbar, nichtBelegt, geprueft, geprueftJePosition, probe }
 //   { kind: 'failed',   message[, abbruch, status] }  — abbruch: kein Modellzugang
 //   { kind: 'alive',    at }                — Heartbeat ~10 s
 //
@@ -143,7 +143,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		namingId?: string;
 		documentId?: string;
 		kriterium?: unknown;
-		belegstelleMitpruefen?: unknown;
+		ohneProbe?: unknown;
 	} | null;
 
 	const namingId = body?.namingId;
@@ -154,7 +154,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	if (!kriterium) {
 		error(400, 'kriterium erforderlich — Akteur, mindestens ein Bestandteil, mindestens eine Relation');
 	}
-	const belegstelleMitpruefen = body?.belegstelleMitpruefen === true;
+	const ohneProbe = body?.ohneProbe === true;
 
 	// Womit gelaufen wird, gilt ab jetzt. Es kam aus dem Panel, also aus der Hand
 	// des Forschers — auch wenn er nichts geändert hat, hat er es stehen lassen.
@@ -198,7 +198,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 				const stellen: Stelle[] = [];
 				const result = await durchgehen(projectId, namingId!, documentId!, kriterium, {
 					signal: ac.signal,
-					belegstelleMitpruefen,
+					ohneProbe,
 					onProgress: (done, total) => send({ kind: 'progress', done, total }),
 					onStelle: (s) => {
 						stellen.push(s);
@@ -226,6 +226,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 				send({
 					kind: 'done',
 					runId,
+					probe: result.probe,
 					stellen: result.stellen,
 					unlesbar: result.unlesbar.length,
 					nichtBelegt: result.nichtBelegt.length,

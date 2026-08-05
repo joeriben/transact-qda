@@ -311,8 +311,15 @@ export async function vorbereiten(
 export interface DurchgangOptions {
 	concurrency?: number;
 	signal?: AbortSignal;
-	/** Die Belegstelle mitprüfen — eine Probe, ob das Kriterium sie wiederfindet. */
-	belegstelleMitpruefen?: boolean;
+	/**
+	 * Die Probe an den eigenen Marken auslassen.
+	 *
+	 * Normalerweise wird an ihnen geprüft: Sie sind die einzige Bodenwahrheit im
+	 * Dokument, und ein Kriterium, das sie nicht wiederfindet, findet nichts.
+	 * Ausschalten macht den Lauf blind für sein eigenes Versagen — nur für
+	 * Kostenläufe über Dokumente, deren Marken schon geprüft sind.
+	 */
+	ohneProbe?: boolean;
 	/** Anderes Modell als der Tier vorgibt — für Vergleichsläufe. */
 	modell?: PruefOptions['modell'];
 	onProgress?: (done: number, total: number) => void;
@@ -336,6 +343,29 @@ export interface Durchgang {
 	geprueftJePosition: Record<string, number>;
 	gestalt: Gestalt;
 	kriterium: Kriterium;
+	/** Was die eigenen Marken zum Kriterium sagen. Null, wo keine im Dokument sind. */
+	probe: Probe | null;
+}
+
+/**
+ * Die Probe: Findet das Kriterium wieder, was der Forscher selbst markiert hat?
+ *
+ * Das ist die einzige Frage, die der Lauf sich selbst beantworten kann. Kommt
+ * eine eigene Marke nicht als Fall zurück, ist das keine Aussage über die
+ * Stelle, sondern über das Kriterium — und die muss dastehen, bevor jemand die
+ * Fundliste für das Ergebnis hält. Genau daran hing der Befund, dass ein Memo,
+ * das nur abgrenzt, kein brauchbares Kriterium ergibt: Alle geprüften Modelle
+ * gaben die markierte Stelle zurück, keines nannte sie den Fall.
+ */
+export interface Probe {
+	/** Marken des Forschers zu diesem Naming in diesem Dokument. */
+	marken: number;
+	/** Davon als Fall wiedergefunden — die erste Relation des Kriteriums. */
+	alsFall: number;
+	/** Marken, die unter einer anderen Relation zurückkamen, mit deren Begründung. */
+	anders: { charStart: number; charEnd: number; relation: string; begruendung: string }[];
+	/** Marken, zu denen gar nichts zurückkam. */
+	stumm: number;
 }
 
 export async function durchgehen(
@@ -359,11 +389,17 @@ export async function durchgehen(
 		fullText
 	);
 
-	// Die Belegstelle bleibt draußen, wo sie in DIESEM Dokument steht: Sie ist die
-	// Vorgabe, nicht der Fund. Stammt sie von woanders, ist hier nichts
-	// auszunehmen, und ohne Marken ist alles zu prüfen.
-	const drin = !beleg || ausAnderemDokument || opts.belegstelleMitpruefen ? [] : beleg.zuege;
-	const scope = drin.length > 0 ? zuege.filter((z) => !drin.includes(z)) : zuege;
+	// Die eigenen Marken gehen MIT durch — sie sind die Probe.
+	//
+	// Bis hierher blieben sie draußen, mit dem Argument, sie seien die Vorgabe und
+	// nicht der Fund. Das stimmt für die Anzeige und war für den Lauf falsch: Der
+	// Durchgang nahm damit ausgerechnet die Stellen aus dem Blick, an denen er
+	// hätte merken können, dass sein Kriterium nichts taugt. Vorgabe zu sein
+	// heißt, nicht als Neufund zu zählen — nicht, ungeprüft zu bleiben.
+	const eigeneMarken = ausAnderemDokument ? [] : (beleg?.zuege ?? []);
+	const scope = opts.ohneProbe && eigeneMarken.length > 0
+		? zuege.filter((z) => !eigeneMarken.includes(z))
+		: zuege;
 
 	const geprueftJePosition: Record<string, number> = {};
 	for (const z of scope) geprueftJePosition[z.position] = (geprueftJePosition[z.position] ?? 0) + 1;
@@ -392,5 +428,41 @@ export async function durchgehen(
 		verbrauch,
 		modell: opts.modell ?? resolveTier('anker.wiedererkennung'),
 		zuegeGesamt: zuege.length,
-		geprueft: scope.length, geprueftJePosition, gestalt, kriterium };
+		geprueft: scope.length,
+		geprueftJePosition,
+		gestalt,
+		kriterium,
+		probe: opts.ohneProbe ? null : probeOf(eigeneMarken, stellen, kriterium)
+	};
+}
+
+/**
+ * Was die eigenen Marken zum Kriterium sagen.
+ *
+ * „Fall" ist die erste Relation des Kriteriums — die Ableitung stellt sie nach
+ * vorn, und der Forscher kann sie umbenennen, ohne dass hier ein fester Name
+ * mitgeführt werden müsste.
+ */
+function probeOf(eigeneMarken: Zug[], stellen: Stelle[], kriterium: Kriterium): Probe | null {
+	if (eigeneMarken.length === 0) return null;
+	const fallName = kriterium.relationen[0]?.name?.trim().toLowerCase() ?? '';
+	let alsFall = 0;
+	let stumm = 0;
+	const anders: Probe['anders'] = [];
+	for (const z of eigeneMarken) {
+		const s = stellen.find((x) => x.zug.charStart === z.charStart && x.zug.charEnd === z.charEnd);
+		if (!s) {
+			stumm++;
+		} else if (s.befund.relation.trim().toLowerCase() === fallName) {
+			alsFall++;
+		} else {
+			anders.push({
+				charStart: z.charStart,
+				charEnd: z.charEnd,
+				relation: s.befund.relation,
+				begruendung: s.befund.begruendung
+			});
+		}
+	}
+	return { marken: eigeneMarken.length, alsFall, anders, stumm };
 }
