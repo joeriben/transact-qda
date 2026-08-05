@@ -70,8 +70,6 @@ Deine Aufgabe: Mache das Kriterium explizit, damit sie es korrigieren kann, bevo
 
 BESTANDTEILE — die Züge, aus denen das Muster zusammengesetzt ist. Nimm sie aus Naming und Memo, nicht aus deiner Vorstellung davon, was dazugehören könnte. Je Bestandteil: der Kurzname und woran er im Text kenntlich ist.
 
-WOVON DIE BELEGSTELLE HANDELT, GEHÖRT NICHT INS KRITERIUM. Sie zeigt die Form des Zuges an einem Gegenstand; der Gegenstand ist austauschbar. Der Sachgegenstand, um den es dort geht, darf in keinem „kenntlich" und in keiner „bedingung" vorkommen — auch nicht als Beispiel in Klammern. Ein Kriterium, das ihn nennt, findet nur noch dieselbe Sache wieder und übersieht denselben Zug an jeder anderen. Schreibe die Bedingungen so, dass sie auf jeden Gegenstand passen, über den geredet werden kann.
-
 AKTEUR und ADRESSAT — wer den Zug tut, gegenüber wem. Das gehört zum Muster: Wer dramatisiert, ist Teil des Zuges.
 
 RELATIONEN — in welchen Verhältnissen eine andere Stelle zum Muster stehen kann. Diese Verhältnisse leitest du aus den Bestandteilen ab, sie sind nicht frei erfunden:
