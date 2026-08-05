@@ -64,15 +64,17 @@ export interface Kriterium {
 }
 
 export function kriteriumSystem(): string {
-	return `Eine Forscherin hat beim Lesen einer Protokollreihe ein wiederkehrendes STRUKTURMUSTER bemerkt und es an einer Stelle festgemacht: ein Naming, ein Memo, eine Belegstelle. Das Muster ist ein Zug — was dort jemand tut —, kein Thema.
+	return `Eine Forscherin hat beim Lesen einer Protokollreihe ein wiederkehrendes STRUKTURMUSTER bemerkt und in einem Naming und einem Memo festgehalten, worin es besteht. Das Muster ist ein Zug — was jemand tut, indem er redet —, kein Thema.
 
-Deine Aufgabe: Mache das Kriterium explizit, damit sie es korrigieren kann, bevor damit gearbeitet wird. Du bildest keine eigene Hypothese und erweiterst ihre nicht. Du legst offen, was in ihrer schon steht.
+Deine Aufgabe: Bringe in Form, was in ihrem Naming und ihrem Memo BEREITS STEHT, damit sie es korrigieren kann, bevor damit gearbeitet wird. Du bildest keine eigene Hypothese, erweiterst ihre nicht und ergänzt nichts, was sie nicht geschrieben hat.
 
-BESTANDTEILE — die Züge, aus denen das Muster zusammengesetzt ist. Nimm sie aus Naming und Memo, nicht aus deiner Vorstellung davon, was dazugehören könnte. Je Bestandteil: der Kurzname und woran er im Text kenntlich ist.
+Du siehst das Material NICHT, und du brauchst es nicht. Was das Muster ist, sagt sie; wo es vorkommt, ist die spätere Frage. Wenn ihr Memo einen Bestandteil nur andeutet, gib ihn so knapp wieder, wie er dasteht — erfinde ihn nicht aus.
+
+BESTANDTEILE — die Vollzüge, aus denen das Muster zusammengesetzt ist. Ein Bestandteil ist etwas, das jemand TUT: dramatisieren, vorgeben, unterstellen, offenlassen. Ein Gegenstand, über den geredet wird, ist kein Bestandteil. Je Bestandteil: der Kurzname und woran er kenntlich ist — an der Redeweise, nicht am Thema.
 
 AKTEUR und ADRESSAT — wer den Zug tut, gegenüber wem. Das gehört zum Muster: Wer dramatisiert, ist Teil des Zuges.
 
-RELATIONEN — in welchen Verhältnissen eine andere Stelle zum Muster stehen kann. Diese Verhältnisse leitest du aus den Bestandteilen ab, sie sind nicht frei erfunden:
+RELATIONEN — in welchen Verhältnissen eine Stelle zum Muster stehen kann. Sie folgen aus den Bestandteilen und sind nicht frei erfunden:
 • der Fall — alle Bestandteile liegen vor, mit dem genannten Akteur.
 • je ein Kontrast für JEDEN Bestandteil — alle anderen liegen vor, dieser eine nicht. Diese Kontraste sind der Ertrag: An ihnen zeigt sich, welcher Bestandteil das Muster trägt und ohne welchen derselbe Vorgang unproblematisch wäre.
 • Akteur umgekehrt — derselbe Zug, aber die andere Seite tut ihn.
@@ -87,22 +89,13 @@ Antworte NUR mit einem JSON-Objekt, ohne Vorrede, ohne Markdown-Zaun:
 Alles in der Sprache des Namings.`;
 }
 
-export function kriteriumMessage(
-	inscription: string,
-	memos: string[],
-	belegstelleMitAnlauf: string
-): string {
+export function kriteriumMessage(inscription: string, memos: string[]): string {
 	return `NAMING: „${inscription}"
 
 MEMO:
 ${memos.length > 0 ? memos.join('\n\n') : '(keins)'}
 
-BELEGSTELLE, mit dem Anlauf, der zu ihr führt:
-"""
-${belegstelleMitAnlauf}
-"""
-
-Mache das Kriterium explizit. JSON-Objekt.`;
+Bringe das Kriterium in Form. JSON-Objekt.`;
 }
 
 // ── Prüfung je Stelle ─────────────────────────────────────────────
@@ -288,16 +281,30 @@ async function pool<I, O>(items: I[], width: number, fn: (item: I, i: number) =>
 	return out;
 }
 
-/** Das Kriterium aus Naming, Memo und Belegstelle ableiten — ein Aufruf. */
+/**
+ * Das Kriterium aus Naming und Memo in Form bringen — ein Aufruf.
+ *
+ * OHNE das Material, und das ist der Punkt. Solange die Marken mit vorlagen,
+ * schrieb das Modell den Gegenstand der markierten Stelle als Bestandteil des
+ * Musters aus: Zu „Zuspitzung zur Alternative" kam „Methodenwahl als
+ * primärer Planungsparameter" heraus — ein Thema an der Stelle, an der ein
+ * Vollzug stehen muss. Kein Satz im Prompt hat das verhindert, weil die
+ * Unterscheidung performativ/thematisch nirgends im System dargestellt ist:
+ * Beides sind Zeichenketten in demselben Feld.
+ *
+ * Was das Muster IST, sagt der Forscher in seinem Memo — dort steht es bereits
+ * in Verben und ohne Gegenstand. Wo es vorkommt, ist die spätere Frage und
+ * Sache des Durchgangs. Ohne Material im Eingang ist die Kontamination nicht
+ * unerwünscht, sondern unmöglich.
+ */
 export async function ableitenKriterium(
 	inscription: string,
 	memos: string[],
-	belegstelleMitAnlauf: string,
 	signal?: AbortSignal
 ): Promise<Kriterium> {
 	const res = await chatJson<Kriterium>(
 		kriteriumSystem(),
-		kriteriumMessage(inscription, memos, belegstelleMitAnlauf),
+		kriteriumMessage(inscription, memos),
 		{ tier: resolveTier('anker.wiedererkennung'), signal }
 	);
 	if (!res.ok) throw new Error(`Das Kriterium kam auch nach drei Versuchen nicht auswertbar zurück: ${res.fehler}`);

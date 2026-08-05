@@ -127,7 +127,7 @@ function zeigeSichtung(label: string, g: Gestalt, ausfuehrlich: boolean): void {
 }
 
 function zeigeKriterium(k: Kriterium): void {
-	console.log('\n── Kriterium, wie es aus Naming, Memo und Belegstelle folgt ──\n');
+	console.log('\n── Kriterium, wie es aus Naming und Memo folgt ──\n');
 	console.log(`   Akteur:    ${k.akteur}`);
 	console.log(`   Adressat:  ${k.adressat}\n`);
 	console.log('   Bestandteile:');

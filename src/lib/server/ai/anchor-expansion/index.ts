@@ -8,7 +8,7 @@
 //   sichten    — deterministisch, ohne Modell: wie der Text gebaut ist, wo die
 //                Zuschreibung reißt, und wie er zu schneiden ist. Kostet nichts
 //                und läuft in Millisekunden.
-//   vorbereiten— das Kriterium aus Naming, Memo und Belegstelle ableiten und
+//   vorbereiten— das Kriterium aus Naming und Memo in Form bringen und
 //                VORLEGEN. Ein Modellaufruf. Der Forscher korrigiert es, bevor
 //                gelaufen wird; es ist sein Muster, nicht das des Helfers.
 //   durchgehen — jede Stelle mit dem freigegebenen Kriterium prüfen.
@@ -90,38 +90,86 @@ export async function ladeVolltext(projectId: string, documentId: string): Promi
 
 // ── Belegstelle ───────────────────────────────────────────────────
 
+export interface Marke {
+	/** Was der Forscher markiert hat — Zeichen für Zeichen, nichts dazu. */
+	wortlaut: string;
+	/** Wessen Rede das ist, aus den Marken des Textes. */
+	position: string;
+	pos0: number;
+	pos1: number;
+	/** Der Zug, in dem die Marke steht. Umgebung, nicht Beleg. */
+	umgebung: string;
+	zuege: Zug[];
+}
+
 export interface Belegstelle {
-	/** Der Wortlaut mit Anlauf, so wie er dem Modell vorgelegt wird. */
+	/** Alle Marken des Forschers an diesem Dokument, in Textreihenfolge. */
+	marken: Marke[];
+	/** Die Marken, wie sie dem Modell vorgelegt werden — das Markierte zuerst. */
 	text: string;
-	/** Die Züge, die die markierte Spanne überlappen — beim Lauf ausgenommen. */
+	/** Alle Züge, die eine Marke berühren — beim Lauf ausgenommen. */
 	zuege: Zug[];
 }
 
 /**
- * Die Belegstelle mit Anlauf.
+ * Die Marken, in der Reihenfolge, in der sie im Text stehen.
  *
- * Der markierte Ausschnitt allein trägt den Zug oft nicht: Was ihn trägt, steht
- * regelmäßig in den Sätzen davor, und was man markiert, ist die Stelle, an der
- * man ihn bemerkt hat. Deshalb gehen zwei Züge Anlauf mit — mit ihrer
- * Zuschreibung, damit nicht wieder die falsche Position als Akteur erscheint.
+ * Sie sind die dichteste Information im ganzen Vorgang: Der Forscher hat
+ * wenige Zeichen aus einem langen Protokoll ausgewählt, und in dieser Auswahl
+ * steckt, was er meint. Deshalb steht sie vorn und für sich; die Umgebung
+ * steht dahinter und ist als Umgebung ausgewiesen.
+ *
+ * Ein früherer Stand legte statt der Marke zwei Züge Anlauf plus Marke als
+ * einen Block vor — unter der Annahme, der markierte Ausschnitt trage den Zug
+ * allein nicht. Die Annahme war falsch und hat die Beweislage verkehrt: Aus
+ * „Davon hängt das gesamte Projekt ab." (35 Zeichen) wurden 665, und das
+ * Modell las den Gegenstand des Anlaufs — die Methodenwahl — als Bestandteil des
+ * Musters. Was der Forscher NICHT markiert hat, gehört nicht zum Muster.
+ *
+ * Mehrere Marken sind ein Vergleich, und der Vergleich ist die Auskunft: Was
+ * ihnen gemeinsam ist, ist die Form; worin sie sich unterscheiden, ist der
+ * Gegenstand. Deshalb gehen alle mit und nicht die erste.
  */
 export function belegstelleOf(
 	zuege: Zug[],
 	anchors: { documentId: string; pos0: number; pos1: number }[],
 	documentId: string,
-	anlauf = 2
+	fullText: string
 ): Belegstelle | null {
+	const marken: Marke[] = [];
+	const beruehrt: Zug[] = [];
 	for (const a of anchors) {
 		if (a.documentId !== documentId) continue;
 		const treffer = zuegeOverlapping(zuege, a.pos0, a.pos1);
 		if (treffer.length === 0) continue;
-		const idx = zuege.indexOf(treffer[0]);
-		const text = [...zuege.slice(Math.max(0, idx - anlauf), idx), ...treffer]
-			.map((z) => `[${z.position}] ${z.text}`)
-			.join('\n');
-		return { text, zuege: treffer };
+		marken.push({
+			wortlaut: fullText.slice(a.pos0, a.pos1).trim(),
+			position: treffer[0].position,
+			pos0: a.pos0,
+			pos1: a.pos1,
+			umgebung: treffer.map((z) => z.text).join('\n'),
+			zuege: treffer
+		});
+		for (const z of treffer) if (!beruehrt.includes(z)) beruehrt.push(z);
 	}
-	return null;
+	if (marken.length === 0) return null;
+	return { marken, text: markenBlock(marken), zuege: beruehrt };
+}
+
+function markenBlock(marken: Marke[]): string {
+	const eins = marken.length === 1;
+	const kopf = marken
+		.map((m, i) => `${eins ? 'MARKE' : `MARKE ${i + 1}`} — Rede von ${m.position}:\n„${m.wortlaut}"`)
+		.join('\n\n');
+	const umgebung = marken
+		.map((m, i) => `${eins ? 'zur Marke' : `zu MARKE ${i + 1}`}:\n"""\n${m.umgebung}\n"""`)
+		.join('\n\n');
+	return `${kopf}
+
+────
+Die Umgebung, in der ${eins ? 'die Marke steht' : 'die Marken stehen'} — damit du lesen kannst, wovon die Rede ist. Sie ist nicht das Markierte: Was hier steht und in ${eins ? 'der Marke' : 'den Marken'} nicht, gehört nicht zum Muster.
+
+${umgebung}`;
 }
 
 // ── Vorbereitung ──────────────────────────────────────────────────
@@ -154,11 +202,11 @@ export async function vorbereiten(
 	]);
 	const gestalt = sichten(fullText);
 	const zuege = zuegeOf(fullText, gestalt);
-	const beleg = belegstelleOf(zuege, muster.anchors, documentId);
+	const beleg = belegstelleOf(zuege, muster.anchors, documentId, fullText);
 
 	let kriterium = opts.kriterium ?? null;
 	if (!kriterium && beleg) {
-		kriterium = await ableitenKriterium(muster.inscription, muster.memos, beleg.text, opts.signal);
+		kriterium = await ableitenKriterium(muster.inscription, muster.memos, opts.signal);
 	}
 
 	return {
@@ -207,7 +255,7 @@ export async function durchgehen(
 	]);
 	const gestalt = sichten(fullText);
 	const zuege = zuegeOf(fullText, gestalt);
-	const beleg = belegstelleOf(zuege, muster.anchors, documentId);
+	const beleg = belegstelleOf(zuege, muster.anchors, documentId, fullText);
 	if (!beleg) throw new Error('Dieses Naming hat in diesem Dokument keine Belegstelle.');
 
 	// Die Belegstelle bleibt draußen: Sie ist die Vorgabe, nicht der Fund.
