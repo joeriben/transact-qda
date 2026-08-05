@@ -76,17 +76,16 @@ Return ONLY the JSON object, no markdown fences, no commentary.`;
 export async function comparePassage(
 	retrieval: RetrievalResult,
 	projectId: string,
-	options?: { language?: string; maxTokens?: number }
+	options?: { language?: string }
 ): Promise<ComparisonResult> {
-	const maxTokens = options?.maxTokens ?? 2048;
-
 	// Build the user message with all comparison material
 	const userMessage = formatRetrievalForLLM(retrieval, options?.language);
 
+	// Keine Ausgabebegrenzung: die Kürze steht als weiche Vorgabe im
+	// SYSTEM_PROMPT ("2-3 sentences maximum" je Vergleich).
 	const response = await chat({
 		system: SYSTEM_PROMPT,
-		messages: [{ role: 'user', content: userMessage }],
-		maxTokens
+		messages: [{ role: 'user', content: userMessage }]
 	});
 
 	// Log for usage tracking
@@ -137,10 +136,8 @@ export async function discussComparison(
 	history: { role: 'user' | 'assistant'; content: string }[],
 	userMessage: string,
 	projectId: string,
-	options?: { language?: string; maxTokens?: number }
+	options?: { language?: string }
 ): Promise<{ response: string; tokensUsed: number }> {
-	const maxTokens = options?.maxTokens ?? 1024;
-
 	// Build the initial context from the comparison
 	const contextMessage = formatRetrievalForLLM(retrieval, options?.language);
 	const comparisonSummary = formatComparisonForDiscussion(comparisonResult);
@@ -152,10 +149,10 @@ export async function discussComparison(
 		{ role: 'user', content: userMessage }
 	];
 
+	// Keine Ausgabebegrenzung: "2-4 sentences per response" steht im Prompt.
 	const response = await chat({
 		system: DISCUSSION_SYSTEM_PROMPT,
-		messages,
-		maxTokens
+		messages
 	});
 
 	await logInteraction(

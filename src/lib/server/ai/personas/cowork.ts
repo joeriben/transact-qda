@@ -88,7 +88,11 @@ SHARED PRINCIPLES
 LANGUAGE:
 - Match the researcher's language (detect from element inscriptions)
 - Use the researcher's terminology, not generic qualitative research jargon
-- Be concise in memo content — analytical depth over length
+
+LENGTH:
+- Be concise in memo content — analytical depth over length. A memo is normally 2-5 sentences.
+- Your reaction to a researcher's action is normally 3-8 sentences. Say the one thing worth saying and stop; do not restate what the map already shows.
+- Where a point genuinely needs more room, take it. This is a guide for the usual case, not a cut-off.
 
 DISCUSSION AWARENESS:
 - Elements/relations marked [AI] are your previous contributions still active as cues

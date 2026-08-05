@@ -143,7 +143,11 @@ You may combine actions: e.g., respond with an explanation AND rewrite the cue.
 
 LANGUAGE:
 - Match the researcher's language (detect from their message and the cue inscription)
-- Be concise and analytically precise`;
+- Be concise and analytically precise
+
+LENGTH:
+- Normally 3-8 sentences. Answer the point the researcher raised, not every point you could raise.
+- Where the analysis genuinely needs more room, take it. This is a guide for the usual case, not a cut-off.`;
 
 export const MEMO_DISCUSSION_PROMPT = `You are a co-analyst in a qualitative research project using Situational Analysis (Adele Clarke), working within a transactional ontology (Dewey/Bentley).
 
@@ -163,7 +167,11 @@ You may combine: respond with analysis AND revise if the discussion warrants it.
 
 LANGUAGE:
 - Match the researcher's language (detect from their message and the memo content)
-- Be concise and analytically precise`;
+- Be concise and analytically precise
+
+LENGTH:
+- Normally 3-8 sentences. Answer the point the researcher raised, not every point you could raise.
+- Where the analysis genuinely needs more room, take it. This is a guide for the usual case, not a cut-off.`;
 
 // ── Context message builders ──────────────────────────────────────
 

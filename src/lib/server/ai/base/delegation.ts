@@ -5,7 +5,7 @@
 // The chief decides autonomously when to delegate — it only needs accurate descriptions
 // of available agent-LLMs.
 
-import { type ToolDef, type ChatResponse, loadSettings, PROVIDERS, readApiKey, type Provider } from '../client.js';
+import { type ToolDef, type ChatResponse, loadSettings, PROVIDERS, readApiKey, type Provider, anthropicModelMaxOutput, openAiCompatMaxOutput } from '../client.js';
 import { logInteraction } from '../index.js';
 
 // ── Agent model interface ────────────────────────────────────────
@@ -121,11 +121,12 @@ export const DELEGATE_TOOL: ToolDef = {
 			document_id: {
 				type: 'string',
 				description: 'Optional: ID of a project document. If provided, the sub-agent receives the full document text as context.'
-			},
-			max_tokens: {
-				type: 'number',
-				description: 'Maximum response tokens for the sub-agent (default: 1024)'
 			}
+			// Kein max_tokens: harte Ausgabebegrenzungen sind plattformweit
+			// verboten. Wenn die Antwort kurz sein soll, schreib das in `task`
+			// ("answer in 3-5 sentences") — eine weiche Grenze, die der
+			// Sub-Agent einhalten kann, statt einer harten, die ihn mitten im
+			// Satz abschneidet.
 		},
 		required: ['agent_label', 'task']
 	}
@@ -136,7 +137,6 @@ export const DELEGATE_TOOL: ToolDef = {
 export async function executeDelegation(
 	agentLabel: string,
 	task: string,
-	maxTokens: number = 1024,
 	projectId?: string,
 	documentId?: string,
 	systemPrompt?: string
@@ -166,7 +166,7 @@ export async function executeDelegation(
 	}
 
 	try {
-		const response = await delegateChat(agent.provider, agent.model, fullTask, maxTokens, systemPrompt);
+		const response = await delegateChat(agent.provider, agent.model, fullTask, systemPrompt);
 
 		// Log the delegated call
 		if (projectId) {
@@ -207,7 +207,6 @@ async function delegateChat(
 	provider: Provider,
 	model: string,
 	task: string,
-	maxTokens: number,
 	systemPrompt?: string
 ): Promise<ChatResponse> {
 	const def = PROVIDERS[provider];
@@ -217,7 +216,10 @@ async function delegateChat(
 		const client = new Anthropic({ apiKey: apiKey! });
 		const response = await client.messages.create({
 			model,
-			max_tokens: maxTokens,
+			// Anthropic verlangt max_tokens als required body parameter — die
+			// einzige zulässige Ausnahme. Wert: immer das Modell-Maximum.
+			// Dieser Pfad geht an client.ts vorbei; die Regel gilt hier gleich.
+			max_tokens: anthropicModelMaxOutput(model),
 			...(systemPrompt ? { system: systemPrompt } : {}),
 			messages: [{ role: 'user', content: task }]
 		});
@@ -252,9 +254,14 @@ async function delegateChat(
 			baseURL: def.baseURL
 		});
 
-		const tokenParam = provider === 'openai'
-			? { max_completion_tokens: maxTokens }
-			: { max_tokens: maxTokens };
+		// max_tokens nur, wo Weglassen einen kleinen Provider-Default
+		// bedeuten würde (siehe openAiCompatMaxOutput in client.ts).
+		const capValue = openAiCompatMaxOutput(provider);
+		const tokenParam = capValue === undefined
+			? {}
+			: (provider === 'openai'
+				? { max_completion_tokens: capValue }
+				: { max_tokens: capValue });
 
 		const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
 		if (systemPrompt) {

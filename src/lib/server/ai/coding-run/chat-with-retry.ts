@@ -75,7 +75,6 @@ export interface ChatWithEmptyRetryOptions {
 	/** Same shape as `chat()`'s opts, MINUS modelOverride (wir setzen die Tiers selbst). */
 	system?: string;
 	messages: { role: 'user' | 'assistant'; content: string }[];
-	maxTokens?: number;
 	cacheSystem?: boolean;
 	cacheableSystemPrefix?: string;
 	responseFormat?: 'json';
@@ -126,7 +125,6 @@ export async function chatWithEmptyRetry(
 	const baseOpts = {
 		system: opts.system,
 		messages: opts.messages,
-		maxTokens: opts.maxTokens,
 		cacheSystem: opts.cacheSystem,
 		cacheableSystemPrefix: opts.cacheableSystemPrefix,
 		responseFormat: opts.responseFormat,

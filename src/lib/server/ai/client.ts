@@ -434,12 +434,10 @@ export function getProvider(): Provider {
 
 // ── Anthropic model max output (only place with max_tokens set) ──
 //
-// Setzung vom 18.05.2026: Anthropic's Messages API
-// verlangt `max_tokens` als required body parameter. Wert wird intern auf
-// Modell-Max aus der offiziellen Anthropic-Doku gesetzt, nicht von außen
-// steuerbar. transact-qda's bisheriger `opts.maxTokens` wird auf dem
-// Anthropic-Pfad ignoriert (es sei denn explizit gesetzt — dann wins der
-// Callsite-Wert; siehe chat() unten).
+// Anthropic's Messages API verlangt `max_tokens` als required body parameter —
+// die einzige Ausnahme von der plattformweiten Regel. Der Wert kommt aus der
+// offiziellen Anthropic-Doku und ist von außen nicht steuerbar: es gibt keinen
+// Callsite-Override mehr (Setzung 05.08.2026, siehe chat() unten).
 export function anthropicModelMaxOutput(model: string): number {
 	switch (model) {
 		case 'claude-opus-4-7':    return 128_000;
@@ -460,6 +458,28 @@ export function anthropicModelMaxOutput(model: string): number {
 			// geringsten Risiko.
 			return 64_000;
 	}
+}
+
+// ── OpenAI-kompatible Pfade: wann max_tokens doch gesendet wird ───
+//
+// Weglassen ist nur dann richtig, wenn der Provider daraufhin bis zum
+// Modell-/Kontextende generiert. Das gilt für die gehosteten Gateways
+// (OpenAI, Mistral, IONOS, Mammouth, OpenRouter) — dort ist ein zu hoch
+// gesetzter Wert sogar schädlich, weil manche mit HTTP 400 antworten, wenn
+// er über dem Ausgabemaximum des Modells liegt.
+//
+// Ollama ist der Gegenfall: der OpenAI-Shim bildet `max_tokens` auf
+// `num_predict` ab, und ohne Angabe greift der Default aus dem Modelfile —
+// je nach Modell 128 Token. Das wäre eine harte Begrenzung, die nirgends in
+// unserem Code steht und trotzdem mitten im Satz abschneidet. Deshalb wird
+// dort ausdrücklich ein Wert oberhalb der 64k-Schwelle gesendet; Ollama
+// stoppt ohnehin bei EOS oder Kontextende und quittiert einen zu hohen
+// num_predict nicht mit einem Fehler.
+//
+// Wenn sich zeigt, dass ein gehostetes Gateway ebenfalls klein deckelt,
+// gehört es hier hinein — nicht an die Callsite.
+export function openAiCompatMaxOutput(provider: Provider): number | undefined {
+	return provider === 'ollama' ? 64_000 : undefined;
 }
 
 // ── Unified types ─────────────────────────────────────────────────
@@ -495,16 +515,15 @@ export async function chat(opts: {
 	system?: string;
 	messages: { role: 'user' | 'assistant'; content: string }[];
 	tools?: ToolDef[];
-	/**
-	 * Optional. Backwards-Compat-Param für transact-qda-Callsites, die noch
-	 * `maxTokens` setzen. Die Setzung vom 18.05.2026 schafft Hartbegrenzungen
-	 * ab; im Anthropic-Pfad wird stattdessen `anthropicModelMaxOutput(model)`
-	 * genutzt, im OpenAI-Pfad kein max_tokens gesendet (Provider regelt
-	 * selbst). Hier behalten wir das Feld optional, damit Bestands-Callsites
-	 * compilieren — wenn gesetzt, wird der Wert auf BEIDEN Pfaden als
-	 * max_tokens-Cap genutzt; wenn ungesetzt, greift die Setzung.
-	 */
-	maxTokens?: number;
+	// Es gibt hier bewusst KEIN `maxTokens`. Harte Ausgabebegrenzungen sind
+	// plattformweit verboten (05.08.2026): sie schneiden Substanz mitten im
+	// Satz ab oder verbrauchen das Budget im Reasoning und liefern nichts.
+	// Wo eine Antwort kurz sein soll, steht das als Vorgabe IM PROMPT
+	// ("2-3 sentences", "3-8 questions") — eine weiche Grenze, die das Modell
+	// einhalten kann, statt einer harten, die es mitten im Wort trifft.
+	// Die frühere Setzung vom 18.05.2026 ließ Callsite-Overrides gewinnen;
+	// alle 19 Bestands-Callsites taten genau das. Deshalb ist der Parameter
+	// jetzt fort und nicht nur ungenutzt.
 	/**
 	 * If true, mark the system prompt as cacheable (Anthropic prompt caching,
 	 * 5-min TTL). Honoured natively on the Anthropic provider, passed through
@@ -617,9 +636,9 @@ export async function chat(opts: {
 				systemParam = opts.system;
 			}
 
-			// max_tokens: Callsite-Override gewinnt; sonst Modell-Max aus
-			// anthropicModelMaxOutput.
-			const maxTokensValue = opts.maxTokens ?? anthropicModelMaxOutput(model);
+			// max_tokens ist bei Anthropic ein required body parameter — die
+			// einzige zulässige Ausnahme. Wert: immer das Modell-Maximum.
+			const maxTokensValue = anthropicModelMaxOutput(model);
 
 			const response = await withDeadline(
 				executeWithNetworkRetry(
@@ -714,15 +733,14 @@ export async function chat(opts: {
 				}
 			}));
 
-			// max_tokens: nur senden, wenn explizit gesetzt. Setzung vom
-			// 18.05.2026: keine Hartbegrenzungen mehr im OpenAI-Pfad
-			// (Provider regelt selbst). Bestands-Callsites in transact-qda,
-			// die `maxTokens` setzen, werden weiter respektiert.
-			const tokenParam = opts.maxTokens !== undefined
-				? (provider === 'openai'
-					? { max_completion_tokens: opts.maxTokens }
-					: { max_tokens: opts.maxTokens })
-				: {};
+			// max_tokens nur, wo Weglassen einen kleinen Provider-Default
+			// bedeuten würde (siehe openAiCompatMaxOutput).
+			const capValue = openAiCompatMaxOutput(provider);
+			const tokenParam = capValue === undefined
+				? {}
+				: (provider === 'openai'
+					? { max_completion_tokens: capValue }
+					: { max_tokens: capValue });
 
 			// JSON-mode opt-in.
 			const responseFormatParam = opts.responseFormat === 'json'
@@ -878,8 +896,7 @@ export async function testConnection(): Promise<{ ok: boolean; error?: string; m
 	try {
 		init();
 		const response = await chat({
-			messages: [{ role: 'user', content: 'Reply with exactly: OK' }],
-			maxTokens: 16
+			messages: [{ role: 'user', content: 'Reply with exactly: OK' }]
 		});
 		return { ok: true, model: response.model };
 	} catch (e: unknown) {

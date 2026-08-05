@@ -21,8 +21,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	try {
 		const result = await runConversation('coach', params.projectId, message, history || [], {
 			currentPage,
-			mapId: currentMapId,
-			maxTokens: 16000
+			mapId: currentMapId
 		});
 
 		return json({ response: result.response });

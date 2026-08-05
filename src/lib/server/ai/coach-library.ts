@@ -188,7 +188,6 @@ export async function preprocessReference(referenceId: string) {
 			role: 'user',
 			content: `Title: "${ref.title}"${ref.author ? ` by ${ref.author}` : ''}\nTotal words: ${wordCount}\n\nText (first ~8000 words):\n${previewWords}`
 		}],
-		maxTokens: 2000
 	});
 	totalInputTokens += structureResponse.inputTokens;
 	totalOutputTokens += structureResponse.outputTokens;
@@ -266,7 +265,6 @@ export async function preprocessReference(referenceId: string) {
 					role: 'user',
 					content: `Reference: "${ref.title}"${ref.author ? ` by ${ref.author}` : ''}\nChapter: "${ch.heading}" (${chWordCount} words)\n\n${chapterPreview}`
 				}],
-				maxTokens: 1000
 			});
 			totalInputTokens += indexResponse.inputTokens;
 			totalOutputTokens += indexResponse.outputTokens;

@@ -166,7 +166,6 @@ async function executeInfrastructureTool(
 		const result = await executeDelegation(
 			input.agent_label as string,
 			input.task as string,
-			(input.max_tokens as number) || 1024,
 			projectId,
 			input.document_id as string | undefined
 		);
@@ -197,7 +196,6 @@ export async function runConversation(
 	opts: {
 		currentPage?: string;
 		mapId?: string;
-		maxTokens?: number;
 		maxHistory?: number;
 	} = {}
 ): Promise<{ response: string; model: string; tokensUsed: number }> {
@@ -222,7 +220,6 @@ export async function runConversation(
 			...trimmedHistory,
 			{ role: 'user', content: userMessage }
 		],
-		maxTokens: opts.maxTokens || 16000,
 		tools: tools.length > 0 ? tools : undefined
 	});
 
@@ -285,7 +282,6 @@ export async function runMapAgent(
 	try {
 		const response = await chat({
 			system: systemPrompt,
-			maxTokens: 2048,
 			tools,
 			messages: [
 				{ role: 'user', content: contextMessage }
@@ -404,7 +400,6 @@ export async function discussCue(
 	try {
 		response = await chat({
 			system: DISCUSSION_SYSTEM_PROMPT,
-			maxTokens: 1024,
 			tools: DISCUSSION_TOOLS,
 			messages: [
 				{ role: 'user', content: contextMessage }
@@ -542,7 +537,6 @@ export async function discussMemo(
 	try {
 		response = await chat({
 			system: MEMO_DISCUSSION_PROMPT,
-			maxTokens: 1024,
 			tools: MEMO_DISCUSSION_TOOLS,
 			messages: [
 				{ role: 'user', content: contextMessage }
@@ -624,7 +618,6 @@ async function executeToolLoop(
 
 	let currentResponse = await chat({
 		system: systemPrompt,
-		maxTokens: 16000,
 		tools,
 		messages
 	});
@@ -680,7 +673,6 @@ async function executeToolLoop(
 
 		currentResponse = await chat({
 			system: systemPrompt,
-			maxTokens: 16000,
 			tools,
 			messages
 		});
@@ -714,7 +706,6 @@ async function processSegmentDirectly(
 
 	const response = await chat({
 		system: systemPrompt,
-		maxTokens: 4096,
 		messages: [{ role: 'user', content: message }]
 	});
 
@@ -889,7 +880,7 @@ When in doubt, skip — a missed passage can be found later, but code inflation 
 				const taskWithSegment = codingInstruction + `\n\nDOCUMENT SEGMENT (${s + 1}/${segmentCount}):\n"""\n${segmentText}\n"""`;
 
 				const delegationResult = await executeDelegation(
-					delegateAgent.label, taskWithSegment, 4096, projectId,
+					delegateAgent.label, taskWithSegment, projectId,
 					undefined, delegationSystemPrompt
 				);
 

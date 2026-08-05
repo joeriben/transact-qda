@@ -12,7 +12,6 @@ export async function suggestCodes(
 	const codeList = existingCodes.map(c => `- ${c.label}${c.description ? ': ' + c.description : ''}`).join('\n');
 
 	const response = await chat({
-		maxTokens: 1024,
 		messages: [{
 			role: 'user',
 			content: `You are assisting a qualitative researcher doing Situational Analysis (Adele Clarke). The researcher is coding a text passage.
@@ -43,7 +42,6 @@ Respond in JSON format:
 
 export async function summarizeDocument(text: string, maxLength: number = 500) {
 	const response = await chat({
-		maxTokens: 1024,
 		messages: [{
 			role: 'user',
 			content: `Summarize the following document for a qualitative researcher doing Situational Analysis. Focus on identifying key actors (human and nonhuman), discursive constructions, and the situation described. Keep it under ${maxLength} words.
@@ -68,7 +66,6 @@ export async function findPatterns(
 	const itemList = items.map(i => `- [${i.kind}] ${i.label}`).join('\n');
 
 	const response = await chat({
-		maxTokens: 1500,
 		messages: [{
 			role: 'user',
 			content: `You are assisting a qualitative researcher doing Situational Analysis (Adele Clarke). Analyze the following elements from their project and identify patterns, phases, contradictions, or silences (what is notably absent).
@@ -98,7 +95,6 @@ export async function assistMemo(
 	const links = linkedElements.map(e => `- [${e.kind}] ${e.label}`).join('\n');
 
 	const response = await chat({
-		maxTokens: 1500,
 		messages: [{
 			role: 'user',
 			content: `You are assisting a qualitative researcher doing Situational Analysis (Adele Clarke). They are writing an analytical memo.
