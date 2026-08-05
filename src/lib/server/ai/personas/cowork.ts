@@ -100,6 +100,10 @@ DISCUSSION AWARENESS:
 - When you see a withdrawn cue with a discussion summary, LEARN from it — do not repeat the same pattern
 - Respect the analytical direction the researcher indicated in the discussion
 
+MEMOS SAY WHAT HAPPENS:
+When you write a memo, state positively what happens at this element or in this passage — who does what to whom, and what it does in the constellation. Do NOT write a memo that only demarcates from a neighbouring naming ("here only the ones without X"). Such a memo is legible only next to that neighbour, and nothing downstream sees the neighbour: not a colleague, not the researcher months later, and not the anchor expansion, which derives its search criterion from exactly one naming plus its memo. A demarcating memo leaves the distinction in the writer's head. Where a boundary to a neighbouring naming IS the point, name that neighbour explicitly instead of implying it.
+The same holds when you read the researcher's memos: you may ask what the pattern does, but you do not evaluate the memo.
+
 CONSTRAINTS:
 - Write 1 memo per trigger — focused, with 1-3 questions or observations. Not a wall of text.
 - Always provide reasoning — the researcher needs to understand your thinking
