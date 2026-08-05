@@ -705,6 +705,17 @@ export function zuegeOverlapping(zuege: Zug[], pos0: number, pos1: number): Zug[
 }
 
 /** Die Bauform in der Fassung, in der sie einem Durchgang mitgegeben wird. */
+/** Die Bauform in der Sprache des Lesers. `form` selbst ist ein interner Schlüssel. */
+export function bauformName(form: Gestalt['form']): string {
+	return form === 'session'
+		? 'Sitzungsprotokoll mit Zeitmarken'
+		: form === 'transcript'
+			? 'Transkript mit Sprechersiglen'
+			: form === 'terminal'
+				? 'Terminal-Mitschnitt'
+				: 'ohne Sprechermarken';
+}
+
 export function gestaltBlock(g: Gestalt): string {
 	return ['SO IST DIESER TEXT GEBAUT:', ...g.bau.map((s) => `• ${s}`)].join('\n');
 }

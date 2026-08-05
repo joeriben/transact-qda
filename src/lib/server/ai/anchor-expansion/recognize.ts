@@ -392,8 +392,14 @@ export function zitatStehtInStelle(zitat: string, zugText: string): boolean {
  *
  * Genommen wird, was folgt, bis der Adressat gesprochen hat und der Sprecher
  * wieder an der Reihe ist — der Wechsel ist die Grenze, nicht eine Zeichenzahl.
+ *
+ * Kein Wechsel, keine Aufnahme: Trägt das Dokument keine zwei Positionen — ein
+ * Beobachtungsprotokoll, eine Interviewpassage ohne Siglen —, gibt es keinen
+ * Adressaten, der etwas aufnehmen könnte. Der nächste Absatz als „Aufnahme"
+ * auszugeben, lüde dazu ein, eine Antwort zu lesen, wo keine ist.
  */
-function aufnahmeOf(alle: Zug[], idx: number, maxZuege = 3, maxChars = 1800): string[] {
+function aufnahmeOf(alle: Zug[], idx: number, positionen: number, maxZuege = 3, maxChars = 1800): string[] {
+	if (positionen < 2) return [];
 	const eigen = alle[idx]?.position;
 	const out: string[] = [];
 	let adressatHatGesprochen = false;
@@ -436,7 +442,7 @@ export async function pruefeStellen(
 		try {
 			const res = await chatJson<Befund>(
 				system,
-				befundMessage(inscription, memos, belegstelleMitAnlauf, z, anlauf, aufnahmeOf(alleZuege, idx)),
+				befundMessage(inscription, memos, belegstelleMitAnlauf, z, anlauf, aufnahmeOf(alleZuege, idx, gestalt.positionen.length)),
 				{ tier, signal: opts.signal, cacheable: system, versuche: 2 }
 			);
 			if (!res.ok) return res;

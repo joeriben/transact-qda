@@ -28,7 +28,7 @@ import {
 	type UnbelegteStelle
 } from './recognize.js';
 
-export { sichten, zuegeOf, zuegeOverlapping } from './gestalt.js';
+export { sichten, zuegeOf, zuegeOverlapping, bauformName } from './gestalt.js';
 export type { Gestalt, Zug, Bruch, Position, Verteilung } from './gestalt.js';
 export { NICHT_EINSCHLAEGIG } from './recognize.js';
 export type {

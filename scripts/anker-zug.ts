@@ -33,6 +33,7 @@ import {
 	ladeVolltext,
 	sichten,
 	zuegeOf,
+	bauformName,
 	type Gestalt,
 	type Kriterium,
 	type Stelle
@@ -93,7 +94,7 @@ async function resolveOne<T extends { id: string; label: string }>(
 
 function zeigeSichtung(label: string, g: Gestalt, ausfuehrlich: boolean): void {
 	console.log(`\n════ ${label}`);
-	console.log(`     ${g.chars} Zeichen · ${g.turns} Blöcke · Bauform ${g.form}\n`);
+	console.log(`     ${g.chars} Zeichen · ${g.turns} Blöcke · ${bauformName(g.form)}\n`);
 	for (const s of g.bau) console.log(`  • ${s}`);
 
 	if (g.verteilungBefund.length > 0) {
