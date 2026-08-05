@@ -19,6 +19,12 @@
 //       Das Dokument durchgehen.
 //   npm run anker -- … --zuege
 //       Nur den Schnitt zeigen, ohne Modell.
+//   npm run anker -- --project <…> --naming <…> --stand
+//       Welche Dokumente es gibt, wie viele Zuege sie haben (der Kostentreiber,
+//       deterministisch gerechnet) und was dort schon gelaufen ist. Ohne Modell.
+//   npm run anker -- --project <…> --naming <…> --alle-dokumente [--erneut]
+//       Ueber alle Dokumente laufen, die mit DIESEM Kriterium noch nicht
+//       gelaufen sind. --erneut laeuft auch ueber die schon gelaufenen.
 //
 // Das abgeleitete Kriterium liegt in .tmp-anker/kriterium-<naming>.json und
 // kann dort von Hand geändert werden; ein weiterer Lauf nimmt die geänderte
@@ -30,13 +36,17 @@ import { query, pool } from '../src/lib/server/db/index.js';
 import {
 	vorbereiten,
 	durchgehen,
+	dokumentStand,
+	verbucheLauf,
+	kriteriumHash,
 	ladeVolltext,
 	sichten,
 	zuegeOf,
 	bauformName,
 	type Gestalt,
 	type Kriterium,
-	type Stelle
+	type Stelle,
+	type DokumentStand
 } from '../src/lib/server/ai/anchor-expansion/index.js';
 
 const CACHE_DIR = '.tmp-anker';
@@ -59,6 +69,9 @@ const sichtungOnly = flag('sichtung');
 const alleDokumente = flag('alle');
 const forceNew = flag('neu');
 const ankerAuch = flag('anker-auch');
+const standOnly = flag('stand');
+const alleDokumenteLaufen = flag('alle-dokumente');
+const erneut = flag('erneut');
 
 const short = (t: string, n = 150) => {
 	const flat = (t ?? '').replace(/\s+/g, ' ').trim();
@@ -204,6 +217,114 @@ function zeigeErgebnis(
 	console.log('');
 }
 
+// ── Stand und Reihenlauf ──────────────────────────────────────────
+
+function zeigeStand(namingLabel: string, stand: DokumentStand[], k: Kriterium | null): void {
+	console.log(`\n════ „${namingLabel}" — Stand über ${stand.length} Dokumente`);
+	console.log(k ? `     Kriterium ${kriteriumHash(k)}\n` : '     (noch kein Kriterium abgeleitet — jeder Lauf gilt als nicht aktuell)\n');
+	console.log(`  ${'Dokument'.padEnd(46)}${'Züge'.padStart(6)}${'Marken'.padStart(8)}   Stand`);
+	let offen = 0;
+	let offeneZuege = 0;
+	for (const d of stand) {
+		const l = d.letzterLauf;
+		const wann = l ? new Date(l.createdAt).toISOString().slice(0, 16).replace('T', ' ') : '';
+		const zustand = !l
+			? 'noch nicht gelaufen'
+			: l.abgebrochen
+				? `abgebrochen (${wann})`
+				: d.aktuell
+					? `${l.stellen} Stellen · ${wann} · ${l.model.split('/').pop()}`
+					: `${l.stellen} Stellen, aber anderes Kriterium (${wann})`;
+		if (!d.aktuell) {
+			offen++;
+			offeneZuege += d.zuege;
+		}
+		console.log(
+			`  ${d.inscription.slice(-46).padEnd(46)}${String(d.zuege).padStart(6)}${String(d.marken).padStart(8)}   ${d.aktuell ? '✓ ' : '  '}${zustand}`
+		);
+	}
+	console.log(`\n  Offen: ${offen} Dokumente, ${offeneZuege} Züge — das ist, was ein Lauf über alle kosten würde.\n`);
+}
+
+/**
+ * Über alle Dokumente laufen, die mit DIESEM Kriterium noch nicht gelaufen sind.
+ *
+ * Der Reihenlauf verbucht jeden Durchgang einzeln. Bricht einer ab, sind die
+ * vorherigen bezahlt und gespeichert; ein erneuter Aufruf setzt dort fort, wo
+ * es aufhörte, statt von vorn zu beginnen.
+ */
+async function laufeUeberAlle(
+	projectId: string,
+	naming: { id: string; label: string },
+	stand: DokumentStand[],
+	k: Kriterium | null
+): Promise<void> {
+	if (!k) throw new Error('Kein Kriterium. Erst mit --kriterium ableiten und ansehen.');
+	const offen = erneut ? stand : stand.filter((d) => !d.aktuell);
+	if (offen.length === 0) {
+		console.log('Alles mit diesem Kriterium gelaufen. Mit --erneut trotzdem laufen lassen.\n');
+		return;
+	}
+	console.log(`Lauf über ${offen.length} Dokumente, ${offen.reduce((a, d) => a + d.zuege, 0)} Züge.\n`);
+
+	let stellenGesamt = 0;
+	let kosten = { eingabe: 0, ausgabe: 0, cacheGelesen: 0, cacheGeschrieben: 0, aufrufe: 0 };
+	for (const [i, d] of offen.entries()) {
+		const t0 = Date.now();
+		process.stdout.write(`  [${i + 1}/${offen.length}] ${d.inscription.slice(-44).padEnd(46)}`);
+		try {
+			const r = await durchgehen(projectId, naming.id, d.documentId, k, { concurrency, belegstelleMitpruefen: ankerAuch });
+			const sek = Math.round((Date.now() - t0) / 1000);
+			await verbucheLauf({
+				projectId,
+				namingId: naming.id,
+				documentId: d.documentId,
+				kriterium: k,
+				provider: r.modell.provider,
+				model: r.modell.model,
+				zuegeGesamt: r.zuegeGesamt,
+				geprueft: r.geprueft,
+				stellen: r.stellen,
+				unlesbar: r.unlesbar.length,
+				nichtBelegt: r.nichtBelegt.length,
+				verbrauch: r.verbrauch,
+				sekunden: sek
+			});
+			stellenGesamt += r.stellen.length;
+			kosten.eingabe += r.verbrauch.eingabe;
+			kosten.ausgabe += r.verbrauch.ausgabe;
+			kosten.cacheGelesen += r.verbrauch.cacheGelesen;
+			kosten.cacheGeschrieben += r.verbrauch.cacheGeschrieben;
+			kosten.aufrufe += r.verbrauch.aufrufe;
+			console.log(`${String(r.stellen.length).padStart(4)} Stellen von ${r.geprueft}   ${sek}s`);
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : String(err);
+			await verbucheLauf({
+				projectId,
+				namingId: naming.id,
+				documentId: d.documentId,
+				kriterium: k,
+				provider: 'unbekannt',
+				model: 'unbekannt',
+				zuegeGesamt: d.zuege,
+				geprueft: 0,
+				stellen: [],
+				unlesbar: 0,
+				nichtBelegt: 0,
+				verbrauch: { aufrufe: 0, eingabe: 0, ausgabe: 0, cacheGeschrieben: 0, cacheGelesen: 0 },
+				sekunden: Math.round((Date.now() - t0) / 1000),
+				abgebrochen: true,
+				fehler: msg.slice(0, 300)
+			});
+			console.log(`ABBRUCH: ${msg.slice(0, 70)}`);
+		}
+	}
+	console.log(
+		`\n  ${stellenGesamt} Stellen insgesamt · ${kosten.aufrufe} Aufrufe · ` +
+			`${kosten.eingabe} Eingabe, ${kosten.cacheGelesen} aus dem Cache, ${kosten.ausgabe} Ausgabe (Token)\n`
+	);
+}
+
 // ── Lauf ──────────────────────────────────────────────────────────
 
 async function main() {
@@ -238,6 +359,18 @@ async function main() {
 		[project.id]
 	);
 	const naming = await resolveOne(namings.rows.map((n) => ({ id: n.id, label: n.inscription })), namingArg, 'Namings', 'naming');
+
+	// ── Stand: was gibt es, was ist gelaufen. Ohne Modell, ohne Kosten. ──
+	if (standOnly || alleDokumenteLaufen) {
+		const kp0 = join(CACHE_DIR, `kriterium-${naming.id}.json`);
+		const k0 = existsSync(kp0) ? (JSON.parse(readFileSync(kp0, 'utf-8')) as Kriterium) : null;
+		const stand = await dokumentStand(project.id, naming.id, k0);
+		zeigeStand(naming.label, stand, k0);
+		if (standOnly) return;
+		await laufeUeberAlle(project.id, naming, stand, k0);
+		return;
+	}
+
 	const document = await resolveOne(documents.rows.map((d) => ({ id: d.id, label: d.inscription })), documentArg, 'Dokumente', 'document');
 
 	if (zuegeOnly) {
@@ -288,6 +421,7 @@ async function main() {
 
 	// ── Durchgang ──
 	console.log('');
+	const t0 = Date.now();
 	const d = await durchgehen(project.id, naming.id, document.id, v.kriterium, {
 		concurrency,
 		belegstelleMitpruefen: ankerAuch,
@@ -296,7 +430,27 @@ async function main() {
 		}
 	});
 	process.stdout.write('\n');
+	// Auch der Einzellauf wird verbucht — sonst zeigt --stand ihn nicht.
+	await verbucheLauf({
+		projectId: project.id,
+		namingId: naming.id,
+		documentId: document.id,
+		kriterium: v.kriterium,
+		provider: d.modell.provider,
+		model: d.modell.model,
+		zuegeGesamt: d.zuegeGesamt,
+		geprueft: d.geprueft,
+		stellen: d.stellen,
+		unlesbar: d.unlesbar.length,
+		nichtBelegt: d.nichtBelegt.length,
+		verbrauch: d.verbrauch,
+		sekunden: Math.round((Date.now() - t0) / 1000)
+	});
 	zeigeErgebnis(d.stellen, d.unlesbar.length, d.nichtBelegt.length, d.geprueft, d.geprueftJePosition, v.kriterium, d.gestalt);
+	console.log(
+		`  Verbrauch: ${d.verbrauch.aufrufe} Aufrufe · ${d.verbrauch.eingabe} Eingabe · ` +
+			`${d.verbrauch.cacheGelesen} aus dem Cache · ${d.verbrauch.ausgabe} Ausgabe (Token)\n`
+	);
 }
 
 main()

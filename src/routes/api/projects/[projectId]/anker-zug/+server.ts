@@ -22,7 +22,7 @@
 //   { kind: 'init',     zuegeGesamt, geprueft, geprueftJePosition, gestalt }
 //   { kind: 'stelle',   stelle }            — sofort bei jedem Fund
 //   { kind: 'progress', done, total }
-//   { kind: 'done',     stellen, unlesbar, nichtBelegt, geprueft, geprueftJePosition }
+//   { kind: 'done',     runId, stellen, unlesbar, nichtBelegt, geprueft, geprueftJePosition }
 //   { kind: 'failed',   message }
 //   { kind: 'alive',    at }                — Heartbeat ~10 s
 //
@@ -41,6 +41,7 @@ import {
 	ladeVolltext,
 	sichten,
 	zuegeOf,
+	verbucheLauf,
 	type Kriterium,
 	type Stelle
 } from '$lib/server/ai/anchor-expansion/index.js';

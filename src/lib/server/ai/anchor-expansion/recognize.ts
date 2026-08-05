@@ -120,6 +120,26 @@ export interface Befund {
 
 export const NICHT_EINSCHLAEGIG = 'nicht-einschlaegig';
 
+/**
+ * Was ein Durchgang wirklich gekostet hat — vom Anbieter gemeldet, nicht
+ * geschätzt. Fehlversuche zählen mit: Sie sind bezahlt.
+ */
+export interface Verbrauch {
+	aufrufe: number;
+	eingabe: number;
+	ausgabe: number;
+	cacheGeschrieben: number;
+	cacheGelesen: number;
+}
+
+export const leererVerbrauch = (): Verbrauch => ({
+	aufrufe: 0,
+	eingabe: 0,
+	ausgabe: 0,
+	cacheGeschrieben: 0,
+	cacheGelesen: 0
+});
+
 function kriteriumBlock(k: Kriterium): string {
 	return [
 		`AKTEUR des Musters: ${k.akteur}`,
@@ -257,7 +277,14 @@ function parseJsonObject<T>(text: string): { ok: true; value: T } | { ok: false;
 async function chatJson<T>(
 	system: string,
 	message: string,
-	opts: { tier: ReturnType<typeof resolveTier>; signal?: AbortSignal; cacheable?: string; versuche?: number }
+	opts: {
+		tier: ReturnType<typeof resolveTier>;
+		signal?: AbortSignal;
+		cacheable?: string;
+		versuche?: number;
+		/** Zählt mit, was der Aufruf wirklich gekostet hat — auch die Fehlversuche. */
+		verbrauch?: Verbrauch;
+	}
 ): Promise<{ ok: true; value: T } | { ok: false; fehler: string }> {
 	const versuche = opts.versuche ?? 3;
 	let letzter = 'kein Versuch';
@@ -269,8 +296,20 @@ async function chatJson<T>(
 			modelOverride: opts.tier,
 			responseFormat: 'json',
 			cacheableSystemPrefix: opts.cacheable,
+			// Der Default in client.ts sind 3 Minuten. Bei langen Blöcken und
+			// nachdenkenden Modellen reicht das nicht — ein Lauf starb daran mit
+			// „This operation was aborted". Hier steht deshalb eine Grenze, die nur
+			// noch gegen echte Hänger greift und nicht gegen langsame Antworten.
+			timeoutMs: 30 * 60_000,
 			signal: opts.signal
 		});
+		if (opts.verbrauch) {
+			opts.verbrauch.aufrufe += 1;
+			opts.verbrauch.eingabe += res.inputTokens;
+			opts.verbrauch.ausgabe += res.outputTokens;
+			opts.verbrauch.cacheGeschrieben += res.cacheCreationTokens;
+			opts.verbrauch.cacheGelesen += res.cacheReadTokens;
+		}
 		const parsed = parseJsonObject<T>(res.text);
 		if (parsed.ok) return parsed;
 		letzter = parsed.fehler;
@@ -315,12 +354,13 @@ async function pool<I, O>(items: I[], width: number, fn: (item: I, i: number) =>
 export async function ableitenKriterium(
 	inscription: string,
 	memos: string[],
-	signal?: AbortSignal
+	signal?: AbortSignal,
+	modell?: PruefOptions['modell']
 ): Promise<Kriterium> {
 	const res = await chatJson<Kriterium>(
 		kriteriumSystem(),
 		kriteriumMessage(inscription, memos),
-		{ tier: resolveTier('anker.wiedererkennung'), signal }
+		{ tier: modell ?? resolveTier('anker.wiedererkennung'), signal }
 	);
 	if (!res.ok) throw new Error(`Das Kriterium kam auch nach drei Versuchen nicht auswertbar zurück: ${res.fehler}`);
 	return res.value;
@@ -344,6 +384,8 @@ export interface UnbelegteStelle {
 }
 
 export interface PruefOptions {
+	/** Anderes Modell als der Tier vorgibt — für Vergleichsläufe. */
+	modell?: { provider: 'anthropic' | 'openai' | 'openrouter' | 'mistral' | 'mammouth' | 'ollama'; model: string };
 	concurrency?: number;
 	onProgress?: (done: number, total: number) => void;
 	/** So viele Passagen davor gehen als Anlauf mit. */
@@ -442,8 +484,14 @@ export async function pruefeStellen(
 	alleZuege: Zug[],
 	zuPruefen: Zug[],
 	opts: PruefOptions = {}
-): Promise<{ stellen: Stelle[]; unlesbar: UnlesbareStelle[]; nichtBelegt: UnbelegteStelle[] }> {
-	const tier = resolveTier('anker.wiedererkennung');
+): Promise<{
+	stellen: Stelle[];
+	unlesbar: UnlesbareStelle[];
+	nichtBelegt: UnbelegteStelle[];
+	verbrauch: Verbrauch;
+}> {
+	const tier = opts.modell ?? resolveTier('anker.wiedererkennung');
+	const verbrauch = leererVerbrauch();
 	const system = befundSystem(kriterium, gestalt, inscription, memos, beleg);
 	const anlaufN = opts.anlaufZuege ?? 2;
 	let done = 0;
@@ -460,7 +508,7 @@ export async function pruefeStellen(
 			const res = await chatJson<Befund>(
 				system,
 				befundMessage(z, anlauf, aufnahmeOf(alleZuege, idx, gestalt.positionen.length)),
-				{ tier, signal: opts.signal, cacheable: system, versuche: 2 }
+				{ tier, signal: opts.signal, cacheable: system, versuche: 2, verbrauch }
 			);
 			if (!res.ok) return res;
 			// Sofort melden statt am Ende: Ein Durchgang über ein großes Dokument
@@ -497,5 +545,5 @@ export async function pruefeStellen(
 		if (zitatStehtInStelle(befund.zitat ?? '', z.text)) stellen.push({ zug: z, befund });
 		else nichtBelegt.push({ zug: z, befund });
 	});
-	return { stellen, unlesbar, nichtBelegt };
+	return { stellen, unlesbar, nichtBelegt, verbrauch };
 }

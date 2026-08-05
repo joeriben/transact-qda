@@ -18,6 +18,7 @@
 // eigenen Akt hereinholt — als Anker, als Memo, oder gar nicht.
 
 import { query } from '../../db/index.js';
+import { resolveTier } from '../coding-run/model-tiers.js';
 import { sichten, zuegeOf, zuegeOverlapping, type Gestalt, type Zug } from './gestalt.js';
 import {
 	ableitenKriterium,
@@ -25,12 +26,16 @@ import {
 	type Kriterium,
 	type Stelle,
 	type UnlesbareStelle,
-	type UnbelegteStelle
+	type UnbelegteStelle,
+	type PruefOptions,
+	type Verbrauch
 } from './recognize.js';
 
 export { sichten, zuegeOf, zuegeOverlapping, bauformName } from './gestalt.js';
 export type { Gestalt, Zug, Bruch, Position, Verteilung } from './gestalt.js';
 export { NICHT_EINSCHLAEGIG } from './recognize.js';
+export { kriteriumHash, dokumentStand, verbucheLauf, ladeLauf } from './runs.js';
+export type { DokumentStand, LaufNotiz, LaufEintrag } from './runs.js';
 export type {
 	Kriterium,
 	Bestandteil,
@@ -38,7 +43,8 @@ export type {
 	Befund,
 	Stelle,
 	UnlesbareStelle,
-	UnbelegteStelle
+	UnbelegteStelle,
+	Verbrauch
 } from './recognize.js';
 
 // ── Laden ─────────────────────────────────────────────────────────
@@ -239,7 +245,7 @@ export async function vorbereiten(
 	projectId: string,
 	namingId: string,
 	documentId: string,
-	opts: { kriterium?: Kriterium | null; signal?: AbortSignal } = {}
+	opts: { kriterium?: Kriterium | null; signal?: AbortSignal; modell?: PruefOptions['modell'] } = {}
 ): Promise<Vorbereitung> {
 	const [muster, fullText] = await Promise.all([
 		ladeMuster(projectId, namingId),
@@ -257,7 +263,7 @@ export async function vorbereiten(
 
 	// Das Kriterium hängt nicht an einer Marke: Es kommt aus Naming und Memo.
 	const kriterium =
-		opts.kriterium ?? (await ableitenKriterium(muster.inscription, muster.memos, opts.signal));
+		opts.kriterium ?? (await ableitenKriterium(muster.inscription, muster.memos, opts.signal, opts.modell));
 
 	return {
 		gestalt,
@@ -280,6 +286,8 @@ export interface DurchgangOptions {
 	signal?: AbortSignal;
 	/** Die Belegstelle mitprüfen — eine Probe, ob das Kriterium sie wiederfindet. */
 	belegstelleMitpruefen?: boolean;
+	/** Anderes Modell als der Tier vorgibt — für Vergleichsläufe. */
+	modell?: PruefOptions['modell'];
 	onProgress?: (done: number, total: number) => void;
 	onStelle?: (stelle: Stelle) => void;
 }
@@ -290,6 +298,12 @@ export interface Durchgang {
 	unlesbar: UnlesbareStelle[];
 	/** Befunde, deren Zitat nicht in der geprüften Stelle steht — sie hängen woanders. */
 	nichtBelegt: UnbelegteStelle[];
+	/** Was der Durchgang gekostet hat, vom Anbieter gemeldet. */
+	verbrauch: Verbrauch;
+	/** Womit er gelaufen ist — gehört in die Buchführung, sonst ist sie nicht zuzuordnen. */
+	modell: { provider: string; model: string };
+	/** Alle Züge des Dokuments. `geprueft` ist kleiner, wo Marken ausgenommen sind. */
+	zuegeGesamt: number;
 	geprueft: number;
 	/** Je Position: wie viele Stellen geprüft wurden. Nenner der Verteilung. */
 	geprueftJePosition: Record<string, number>;
@@ -327,7 +341,7 @@ export async function durchgehen(
 	const geprueftJePosition: Record<string, number> = {};
 	for (const z of scope) geprueftJePosition[z.position] = (geprueftJePosition[z.position] ?? 0) + 1;
 
-	const { stellen, unlesbar, nichtBelegt } = await pruefeStellen(
+	const { stellen, unlesbar, nichtBelegt, verbrauch } = await pruefeStellen(
 		muster.inscription,
 		muster.memos,
 		beleg ? { text: beleg.text, ausAnderemDokument } : null,
@@ -338,10 +352,18 @@ export async function durchgehen(
 		{
 			concurrency: opts.concurrency ?? 6,
 			signal: opts.signal,
+			modell: opts.modell,
 			onProgress: opts.onProgress,
 			onStelle: opts.onStelle
 		}
 	);
 
-	return { stellen, unlesbar, nichtBelegt, geprueft: scope.length, geprueftJePosition, gestalt, kriterium };
+	return {
+		stellen,
+		unlesbar,
+		nichtBelegt,
+		verbrauch,
+		modell: opts.modell ?? resolveTier('anker.wiedererkennung'),
+		zuegeGesamt: zuege.length,
+		geprueft: scope.length, geprueftJePosition, gestalt, kriterium };
 }

@@ -29,6 +29,14 @@
 		bestandteile: Record<string, boolean>; relation: string; zitat: string; begruendung: string;
 	}
 	interface Stelle { zug: Zug; befund: Befund }
+	interface LaufNotiz {
+		id: string; createdAt: string; model: string; stellen: number;
+		abgebrochen: boolean; unlesbar: number; nichtBelegt: number;
+	}
+	interface DokumentStand {
+		documentId: string; inscription: string; zeichen: number;
+		zuege: number; marken: number; letzterLauf: LaufNotiz | null; aktuell: boolean;
+	}
 	interface Gestalt {
 		form: string; chars: number; turns: number;
 		positionen: { mark: string; turns: number; share: number; prompted: boolean }[];
@@ -73,6 +81,13 @@
 	let verworfen = $state<Set<number>>(new Set());
 	let controller: AbortController | null = null;
 
+	let dokumente = $state<DokumentStand[]>([]);
+	let ausgewaehlt = $state<Set<string>>(new Set());
+	let dokumenteOffen = $state(false);
+	let reihe = $state<{ doc: string; label: string; stellen: number | null; fehler?: string }[]>([]);
+	/** Das gespeicherte Ergebnis dieses Dokuments, falls es mit diesem Kriterium schon lief. */
+	let ausDerAkte = $state<{ wann: string; model: string } | null>(null);
+
 	$effect(() => {
 		void namingId;
 		void documentId;
@@ -84,6 +99,8 @@
 		phase = 'laden';
 		fehler = '';
 		stellen = [];
+		reihe = [];
+		ausDerAkte = null;
 		uebernommen = new Set();
 		verworfen = new Set();
 		try {
@@ -98,19 +115,55 @@
 			belegAusAnderemDokument = v.belegAusAnderemDokument ?? false;
 			kriterium = v.kriterium;
 			phase = 'kriterium';
+			await standLaden();
 		} catch (e) {
 			fehler = e instanceof Error ? e.message : String(e);
 			phase = 'fehler';
 		}
 	}
 
+	/**
+	 * Welche Dokumente es gibt und was dort schon gelaufen ist. Kostet nichts —
+	 * die Zugzahl ist gerechnet, nicht geschätzt, und sie ist der Kostentreiber.
+	 * Vorausgewählt ist, was mit diesem Kriterium noch nicht gelaufen ist.
+	 */
+	async function standLaden() {
+		if (!kriterium) return;
+		const q = new URLSearchParams({ namingId, kriterium: JSON.stringify(kriterium) });
+		const res = await fetch(`/api/projects/${projectId}/anker-zug/dokumente?${q}`);
+		if (!res.ok) return;
+		const v = await res.json();
+		dokumente = v.dokumente ?? [];
+		ausgewaehlt = new Set(dokumente.filter((d: DokumentStand) => !d.aktuell).map((d: DokumentStand) => d.documentId));
+
+		// Was hier schon gelaufen ist, wird nicht noch einmal bezahlt: Das
+		// Ergebnis kommt aus der Akte, und ein neuer Lauf ist eine Entscheidung.
+		const hier = dokumente.find((d: DokumentStand) => d.documentId === documentId);
+		if (hier?.aktuell && hier.letzterLauf) {
+			const r = await fetch(`/api/projects/${projectId}/anker-zug/dokumente`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ runId: hier.letzterLauf.id })
+			});
+			if (r.ok) {
+				const lauf = await r.json();
+				stellen = lauf.stellen ?? [];
+				ausDerAkte = { wann: lauf.createdAt, model: lauf.model };
+				phase = 'fertig';
+			}
+		}
+	}
+
 	// Der Lauf schickt jeden Fund sofort, statt am Ende alles auf einmal: über
 	// ein großes Dokument läuft er Minuten, und der erste Fund ist schon etwas
 	// wert. Abbrechen heißt: Verbindung zu, laufende Aufrufe reißen ab.
-	async function starten() {
+	async function starten(ueberDocId = documentId) {
 		if (!kriterium) return;
 		phase = 'lauf';
-		stellen = [];
+		if (ueberDocId === documentId) {
+			stellen = [];
+			ausDerAkte = null;
+		}
 		done = 0;
 		total = 0;
 		unlesbar = 0;
@@ -121,7 +174,12 @@
 			const res = await fetch(`/api/projects/${projectId}/anker-zug`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ namingId, documentId, kriterium, belegstelleMitpruefen }),
+				body: JSON.stringify({
+					namingId,
+					documentId: ueberDocId,
+					kriterium,
+					belegstelleMitpruefen
+				}),
 				signal: controller.signal
 			});
 			if (!res.ok || !res.body) throw new Error(await res.text());
@@ -138,13 +196,19 @@
 					const line = part.trim();
 					if (!line.startsWith('data:')) continue;
 					const ev = JSON.parse(line.slice(5).trim());
-					if (ev.kind === 'stelle') stellen = [...stellen, ev.stelle];
+					// Funde eines anderen Dokuments gehören nicht in diese Liste: Springen
+					// und Übernehmen beziehen sich auf den Text, der hier offen ist.
+					const hier = ueberDocId === documentId;
+					if (ev.kind === 'stelle') { if (hier) stellen = [...stellen, ev.stelle]; }
 					else if (ev.kind === 'progress') { done = ev.done; total = ev.total; }
 					else if (ev.kind === 'done') {
-						stellen = ev.stellen;
-						geprueftJePosition = ev.geprueftJePosition;
-						unlesbar = ev.unlesbar ?? 0;
-						nichtBelegt = ev.nichtBelegt ?? 0;
+						if (hier) {
+							stellen = ev.stellen;
+							geprueftJePosition = ev.geprueftJePosition;
+							unlesbar = ev.unlesbar ?? 0;
+							nichtBelegt = ev.nichtBelegt ?? 0;
+						}
+						gefunden = ev.stellen?.length ?? 0;
 						phase = 'fertig';
 					} else if (ev.kind === 'failed') { fehler = ev.message; phase = 'fehler'; }
 				}
@@ -155,6 +219,33 @@
 			fehler = e instanceof Error ? e.message : String(e);
 			phase = 'fehler';
 		}
+	}
+
+	let gefunden = 0;
+
+	/**
+	 * Über die ausgewählten Dokumente laufen, eines nach dem anderen.
+	 *
+	 * Jeder Durchgang wird serverseitig verbucht, bevor der nächste beginnt.
+	 * Bricht die Reihe ab, ist das Bezahlte gespeichert und ein erneuter Start
+	 * setzt dort fort, wo es aufhörte.
+	 */
+	async function reiheStarten() {
+		const ziele = dokumente.filter((d) => ausgewaehlt.has(d.documentId));
+		if (ziele.length === 0) return;
+		reihe = ziele.map((d) => ({ doc: d.documentId, label: d.inscription, stellen: null }));
+		for (const [i, d] of ziele.entries()) {
+			gefunden = 0;
+			try {
+				await starten(d.documentId);
+				reihe[i] = { ...reihe[i], stellen: gefunden };
+			} catch (e) {
+				reihe[i] = { ...reihe[i], stellen: 0, fehler: e instanceof Error ? e.message : String(e) };
+			}
+			reihe = [...reihe];
+			if (phase === 'fehler') break;
+		}
+		await standLaden();
 	}
 
 	function abbrechen() {
@@ -193,6 +284,8 @@
 	});
 
 	let positionen = $derived(gestalt?.positionen.map((p) => p.mark) ?? []);
+	let offeneDokumente = $derived(dokumente.filter((d) => !d.aktuell));
+	let offeneZuege = $derived(offeneDokumente.reduce((a, d) => a + d.zuege, 0));
 </script>
 
 <aside class="anker-panel">
@@ -301,11 +394,84 @@
 					<button class="tun aus" onclick={abbrechen}>Abbrechen</button>
 				</div>
 			{:else}
-				<button class="tun" onclick={starten}>
-					{phase === 'fertig' ? 'Erneut durchgehen' : `${zuegeGesamt} Stellen durchgehen`}
+				<button class="tun" onclick={() => starten()}>
+					{ausDerAkte ? 'Neu durchgehen' : phase === 'fertig' ? 'Erneut durchgehen' : `${zuegeGesamt} Stellen durchgehen`}
 				</button>
 			{/if}
 		</section>
+
+		<!-- Auswahl über das ganze Projekt. Die Zugzahl je Dokument ist gerechnet,
+		     nicht geschätzt — was ein Lauf kostet, steht vor dem ersten Aufruf
+		     fest. Vorausgewählt ist, was mit DIESEM Kriterium noch nicht lief. -->
+		{#if dokumente.length > 1}
+			<section class="dokumente">
+				<button class="klapp" onclick={() => (dokumenteOffen = !dokumenteOffen)}>
+					<span class="pfeil" class:auf={dokumenteOffen}>▸</span>
+					Weitere Dokumente — {offeneDokumente.length} von {dokumente.length} offen, {offeneZuege} Stellen
+				</button>
+				{#if dokumenteOffen}
+					<ul class="dokliste">
+						{#each dokumente as d}
+							<li class:hier={d.documentId === documentId}>
+								<label>
+									<input
+										type="checkbox"
+										checked={ausgewaehlt.has(d.documentId)}
+										disabled={phase === 'lauf'}
+										onchange={(e) => {
+											const n = new Set(ausgewaehlt);
+											if (e.currentTarget.checked) n.add(d.documentId); else n.delete(d.documentId);
+											ausgewaehlt = n;
+										}}
+									/>
+									<span class="name">{d.inscription}</span>
+									<span class="zahl">{d.zuege}</span>
+									{#if d.marken > 0}<span class="marken">{d.marken} Marken</span>{/if}
+								</label>
+								<div class="stand">
+									{#if !d.letzterLauf}
+										noch nicht gelaufen
+									{:else if d.letzterLauf.abgebrochen}
+										abgebrochen am {d.letzterLauf.createdAt.slice(0, 10)}
+									{:else if d.aktuell}
+										✓ {d.letzterLauf.stellen} Stellen · {d.letzterLauf.createdAt.slice(0, 10)}
+									{:else}
+										{d.letzterLauf.stellen} Stellen, aber mit anderem Kriterium ({d.letzterLauf.createdAt.slice(0, 10)})
+									{/if}
+								</div>
+							</li>
+						{/each}
+					</ul>
+					<button class="tun" disabled={phase === 'lauf' || ausgewaehlt.size === 0} onclick={reiheStarten}>
+						Über {ausgewaehlt.size} {ausgewaehlt.size === 1 ? 'Dokument' : 'Dokumente'} laufen
+						({dokumente.filter((d) => ausgewaehlt.has(d.documentId)).reduce((a, d) => a + d.zuege, 0)} Stellen)
+					</button>
+				{/if}
+				{#if reihe.length > 0}
+					<ul class="reihe">
+						{#each reihe as r}
+							<li>
+								<span class="name">{r.label}</span>
+								<span class="ergebnis">
+									{#if r.fehler}Fehler{:else if r.stellen === null}…{:else}{r.stellen} Stellen{/if}
+								</span>
+							</li>
+						{/each}
+					</ul>
+					<p class="hinweis">
+						Funde anderer Dokumente stehen nicht hier — Springen und Übernehmen gelten für den
+						offenen Text. Öffne das Dokument, dann liegt sein Ergebnis ohne neuen Aufruf vor.
+					</p>
+				{/if}
+			</section>
+		{/if}
+	{/if}
+
+	{#if ausDerAkte}
+		<div class="aus-der-akte">
+			Ergebnis vom {ausDerAkte.wann.slice(0, 10)} ({ausDerAkte.model.split('/').pop()}) — aus der Akte,
+			nicht neu gerechnet.
+		</div>
 	{/if}
 
 	{#if nichtBelegt > 0 && phase === 'fertig'}
@@ -492,6 +658,22 @@
 	.drin-marke { font-size: 0.7rem; color: var(--ccs-cue); }
 
 	.warten, .leer { font-size: 0.75rem; color: var(--text-4); line-height: 1.5; padding: 0.4rem 0; }
+	.dokumente { border-top: 1px solid var(--border); padding-top: 0.5rem; }
+	.dokliste { list-style: none; margin: 0.3rem 0; padding: 0; display: flex; flex-direction: column; gap: 0.25rem; }
+	.dokliste li { font-size: 0.72rem; line-height: 1.35; }
+	.dokliste li.hier .name { color: var(--accent); }
+	.dokliste label { display: flex; align-items: baseline; gap: 0.35rem; cursor: pointer; }
+	.dokliste .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.dokliste .zahl { color: var(--text-4); font-variant-numeric: tabular-nums; }
+	.dokliste .marken { color: var(--accent); font-size: 0.65rem; }
+	.dokliste .stand { padding-left: 1.35rem; color: var(--text-4); font-size: 0.66rem; }
+	.reihe { list-style: none; margin: 0.4rem 0 0; padding: 0; font-size: 0.7rem; }
+	.reihe li { display: flex; justify-content: space-between; gap: 0.5rem; color: var(--text-4); }
+	.reihe .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.aus-der-akte {
+		font-size: 0.7rem; color: var(--text-4); padding: 0.3rem 0.5rem;
+		border: 1px dashed var(--border); border-radius: 6px;
+	}
 	.unlesbar {
 		font-size: 0.73rem; color: var(--warning); line-height: 1.45;
 		border: 1px solid var(--border); border-radius: 6px; padding: 0.4rem 0.5rem;
