@@ -64,7 +64,8 @@ export interface RouteOption {
 
 export const KNOWN_ROUTES: RouteOption[] = [
 	{ provider: 'mistral', model: 'mistral-large-latest', label: 'mistral-large (Mistral nativ EU)', inputUSDPerMTok: 0.5, outputUSDPerMTok: 1.5, region: 'EU', dsgvo: true },
-	{ provider: 'openrouter', model: 'xiaomi/mimo-v2.5-pro', label: 'mimo-v2.5-pro (OpenRouter)', inputUSDPerMTok: 1.0, outputUSDPerMTok: 3.0, region: 'US', dsgvo: false },
+	{ provider: 'openrouter', model: 'xiaomi/mimo-v2.5-pro', label: 'mimo-v2.5-pro (OpenRouter)', inputUSDPerMTok: 0.43, outputUSDPerMTok: 0.87, region: 'US', dsgvo: false },
+	{ provider: 'openrouter', model: 'z-ai/glm-5.2', label: 'glm-5.2 (OpenRouter)', inputUSDPerMTok: 0.76, outputUSDPerMTok: 2.42, region: 'US', dsgvo: false },
 	{ provider: 'openrouter', model: 'anthropic/claude-sonnet-4.6', label: 'claude-sonnet-4.6 (OpenRouter)', inputUSDPerMTok: 3.0, outputUSDPerMTok: 15.0, region: 'US', dsgvo: false },
 	{ provider: 'mammouth', model: 'claude-sonnet-4-6', label: 'claude-sonnet-4-6 (Mammouth, EU-vermittelt)', inputUSDPerMTok: 3.0, outputUSDPerMTok: 15.0, region: 'EU', dsgvo: true },
 	{ provider: 'openrouter', model: 'anthropic/claude-opus-4.7', label: 'claude-opus-4.7 (OpenRouter)', inputUSDPerMTok: 5.0, outputUSDPerMTok: 25.0, region: 'US', dsgvo: false },
@@ -98,6 +99,7 @@ export interface TierMeta {
 
 const MISTRAL: TierModel = { provider: 'mistral', model: 'mistral-large-latest' };
 const MIMO: TierModel = { provider: 'openrouter', model: 'xiaomi/mimo-v2.5-pro' };
+const GLM: TierModel = { provider: 'openrouter', model: 'z-ai/glm-5.2' };
 const SONNET_OR: TierModel = { provider: 'openrouter', model: 'anthropic/claude-sonnet-4.6' };
 const SONNET_MAMMOUTH: TierModel = { provider: 'mammouth', model: 'claude-sonnet-4-6' };
 const OPUS_OR: TierModel = { provider: 'openrouter', model: 'anthropic/claude-opus-4.7' };
@@ -164,13 +166,26 @@ export const TIER_REGISTRY: Record<Tier, TierMeta> = {
 			'samt deren Geschehen-Beschreibung. Nein ist die Vorgabe. Diese Stufe ' +
 			'trägt die Unterscheidung, die alles entscheidet — hier gehört das ' +
 			'schärfere Modell hin.',
-		recommended: SONNET_OR,
+		recommended: GLM,
 		fallback: MIMO,
 		candidates: [
-			{ ...SONNET_OR, note: 'Empfehlung: Die Unterscheidung Zug/Thema ist die eigentliche Leistung; hier ist Reasoning-Tiefe der Punkt.' },
-			{ ...SONNET_MAMMOUTH, note: 'Wie Sonnet OR, EU-vermittelt über Mammouth.' },
-			{ ...OPUS_OR, note: 'Höchste Tiefe, ~8× teurer als MiMo. Für schwierige Züge (Haltung, Ironie) erwägenswert.' },
-			{ ...MIMO, note: 'Günstige Route. Riskiert genau den Fehler, um den es geht — thematische statt performativer Passung.' }
+			{
+				...GLM,
+				note:
+					'Empfehlung, gemessen am 05.08.2026 (3 Namings, 4 eigene Marken, 173 Züge): ' +
+					'3/4 Marken als Fall — gleichauf mit den teuersten — für $0.52 statt $2.46–3.88 ' +
+					'und in einem Fünftel der Zeit.'
+			},
+			{ ...MIMO, note: 'Gleiche 3/4 Marken für $0.42, aber sechsmal so lange Laufzeit (30 statt 5 Minuten).' },
+			{
+				...SONNET_OR,
+				note:
+					'Frühere Empfehlung, ungemessen: Der Vergleich fiel für Sonnet aus (Guthaben erschöpft). ' +
+					'Die Annahme, hier sei Reasoning-Tiefe der Punkt, wird von den fünf gleichauf ' +
+					'liegenden Modellen nicht gestützt.'
+			},
+			{ ...SONNET_MAMMOUTH, note: 'Wie Sonnet OR, EU-vermittelt über Mammouth. Ebenfalls ungemessen.' },
+			{ ...OPUS_OR, note: 'Höchste Tiefe, ~8× teurer als MiMo. Für schwierige Züge (Haltung, Ironie) erwägenswert; ungemessen.' }
 		]
 	},
 	'coding-run.h2': {
