@@ -11,6 +11,10 @@
 //        `neu=1` verwirft das abgelegte und leitet neu ab (ein Aufruf). Der
 //        Lauf beginnt nicht — das Kriterium geht erst an den Forscher zurück.
 //
+//   PUT  { namingId, kriterium }
+//        Das Kriterium festhalten, ohne zu laufen. Eine Korrektur gilt damit ab
+//        dem Tippen und nicht erst ab dem nächsten Durchgang.
+//
 //   POST { namingId, documentId, kriterium, ohneProbe? }
 //        Geht das Dokument mit dem freigegebenen Kriterium durch. Antwortet als
 //        text/event-stream, weil ein Durchgang über ein großes Dokument Minuten
@@ -132,6 +136,39 @@ export const GET: RequestHandler = async ({ params, url, locals }) => {
 		}
 		error(502, err instanceof Error ? err.message : 'Das Kriterium kam nicht auswertbar zurück');
 	}
+};
+
+/**
+ * Das Kriterium festhalten, ohne zu laufen.
+ *
+ * Ohne das galt eine Änderung erst, wenn ein Durchgang startete: Wer das
+ * Kriterium korrigierte und das Panel schloss, fand beim nächsten Öffnen die
+ * alte Fassung — während im Panel stand, es bleibe stehen. Ein Kriterium ist
+ * eine Einstellung, und eine Einstellung sichert sich selbst.
+ */
+export const PUT: RequestHandler = async ({ params, request, locals }) => {
+	if (!locals.user) error(401, 'Not authenticated');
+	const { projectId } = params;
+	if (!projectId) error(400, 'projectId erforderlich');
+
+	const body = (await request.json().catch(() => null)) as {
+		namingId?: string;
+		kriterium?: unknown;
+	} | null;
+	const namingId = body?.namingId;
+	if (!namingId) error(400, 'namingId erforderlich');
+	if (!(await namingInProject(namingId, projectId))) error(404, 'Nicht in diesem Projekt');
+
+	const kriterium = parseKriterium(body?.kriterium);
+	if (!kriterium) {
+		error(400, 'kriterium erforderlich — Akteur, mindestens ein Bestandteil, mindestens eine Relation');
+	}
+
+	const updatedAt = await speichereKriterium(projectId, namingId, kriterium, {
+		vonHand: true,
+		userId: locals.user?.id ?? null
+	});
+	return json({ ok: true, updatedAt });
 };
 
 export const POST: RequestHandler = async ({ params, request, locals }) => {

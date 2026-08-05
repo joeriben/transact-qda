@@ -72,6 +72,9 @@
 	let kriterium = $state<Kriterium | null>(null);
 	let kriteriumVonHand = $state(false);
 	let kriteriumAbgelegtSeit = $state<string | null>(null);
+	/** Was zuletzt in der Ablage stand — damit das Sichern nicht auf sich selbst reagiert. */
+	let zuletztGesichert = $state('');
+	let sicherTimer: ReturnType<typeof setTimeout> | null = null;
 	/**
 	 * Die Probe auslassen. Aus, weil sie das einzige ist, woran der Lauf sein
 	 * eigenes Versagen bemerken kann.
@@ -102,6 +105,16 @@
 	/** Das gespeicherte Ergebnis dieses Dokuments, falls es mit diesem Kriterium schon lief. */
 	let ausDerAkte = $state<{ wann: string; model: string } | null>(null);
 
+	/**
+	 * Ein Datum, wie der Forscher es an seiner Uhr abliest.
+	 *
+	 * Die Zeitangaben kommen als ISO-UTC. Die ersten zehn Zeichen davon
+	 * abzuschneiden zeigt kurz nach Mitternacht den Vortag — die Ablage sagte
+	 * 00:14 am 6., das Panel den 5.
+	 */
+	const tag = (iso: string | null | undefined) =>
+		iso ? new Date(iso).toLocaleDateString() : '';
+
 	$effect(() => {
 		void namingId;
 		void documentId;
@@ -131,6 +144,7 @@
 			kriterium = v.kriterium;
 			kriteriumVonHand = v.kriteriumVonHand ?? false;
 			kriteriumAbgelegtSeit = v.kriteriumAbgelegtSeit ?? null;
+			zuletztGesichert = JSON.stringify(v.kriterium);
 			phase = 'kriterium';
 			await standLaden();
 		} catch (e) {
@@ -144,6 +158,35 @@
 	 * die Zugzahl ist gerechnet, nicht geschätzt, und sie ist der Kostentreiber.
 	 * Vorausgewählt ist, was mit diesem Kriterium noch nicht gelaufen ist.
 	 */
+	/**
+	 * Eine Änderung am Kriterium sichern, kurz nachdem das Tippen aufhört.
+	 *
+	 * Ohne das hätte „Es bleibt stehen" nur gegolten, wenn danach auch gelaufen
+	 * wird — wer korrigiert und das Panel schließt, hätte die alte Fassung
+	 * wiedergefunden. Ein unvollständiges Kriterium wird nicht gesichert; es
+	 * würde die Ablage mit einem Zwischenstand überschreiben, der nicht laufen
+	 * kann.
+	 */
+	$effect(() => {
+		const jetzt = kriterium ? JSON.stringify(kriterium) : '';
+		if (!kriterium || !jetzt || jetzt === zuletztGesichert || !kriteriumTraegt) return;
+		if (sicherTimer) clearTimeout(sicherTimer);
+		sicherTimer = setTimeout(async () => {
+			const stand = JSON.stringify(kriterium);
+			const res = await fetch(`/api/projects/${projectId}/anker-zug`, {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ namingId, kriterium })
+			}).catch(() => null);
+			if (res?.ok) {
+				const { updatedAt } = await res.json().catch(() => ({ updatedAt: null }));
+				zuletztGesichert = stand;
+				kriteriumVonHand = true;
+				kriteriumAbgelegtSeit = updatedAt ?? kriteriumAbgelegtSeit;
+			}
+		}, 800);
+	});
+
 	async function standLaden() {
 		if (!kriterium) return;
 		const q = new URLSearchParams({ namingId, kriterium: JSON.stringify(kriterium) });
@@ -436,11 +479,11 @@
 			</div>
 			<p class="hinweis">
 				{#if kriteriumVonHand}
-					Deins — zuletzt geändert am {kriteriumAbgelegtSeit?.slice(0, 10)}. Es bleibt stehen und
+					Deins — zuletzt geändert am {tag(kriteriumAbgelegtSeit)}. Es bleibt stehen und
 					wird nicht neu abgeleitet. Geprüft wird, was hier steht.
 				{:else if kriteriumAbgelegtSeit}
 					Abgeleitet aus deinem Naming und deinem Memo, abgelegt am
-					{kriteriumAbgelegtSeit.slice(0, 10)}. Ändere es, bevor es läuft — geprüft wird, was hier
+					{tag(kriteriumAbgelegtSeit)}. Ändere es, bevor es läuft — geprüft wird, was hier
 					steht, und deine Änderung bleibt.
 				{:else}
 					Eben abgeleitet aus deinem Naming und deinem Memo. Ändere es, bevor es läuft — geprüft
@@ -554,11 +597,11 @@
 									{#if !d.letzterLauf}
 										noch nicht gelaufen
 									{:else if d.letzterLauf.abgebrochen}
-										abgebrochen am {d.letzterLauf.createdAt.slice(0, 10)}
+										abgebrochen am {tag(d.letzterLauf.createdAt)}
 									{:else if d.aktuell}
-										✓ {d.letzterLauf.stellen} Stellen · {d.letzterLauf.createdAt.slice(0, 10)}
+										✓ {d.letzterLauf.stellen} Stellen · {tag(d.letzterLauf.createdAt)}
 									{:else}
-										{d.letzterLauf.stellen} Stellen, aber mit anderem Kriterium ({d.letzterLauf.createdAt.slice(0, 10)})
+										{d.letzterLauf.stellen} Stellen, aber mit anderem Kriterium ({tag(d.letzterLauf.createdAt)})
 									{/if}
 								</div>
 							</li>
@@ -592,7 +635,7 @@
 
 	{#if ausDerAkte}
 		<div class="aus-der-akte">
-			Ergebnis vom {ausDerAkte.wann.slice(0, 10)} ({ausDerAkte.model.split('/').pop()}) — aus der Akte,
+			Ergebnis vom {tag(ausDerAkte.wann)} ({ausDerAkte.model.split('/').pop()}) — aus der Akte,
 			nicht neu gerechnet.
 		</div>
 	{/if}

@@ -63,17 +63,19 @@ export async function speichereKriterium(
 	namingId: string,
 	kriterium: Kriterium,
 	opts: { vonHand: boolean; userId?: string | null } = { vonHand: false }
-): Promise<void> {
-	await query(
+): Promise<string> {
+	const r = await query<{ updated_at: string | Date }>(
 		`INSERT INTO anker_kriterien (naming_id, project_id, kriterium, von_hand, updated_by)
 		 VALUES ($1, $2, $3, $4, $5)
 		 ON CONFLICT (naming_id) DO UPDATE
 		    SET kriterium  = EXCLUDED.kriterium,
 		        von_hand   = anker_kriterien.von_hand OR EXCLUDED.von_hand,
 		        updated_at = now(),
-		        updated_by = EXCLUDED.updated_by`,
+		        updated_by = EXCLUDED.updated_by
+		 RETURNING updated_at`,
 		[namingId, projectId, JSON.stringify(kriterium), opts.vonHand, opts.userId ?? null]
 	);
+	return new Date(r.rows[0].updated_at).toISOString();
 }
 
 /**
