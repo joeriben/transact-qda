@@ -160,7 +160,7 @@ Du entscheidest nicht ja/nein, sondern welche Relation zutrifft. Die Kontrast-Re
 
 \`${NICHT_EINSCHLAEGIG}\` ist die Vorgabe und wird die häufigste Antwort sein. Sie gilt, wenn hier kein Vorgang stattfindet, der zu diesem Muster in einem der genannten Verhältnisse steht. Zwinge nichts in eine Relation.
 
-\`zitat\` ist der Wortlaut, der den Zug trägt — Zeichen für Zeichen aus der Stelle oder ihrem Anlauf kopiert. Er darf über die markierte Stelle hinausgehen: Ein Zug braucht oft seinen Anlauf, und die Spanne, die ihn trägt, ist selten die, an der man ihn zuerst bemerkt. Bei \`${NICHT_EINSCHLAEGIG}\` bleibt \`zitat\` leer.
+\`zitat\` ist der Wortlaut AUS DER ZU PRÜFENDEN STELLE, Zeichen für Zeichen kopiert: die Worte, an denen der Zug hängt. Nicht aus dem Anlauf, nicht aus der Aufnahme, nicht aus der Belegstelle der Forscherin — die stehen da, damit du liest, was an dieser Stelle geschieht, und nicht, damit du sie als Fund ausgibst. Findest du in der Stelle selbst keine Worte, die den Zug tragen, geschieht er nicht hier: Dann ist die Antwort \`${NICHT_EINSCHLAEGIG}\`, und \`zitat\` bleibt leer.
 
 \`begruendung\` ist EIN Satz und benennt den Vollzug, nicht den Gegenstand.
 
@@ -325,6 +325,12 @@ export interface UnlesbareStelle {
 	fehler: string;
 }
 
+/** Ein Befund, dessen Zitat nicht in der geprüften Stelle steht — er hängt woanders. */
+export interface UnbelegteStelle {
+	zug: Zug;
+	befund: Befund;
+}
+
 export interface PruefOptions {
 	concurrency?: number;
 	onProgress?: (done: number, total: number) => void;
@@ -340,6 +346,40 @@ export interface PruefOptions {
  * Jede übergebene Passage prüfen. Ohne Vorauswahl — wer hier nach Themen
  * vorsortiert, entfernt die strukturisomorphen Fälle.
  */
+/** Wortlaut auf Vergleichbarkeit gebracht: ohne Anführungsvarianten, ohne Mehrfach-Leerzeichen, ohne Groß/Klein. */
+function normal(text: string): string {
+	return text
+		.replace(/[„“”»«]/g, '"')
+		.replace(/[–—]/g, '-')
+		.replace(/\s+/g, ' ')
+		.trim()
+		.toLowerCase();
+}
+
+/**
+ * Steht das Zitat in der geprüften Stelle?
+ *
+ * An jeder Stelle liegt mehr Text vor als sie selbst: der Anlauf, die Aufnahme,
+ * die Belegstelle der Forscherin. Ein Befund, dessen Zitat aus der Umgebung
+ * stammt, weist auf Worte, an denen er nicht hängt — die Zeichenspanne im
+ * Ergebnis führt dann woandershin als der Wortlaut daneben, und beim Springen
+ * steht etwas anderes da als angekündigt. Beides sieht im Ergebnis gleich aus,
+ * deshalb wird es geprüft und nicht geglaubt.
+ *
+ * Auslassungen des Modells trennen Teilstücke; jedes für sich muss in der
+ * Stelle stehen. Sehr kurze Teilstücke werden nicht geprüft, die treffen
+ * zufällig.
+ */
+export function zitatStehtInStelle(zitat: string, zugText: string): boolean {
+	const stelle = normal(zugText);
+	const teile = zitat
+		.split(/\[\s*(?:…|\.\.\.)\s*\]|…/)
+		.map(normal)
+		.filter((t) => t.length >= 25);
+	if (teile.length === 0) return true;
+	return teile.every((t) => stelle.includes(t));
+}
+
 /**
  * Was der Adressat mit dem Zug gemacht hat.
  *
@@ -379,7 +419,7 @@ export async function pruefeStellen(
 	alleZuege: Zug[],
 	zuPruefen: Zug[],
 	opts: PruefOptions = {}
-): Promise<{ stellen: Stelle[]; unlesbar: UnlesbareStelle[] }> {
+): Promise<{ stellen: Stelle[]; unlesbar: UnlesbareStelle[]; nichtBelegt: UnbelegteStelle[] }> {
 	const tier = resolveTier('anker.wiedererkennung');
 	const system = befundSystem(kriterium, gestalt);
 	const anlaufN = opts.anlaufZuege ?? 2;
@@ -420,10 +460,19 @@ export async function pruefeStellen(
 	// eine geprüfte ohne Bezug, und das ist ein Unterschied ums Ganze.
 	const stellen: Stelle[] = [];
 	const unlesbar: UnlesbareStelle[] = [];
+	const nichtBelegt: UnbelegteStelle[] = [];
 	zuPruefen.forEach((z, i) => {
 		const r = results[i];
-		if (!r.ok) unlesbar.push({ zug: z, fehler: r.fehler });
-		else if (r.value.relation && r.value.relation !== NICHT_EINSCHLAEGIG) stellen.push({ zug: z, befund: r.value });
+		if (!r.ok) {
+			unlesbar.push({ zug: z, fehler: r.fehler });
+			return;
+		}
+		const befund = r.value;
+		if (!befund.relation || befund.relation === NICHT_EINSCHLAEGIG) return;
+		// Ein Befund, der sich auf Worte aus der Umgebung beruft, wird nicht
+		// stillschweigend mitgezählt und auch nicht stillschweigend verworfen.
+		if (zitatStehtInStelle(befund.zitat ?? '', z.text)) stellen.push({ zug: z, befund });
+		else nichtBelegt.push({ zug: z, befund });
 	});
-	return { stellen, unlesbar };
+	return { stellen, unlesbar, nichtBelegt };
 }

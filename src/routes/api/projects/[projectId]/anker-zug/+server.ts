@@ -22,7 +22,7 @@
 //   { kind: 'init',     zuegeGesamt, geprueft, geprueftJePosition, gestalt }
 //   { kind: 'stelle',   stelle }            — sofort bei jedem Fund
 //   { kind: 'progress', done, total }
-//   { kind: 'done',     stellen, unlesbar, geprueft, geprueftJePosition }
+//   { kind: 'done',     stellen, unlesbar, nichtBelegt, geprueft, geprueftJePosition }
 //   { kind: 'failed',   message }
 //   { kind: 'alive',    at }                — Heartbeat ~10 s
 //
@@ -97,7 +97,7 @@ export const GET: RequestHandler = async ({ params, url, locals }) => {
 	const fullText = await ladeVolltext(projectId, documentId!);
 	const gestalt = sichten(fullText);
 	const zuege = zuegeOf(fullText, gestalt);
-	if (!belegstelleOf(zuege, muster.anchors, documentId!)) {
+	if (!belegstelleOf(zuege, muster.anchors, documentId!, fullText)) {
 		return json({
 			gestalt,
 			zuegeGesamt: zuege.length,
@@ -183,6 +183,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 					kind: 'done',
 					stellen: result.stellen,
 					unlesbar: result.unlesbar.length,
+					nichtBelegt: result.nichtBelegt.length,
 					geprueft: result.geprueft,
 					geprueftJePosition: result.geprueftJePosition
 				});

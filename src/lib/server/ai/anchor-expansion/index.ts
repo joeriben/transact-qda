@@ -24,13 +24,22 @@ import {
 	pruefeStellen,
 	type Kriterium,
 	type Stelle,
-	type UnlesbareStelle
+	type UnlesbareStelle,
+	type UnbelegteStelle
 } from './recognize.js';
 
 export { sichten, zuegeOf, zuegeOverlapping } from './gestalt.js';
 export type { Gestalt, Zug, Bruch, Position, Verteilung } from './gestalt.js';
 export { NICHT_EINSCHLAEGIG } from './recognize.js';
-export type { Kriterium, Bestandteil, Relation, Befund, Stelle, UnlesbareStelle } from './recognize.js';
+export type {
+	Kriterium,
+	Bestandteil,
+	Relation,
+	Befund,
+	Stelle,
+	UnlesbareStelle,
+	UnbelegteStelle
+} from './recognize.js';
 
 // ── Laden ─────────────────────────────────────────────────────────
 
@@ -235,6 +244,8 @@ export interface Durchgang {
 	stellen: Stelle[];
 	/** Stellen, deren Antwort nicht auswertbar war — ungeprüft, nicht „ohne Bezug". */
 	unlesbar: UnlesbareStelle[];
+	/** Befunde, deren Zitat nicht in der geprüften Stelle steht — sie hängen woanders. */
+	nichtBelegt: UnbelegteStelle[];
 	geprueft: number;
 	/** Je Position: wie viele Stellen geprüft wurden. Nenner der Verteilung. */
 	geprueftJePosition: Record<string, number>;
@@ -264,7 +275,7 @@ export async function durchgehen(
 	const geprueftJePosition: Record<string, number> = {};
 	for (const z of scope) geprueftJePosition[z.position] = (geprueftJePosition[z.position] ?? 0) + 1;
 
-	const { stellen, unlesbar } = await pruefeStellen(
+	const { stellen, unlesbar, nichtBelegt } = await pruefeStellen(
 		muster.inscription,
 		muster.memos,
 		beleg.text,
@@ -280,5 +291,5 @@ export async function durchgehen(
 		}
 	);
 
-	return { stellen, unlesbar, geprueft: scope.length, geprueftJePosition, gestalt, kriterium };
+	return { stellen, unlesbar, nichtBelegt, geprueft: scope.length, geprueftJePosition, gestalt, kriterium };
 }

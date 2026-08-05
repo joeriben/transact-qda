@@ -142,6 +142,7 @@ function zeigeKriterium(k: Kriterium): void {
 function zeigeErgebnis(
 	stellen: Stelle[],
 	unlesbar: number,
+	nichtBelegt: number,
 	geprueft: number,
 	geprueftJePosition: Record<string, number>,
 	kriterium: Kriterium,
@@ -154,6 +155,10 @@ function zeigeErgebnis(
 	// Nicht verschweigen: eine fallengelassene Stelle sieht sonst aus wie eine
 	// geprüfte ohne Bezug.
 	if (unlesbar > 0) console.log(`     ${unlesbar} Stellen kamen nicht auswertbar zurück und sind UNGEPRÜFT.`);
+	// Ein Befund, dessen Zitat aus der Umgebung stammt, hängt nicht an der Stelle,
+	// auf die er zeigt. Weder mitzählen noch verschweigen.
+	if (nichtBelegt > 0)
+		console.log(`     ${nichtBelegt} Befunde beriefen sich auf Worte, die nicht in ihrer Stelle stehen — ausgesondert.`);
 
 	// Der Fall zuerst, dann die Kontraste — an denen wird die Grenze scharf.
 	const order = [
@@ -289,7 +294,7 @@ async function main() {
 		}
 	});
 	process.stdout.write('\n');
-	zeigeErgebnis(d.stellen, d.unlesbar.length, d.geprueft, d.geprueftJePosition, v.kriterium, d.gestalt);
+	zeigeErgebnis(d.stellen, d.unlesbar.length, d.nichtBelegt.length, d.geprueft, d.geprueftJePosition, v.kriterium, d.gestalt);
 }
 
 main()

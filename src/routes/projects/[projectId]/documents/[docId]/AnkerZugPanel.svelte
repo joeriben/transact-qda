@@ -67,6 +67,7 @@
 	let total = $state(0);
 	let geprueftJePosition = $state<Record<string, number>>({});
 	let unlesbar = $state(0);
+	let nichtBelegt = $state(0);
 	let uebernommen = $state<Set<number>>(new Set());
 	let verworfen = $state<Set<number>>(new Set());
 	let controller: AbortController | null = null;
@@ -111,6 +112,7 @@
 		done = 0;
 		total = 0;
 		unlesbar = 0;
+		nichtBelegt = 0;
 		controller?.abort();
 		controller = new AbortController();
 		try {
@@ -140,6 +142,7 @@
 						stellen = ev.stellen;
 						geprueftJePosition = ev.geprueftJePosition;
 						unlesbar = ev.unlesbar ?? 0;
+						nichtBelegt = ev.nichtBelegt ?? 0;
 						phase = 'fertig';
 					} else if (ev.kind === 'failed') { fehler = ev.message; phase = 'fehler'; }
 				}
@@ -295,6 +298,13 @@
 				</button>
 			{/if}
 		</section>
+	{/if}
+
+	{#if nichtBelegt > 0 && phase === 'fertig'}
+		<div class="unlesbar">
+			{nichtBelegt} {nichtBelegt === 1 ? 'Befund berief sich' : 'Befunde beriefen sich'} auf Worte, die nicht in
+			{nichtBelegt === 1 ? 'seiner' : 'ihren'} Stelle{nichtBelegt === 1 ? '' : 'n'} stehen — <strong>ausgesondert</strong>.
+		</div>
 	{/if}
 
 	{#if unlesbar > 0 && phase === 'fertig'}
