@@ -134,10 +134,27 @@ function kriteriumBlock(k: Kriterium): string {
 	].join('\n');
 }
 
-export function befundSystem(k: Kriterium, gestalt: Gestalt): string {
+export function befundSystem(
+	k: Kriterium,
+	gestalt: Gestalt,
+	inscription: string,
+	memos: string[],
+	beleg: { text: string; ausAnderemDokument: boolean } | null
+): string {
+	// Naming, Memo und Marke stehen an jeder Stelle gleich. Hier im Vorspann
+	// werden sie einmal geschrieben und danach aus dem Cache gelesen; in der
+	// Nachricht wären es dieselben Token mal Anzahl der Stellen — bei 45 Stellen
+	// rund 13.000 Token, jedesmal neu bezahlt.
+	const belegKopf = beleg?.ausAnderemDokument
+		? 'Eine Stelle, die sie in einem ANDEREN Dokument markiert hat. Sie zeigt die Form des Zuges; wovon dort die Rede ist, gehört nicht dazu:'
+		: 'Ihre Belegstelle, mit dem Anlauf, der zu ihr führt:';
+	const belegBlock = beleg ? `${belegKopf}\n"""\n${beleg.text}\n"""\n\n` : '';
+
 	return `Du prüfst ein Protokoll auf EIN Strukturmuster, das eine Forscherin bemerkt hat. Du suchst kein Thema und bildest keine eigene Hypothese.
 
-${gestaltBlock(gestalt)}
+DAS MUSTER DER FORSCHERIN: „${inscription}"
+${memos.length > 0 ? `\nIhr Memo:\n${memos.join('\n\n')}\n` : ''}
+${belegBlock}${gestaltBlock(gestalt)}
 
 Das steht nicht als Beiwerk da. Ein Zug geschieht zwischen diesen Positionen, und dieselben Worte bedeuten anderes, je nachdem, wer sie sagt und an wen.
 
@@ -174,10 +191,12 @@ Antworte NUR mit einem JSON-Objekt, ohne Vorrede, ohne Markdown-Zaun:
 Alles in der Sprache des Protokolls.`;
 }
 
+/**
+ * Was an DIESER Stelle steht. Naming, Memo und Marke stehen im Vorspann und
+ * nicht hier — sie sind über den ganzen Durchgang gleich, und in der Nachricht
+ * würden sie je Stelle neu bezahlt.
+ */
 export function befundMessage(
-	inscription: string,
-	memos: string[],
-	beleg: { text: string; ausAnderemDokument: boolean } | null,
 	zug: Zug,
 	anlauf: string[],
 	aufnahme: string[]
@@ -196,19 +215,7 @@ export function befundMessage(
 		zug.brueche.length > 0
 			? `RISSE AN DIESER STELLE:\n${zug.brueche.map((b) => `• ${b.was} Wortlaut: „${b.wortlaut.slice(0, 180)}"`).join('\n')}\n\n`
 			: '';
-	// Ohne Marke läuft es ohne Beispiel: Was gesucht wird, steht im Kriterium.
-	// Eine Marke aus einem anderen Dokument geht als Beispiel mit, ausgewiesen
-	// als von dort — damit ihr Gegenstand nicht für den Zug gehalten wird.
-	const belegKopf = beleg?.ausAnderemDokument
-		? 'Eine Stelle, die sie in einem ANDEREN Dokument markiert hat. Sie zeigt die Form des Zuges; wovon dort die Rede ist, gehört nicht dazu:'
-		: 'Ihre Belegstelle, mit dem Anlauf, der zu ihr führt:';
-	const belegBlock = beleg ? `${belegKopf}\n"""\n${beleg.text}\n"""\n\n` : '';
-
-	return `DAS MUSTER DER FORSCHERIN: „${inscription}"
-${memos.length > 0 ? `\nIhr Memo:\n${memos.join('\n\n')}\n` : ''}
-${belegBlock}────────────────────────────────────────
-
-${prev}BLOCK, IN DEM DIE ZU PRÜFENDE STELLE STEHT — Blockkopf: ${head}
+	return `${prev}BLOCK, IN DEM DIE ZU PRÜFENDE STELLE STEHT — Blockkopf: ${head}
 """
 ${zug.turnText.slice(0, 2000)}
 """
@@ -437,7 +444,7 @@ export async function pruefeStellen(
 	opts: PruefOptions = {}
 ): Promise<{ stellen: Stelle[]; unlesbar: UnlesbareStelle[]; nichtBelegt: UnbelegteStelle[] }> {
 	const tier = resolveTier('anker.wiedererkennung');
-	const system = befundSystem(kriterium, gestalt);
+	const system = befundSystem(kriterium, gestalt, inscription, memos, beleg);
 	const anlaufN = opts.anlaufZuege ?? 2;
 	let done = 0;
 
@@ -452,7 +459,7 @@ export async function pruefeStellen(
 		try {
 			const res = await chatJson<Befund>(
 				system,
-				befundMessage(inscription, memos, beleg, z, anlauf, aufnahmeOf(alleZuege, idx, gestalt.positionen.length)),
+				befundMessage(z, anlauf, aufnahmeOf(alleZuege, idx, gestalt.positionen.length)),
 				{ tier, signal: opts.signal, cacheable: system, versuche: 2 }
 			);
 			if (!res.ok) return res;
