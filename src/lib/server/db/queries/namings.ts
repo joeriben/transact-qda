@@ -556,9 +556,13 @@ export async function getAllProjectNamings(projectId: string) {
 			   -- Current inscription (latest non-NULL in stack)
 			   (SELECT na.inscription FROM naming_acts na
 			    WHERE na.naming_id = n.id AND na.inscription IS NOT NULL ORDER BY na.seq DESC LIMIT 1) as current_inscription,
-			   -- Grounding: has document anchor
+			   -- Grounding: has document anchor. Valenzen wie in getAnnotationsByCode
+			   -- (codes UND thematizes) — mit 'codes' allein galt jedes nur
+			   -- thematisierend verankerte Naming als ungegroundet, und die Liste
+			   -- widerspraeche der Karte.
 			   EXISTS(SELECT 1 FROM appearances a
-			    WHERE a.directed_from = n.id AND a.valence = 'codes') as has_document_anchor,
+			    WHERE a.directed_from = n.id
+			      AND a.valence IN ('codes', 'thematizes')) as has_document_anchor,
 			   -- Grounding: has memo link
 			   EXISTS(SELECT 1 FROM participations mp
 			    JOIN namings pn ON pn.id = mp.id AND pn.deleted_at IS NULL

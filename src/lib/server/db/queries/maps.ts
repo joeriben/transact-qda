@@ -826,9 +826,15 @@ export async function getMapAppearances(mapId: string, projectId: string) {
 			   -- Whether this appearance is collapsed (pinned) or showing latest
 			   (a.properties->>'collapseAt') IS NOT NULL as is_collapsed,
 			   -- Provenance: empirical grounding (has document annotations)
+			   -- Valenzen wie in getAnnotationsByCode (codes UND thematizes): 'codes'
+			   -- allein liess jedes nur thematisierend verankerte Naming als
+			   -- ungegroundet erscheinen — auf der Primaerkarte traf das ausschliesslich
+			   -- die von Hand angelegten Namings des Forschers, also gerade die, deren
+			   -- Verankerung am Material er selbst vollzogen hat.
 			   EXISTS (
 			     SELECT 1 FROM appearances ann
-			     WHERE ann.directed_from = a.naming_id AND ann.valence = 'codes'
+			     WHERE ann.directed_from = a.naming_id
+			       AND ann.valence IN ('codes', 'thematizes')
 			   ) as has_document_anchor,
 			   -- Ausgeblendet: der Forscher hat JEDE Passage dieses Namings im Reader
 			   -- ausgeblendet (properties.hidden) — dann steht in der Unplaced-Liste
@@ -902,14 +908,17 @@ export async function getMapAppearances(mapId: string, projectId: string) {
 			     WHERE sub.naming_id = a.naming_id
 			       AND sub.naming_id != sub.perspective_id
 			   ) as phase_ids,
-			   -- Documents this naming is anchored in (via valence='codes' annotations)
+			   -- Documents this naming is anchored in (dieselben Valenzen wie
+			   -- has_document_anchor, sonst gruppiert die Halde ein verankertes
+			   -- Naming unter "— no document anchor —")
 			   COALESCE(
 			     (SELECT json_agg(d)
 			      FROM (
 			        SELECT DISTINCT doc.id, doc.inscription as label
 			        FROM appearances ann
 			        JOIN namings doc ON doc.id = ann.directed_to AND doc.deleted_at IS NULL
-			        WHERE ann.directed_from = a.naming_id AND ann.valence = 'codes'
+			        WHERE ann.directed_from = a.naming_id
+			          AND ann.valence IN ('codes', 'thematizes')
 			      ) d),
 			     '[]'::json
 			   ) as document_anchors,
