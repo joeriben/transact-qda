@@ -468,9 +468,12 @@ function normal(text: string): string {
  *
  * Auslassungen des Modells trennen Teilstücke; jedes für sich muss in der
  * Stelle stehen. Sehr kurze Teilstücke werden nicht geprüft, die treffen
- * zufällig.
+ * zufällig — ein LEERES Zitat dagegen belegt nichts und gilt als unbelegt.
+ * (Beobachtet: ein Befund kam ohne Zitat zurück und stand als geprüfter Fall
+ * in der Liste, während er auf keine Worte zeigte.)
  */
 export function zitatStehtInStelle(zitat: string, zugText: string): boolean {
+	if (normal(zitat).length === 0) return false;
 	const stelle = normal(zugText);
 	const teile = zitat
 		.split(/\[\s*(?:…|\.\.\.)\s*\]|…/)
