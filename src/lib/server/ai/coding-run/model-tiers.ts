@@ -39,7 +39,9 @@ import { loadSettings, type Provider } from '../client.js';
 
 export type Tier =
 	| 'coding-run.h1' // H1 propose + react — code extraction, frictionless, many calls
-	| 'coding-run.h2'; // H2 read + confront — independent comprehension, the measure
+	| 'coding-run.h2' // H2 read + confront — independent comprehension, the measure
+	| 'anker.geschehen' // Was geschieht an dieser Äußerung — einmal je Dokument
+	| 'anker.wiedererkennung'; // Ist das derselbe Zug — je Naming über alle Einheiten
 
 export interface TierModel {
 	provider: Provider;
@@ -134,6 +136,41 @@ export const TIER_REGISTRY: Record<Tier, TierMeta> = {
 				...SONNET_OR,
 				note: 'Goldstandard-Referenz, ~3× teurer als MiMo. Für H1 nicht nötig — die Strauss-Disziplin ist eine Prompt-Funktion, nicht Reasoning-Tiefe.'
 			}
+		]
+	},
+	'anker.geschehen': {
+		displayName: 'Anker-Erweiterung — Geschehen',
+		description:
+			'Beschreibt je Äußerungseinheit, WAS DORT GESCHIEHT: welcher Akteur ' +
+			'gegenüber wem was tut und was das in der Konstellation bewirkt. Sieht ' +
+			'KEIN Naming — strukturell erzwungenes Nicht-Wissen, damit die Lesart ' +
+			'nicht rückwärts aus einem gesuchten Begriff gebildet wird. Läuft einmal ' +
+			'je Dokument und wird für jedes Naming wiederverwendet; entsprechend ' +
+			'hohe Call-Zahl bei einmaligen Kosten.',
+		recommended: MIMO,
+		fallback: SONNET_OR,
+		candidates: [
+			{ ...MIMO, note: 'Empfehlung: Reasoning-Klasse zu MiMo-Preis, hält den Sprach-Lock. Die Aufgabe ist Lesart, nicht Tiefe.' },
+			{ ...SONNET_OR, note: 'Referenz für die Lesart. ~3× teurer; bei einmaligem Lauf je Dokument vertretbar.' },
+			{ ...KIMI_MAMMOUTH, note: 'Preisnah zu Mistral, EU-vermittelt. Für diese Aufgabe nicht gemessen.' },
+			{ ...MISTRAL, note: 'Günstigste EU-Route. Sprachdrift beobachtet (siehe H1) — nur mit fest konfigurierter Sprache.' }
+		]
+	},
+	'anker.wiedererkennung': {
+		displayName: 'Anker-Erweiterung — Wiedererkennung',
+		description:
+			'Entscheidet je Einheit, ob das dort Geschehene unter das Naming des ' +
+			'Forschers fällt. Bekommt Naming, Memo und die Belegstelle des Forschers ' +
+			'samt deren Geschehen-Beschreibung. Nein ist die Vorgabe. Diese Stufe ' +
+			'trägt die Unterscheidung, die alles entscheidet — hier gehört das ' +
+			'schärfere Modell hin.',
+		recommended: SONNET_OR,
+		fallback: MIMO,
+		candidates: [
+			{ ...SONNET_OR, note: 'Empfehlung: Die Unterscheidung Zug/Thema ist die eigentliche Leistung; hier ist Reasoning-Tiefe der Punkt.' },
+			{ ...SONNET_MAMMOUTH, note: 'Wie Sonnet OR, EU-vermittelt über Mammouth.' },
+			{ ...OPUS_OR, note: 'Höchste Tiefe, ~8× teurer als MiMo. Für schwierige Züge (Haltung, Ironie) erwägenswert.' },
+			{ ...MIMO, note: 'Günstige Route. Riskiert genau den Fehler, um den es geht — thematische statt performativer Passung.' }
 		]
 	},
 	'coding-run.h2': {

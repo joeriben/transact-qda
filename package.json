@@ -19,7 +19,8 @@
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"migrate": "node scripts/migrate.js",
-		"verify:pdf": "node installer/check-pdf-support.mjs"
+		"verify:pdf": "node installer/check-pdf-support.mjs",
+		"anker": "esbuild scripts/anker-zug.ts --bundle --platform=node --format=esm --packages=external --alias:'$lib'=./src/lib --outfile=.tmp-anker/run.mjs --log-level=warning && node .tmp-anker/run.mjs"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-node": "^5.0.0",
