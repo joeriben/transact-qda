@@ -18,7 +18,8 @@
 </script>
 
 <div class="map-node" class:absent={el.properties?.absent} class:ai-suggested={el.properties?.aiSuggested} class:ai-withdrawn={ms.isWithdrawn(el.properties)} class:ai-rejected={ms.isRejected(el)} class:phase-member={ms.highlightedPhase && ms.isPhaseHighlighted(el)} class:phase-dimmed={ms.highlightedPhase && !ms.isPhaseHighlighted(el)} class:centered-dim={cp.centeredConnections && !cp.centeredConnections.has(el.naming_id)} class:centered-anchor={cp.centeredId === el.naming_id}
-	style="{ms.highlightedPhase && ms.isPhaseHighlighted(el) ? `--phase-color: ${ms.phaseColorMap.get(ms.highlightedPhase)};` : ''}">
+	style="{ms.highlightedPhase && ms.isPhaseHighlighted(el) ? `--phase-color: ${ms.phaseColorMap.get(ms.highlightedPhase)};` : ''}"
+	title={ms.rejectionLabel(el) ?? undefined}>
 	<div class="node-header">
 		<span class="designation-dot" style="background: {ms.designationColor(el.designation)}"></span>
 		{#if el.has_document_anchor}

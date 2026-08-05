@@ -125,7 +125,7 @@
 								draggable="true"
 								ondragstart={(e) => onDragStart(e, it.naming_id)}
 								title={ms.isRejected(it)
-									? 'You rejected this cue — shown because the hidden/rejected filter is off'
+									? `${ms.rejectionLabel(it)} — shown because the hidden/rejected filter is off`
 									: ms.isHidden(it)
 										? 'All its passages are hidden in the material — shown because the hidden/rejected filter is off'
 										: 'Drag onto the canvas to place, or use the button for the viewport center'}

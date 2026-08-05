@@ -11,12 +11,13 @@
 
 	// Zustand in Worten am title, nicht als weiteres Abzeichen in einer Zeile,
 	// die schon Punkt, Symbol, Memo-Zahl und Badges trägt. ai-eval: 'rejected'
-	// ist das Urteil des Forschers, 'withdrawn' die Absage an die Karte — zwei
-	// verschiedene Akte, deshalb zwei verschiedene Wörter.
+	// ist ein Urteil eines Forschers, 'withdrawn' die Absage an die Karte — zwei
+	// verschiedene Akte, deshalb zwei verschiedene Wörter. Wessen Urteil es war,
+	// steht dabei: im geteilten Projekt kann es das eines Mitglieds sein.
 	const cardTitle = $derived(
 		[
 			item.properties?.aiReasoning || null,
-			ms.isRejected(item) ? 'Rejected by your verdict' : null,
+			ms.rejectionLabel(item),
 			ms.isHidden(item) ? 'All its passages are hidden in the material' : null
 		]
 			.filter(Boolean)

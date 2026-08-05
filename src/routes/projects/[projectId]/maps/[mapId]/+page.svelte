@@ -237,8 +237,34 @@
 			try {
 				const res = await fetch(`/api/projects/${pid}/ai-eval`);
 				if (!res.ok || cancelled) return;
-				const body = (await res.json()) as { rejected?: string[] };
-				ms.rejectedNamings = new Set(body.rejected ?? []);
+				const body = (await res.json()) as {
+					latest?: {
+						subjectNamingId: string;
+						verdict: string;
+						createdAt: string | null;
+						evaluatorName: string | null;
+						evaluatorCount: number;
+						mine: boolean;
+					}[];
+				};
+				// Nur 'reject' graut aus — 'accept' und 'revise' ändern die Karte nicht.
+				// Der Urteilende kommt mit: das Ausgrauen soll sagen können, wessen
+				// Urteil es war, sonst gibt die Karte die Handlung eines Mitglieds
+				// als die des Betrachters aus.
+				ms.rejectedNamings = new Map(
+					(body.latest ?? [])
+						.filter((v) => v.verdict === 'reject')
+						.map((v) => [
+							v.subjectNamingId,
+							{
+								verdict: v.verdict,
+								createdAt: v.createdAt,
+								evaluatorName: v.evaluatorName,
+								mine: v.mine,
+								evaluatorCount: v.evaluatorCount
+							}
+						])
+				);
 			} catch {
 				// Ohne Urteile graut nichts aus — die Karte bleibt benutzbar.
 			}

@@ -29,8 +29,11 @@ export const GET: RequestHandler = async ({ params, locals }) => {
 	if (!member) error(403, 'Not a member of this project');
 
 	const latest = await getLatestVerdictsForProject(projectId);
+	// `mine` wird hier gesetzt, nicht in der Query: die Zuordnung "war ich das?"
+	// gehoert zum Aufrufer, nicht zum Datensatz. Die Karte braucht sie, um nicht
+	// das Urteil eines Mitglieds als das eigene auszugeben.
 	return json({
-		latest,
+		latest: latest.map((v) => ({ ...v, mine: v.evaluatorUserId === locals.user!.id })),
 		rejected: latest.filter((v) => v.verdict === 'reject').map((v) => v.subjectNamingId)
 	});
 };

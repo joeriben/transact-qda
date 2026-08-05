@@ -8,6 +8,17 @@ import type { SwRole } from '$lib/shared/types/index.js';
 
 const MAP_STATE_KEY = Symbol('mapState');
 
+/** ai-eval: das letzte Verdikt zu einem Naming, samt Urteilendem. */
+export type RejectionInfo = {
+	verdict: string;
+	createdAt: string | null;
+	evaluatorName: string | null;
+	/** Hat der Betrachter selbst geurteilt? */
+	mine: boolean;
+	/** Zahl der Mitglieder, die zu diesem Naming geurteilt haben. */
+	evaluatorCount: number;
+};
+
 export type StackData = {
 	inscriptions: any[];
 	designations: any[];
@@ -72,9 +83,12 @@ export function createMapState(
 	// verschwindet nicht, es wird nur als verworfen markiert.
 	// `showHidden` holt sie in die Liste zurück, wie der Fuß der Passagenliste.
 	let showHidden = $state(false);
-	// ai-eval: verworfene Cues (letztes Urteil = reject). Reine Audit-Folge —
-	// ohne die Audit-Schicht ist die Menge leer und nichts ändert sich.
-	let rejectedNamings = $state<Set<string>>(new Set());
+	// ai-eval: verworfene Cues (letztes Urteil = reject), je mit dem Urteilenden.
+	// Reine Audit-Folge — ohne die Audit-Schicht ist die Menge leer und nichts
+	// ändert sich. Der Urteilende gehört dazu: in einem geteilten Projekt kann
+	// das Urteil von jemand anderem sein, und dann darf die Ansicht es nicht als
+	// das eigene ausgeben.
+	let rejectedNamings = $state<Map<string, RejectionInfo>>(new Map());
 
 	function isHidden(node: any): boolean {
 		return node?.anchors_hidden === true;
@@ -82,6 +96,23 @@ export function createMapState(
 
 	function isRejected(node: any): boolean {
 		return rejectedNamings.has(node?.naming_id);
+	}
+
+	/** Wer hat verworfen, wann, und stritten mehrere darüber. */
+	function rejectionOf(node: any): RejectionInfo | null {
+		return rejectedNamings.get(node?.naming_id) ?? null;
+	}
+
+	/** Ein Satz für Tooltips: „von wem, wann" statt eines anonymen Ausgrauens. */
+	function rejectionLabel(node: any): string | null {
+		const r = rejectionOf(node);
+		if (!r) return null;
+		const who = r.mine ? 'You' : (r.evaluatorName ?? 'Another member');
+		const when = r.createdAt ? new Date(r.createdAt).toLocaleDateString() : null;
+		const base = `${who} rejected this cue${when ? ` on ${when}` : ''}`;
+		return r.evaluatorCount > 1
+			? `${base} — ${r.evaluatorCount} members have judged it, the latest verdict counts here`
+			: base;
 	}
 
 	// ─── Unresolved tracking (primary SitMap only) ───
@@ -749,7 +780,9 @@ export function createMapState(
 		set showHidden(v: boolean) { showHidden = v; },
 		isHidden,
 		isRejected,
-		set rejectedNamings(v: Set<string>) { rejectedNamings = v; },
+		rejectionOf,
+		rejectionLabel,
+		set rejectedNamings(v: Map<string, RejectionInfo>) { rejectedNamings = v; },
 
 		// Unresolved tracking
 		set positionsRef(v: Map<string, { x: number; y: number }> | null) { positionsRef = v; },

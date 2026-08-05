@@ -139,29 +139,67 @@ export async function getEvaluationsForDocument(
 	return res.rows.map(mapRow);
 }
 
+export interface LatestVerdict {
+	subjectNamingId: string;
+	verdict: Verdict;
+	createdAt: string;
+	evaluatorUserId: string | null;
+	/** Anzeigename des Urteilenden; null, wenn das Konto nicht mehr existiert. */
+	evaluatorName: string | null;
+	/** Wie viele Mitglieder ueberhaupt ein Urteil zu diesem Naming abgegeben haben. */
+	evaluatorCount: number;
+}
+
 /**
- * Letztes Urteil je beurteiltem Naming im ganzen Projekt.
+ * Letztes Urteil je beurteiltem Naming im ganzen Projekt — MIT dem Urteilenden.
  *
  * Für Ansichten, die ein Naming zeigen, ohne an einem Dokument zu stehen — die
  * Karte etwa. Dort ist die Einheit das Naming, nicht die Passage: maßgeblich ist
  * das zuletzt gegebene Urteil über dieses Naming, gleich an welcher Passage.
  * Die Historie bleibt vollständig in der Tabelle; hier steht nur ihr Rand.
+ *
+ * Der Urteilende gehört zwingend dazu. Ein Projekt kann mehrere Mitglieder
+ * haben, und ein Verdikt ist der Ort, an dem ein Mensch Verantwortung ausübt
+ * (docs/design-begleiten.md, Satz IV) — eine Ansicht, die ausgraut, ohne zu
+ * sagen wessen Urteil das war, schreibt die Handlung des einen dem anderen zu.
+ * `evaluatorCount` zeigt an, wo mehrere geurteilt haben und „das letzte gewinnt"
+ * eine Meinungsverschiedenheit verdeckt.
+ *
+ * Der Join auf `users` bricht den Trennungsvertrag nicht: users ist die
+ * Auth-Tabelle, keine Kerntabelle der Ontologie (namings/naming_acts/
+ * appearances), und die Richtung bleibt audit -> aussen.
  */
 export async function getLatestVerdictsForProject(
 	projectId: string
-): Promise<{ subjectNamingId: string; verdict: Verdict; createdAt: string }[]> {
-	const res = await query<{ subject_naming_id: string; verdict: Verdict; created_at: string }>(
-		`SELECT DISTINCT ON (subject_naming_id)
-		        subject_naming_id, verdict, created_at
-		 FROM ai_naming_evaluations
-		 WHERE project_id = $1 AND subject_naming_id IS NOT NULL
-		 ORDER BY subject_naming_id, created_at DESC`,
+): Promise<LatestVerdict[]> {
+	const res = await query<{
+		subject_naming_id: string;
+		verdict: Verdict;
+		created_at: string;
+		evaluator_user_id: string | null;
+		evaluator_name: string | null;
+		evaluator_count: string;
+	}>(
+		`SELECT DISTINCT ON (e.subject_naming_id)
+		        e.subject_naming_id, e.verdict, e.created_at, e.evaluator_user_id,
+		        COALESCE(NULLIF(u.display_name, ''), u.email) AS evaluator_name,
+		        (SELECT count(DISTINCT e2.evaluator_user_id)
+		           FROM ai_naming_evaluations e2
+		          WHERE e2.project_id = e.project_id
+		            AND e2.subject_naming_id = e.subject_naming_id) AS evaluator_count
+		 FROM ai_naming_evaluations e
+		 LEFT JOIN users u ON u.id = e.evaluator_user_id
+		 WHERE e.project_id = $1 AND e.subject_naming_id IS NOT NULL
+		 ORDER BY e.subject_naming_id, e.created_at DESC`,
 		[projectId]
 	);
 	return res.rows.map((r) => ({
 		subjectNamingId: r.subject_naming_id,
 		verdict: r.verdict,
-		createdAt: r.created_at
+		createdAt: r.created_at,
+		evaluatorUserId: r.evaluator_user_id,
+		evaluatorName: r.evaluator_name,
+		evaluatorCount: Number(r.evaluator_count) || 0
 	}));
 }
 

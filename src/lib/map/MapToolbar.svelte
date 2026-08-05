@@ -165,7 +165,7 @@
 			onclick={() => ms.showHidden = !ms.showHidden}
 			title={ms.showHidden
 				? 'Take them out of Unplaced again'
-				: 'Unplaced namings whose passages you hid in the reader, or whose cue you rejected. Click to list them again.'}>
+				: 'Unplaced namings whose passages were hidden in the reader, or whose cue was rejected — by you or by another member of this project. Click to list them again.'}>
 			{ms.hiddenCount} hidden/rejected
 		</button>
 	{/if}
