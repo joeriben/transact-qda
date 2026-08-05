@@ -269,10 +269,11 @@ async function main() {
 	console.log(`Züge:      ${v.zuegeGesamt}`);
 
 	if (!v.belegstelle) {
-		console.log('\nKeine Belegstelle dieses Namings in diesem Dokument.\n');
-		return;
+		console.log('\nKeine Marke dieses Namings, nirgends. Gesucht wird allein nach dem Kriterium.');
+	} else {
+		const woher = v.belegAusAnderemDokument ? 'Marke aus einem anderen Dokument' : 'Belegstelle mit Anlauf';
+		console.log(`\n${woher}:\n   ${short(v.belegstelle, 400)}`);
 	}
-	console.log(`\nBelegstelle mit Anlauf:\n   ${short(v.belegstelle, 400)}`);
 
 	if (!v.kriterium) throw new Error('Das Kriterium kam nicht auswertbar zurück.');
 	if (!vorhanden) writeFileSync(kp, JSON.stringify(v.kriterium, null, '\t'), 'utf-8');

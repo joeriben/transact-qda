@@ -181,12 +181,48 @@ Die Umgebung, in der ${eins ? 'die Marke steht' : 'die Marken stehen'} — damit
 ${umgebung}`;
 }
 
+/**
+ * Die Belegstelle für einen Lauf über DIESES Dokument.
+ *
+ * Ein Naming reicht. Hat der Forscher in diesem Dokument nichts markiert,
+ * heißt das nicht, dass er kein Muster hat — es heißt, dass er hier noch nicht
+ * gesucht hat, und genau dafür ist der Durchgang da. Gibt es Marken in einem
+ * anderen Dokument, gehen sie als Beispiel mit, ausgewiesen als von dort. Gibt
+ * es gar keine, läuft es ohne: Was gesucht wird, steht im Kriterium, und das
+ * kommt aus Naming und Memo.
+ */
+async function belegstelleFuerLauf(
+	projectId: string,
+	muster: MusterQuelle,
+	documentId: string,
+	zuege: Zug[],
+	fullText: string
+): Promise<{ beleg: Belegstelle | null; ausAnderemDokument: boolean }> {
+	const hier = belegstelleOf(zuege, muster.anchors, documentId, fullText);
+	if (hier) return { beleg: hier, ausAnderemDokument: false };
+
+	const andere = [...new Set(muster.anchors.map((a) => a.documentId))].filter((d) => d !== documentId);
+	for (const d of andere) {
+		try {
+			const text = await ladeVolltext(projectId, d);
+			const z = zuegeOf(text, sichten(text));
+			const beleg = belegstelleOf(z, muster.anchors, d, text);
+			if (beleg) return { beleg, ausAnderemDokument: true };
+		} catch {
+			/* Dokument ohne Volltext oder nicht mehr im Projekt — nächstes. */
+		}
+	}
+	return { beleg: null, ausAnderemDokument: false };
+}
+
 // ── Vorbereitung ──────────────────────────────────────────────────
 
 export interface Vorbereitung {
 	gestalt: Gestalt;
 	zuegeGesamt: number;
 	belegstelle: string | null;
+	/** Die Marken stehen in einem anderen Dokument — dort ist nichts hervorzuheben. */
+	belegAusAnderemDokument: boolean;
 	/** Zeichenspannen der Belegstellen-Züge — die UI hebt sie hervor. */
 	belegZuege: { charStart: number; charEnd: number }[];
 	inscription: string;
@@ -211,18 +247,26 @@ export async function vorbereiten(
 	]);
 	const gestalt = sichten(fullText);
 	const zuege = zuegeOf(fullText, gestalt);
-	const beleg = belegstelleOf(zuege, muster.anchors, documentId, fullText);
+	const { beleg, ausAnderemDokument } = await belegstelleFuerLauf(
+		projectId,
+		muster,
+		documentId,
+		zuege,
+		fullText
+	);
 
-	let kriterium = opts.kriterium ?? null;
-	if (!kriterium && beleg) {
-		kriterium = await ableitenKriterium(muster.inscription, muster.memos, opts.signal);
-	}
+	// Das Kriterium hängt nicht an einer Marke: Es kommt aus Naming und Memo.
+	const kriterium =
+		opts.kriterium ?? (await ableitenKriterium(muster.inscription, muster.memos, opts.signal));
 
 	return {
 		gestalt,
 		zuegeGesamt: zuege.length,
 		belegstelle: beleg?.text ?? null,
-		belegZuege: (beleg?.zuege ?? []).map((z) => ({ charStart: z.charStart, charEnd: z.charEnd })),
+		belegAusAnderemDokument: ausAnderemDokument,
+		belegZuege: ausAnderemDokument
+			? []
+			: (beleg?.zuege ?? []).map((z) => ({ charStart: z.charStart, charEnd: z.charEnd })),
 		inscription: muster.inscription,
 		memos: muster.memos,
 		kriterium
@@ -266,11 +310,19 @@ export async function durchgehen(
 	]);
 	const gestalt = sichten(fullText);
 	const zuege = zuegeOf(fullText, gestalt);
-	const beleg = belegstelleOf(zuege, muster.anchors, documentId, fullText);
-	if (!beleg) throw new Error('Dieses Naming hat in diesem Dokument keine Belegstelle.');
+	const { beleg, ausAnderemDokument } = await belegstelleFuerLauf(
+		projectId,
+		muster,
+		documentId,
+		zuege,
+		fullText
+	);
 
-	// Die Belegstelle bleibt draußen: Sie ist die Vorgabe, nicht der Fund.
-	const scope = opts.belegstelleMitpruefen ? zuege : zuege.filter((z) => !beleg.zuege.includes(z));
+	// Die Belegstelle bleibt draußen, wo sie in DIESEM Dokument steht: Sie ist die
+	// Vorgabe, nicht der Fund. Stammt sie von woanders, ist hier nichts
+	// auszunehmen, und ohne Marken ist alles zu prüfen.
+	const drin = !beleg || ausAnderemDokument || opts.belegstelleMitpruefen ? [] : beleg.zuege;
+	const scope = drin.length > 0 ? zuege.filter((z) => !drin.includes(z)) : zuege;
 
 	const geprueftJePosition: Record<string, number> = {};
 	for (const z of scope) geprueftJePosition[z.position] = (geprueftJePosition[z.position] ?? 0) + 1;
@@ -278,7 +330,7 @@ export async function durchgehen(
 	const { stellen, unlesbar, nichtBelegt } = await pruefeStellen(
 		muster.inscription,
 		muster.memos,
-		beleg.text,
+		beleg ? { text: beleg.text, ausAnderemDokument } : null,
 		kriterium,
 		gestalt,
 		zuege,

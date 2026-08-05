@@ -58,6 +58,7 @@
 	let gestalt = $state<Gestalt | null>(null);
 	let zuegeGesamt = $state(0);
 	let belegstelle = $state<string | null>(null);
+	let belegAusAnderemDokument = $state(false);
 	let kriterium = $state<Kriterium | null>(null);
 	let belegstelleMitpruefen = $state(false);
 	let sichtungOffen = $state(false);
@@ -94,6 +95,7 @@
 			gestalt = v.gestalt;
 			zuegeGesamt = v.zuegeGesamt;
 			belegstelle = v.belegstelle;
+			belegAusAnderemDokument = v.belegAusAnderemDokument ?? false;
 			kriterium = v.kriterium;
 			phase = 'kriterium';
 		} catch (e) {
@@ -235,17 +237,23 @@
 		<div class="warten">Sichtung läuft, Kriterium wird abgeleitet …</div>
 	{/if}
 
+	<!-- Eine Marke ist keine Voraussetzung: Was gesucht wird, steht im Kriterium,
+	     und das kommt aus Naming und Memo. Wo eine Marke da ist, geht sie als
+	     Beispiel mit — auch aus einem anderen Dokument. -->
 	{#if belegstelle === null && phase !== 'laden' && phase !== 'fehler'}
 		<div class="leer">
-			Dieses Naming hat in diesem Dokument keine Belegstelle. Markiere zuerst die Stelle, an der
-			du das Muster bemerkt hast — sie ist die Vorgabe, aus der das Kriterium folgt.
+			Keine Marke dieses Namings, nirgends. Gesucht wird allein nach dem Kriterium.
 		</div>
-	{:else if kriterium && (phase === 'kriterium' || phase === 'lauf' || phase === 'fertig')}
+	{:else if belegAusAnderemDokument && phase !== 'laden' && phase !== 'fehler'}
+		<div class="leer">Deine Marke steht in einem anderen Dokument — sie geht als Beispiel mit.</div>
+	{/if}
+
+	{#if kriterium && (phase === 'kriterium' || phase === 'lauf' || phase === 'fertig')}
 		<section class="kriterium" class:gesperrt={phase === 'lauf'}>
 			<h3>Kriterium</h3>
 			<p class="hinweis">
-				Aus Naming, Memo und Belegstelle abgeleitet. Ändere es, bevor es läuft — geprüft wird,
-				was hier steht.
+				Aus deinem Naming und deinem Memo. Ändere es, bevor es läuft — geprüft wird, was hier
+				steht.
 			</p>
 
 			<div class="paar">

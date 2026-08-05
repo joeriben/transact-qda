@@ -68,6 +68,8 @@ export function kriteriumSystem(): string {
 
 Deine Aufgabe: Bringe in Form, was in ihrem Naming und ihrem Memo BEREITS STEHT, damit sie es korrigieren kann, bevor damit gearbeitet wird. Du bildest keine eigene Hypothese, erweiterst ihre nicht und ergänzt nichts, was sie nicht geschrieben hat.
 
+Steht kein Memo da, hast du nur das Naming. Dann entfaltest du, was das Naming selbst sagt, und nichts darüber hinaus: lieber ein einziger Bestandteil, der wirklich darin steckt, als drei erfundene. Ein Naming aus zwei Wörtern gibt wenig her, und das ist eine Auskunft für die Forscherin und kein Mangel, den du auffüllst.
+
 Du siehst das Material NICHT, und du brauchst es nicht. Was das Muster ist, sagt sie; wo es vorkommt, ist die spätere Frage. Wenn ihr Memo einen Bestandteil nur andeutet, gib ihn so knapp wieder, wie er dasteht — erfinde ihn nicht aus.
 
 BESTANDTEILE — die Vollzüge, aus denen das Muster zusammengesetzt ist. Ein Bestandteil ist etwas, das jemand TUT: dramatisieren, vorgeben, unterstellen, offenlassen. Ein Gegenstand, über den geredet wird, ist kein Bestandteil. Je Bestandteil: der Kurzname und woran er kenntlich ist — an der Redeweise, nicht am Thema.
@@ -175,7 +177,7 @@ Alles in der Sprache des Protokolls.`;
 export function befundMessage(
 	inscription: string,
 	memos: string[],
-	belegstelleMitAnlauf: string,
+	beleg: { text: string; ausAnderemDokument: boolean } | null,
 	zug: Zug,
 	anlauf: string[],
 	aufnahme: string[]
@@ -194,14 +196,17 @@ export function befundMessage(
 		zug.brueche.length > 0
 			? `RISSE AN DIESER STELLE:\n${zug.brueche.map((b) => `• ${b.was} Wortlaut: „${b.wortlaut.slice(0, 180)}"`).join('\n')}\n\n`
 			: '';
+	// Ohne Marke läuft es ohne Beispiel: Was gesucht wird, steht im Kriterium.
+	// Eine Marke aus einem anderen Dokument geht als Beispiel mit, ausgewiesen
+	// als von dort — damit ihr Gegenstand nicht für den Zug gehalten wird.
+	const belegKopf = beleg?.ausAnderemDokument
+		? 'Eine Stelle, die sie in einem ANDEREN Dokument markiert hat. Sie zeigt die Form des Zuges; wovon dort die Rede ist, gehört nicht dazu:'
+		: 'Ihre Belegstelle, mit dem Anlauf, der zu ihr führt:';
+	const belegBlock = beleg ? `${belegKopf}\n"""\n${beleg.text}\n"""\n\n` : '';
+
 	return `DAS MUSTER DER FORSCHERIN: „${inscription}"
 ${memos.length > 0 ? `\nIhr Memo:\n${memos.join('\n\n')}\n` : ''}
-Ihre Belegstelle, mit dem Anlauf, der zu ihr führt:
-"""
-${belegstelleMitAnlauf}
-"""
-
-────────────────────────────────────────
+${belegBlock}────────────────────────────────────────
 
 ${prev}BLOCK, IN DEM DIE ZU PRÜFENDE STELLE STEHT — Blockkopf: ${head}
 """
@@ -413,13 +418,18 @@ function aufnahmeOf(alle: Zug[], idx: number, positionen: number, maxZuege = 3, 
 		chars += z.text.length;
 		if (chars >= maxChars) break;
 	}
-	return out;
+	// Kommt der Adressat im Fenster gar nicht vor, ist das keine Aufnahme, sondern
+	// nur der nächste Absatz desselben Sprechers. In Terminal-Mitschnitten ist das
+	// der Regelfall: Auf eine Eingabe folgen ein Dutzend Agentenblöcke, ehe wieder
+	// jemand antwortet. Als „Aufnahme" ausgegeben, liesse es eine Erwiderung lesen,
+	// wo keine steht.
+	return adressatHatGesprochen ? out : [];
 }
 
 export async function pruefeStellen(
 	inscription: string,
 	memos: string[],
-	belegstelleMitAnlauf: string,
+	beleg: { text: string; ausAnderemDokument: boolean } | null,
 	kriterium: Kriterium,
 	gestalt: Gestalt,
 	alleZuege: Zug[],
@@ -442,7 +452,7 @@ export async function pruefeStellen(
 		try {
 			const res = await chatJson<Befund>(
 				system,
-				befundMessage(inscription, memos, belegstelleMitAnlauf, z, anlauf, aufnahmeOf(alleZuege, idx, gestalt.positionen.length)),
+				befundMessage(inscription, memos, beleg, z, anlauf, aufnahmeOf(alleZuege, idx, gestalt.positionen.length)),
 				{ tier, signal: opts.signal, cacheable: system, versuche: 2 }
 			);
 			if (!res.ok) return res;
