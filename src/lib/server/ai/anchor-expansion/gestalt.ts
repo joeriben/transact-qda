@@ -82,6 +82,8 @@ export interface Verteilung {
 	beispiele: Record<string, string[]>;
 	/** Verhältnis der höchsten zur niedrigsten Rate; Infinity, wenn eine Position bei null steht. */
 	schiefe: number;
+	/** Vom Forscher vorgelegte Wortgruppe (true) oder Form des Deutschen (false). */
+	eigen: boolean;
 }
 
 export interface Gestalt {
@@ -221,31 +223,81 @@ function findBrueche(turns: Turn[], positionen: Position[], form: TurnForm): Bru
 // und deshalb wird je 1000 Wörter gerechnet: Die Position mit dem längeren
 // Text hat sonst in jeder Kategorie die Nase vorn.
 
-const MARK_KINDS: { name: string; re: RegExp }[] = [
+/**
+ * FORM, nicht Inhalt.
+ *
+ * Was hier fest steht, sind grammatische und typographische Tatsachen des
+ * Deutschen: ob gefragt, ausgerufen, aufgefordert wird, und ob eine Frage zwei
+ * Größen gegeneinander stellt. Diese vier gelten für jedes Protokoll, gleich
+ * worum es geht, und sie kommen aus keiner Hypothese über irgendeinen Fall.
+ *
+ * Eine Wortliste dagegen — „entscheidend | folgenreich | Weichenstellung" —
+ * ist keine Form, sondern eine Vermutung darüber, woran man ein bestimmtes
+ * Muster erkennt. Sie gehört deshalb nicht in den Code, sondern zu dem, was der
+ * Forscher vorlegt und verantwortet: `SichtOptions.lexikalisch`. Genau wie das
+ * Kriterium. Hier stand einmal eine solche Liste, gewonnen aus einem einzigen
+ * Fall und dann über jedes Dokument gelaufen; sie zählte zuverlässig ihre
+ * eigene Herkunft wieder.
+ */
+const FORM_KINDS: { name: string; re: RegExp }[] = [
 	{ name: 'Frage', re: /\?/g },
+	{ name: 'Ausruf', re: /!/g },
 	{
-		// Nicht jede Frage ist eine Zweiteilung, und ein Fragezeichen zählt hier
-		// deshalb nicht mit. Gezählt wird nur, wo zwei Größen gegeneinander
-		// gestellt sind. Dass eine Bezugnahme auf eine fremde Zweiteilung
-		// („Begründe 1 vs. 2") derselben Marke zufällt wie die Zweiteilung
-		// selbst, ist die Grenze einer Wortzählung — sie orientiert, sie befindet
-		// nicht.
-		name: 'Zweiteilung',
-		re: /\b(?:entweder\s+\S+\s+oder|\d\s*vs\.?\s*\d|Option\s+[12AB]\b|entweder\/oder|beide[nr]?\s+(?:Optionen|Varianten|Möglichkeiten|Alternativen))\b|\b\w+\s+oder\s+\w+\s*\?/gim
+		// Eine Frage, in der ein „oder" zwei Größen gegeneinander stellt — eine
+		// syntaktische Figur, keine Wortliste. Gesucht wird der Satz bis zum
+		// Fragezeichen, nicht ein festes Wortfenster: „Python oder TypeScript
+		// fürs Backend?" und „… Schnittstelle STS, oder eher in einem der
+		// Felder?" sind dieselbe Figur bei ganz verschiedener Länge.
+		name: 'Zweiwertige Frage',
+		re: /[^.!?\n]*\boder\b[^.!?\n]*\?|\bentweder\s+\S+\s+oder\b/gi
 	},
 	{
-		name: 'Gewichtung',
-		re: /\b(?:entscheidend|kritisch|zentral|wesentlich|folgenreich|grundlegend|weitreichend|essenzi[ae]ll|unverzichtbar|maßgeblich|Weichenstellung|schreit nach|alles Weitere|Voraussetzung dafür|Priorität)\b/gi
-	},
-	{
-		name: 'Affektkundgebung',
-		re: /!|\b(?:spannend|großartig|hervorragend|exzellent|wunderbar|freue mich|leider|bedauerlich|faire? Kritik|sehr gut|absolut|perfekt|ehrlich gesagt|zugegeben)\b/gi
-	},
-	{
+		// Nur Imperative AN DEN ANDEREN. „Lassen Sie mich das kurz durchsehen …"
+		// ist keine Aufforderung, sondern eine Ankündigung des eigenen nächsten
+		// Schritts — sie stand vorher hier drin und hat der Agentenposition acht
+		// Aufforderungen zugeschrieben, die keine sind. Die Stämme sind
+		// vollständig ausgeschrieben statt mit \w* verlängert, sonst zählt
+		// „Machtgeste" als Imperativ.
 		name: 'Aufforderung',
-		re: /(?:^|[.!?]\s+)(?:Erläutere|Erkläre|Zeig|Mach|Nimm|Prüfe|Schreib|Beantworte|Begründe|Vergleiche|Lass|Streich|Ändere|Bau|Setz|Formuliere)\w*\b/gm
+		re: /(?:^|[.!?]\s+)(?:Erläutere|Erklär(?:e)?|Zeig(?:e)?|Prüf(?:e)?|Schreib(?:e)?|Beantworte|Begründe|Vergleiche|Streich(?:e)?|Änder(?:e)?|Formuliere|Nimm|Gib|Sag|Mach(?:e)?|Denk(?:e)?|Lies|Antworte|Entscheide)\b(?=\s|[,.:;!?)"„»]|$)/gm
 	}
 ];
+
+/** Eine vom Forscher vorgelegte Wortgruppe, die mitgezählt werden soll. */
+export interface LexikalischeMarke {
+	name: string;
+	/** Wörter oder Wendungen. Werden als Alternativen gesucht, ohne Stemming. */
+	woerter: string[];
+}
+
+export interface SichtOptions {
+	/**
+	 * Zusätzliche Kategorien, die der Forscher vorlegt — seine Vermutung, woran
+	 * ein Muster im Wortlaut kenntlich wird. Standard: keine. Was hier steht,
+	 * ist seine Setzung und wird als solche ausgewiesen.
+	 */
+	lexikalisch?: LexikalischeMarke[];
+}
+
+function escapeRe(s: string): string {
+	return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function markKinds(lexikalisch: LexikalischeMarke[]): { name: string; re: RegExp; eigen: boolean }[] {
+	return [
+		...FORM_KINDS.map((k) => ({ ...k, eigen: false })),
+		...lexikalisch
+			.filter((l) => l.name.trim().length > 0 && l.woerter.some((w) => w.trim().length > 0))
+			.map((l) => ({
+				name: l.name.trim(),
+				re: new RegExp(
+					`\\b(?:${l.woerter.map((w) => escapeRe(w.trim())).filter(Boolean).join('|')})\\b`,
+					'gi'
+				),
+				eigen: true
+			}))
+	];
+}
 
 /** Zeilen mit der Position, der sie zuzuschreiben sind — Marken gelten bis zur nächsten. */
 function attributedLines(
@@ -275,7 +327,11 @@ function attributedLines(
 	return out;
 }
 
-function verteilungen(turns: Turn[], positionen: Position[]): Verteilung[] {
+function verteilungen(
+	turns: Turn[],
+	positionen: Position[],
+	lexikalisch: LexikalischeMarke[]
+): Verteilung[] {
 	const lines = attributedLines(turns, positionen);
 	const wortzahl = new Map<string, number>();
 	for (const l of lines) {
@@ -283,7 +339,7 @@ function verteilungen(turns: Turn[], positionen: Position[]): Verteilung[] {
 	}
 	const marks = [...wortzahl.keys()];
 
-	return MARK_KINDS.map(({ name, re }) => {
+	return markKinds(lexikalisch).map(({ name, re, eigen }) => {
 		const je: Record<string, { treffer: number; je1000: number }> = {};
 		const beispiele: Record<string, string[]> = {};
 		for (const p of marks) {
@@ -307,7 +363,7 @@ function verteilungen(turns: Turn[], positionen: Position[]): Verteilung[] {
 		const hoch = Math.max(...raten, 0);
 		const tief = Math.min(...raten, Infinity);
 		const schiefe = tief > 0 ? hoch / tief : hoch > 0 ? Infinity : 1;
-		return { name, je, beispiele, schiefe };
+		return { name, je, beispiele, schiefe, eigen };
 	});
 }
 
@@ -380,17 +436,28 @@ function befundSaetze(g: Omit<Gestalt, 'bau' | 'verteilungBefund'>): { bau: stri
 		const zahlen = eintraege.map(([p, x]) => `${p} ${x.treffer}× — ${x.je1000} je 1000 Wörter`).join('; ');
 		const gesamt = eintraege.reduce((a, [, x]) => a + x.treffer, 0);
 		const [top] = eintraege;
+		// Eine vorgelegte Wortgruppe wird als solche ausgewiesen. Sonst steht sie
+		// neben den Formmarken, als wäre sie ebenso wenig eine Setzung.
+		const herkunft = vt.eigen ? ' [deine Wortgruppe]' : '';
 		if (gesamt < 6 || top[1].treffer < 3) {
-			v.push(`„${vt.name}": zu wenige Treffer für eine Aussage über die Verteilung (${zahlen}).`);
+			v.push(`„${vt.name}"${herkunft}: zu wenige Treffer für eine Aussage über die Verteilung (${zahlen}).`);
 		} else if (vt.schiefe >= 2.5) {
 			const wie = Number.isFinite(vt.schiefe)
-				? `liegt bei ${top[0]} ${Math.round(vt.schiefe * 10) / 10}× so dicht wie bei der anderen Position`
+				? `macht bei ${top[0]} einen ${Math.round(vt.schiefe * 10) / 10}× so großen Anteil der eigenen Rede aus wie bei der anderen Position`
 				: `steht ausschließlich bei ${top[0]}`;
+			// Wo die dichteste Position nicht auch die mit den meisten Treffern
+			// ist, liest sich „überwiegt bei X" sonst als „X tut es öfter" — und
+			// das Gegenteil steht daneben in den Zahlen.
+			const meiste = eintraege.reduce((a, b) => (b[1].treffer > a[1].treffer ? b : a));
+			const warnung =
+				meiste[0] !== top[0]
+					? ` Absolut ist es umgekehrt: ${meiste[0]} hat mehr Treffer, spricht aber auch mehr.`
+					: '';
 			v.push(
-				`„${vt.name}" ${wie} (${zahlen}). Dem Anschein nach eine Signatur dieser Position — ob sie es ist, entscheidet die Lesart.`
+				`„${vt.name}"${herkunft} ${wie} (${zahlen}).${warnung} Dem Anschein nach eine Signatur dieser Position — ob sie es ist, entscheidet die Lesart.`
 			);
 		} else {
-			v.push(`„${vt.name}" verteilt sich ähnlich dicht auf beide Positionen (${zahlen}).`);
+			v.push(`„${vt.name}"${herkunft} verteilt sich ähnlich dicht auf beide Positionen (${zahlen}).`);
 		}
 	}
 
@@ -401,11 +468,15 @@ function befundSaetze(g: Omit<Gestalt, 'bau' | 'verteilungBefund'>): { bau: stri
 	const fo = nach.get('folge-ohne-wechsel') ?? 0;
 	if (zo > 0)
 		s.push(
-			`${zo} zitierte Äußerungen haben im Text kein Original: Die andere Position stellt sie nirgends. Ihr Wortlaut existiert nur noch als Zitat in der Antwort darauf.`
+			zo === 1
+				? 'Eine zitierte Äußerung hat im Text kein Original: Die andere Position bringt sie nirgends. Ihr Wortlaut existiert nur noch als dieses Zitat.'
+				: `${zo} zitierte Äußerungen haben im Text kein Original: Die andere Position bringt sie nirgends. Ihr Wortlaut existiert nur noch als Zitat in der Antwort darauf.`
 		);
 	if (vl > 0)
 		s.push(
-			`${vl} Stellen verweisen auf eine Aufzählung, die im Text davor nicht steht — das Verwiesene ist aus dem Protokoll gefallen.`
+			vl === 1
+				? 'Eine Stelle verweist auf eine Aufzählung, die nirgends im Protokoll steht — das Verwiesene ist herausgefallen.'
+				: `${vl} Stellen verweisen auf eine Aufzählung, die nirgends im Protokoll steht — das Verwiesene ist herausgefallen.`
 		);
 	if (fo > 0) s.push(`${fo}× folgt eine Position auf sich selbst; dort kann ein Block fehlen.`);
 
@@ -413,7 +484,7 @@ function befundSaetze(g: Omit<Gestalt, 'bau' | 'verteilungBefund'>): { bau: stri
 }
 
 /** Die Gestalt des Dokuments — deterministisch, ohne Modell. */
-export function sichten(fullText: string): Gestalt {
+export function sichten(fullText: string, opts: SichtOptions = {}): Gestalt {
 	const { turns, form } = turnsOf(fullText);
 
 	// Nur Rede zählt für die Positionen. Werkzeugausgabe und Rahmenwerk stehen
@@ -480,7 +551,7 @@ export function sichten(fullText: string): Gestalt {
 			rahmenZeichen,
 			anteil: fullText.length > 0 ? (werkzeugZeichen + rahmenZeichen) / fullText.length : 0
 		},
-		verteilungen: form === 'none' ? [] : verteilungen(turns, positionen),
+		verteilungen: form === 'none' ? [] : verteilungen(turns, positionen, opts.lexikalisch ?? []),
 		brueche
 	};
 	const { bau, verteilung } = befundSaetze(base);

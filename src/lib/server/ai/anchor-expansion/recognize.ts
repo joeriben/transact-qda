@@ -14,10 +14,11 @@
 //     Wie redet jemand über etwas, in welchem Kontext, und was tut er,
 //     indem er über etwas auf diese Weise redet?
 //
-// Der Gegenstand ist darin Relatum, nicht Ziel. „Über die Wahl der Erhebungsmethode
-// so reden, dass sie als folgenreich und zweiwertig dasteht" ist ohne das
-// Worüber nicht beschreibbar. Herausgehalten wird nicht der Gegenstand,
-// sondern seine Verselbständigung zum Thema.
+// Der Gegenstand ist darin Relatum, nicht Ziel: „über X so reden, dass X als
+// … dasteht" ist ohne das Worüber nicht beschreibbar. Herausgehalten wird nicht
+// der Gegenstand, sondern seine Verselbständigung zum Thema. Kein Beispiel aus
+// einer bestimmten Untersuchung steht im Prompt — es liefe sonst bei jedem
+// Muster mit und würde jedes andere an sich entlanglesen.
 //
 // Kein thematischer Vorfilter. Ein solcher reicht nur weiter, was vom Gleichen
 // handelt, und wirft die Fälle weg, die strukturisomorph, aber inhaltlich
@@ -150,7 +151,7 @@ An jeder Stelle stellst du zuerst diese Frage, und nur diese:
     WAS GESCHIEHT HIER?
     Wie redet jemand über etwas, in welchem Kontext, und was tut er, indem er über etwas auf diese Weise redet?
 
-Der Gegenstand gehört in die Antwort — als das, worüber geredet wird, nicht als das, worum es geht. „Redet über die Wahl einer Methode so, dass sie als folgenreich und zweiwertig dasteht" ist eine Antwort. „Hier geht es um die Methodenwahl" ist keine.
+Der Gegenstand gehört in die Antwort — als das, worüber geredet wird, nicht als das, worum es geht. Die Form einer Antwort ist: „redet über X so, dass X als … dasteht" — ein Verb des Tuns und ein Wie. „Hier geht es um X" ist keine Antwort, sondern eine Themenangabe.
 
 WER HANDELT: Im Kopf jeder Stelle steht, welcher Position ihre Rede zugeschrieben ist. Diese Zuschreibung folgt aus den Marken des Textes, nicht aus dem Inhalt: Steht eine Passage in einem Block der einen Position unter einer Marke wie „Frage:", so ist sie zitierte Rede der anderen. Heißt die Zuschreibung „unklar", entscheide aus dem Text — und sag in \`begruendung\`, wenn sie sich nicht entscheiden lässt.
 
@@ -160,7 +161,7 @@ ERST DANN vergleichst du. Der Vergleich geht auf die STRUKTUR, nicht auf den Geg
 
 ${kriteriumBlock(k)}
 
-Du entscheidest nicht ja/nein, sondern welche Relation zutrifft. Die Kontrast-Relationen sind kein Ausschuss: Sie zeigen, welcher Bestandteil das Muster trägt. Eine Stelle, an der die Alternativen zwar zweiwertig sind, die Kriterien dafür aber offen daliegen, ist ein Befund und keine Fehlanzeige.
+Du entscheidest nicht ja/nein, sondern welche Relation zutrifft. Die Kontrast-Relationen sind kein Ausschuss: Sie zeigen, welcher Bestandteil das Muster trägt. Eine Stelle, an der alle Bestandteile bis auf einen vorliegen, ist ein Befund und keine Fehlanzeige.
 
 \`${NICHT_EINSCHLAEGIG}\` ist die Vorgabe und wird die häufigste Antwort sein. Sie gilt, wenn hier kein Vorgang stattfindet, der zu diesem Muster in einem der genannten Verhältnisse steht. Zwinge nichts in eine Relation.
 
@@ -221,16 +222,55 @@ Was geschieht hier, und in welchem Verhältnis steht es zum Muster? JSON-Objekt.
 
 // ── Ausführung ────────────────────────────────────────────────────
 
-function parseJsonObject<T>(text: string): T | null {
+function parseJsonObject<T>(text: string): { ok: true; value: T } | { ok: false; fehler: string } {
 	const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
 	const start = cleaned.indexOf('{');
 	const end = cleaned.lastIndexOf('}');
-	if (start < 0 || end <= start) return null;
+	if (start < 0 || end <= start) return { ok: false, fehler: 'Keine JSON-Klammern in der Antwort.' };
 	try {
-		return JSON.parse(cleaned.slice(start, end + 1)) as T;
-	} catch {
-		return null;
+		return { ok: true, value: JSON.parse(cleaned.slice(start, end + 1)) as T };
+	} catch (e) {
+		return { ok: false, fehler: e instanceof Error ? e.message : String(e) };
 	}
+}
+
+/**
+ * Ein Modellaufruf, der ein JSON-Objekt zurückgeben soll — mit Nachfassen.
+ *
+ * Freies JSON aus einem Sprachmodell ist gelegentlich kaputt: ein unmaskiertes
+ * Anführungszeichen mitten in einer Begründung reicht. Ohne Nachfassen fiel
+ * daran der ganze Durchgang aus („Das Kriterium kam nicht auswertbar zurück"),
+ * und im Durchgang über die Stellen verschwand eine Stelle stillschweigend aus
+ * dem Ergebnis — was schlimmer ist, weil es wie ein Befund aussieht.
+ *
+ * Beim zweiten Versuch bekommt das Modell die Fehlermeldung des Parsers zu
+ * sehen. Es korrigiert dann in aller Regel genau die Stelle.
+ */
+async function chatJson<T>(
+	system: string,
+	message: string,
+	opts: { tier: ReturnType<typeof resolveTier>; signal?: AbortSignal; cacheable?: string; versuche?: number }
+): Promise<{ ok: true; value: T } | { ok: false; fehler: string }> {
+	const versuche = opts.versuche ?? 3;
+	let letzter = 'kein Versuch';
+	let nachfassen = '';
+	for (let i = 0; i < versuche; i++) {
+		const res = await chat({
+			system,
+			messages: [{ role: 'user', content: message + nachfassen }],
+			modelOverride: opts.tier,
+			responseFormat: 'json',
+			cacheableSystemPrefix: opts.cacheable,
+			signal: opts.signal
+		});
+		const parsed = parseJsonObject<T>(res.text);
+		if (parsed.ok) return parsed;
+		letzter = parsed.fehler;
+		nachfassen =
+			`\n\nDeine vorige Antwort war kein gültiges JSON: ${parsed.fehler}\n` +
+			'Gib dasselbe noch einmal aus, diesmal als striktes JSON. Anführungszeichen INNERHALB eines Werts müssen mit \\" maskiert sein; verwende dort besser „…" oder \'…\'. Kein Vorspann, kein Markdown-Zaun.';
+	}
+	return { ok: false, fehler: letzter };
 }
 
 async function pool<I, O>(items: I[], width: number, fn: (item: I, i: number) => Promise<O>): Promise<O[]> {
@@ -252,15 +292,16 @@ async function pool<I, O>(items: I[], width: number, fn: (item: I, i: number) =>
 export async function ableitenKriterium(
 	inscription: string,
 	memos: string[],
-	belegstelleMitAnlauf: string
-): Promise<Kriterium | null> {
-	const res = await chat({
-		system: kriteriumSystem(),
-		messages: [{ role: 'user', content: kriteriumMessage(inscription, memos, belegstelleMitAnlauf) }],
-		modelOverride: resolveTier('anker.wiedererkennung'),
-		responseFormat: 'json'
-	});
-	return parseJsonObject<Kriterium>(res.text);
+	belegstelleMitAnlauf: string,
+	signal?: AbortSignal
+): Promise<Kriterium> {
+	const res = await chatJson<Kriterium>(
+		kriteriumSystem(),
+		kriteriumMessage(inscription, memos, belegstelleMitAnlauf),
+		{ tier: resolveTier('anker.wiedererkennung'), signal }
+	);
+	if (!res.ok) throw new Error(`Das Kriterium kam auch nach drei Versuchen nicht auswertbar zurück: ${res.fehler}`);
+	return res.value;
 }
 
 export interface Stelle {
@@ -268,11 +309,21 @@ export interface Stelle {
 	befund: Befund;
 }
 
+/** Eine Stelle, die nicht auswertbar zurückkam. Zählt als ungeprüft, nicht als „ohne Bezug". */
+export interface UnlesbareStelle {
+	zug: Zug;
+	fehler: string;
+}
+
 export interface PruefOptions {
 	concurrency?: number;
 	onProgress?: (done: number, total: number) => void;
 	/** So viele Passagen davor gehen als Anlauf mit. */
 	anlaufZuege?: number;
+	/** Bricht alle laufenden Aufrufe ab — im Web der Client-Disconnect. */
+	signal?: AbortSignal;
+	/** Wird bei jeder Stelle mit Bezug sofort gerufen, nicht erst am Ende. */
+	onStelle?: (stelle: Stelle) => void;
 }
 
 /**
@@ -288,7 +339,7 @@ export async function pruefeStellen(
 	alleZuege: Zug[],
 	zuPruefen: Zug[],
 	opts: PruefOptions = {}
-): Promise<Stelle[]> {
+): Promise<{ stellen: Stelle[]; unlesbar: UnlesbareStelle[] }> {
 	const tier = resolveTier('anker.wiedererkennung');
 	const system = befundSystem(kriterium, gestalt);
 	const anlaufN = opts.anlaufZuege ?? 2;
@@ -303,25 +354,36 @@ export async function pruefeStellen(
 						.map((x) => `[${x.position}] ${x.text}`)
 				: [];
 		try {
-			const res = await chat({
+			const res = await chatJson<Befund>(
 				system,
-				messages: [{ role: 'user', content: befundMessage(inscription, memos, belegstelleMitAnlauf, z, anlauf) }],
-				modelOverride: tier,
-				responseFormat: 'json',
-				cacheableSystemPrefix: system
-			});
-			return parseJsonObject<Befund>(res.text);
-		} catch {
-			return null;
+				befundMessage(inscription, memos, belegstelleMitAnlauf, z, anlauf),
+				{ tier, signal: opts.signal, cacheable: system, versuche: 2 }
+			);
+			if (!res.ok) return res;
+			// Sofort melden statt am Ende: Ein Durchgang über ein großes Dokument
+			// läuft Minuten, und der erste Fund ist schon etwas wert.
+			const befund = res.value;
+			if (befund.relation && befund.relation !== NICHT_EINSCHLAEGIG) {
+				opts.onStelle?.({ zug: z, befund });
+			}
+			return res;
+		} catch (err) {
+			if (err instanceof Error && (err.name === 'AbortError' || err.name === 'TimeoutError')) throw err;
+			return { ok: false as const, fehler: err instanceof Error ? err.message : String(err) };
 		} finally {
 			opts.onProgress?.(++done, zuPruefen.length);
 		}
 	});
 
-	const out: Stelle[] = [];
+	// Was nicht auswertbar zurückkam, wird BENANNT und nicht verschwiegen: Eine
+	// stillschweigend fallengelassene Stelle sieht im Ergebnis genauso aus wie
+	// eine geprüfte ohne Bezug, und das ist ein Unterschied ums Ganze.
+	const stellen: Stelle[] = [];
+	const unlesbar: UnlesbareStelle[] = [];
 	zuPruefen.forEach((z, i) => {
-		const b = results[i];
-		if (b && b.relation && b.relation !== NICHT_EINSCHLAEGIG) out.push({ zug: z, befund: b });
+		const r = results[i];
+		if (!r.ok) unlesbar.push({ zug: z, fehler: r.fehler });
+		else if (r.value.relation && r.value.relation !== NICHT_EINSCHLAEGIG) stellen.push({ zug: z, befund: r.value });
 	});
-	return out;
+	return { stellen, unlesbar };
 }

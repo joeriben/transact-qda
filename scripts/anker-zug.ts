@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
-// Coding-Helfer: ein Strukturmuster am Material prüfen.
+// Anker-Zug auf der Kommandozeile — dieselbe Schicht, die die Route benutzt.
 //
-// Nimmt ein Naming des Forschers samt Memo und Belegstelle, macht das
-// Kriterium explizit, und geht dann ein Dokument Äußerung für Äußerung durch.
-// Zurück kommt je Stelle die RELATION zum Muster — Fall, Kontrast, Gegenzug,
-// Akteur umgekehrt —, nicht ein Ja oder Nein.
+// Bewusst kein zweiter Weg durch das Material: Was hier läuft, sind
+// `vorbereiten` und `durchgehen` aus `ai/anchor-expansion`, ohne HTTP und ohne
+// Oberfläche. Was auf der Kommandozeile funktioniert, funktioniert deshalb auch
+// in der Anwendung, und umgekehrt.
 //
 //   npm run anker -- --project <…> --sichtung [--alle]
 //       Nur die Sichtung: wie der Text gebaut ist, wie sich Oberflächenmarken
@@ -28,18 +28,15 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { query, pool } from '../src/lib/server/db/index.js';
 import {
+	vorbereiten,
+	durchgehen,
+	ladeVolltext,
 	sichten,
 	zuegeOf,
-	zuegeOverlapping,
 	type Gestalt,
-	type Zug
-} from '../src/lib/server/ai/anchor-expansion/gestalt.js';
-import {
-	ableitenKriterium,
-	pruefeStellen,
 	type Kriterium,
 	type Stelle
-} from '../src/lib/server/ai/anchor-expansion/recognize.js';
+} from '../src/lib/server/ai/anchor-expansion/index.js';
 
 const CACHE_DIR = '.tmp-anker';
 
@@ -60,6 +57,7 @@ const zuegeOnly = flag('zuege');
 const sichtungOnly = flag('sichtung');
 const alleDokumente = flag('alle');
 const forceNew = flag('neu');
+const ankerAuch = flag('anker-auch');
 
 const short = (t: string, n = 150) => {
 	const flat = (t ?? '').replace(/\s+/g, ' ').trim();
@@ -91,38 +89,7 @@ async function resolveOne<T extends { id: string; label: string }>(
 	return hits[0];
 }
 
-// ── Laden ─────────────────────────────────────────────────────────
-
-async function loadNaming(projectId: string, namingId: string) {
-	const head = await query<{ inscription: string }>(
-		`SELECT inscription FROM namings WHERE id=$1 AND project_id=$2 AND deleted_at IS NULL`,
-		[namingId, projectId]
-	);
-	if (head.rows.length === 0) throw new Error('Naming nicht im Projekt.');
-	const memos = await query<{ memo_text: string }>(
-		`SELECT memo_text FROM naming_acts
-		  WHERE naming_id=$1 AND memo_text IS NOT NULL AND btrim(memo_text) <> '' ORDER BY seq`,
-		[namingId]
-	);
-	const anchors = await query<{ documentId: string; pos0: number; pos1: number }>(
-		`SELECT a.directed_to AS "documentId",
-		        (a.properties->'anchor'->>'pos0')::int AS pos0,
-		        (a.properties->'anchor'->>'pos1')::int AS pos1
-		   FROM appearances a
-		   JOIN namings d ON d.id=a.directed_to AND d.deleted_at IS NULL
-		  WHERE a.mode='relation' AND a.directed_from=$1
-		    AND a.properties->>'anchorType'='text'
-		    AND a.properties->>'aiPersona' IS NULL
-		    AND a.properties->'anchor'->>'pos0' IS NOT NULL
-		  ORDER BY (a.properties->'anchor'->>'pos0')::int`,
-		[namingId]
-	);
-	return { inscription: head.rows[0].inscription, memos: memos.rows.map((r) => r.memo_text.trim()), anchors: anchors.rows };
-}
-
-function kriteriumPath(namingId: string): string {
-	return join(CACHE_DIR, `kriterium-${namingId}.json`);
-}
+// ── Ausgabe ───────────────────────────────────────────────────────
 
 function zeigeSichtung(label: string, g: Gestalt, ausfuehrlich: boolean): void {
 	console.log(`\n════ ${label}`);
@@ -172,167 +139,40 @@ function zeigeKriterium(k: Kriterium): void {
 	console.log('');
 }
 
-// ── Lauf ──────────────────────────────────────────────────────────
-
-async function main() {
-	const projects = await query<{ id: string; name: string }>(`SELECT id, name FROM projects ORDER BY created_at DESC`);
-	const project = await resolveOne(projects.rows.map((p) => ({ id: p.id, label: p.name })), projectArg, 'Projekte', 'project');
-
-	// ── Sichtung ──
-	// Steht vor allem anderen und braucht weder Naming noch Modell.
-	if (sichtungOnly) {
-		const docs = await query<{ id: string; inscription: string; full_text: string }>(
-			`SELECT d.id, d.inscription, dc.full_text FROM namings d
-			   JOIN document_content dc ON dc.naming_id=d.id AND dc.full_text IS NOT NULL
-			  WHERE d.project_id=$1 AND d.deleted_at IS NULL ORDER BY d.inscription`,
-			[project.id]
-		);
-		const gewaehlt = alleDokumente
-			? docs.rows
-			: [
-					await resolveOne(
-						docs.rows.map((d) => ({ id: d.id, label: d.inscription })),
-						documentArg,
-						'Dokumente',
-						'document'
-					)
-				].map((d) => docs.rows.find((x) => x.id === d.id)!);
-		for (const d of gewaehlt) {
-			zeigeSichtung(d.inscription, sichten(d.full_text), !alleDokumente);
-		}
-		if (alleDokumente) console.log(`(${gewaehlt.length} Dokumente. Ohne --alle je Dokument mit Belegen.)\n`);
-		return;
-	}
-
-	const namings = await query<{ id: string; inscription: string }>(
-		`SELECT DISTINCT n.id, n.inscription FROM namings n
-		   JOIN appearances a ON a.mode='relation' AND a.directed_from=n.id
-		    AND a.properties->>'anchorType'='text' AND a.properties->>'aiPersona' IS NULL
-		  WHERE n.project_id=$1 AND n.deleted_at IS NULL ORDER BY n.inscription`,
-		[project.id]
-	);
-	const naming = await resolveOne(namings.rows.map((n) => ({ id: n.id, label: n.inscription })), namingArg, 'Namings', 'naming');
-	const { inscription, memos, anchors } = await loadNaming(project.id, naming.id);
-
-	const documents = await query<{ id: string; inscription: string }>(
-		`SELECT d.id, d.inscription FROM namings d
-		   JOIN document_content dc ON dc.naming_id=d.id AND dc.full_text IS NOT NULL
-		  WHERE d.project_id=$1 AND d.deleted_at IS NULL ORDER BY d.seq`,
-		[project.id]
-	);
-	const document = await resolveOne(documents.rows.map((d) => ({ id: d.id, label: d.inscription })), documentArg, 'Dokumente', 'document');
-
-	const ft = await query<{ full_text: string }>(`SELECT full_text FROM document_content WHERE naming_id=$1`, [document.id]);
-	const fullText = ft.rows[0]?.full_text;
-	if (!fullText) throw new Error('Dokument ohne Volltext.');
-	const gestalt = sichten(fullText);
-	const zuege = zuegeOf(fullText, gestalt);
-
-	console.log(`\nMuster:    „${inscription}"`);
-	console.log(`Memo:      ${memos.length > 0 ? short(memos.join(' // '), 260) : '(keins)'}`);
-	console.log(`Dokument:  ${document.label}`);
-	zeigeSichtung(document.label, gestalt, zuegeOnly);
-	console.log(`Züge:      ${zuege.length}`);
-
-	if (zuegeOnly) {
-		for (const z of zuege.slice(0, limit ?? 60)) {
-			const zu = z.zuschreibung === 'eigen' ? '' : ` (${z.zuschreibung}, Marke ${z.embeddedMark})`;
-			console.log(
-				`${String(z.index).padStart(4)} [${z.charStart}–${z.charEnd}] ${z.position}${zu}${z.brueche.length > 0 ? ` ⟂${z.brueche.length}` : ''}: ${short(z.text, 110)}`
-			);
-		}
-		return;
-	}
-
-	// Belegstelle mit Anlauf — der markierte Ausschnitt allein trägt den Zug
-	// oft nicht; bei diesem Muster steht die Zweiteilung im Satz davor.
-	const anchorZuege: Zug[] = [];
-	let belegstelle = '';
-	for (const a of anchors) {
-		if (a.documentId !== document.id) continue;
-		const hit = zuegeOverlapping(zuege, a.pos0, a.pos1);
-		if (hit.length === 0) continue;
-		anchorZuege.push(...hit);
-		const idx = zuege.indexOf(hit[0]);
-		belegstelle = [...zuege.slice(Math.max(0, idx - 2), idx), ...hit]
-			.map((z) => `[${z.position}] ${z.text}`)
-			.join('\n');
-		break;
-	}
-	if (!belegstelle) {
-		console.log('\nKeine Belegstelle dieses Namings in diesem Dokument.\n');
-		return;
-	}
-	console.log(`\nBelegstelle mit Anlauf:\n   ${short(belegstelle, 400)}`);
-
-	// ── Kriterium ──
-	if (!existsSync(CACHE_DIR)) mkdirSync(CACHE_DIR, { recursive: true });
-	const kp = kriteriumPath(naming.id);
-	let kriterium: Kriterium | null = null;
-	if (!forceNew && existsSync(kp)) {
-		kriterium = JSON.parse(readFileSync(kp, 'utf-8')) as Kriterium;
-		console.log(`\n(Kriterium aus ${kp} — mit --neu neu ableiten)`);
-	} else {
-		console.log('\nLeite das Kriterium ab …');
-		kriterium = await ableitenKriterium(inscription, memos, belegstelle);
-		if (!kriterium) throw new Error('Das Kriterium kam nicht auswertbar zurück.');
-		writeFileSync(kp, JSON.stringify(kriterium, null, '\t'), 'utf-8');
-	}
-	zeigeKriterium(kriterium);
-	console.log(`   Liegt in ${kp} — dort ändern, dann erneut laufen lassen.`);
-
-	if (kriteriumOnly || !doRun) {
-		console.log('\n(Kein Lauf. Mit --lauf das Dokument durchgehen.)\n');
-		return;
-	}
-
-	// ── Lauf über die Züge ──
-	// Die Belegstelle selbst bleibt draußen — sie ist die Vorgabe, nicht der
-	// Fund. Mit --anker-auch läuft sie mit: eine Probe darauf, ob das Kriterium
-	// die Stelle wiederfindet, aus der es abgeleitet wurde.
-	const scope = (limit ? zuege.slice(0, limit) : zuege).filter(
-		(z) => flag('anker-auch') || !anchorZuege.includes(z)
-	);
-	console.log(`\nGehe ${scope.length} Stellen durch …`);
-	const stellen = await pruefeStellen(inscription, memos, belegstelle, kriterium, gestalt, zuege, scope, {
-		concurrency,
-		onProgress: (d, t) => {
-			if (d % 10 === 0 || d === t) process.stdout.write(`\r  ${d}/${t}`);
-		}
-	});
-	process.stdout.write('\n');
-
+function zeigeErgebnis(
+	stellen: Stelle[],
+	unlesbar: number,
+	geprueft: number,
+	geprueftJePosition: Record<string, number>,
+	kriterium: Kriterium,
+	gestalt: Gestalt
+): void {
 	const nachRelation = new Map<string, Stelle[]>();
-	for (const s of stellen) {
-		const list = nachRelation.get(s.befund.relation) ?? [];
-		list.push(s);
-		nachRelation.set(s.befund.relation, list);
-	}
+	for (const s of stellen) nachRelation.set(s.befund.relation, [...(nachRelation.get(s.befund.relation) ?? []), s]);
 
-	console.log(`\n════ ${stellen.length} Stellen mit Bezug, von ${scope.length} geprüften ════`);
+	console.log(`\n════ ${stellen.length} Stellen mit Bezug, von ${geprueft} geprüften ════`);
+	// Nicht verschweigen: eine fallengelassene Stelle sieht sonst aus wie eine
+	// geprüfte ohne Bezug.
+	if (unlesbar > 0) console.log(`     ${unlesbar} Stellen kamen nicht auswertbar zurück und sind UNGEPRÜFT.`);
 
 	// Der Fall zuerst, dann die Kontraste — an denen wird die Grenze scharf.
 	const order = [
 		...kriterium.relationen.map((r) => r.name).filter((n) => nachRelation.has(n)),
-		...[...nachRelation.keys()].filter((n) => !kriterium!.relationen.some((r) => r.name === n))
+		...[...nachRelation.keys()].filter((n) => !kriterium.relationen.some((r) => r.name === n))
 	];
 
 	// Verteilung auf die Positionen — am gelesenen Muster, nicht an Wortlisten.
 	// Ohne sie steht eine Trefferliste da, als wäre das Muster positionslos.
 	const positionen = gestalt.positionen.map((p) => p.mark);
 	if (positionen.length > 1 && stellen.length > 0) {
-		const geprueft = new Map<string, number>();
-		for (const z of scope) geprueft.set(z.position, (geprueft.get(z.position) ?? 0) + 1);
 		const spalte = (s: string) => s.padStart(14);
 		console.log(`\n── Verteilung auf die Sprecherpositionen`);
 		console.log(`   ${'Relation'.padEnd(38)}${positionen.map(spalte).join('')}`);
 		for (const rel of order) {
 			const list = nachRelation.get(rel)!;
-			const zellen = positionen.map((p) => {
-				const n = list.filter((s) => s.zug.position === p).length;
-				const g = geprueft.get(p) ?? 0;
-				return spalte(g > 0 ? `${n} / ${g}` : `${n}`);
-			});
+			const zellen = positionen.map((p) =>
+				spalte(`${list.filter((s) => s.zug.position === p).length} / ${geprueftJePosition[p] ?? 0}`)
+			);
 			console.log(`   ${rel.padEnd(38)}${zellen.join('')}`);
 		}
 		console.log(`   ${'(Nenner: geprüfte Stellen der Position)'.padEnd(38)}`);
@@ -354,8 +194,102 @@ async function main() {
 			console.log(`   Warum:     ${short(s.befund.begruendung, 200)}`);
 		}
 	}
-	if (stellen.length === 0) console.log('\n(keine — das ist ein zulässiges Ergebnis)\n');
+	if (stellen.length === 0) console.log('\n(keine — das ist ein zulässiges Ergebnis)');
 	console.log('');
+}
+
+// ── Lauf ──────────────────────────────────────────────────────────
+
+async function main() {
+	const projects = await query<{ id: string; name: string }>(`SELECT id, name FROM projects ORDER BY created_at DESC`);
+	const project = await resolveOne(projects.rows.map((p) => ({ id: p.id, label: p.name })), projectArg, 'Projekte', 'project');
+
+	const documents = await query<{ id: string; inscription: string }>(
+		`SELECT d.id, d.inscription FROM namings d
+		   JOIN document_content dc ON dc.naming_id=d.id AND dc.full_text IS NOT NULL
+		  WHERE d.project_id=$1 AND d.deleted_at IS NULL ORDER BY d.inscription`,
+		[project.id]
+	);
+
+	// ── Sichtung — steht vor allem anderen und braucht weder Naming noch Modell.
+	if (sichtungOnly) {
+		const gewaehlt = alleDokumente
+			? documents.rows
+			: [await resolveOne(documents.rows.map((d) => ({ id: d.id, label: d.inscription })), documentArg, 'Dokumente', 'document')];
+		for (const d of gewaehlt) {
+			const text = await ladeVolltext(project.id, d.id);
+			zeigeSichtung(('inscription' in d ? d.inscription : d.label) as string, sichten(text), !alleDokumente);
+		}
+		if (alleDokumente) console.log(`(${gewaehlt.length} Dokumente. Ohne --alle je Dokument mit Belegen.)\n`);
+		return;
+	}
+
+	const namings = await query<{ id: string; inscription: string }>(
+		`SELECT DISTINCT n.id, n.inscription FROM namings n
+		   JOIN appearances a ON a.mode='relation' AND a.directed_from=n.id
+		    AND a.properties->>'anchorType'='text' AND a.properties->>'aiPersona' IS NULL
+		  WHERE n.project_id=$1 AND n.deleted_at IS NULL ORDER BY n.inscription`,
+		[project.id]
+	);
+	const naming = await resolveOne(namings.rows.map((n) => ({ id: n.id, label: n.inscription })), namingArg, 'Namings', 'naming');
+	const document = await resolveOne(documents.rows.map((d) => ({ id: d.id, label: d.inscription })), documentArg, 'Dokumente', 'document');
+
+	if (zuegeOnly) {
+		const text = await ladeVolltext(project.id, document.id);
+		const gestalt = sichten(text);
+		const zuege = zuegeOf(text, gestalt);
+		zeigeSichtung(document.label, gestalt, true);
+		console.log(`Züge: ${zuege.length}\n`);
+		for (const z of zuege.slice(0, limit ?? 60)) {
+			const zu = z.zuschreibung === 'eigen' ? '' : ` (${z.zuschreibung}, Marke ${z.embeddedMark})`;
+			console.log(
+				`${String(z.index).padStart(4)} [${z.charStart}–${z.charEnd}] ${z.position}${zu}${z.brueche.length > 0 ? ` ⟂${z.brueche.length}` : ''}: ${short(z.text, 110)}`
+			);
+		}
+		return;
+	}
+
+	// ── Kriterium: aus der Datei, sonst ableiten ──
+	if (!existsSync(CACHE_DIR)) mkdirSync(CACHE_DIR, { recursive: true });
+	const kp = join(CACHE_DIR, `kriterium-${naming.id}.json`);
+	const vorhanden = !forceNew && existsSync(kp) ? (JSON.parse(readFileSync(kp, 'utf-8')) as Kriterium) : null;
+
+	const v = await vorbereiten(project.id, naming.id, document.id, { kriterium: vorhanden });
+
+	console.log(`\nMuster:    „${v.inscription}"`);
+	console.log(`Memo:      ${v.memos.length > 0 ? short(v.memos.join(' // '), 260) : '(keins)'}`);
+	console.log(`Dokument:  ${document.label}`);
+	zeigeSichtung(document.label, v.gestalt, false);
+	console.log(`Züge:      ${v.zuegeGesamt}`);
+
+	if (!v.belegstelle) {
+		console.log('\nKeine Belegstelle dieses Namings in diesem Dokument.\n');
+		return;
+	}
+	console.log(`\nBelegstelle mit Anlauf:\n   ${short(v.belegstelle, 400)}`);
+
+	if (!v.kriterium) throw new Error('Das Kriterium kam nicht auswertbar zurück.');
+	if (!vorhanden) writeFileSync(kp, JSON.stringify(v.kriterium, null, '\t'), 'utf-8');
+	else console.log(`\n(Kriterium aus ${kp} — mit --neu neu ableiten)`);
+	zeigeKriterium(v.kriterium);
+	console.log(`   Liegt in ${kp} — dort ändern, dann erneut laufen lassen.`);
+
+	if (kriteriumOnly || !doRun) {
+		console.log('\n(Kein Lauf. Mit --lauf das Dokument durchgehen.)\n');
+		return;
+	}
+
+	// ── Durchgang ──
+	console.log('');
+	const d = await durchgehen(project.id, naming.id, document.id, v.kriterium, {
+		concurrency,
+		belegstelleMitpruefen: ankerAuch,
+		onProgress: (done, total) => {
+			if (done % 5 === 0 || done === total) process.stdout.write(`\r  ${done}/${total}`);
+		}
+	});
+	process.stdout.write('\n');
+	zeigeErgebnis(d.stellen, d.unlesbar.length, d.geprueft, d.geprueftJePosition, v.kriterium, d.gestalt);
 }
 
 main()

@@ -15,6 +15,7 @@
 	import NamingContextMenu from './NamingContextMenu.svelte';
 	import PhaseAssignDialog from './PhaseAssignDialog.svelte';
 	import CodingRunPanel from './CodingRunPanel.svelte';
+	import AnkerZugPanel from './AnkerZugPanel.svelte';
 	import { docOutline } from '$lib/stores/docOutline.svelte.js';
 	import { invalidateAll } from '$app/navigation';
 
@@ -283,6 +284,10 @@
 	let ctxMenuNamingIds = $state<string[] | null>(null);
 	let ctxMenuPos = $state({ x: 0, y: 0 });
 	let showPhaseDialog = $state(false);
+	// Anker-Zug: EIN Naming, EIN Dokument. Das Muster ist die Hypothese des
+	// Forschers; der Helfer trägt sie durch. Mehrere Namings gleichzeitig hätte
+	// keinen Sinn — geprüft wird immer genau ein Kriterium.
+	let ankerNaming = $state<{ id: string; label: string } | null>(null);
 	// Drag-drop state
 	let dragOverDoc = $state(false);
 	let dragOverCard = $state(false); // drop-target highlight for the selection card (right panel)
@@ -991,6 +996,41 @@
 		setTimeout(() => { highlightedAnnotationId = null; }, 2000);
 	}
 
+	// ── Anker-Zug ─────────────────────────────────────────────────────────
+	// Sprung auf eine Zeichenspanne. Der gerenderte Text trägt seine Versätze
+	// an den Segmenten (data-char-start); gesucht wird das erste Segment, das
+	// bei oder hinter pos0 beginnt. Gesetzt wird zugleich die Auswahl — dann
+	// steht die Stelle markiert da und alle gewohnten Wege auf ihr offen.
+	function jumpToChars(pos0: number, pos1: number) {
+		if (!textEl || !doc.full_text) return;
+		selection = { pos0, pos1, text: doc.full_text.slice(pos0, pos1) };
+		panelMode = 'code';
+		const ziel = Array.from(textEl.querySelectorAll<HTMLElement>('[data-char-start]')).find(
+			(el) => Number(el.dataset.charStart) >= pos0
+		);
+		(ziel ?? textEl).scrollIntoView({ behavior: 'smooth', block: 'center' });
+	}
+
+	// Einen Hinweis hereinholen. Das ist ein Akt des Forschers, kein KI-Akt:
+	// Er geht durch denselben Weg wie eine von Hand markierte Stelle und trägt
+	// deshalb auch keine KI-Provenienz.
+	async function ankerUebernehmen(pos0: number, pos1: number, text: string): Promise<boolean> {
+		if (!ankerNaming) return false;
+		const res = await fetch(`/api/projects/${data.projectId}/documents/${doc.id}/annotations`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				codeId: ankerNaming.id,
+				anchorType: 'text',
+				anchor: { pos0, pos1, text }
+			})
+		});
+		if (!res.ok) return false;
+		const annRes = await fetch(`/api/projects/${data.projectId}/documents/${doc.id}/annotations`);
+		annotations = await annRes.json();
+		return true;
+	}
+
 	// TOC-Klick: zur Start-Position der Sequenz scrollen. Sequenz-Namings
 	// werden NICHT als coded-text-Spans gerendert; das Start-Segment trägt
 	// stattdessen data-seq-anchor mit einer space-separierten Liste aller
@@ -1331,7 +1371,7 @@
 						onclick={() => { if (window.getSelection()?.isCollapsed !== false) revealNamings(seg.codes.map(c => c.id)); }}
 						onmouseenter={() => { highlightedAnnotationId = seg.codes[0].annId; }}
 						onmouseleave={() => { highlightedAnnotationId = null; }}
-					>{seg.text}<span class="code-tooltip">{seg.codes.map(c => c.label).join(', ')}</span></span>{:else}<span data-element-id={seg.elementId || undefined} data-seq-anchor={seg.seqAnchorIds?.join(' ') || undefined} data-seg-start={seg.segStart ?? undefined} class:selection-highlight={selection && seg.start < selection.pos1 && seg.end > selection.pos0} class:seq-flash={(seg.seqAnchorIds && highlightedSeqId && seg.seqAnchorIds.includes(highlightedSeqId)) || (seg.segStart != null && highlightedSegSeq === seg.segStart)}>{seg.text}</span>{/if}{/each}</pre>
+					>{seg.text}<span class="code-tooltip">{seg.codes.map(c => c.label).join(', ')}</span></span>{:else}<span data-element-id={seg.elementId || undefined} data-char-start={seg.start} data-seq-anchor={seg.seqAnchorIds?.join(' ') || undefined} data-seg-start={seg.segStart ?? undefined} class:selection-highlight={selection && seg.start < selection.pos1 && seg.end > selection.pos0} class:seq-flash={(seg.seqAnchorIds && highlightedSeqId && seg.seqAnchorIds.includes(highlightedSeqId)) || (seg.segStart != null && highlightedSegSeq === seg.segStart)}>{seg.text}</span>{/if}{/each}</pre>
 				{:else}
 					<p class="placeholder">No text content available</p>
 				{/if}
@@ -1776,6 +1816,20 @@
 		<!-- /passages-panel -->
 		{/if}
 
+		{#if ankerNaming && !isImage}
+			<div class="anker-col">
+				<AnkerZugPanel
+					projectId={data.projectId}
+					documentId={doc.id}
+					namingId={ankerNaming.id}
+					namingLabel={ankerNaming.label}
+					onclose={() => (ankerNaming = null)}
+					onjump={jumpToChars}
+					onanchor={ankerUebernehmen}
+				/>
+			</div>
+		{/if}
+
 	</div>
 </div>
 
@@ -1789,6 +1843,10 @@
 		namingLabels={ctxMenuNamingIds.map(id => candidates.find((c: any) => c.id === id)?.label || '')}
 		onclose={() => ctxMenuNamingIds = null}
 		onaddtophase={() => { showPhaseDialog = true; }}
+		onankerzug={() => {
+			const id = ctxMenuNamingIds![0];
+			ankerNaming = { id, label: candidates.find((c: any) => c.id === id)?.label || '' };
+		}}
 	/>
 {/if}
 
@@ -1822,6 +1880,14 @@
 		display: flex;
 		gap: 0;
 		overflow: hidden;
+	}
+
+	/* Anker-Zug: eigene Spalte rechts. Feste Breite, weil ihr Inhalt Text ist
+	   und die Materialspalte nicht schmaler werden soll als nötig. */
+	.anker-col {
+		flex: 0 0 clamp(300px, 24vw, 420px);
+		min-width: 0;
+		min-height: 0;
 	}
 
 	/* Kopfzeile: Dokumenttitel, Spaltenschalter, KI-Lauf. Umbricht, damit der

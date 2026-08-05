@@ -9,12 +9,14 @@
 		namingLabels,
 		onclose,
 		onaddtophase,
+		onankerzug,
 	}: {
 		namingIds: string[];
 		position: { x: number; y: number };
 		namingLabels: string[];
 		onclose: () => void;
 		onaddtophase: () => void;
+		onankerzug: () => void;
 	} = $props();
 </script>
 
@@ -27,6 +29,16 @@
 	</div>
 	<button class="ctx-item" onclick={() => { onaddtophase(); onclose(); }}>
 		Add to Phase...
+	</button>
+	<!-- Geprüft wird immer genau EIN Kriterium; bei mehreren Namings wäre
+	     unbestimmt, welches. -->
+	<button
+		class="ctx-item"
+		disabled={namingIds.length !== 1}
+		title={namingIds.length !== 1 ? 'Nur für ein einzelnes Naming' : 'Dieses Muster am Dokument prüfen'}
+		onclick={() => { onankerzug(); onclose(); }}
+	>
+		Muster prüfen …
 	</button>
 </div>
 
@@ -47,5 +59,6 @@
 		width: 100%; background: none; border: none; color: #c9cdd5;
 		padding: 0.35rem 0.75rem; font-size: 0.8rem; cursor: pointer; text-align: left;
 	}
-	.ctx-item:hover { background: #2a2d3a; }
+	.ctx-item:hover:not(:disabled) { background: #2a2d3a; }
+	.ctx-item:disabled { color: #4b4f5c; cursor: default; }
 </style>
