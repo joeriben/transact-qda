@@ -55,10 +55,12 @@ backup-*.sql
 /.tmp-critfriend/
 
 # Alles mit .tmp-Präfix ist Wegwerf-Arbeitsstand und enthält regelmäßig echte
-# Forschungsdaten.
-/.tmp-*/
+# Forschungsdaten. Ohne Schrägstrich am Ende — sonst greift die Regel nur bei
+# Ordnern, und jede .tmp-DATEI wäre committebar.
+/.tmp-*
 /.dev-server.log
 /logdatei
+*.log
 /HANDOVER.md
 
 # Forschungsmaterial, Datenbank-Abzüge und interne Arbeitsstände gehören nicht
@@ -72,3 +74,14 @@ backup-*.sql
 *.dump
 *.sql.gz
 pg_dump*
+
+# Exporte und Sicherungen tragen das komplette Material eines Projekts, samt
+# Dokumenttexten. Sie entstehen mit einem Klick in der Oberfläche und landen
+# erfahrungsgemäß dort, wo man gerade steht — deshalb überall gesperrt, nicht
+# nur in projekte/.
+*.qdpx
+*.tqda.zip
+
+# Datenbank-Abzüge im Wurzelverzeichnis. Nur dort — migrations/*.sql gehören
+# ins Repo und dürfen nicht mitgesperrt werden.
+/*.sql
