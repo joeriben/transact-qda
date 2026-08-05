@@ -3,11 +3,13 @@
 //
 // Anker-Zug — ein Strukturmuster des Forschers an einem Dokument prüfen.
 //
-//   GET  ?namingId=&documentId=
+//   GET  ?namingId=&documentId=[&neu=1]
 //        Legt vor, was vor einem Lauf auf dem Tisch liegen muss: die Sichtung
-//        des Dokuments, die Belegstelle mit Anlauf, und das aus Naming, Memo
-//        und Belegstelle abgeleitete KRITERIUM. Ein Modellaufruf. Der Lauf
-//        beginnt nicht — das Kriterium geht erst an den Forscher zurück.
+//        des Dokuments, die Belegstelle mit Anlauf, und das KRITERIUM. Liegt
+//        eines abgelegt vor, kommt DAS zurück — ohne Aufruf und ohne dass die
+//        Korrektur des Forschers durch eine zweite Ableitung ersetzt wird.
+//        `neu=1` verwirft das abgelegte und leitet neu ab (ein Aufruf). Der
+//        Lauf beginnt nicht — das Kriterium geht erst an den Forscher zurück.
 //
 //   POST { namingId, documentId, kriterium, belegstelleMitpruefen? }
 //        Geht das Dokument mit dem freigegebenen Kriterium durch. Antwortet als
@@ -42,6 +44,7 @@ import {
 	sichten,
 	zuegeOf,
 	verbucheLauf,
+	speichereKriterium,
 	LaufAbbruch,
 	type Kriterium,
 	type Stelle
@@ -107,12 +110,21 @@ export const GET: RequestHandler = async ({ params, url, locals }) => {
 			belegZuege: [],
 			inscription: muster.inscription,
 			memos: muster.memos,
-			kriterium: null
+			kriterium: null,
+			kriteriumVonHand: false,
+			kriteriumAbgelegtSeit: null
 		});
 	}
 
 	try {
-		return json(await vorbereiten(projectId, namingId!, documentId!));
+		// `neu=1` verwirft das abgelegte Kriterium und leitet neu ab — ausdrücklich,
+		// damit eine Korrektur nicht nebenbei verlorengeht.
+		return json(
+			await vorbereiten(projectId, namingId!, documentId!, {
+				neu: url.searchParams.get('neu') === '1',
+				userId: locals.user?.id ?? null
+			})
+		);
 	} catch (err) {
 		// Kein Zugang zum Modell ist etwas anderes als eine unbrauchbare Antwort.
 		if (err instanceof LaufAbbruch) {
@@ -143,6 +155,13 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		error(400, 'kriterium erforderlich — Akteur, mindestens ein Bestandteil, mindestens eine Relation');
 	}
 	const belegstelleMitpruefen = body?.belegstelleMitpruefen === true;
+
+	// Womit gelaufen wird, gilt ab jetzt. Es kam aus dem Panel, also aus der Hand
+	// des Forschers — auch wenn er nichts geändert hat, hat er es stehen lassen.
+	await speichereKriterium(projectId, namingId!, kriterium, {
+		vonHand: true,
+		userId: locals.user?.id ?? null
+	});
 
 	const ac = new AbortController();
 	request.signal.addEventListener('abort', () => ac.abort());

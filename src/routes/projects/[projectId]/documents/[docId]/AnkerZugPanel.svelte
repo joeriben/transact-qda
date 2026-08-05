@@ -70,6 +70,8 @@
 	let belegstelle = $state<string | null>(null);
 	let belegAusAnderemDokument = $state(false);
 	let kriterium = $state<Kriterium | null>(null);
+	let kriteriumVonHand = $state(false);
+	let kriteriumAbgelegtSeit = $state<string | null>(null);
 	let belegstelleMitpruefen = $state(false);
 	let sichtungOffen = $state(false);
 
@@ -97,7 +99,7 @@
 		return () => controller?.abort();
 	});
 
-	async function laden() {
+	async function laden(neu = false) {
 		phase = 'laden';
 		fehler = '';
 		stellen = [];
@@ -107,7 +109,8 @@
 		verworfen = new Set();
 		try {
 			const res = await fetch(
-				`/api/projects/${projectId}/anker-zug?namingId=${namingId}&documentId=${documentId}`
+				`/api/projects/${projectId}/anker-zug?namingId=${namingId}&documentId=${documentId}` +
+					(neu ? '&neu=1' : '')
 			);
 			if (!res.ok) throw new Error(await res.text());
 			const v = await res.json();
@@ -116,6 +119,8 @@
 			belegstelle = v.belegstelle;
 			belegAusAnderemDokument = v.belegAusAnderemDokument ?? false;
 			kriterium = v.kriterium;
+			kriteriumVonHand = v.kriteriumVonHand ?? false;
+			kriteriumAbgelegtSeit = v.kriteriumAbgelegtSeit ?? null;
 			phase = 'kriterium';
 			await standLaden();
 		} catch (e) {
@@ -288,6 +293,53 @@
 		kriterium = { ...k };
 	}
 
+	// Ein Kriterium, dem ein Bestandteil fehlt, ist nicht zu retten, indem man
+	// die vorhandenen umschreibt: „ohne Zuspitzung" ist ein zweiter
+	// Bestandteil, und die Grenze zu einem Nachbar-Naming ist eine eigene
+	// Relation. Beides muss anzulegen sein, sonst ist die Korrektur nur halb da.
+	function bestandteilDazu() {
+		if (!kriterium) return;
+		kriterium = {
+			...kriterium,
+			bestandteile: [...kriterium.bestandteile, { name: '', kenntlich: '' }]
+		};
+	}
+	function bestandteilWeg(i: number) {
+		if (!kriterium) return;
+		kriterium = { ...kriterium, bestandteile: kriterium.bestandteile.filter((_, j) => j !== i) };
+	}
+	function relationDazu() {
+		if (!kriterium) return;
+		kriterium = {
+			...kriterium,
+			relationen: [...kriterium.relationen, { name: '', bedingung: '', ertrag: '' }]
+		};
+	}
+	function relationWeg(i: number) {
+		if (!kriterium) return;
+		kriterium = { ...kriterium, relationen: kriterium.relationen.filter((_, j) => j !== i) };
+	}
+
+	/**
+	 * Das abgelegte Kriterium verwerfen und neu ableiten.
+	 *
+	 * Kostet einen Aufruf und wirft die eigene Korrektur weg — deshalb mit
+	 * Rückfrage und nicht als beiläufiger Knopf neben den Feldern.
+	 */
+	async function neuAbleiten() {
+		if (kriteriumVonHand && !confirm('Deine Korrektur am Kriterium geht dabei verloren. Neu ableiten?'))
+			return;
+		await laden(true);
+	}
+
+	/** Ein Kriterium ohne Bestandteil oder ohne Relation kann nicht laufen. */
+	const kriteriumTraegt = $derived(
+		!!kriterium &&
+			kriterium.akteur.trim().length > 0 &&
+			kriterium.bestandteile.some((b) => b.name.trim().length > 0) &&
+			kriterium.relationen.some((r) => r.name.trim().length > 0)
+	);
+
 	// Der Fall zuerst, dann die Kontraste — an denen wird die Grenze scharf.
 	let gruppen = $derived.by(() => {
 		const order = kriterium?.relationen.map((r) => r.name) ?? [];
@@ -319,7 +371,7 @@
 
 	{#if phase === 'fehler'}
 		<div class="fehler">{fehler}</div>
-		<button class="tun" onclick={laden}>Nochmal</button>
+		<button class="tun" onclick={() => laden()}>Nochmal</button>
 	{/if}
 
 	{#if gestalt}
@@ -363,10 +415,25 @@
 
 	{#if kriterium && (phase === 'kriterium' || phase === 'lauf' || phase === 'fertig')}
 		<section class="kriterium" class:gesperrt={phase === 'lauf'}>
-			<h3>Kriterium</h3>
+			<div class="kriterium-kopf">
+				<h3>Kriterium</h3>
+				<button class="klein" disabled={phase === 'lauf'} onclick={neuAbleiten}
+					title="Verwirft das abgelegte Kriterium und leitet aus Naming und Memo neu ab — ein Aufruf">
+					neu ableiten
+				</button>
+			</div>
 			<p class="hinweis">
-				Aus deinem Naming und deinem Memo. Ändere es, bevor es läuft — geprüft wird, was hier
-				steht.
+				{#if kriteriumVonHand}
+					Deins — zuletzt geändert am {kriteriumAbgelegtSeit?.slice(0, 10)}. Es bleibt stehen und
+					wird nicht neu abgeleitet. Geprüft wird, was hier steht.
+				{:else if kriteriumAbgelegtSeit}
+					Abgeleitet aus deinem Naming und deinem Memo, abgelegt am
+					{kriteriumAbgelegtSeit.slice(0, 10)}. Ändere es, bevor es läuft — geprüft wird, was hier
+					steht, und deine Änderung bleibt.
+				{:else}
+					Eben abgeleitet aus deinem Naming und deinem Memo. Ändere es, bevor es läuft — geprüft
+					wird, was hier steht, und deine Änderung bleibt.
+				{/if}
 			</p>
 
 			<div class="paar">
@@ -383,24 +450,46 @@
 			<h4>Bestandteile</h4>
 			{#each kriterium.bestandteile as b, i}
 				<div class="zeile">
-					<input class="name" value={b.name} disabled={phase === 'lauf'}
-						oninput={(e) => bestandteilFeld(kriterium!, i, 'name', e.currentTarget.value)} />
+					<div class="kopfzeile">
+						<input class="name" value={b.name} disabled={phase === 'lauf'}
+							placeholder="was vorliegen muss"
+							oninput={(e) => bestandteilFeld(kriterium!, i, 'name', e.currentTarget.value)} />
+						<button class="weg" disabled={phase === 'lauf'} title="Bestandteil entfernen"
+							onclick={() => bestandteilWeg(i)}>×</button>
+					</div>
 					<textarea rows="2" value={b.kenntlich} disabled={phase === 'lauf'}
 						placeholder="woran im Text kenntlich"
 						oninput={(e) => bestandteilFeld(kriterium!, i, 'kenntlich', e.currentTarget.value)}></textarea>
 				</div>
 			{/each}
+			<button class="klein" disabled={phase === 'lauf'} onclick={bestandteilDazu}>+ Bestandteil</button>
 
 			<h4>Relationen</h4>
 			{#each kriterium.relationen as r, i}
 				<div class="zeile">
-					<input class="name" value={r.name} disabled={phase === 'lauf'}
-						oninput={(e) => relationFeld(kriterium!, i, 'name', e.currentTarget.value)} />
+					<div class="kopfzeile">
+						<input class="name" value={r.name} disabled={phase === 'lauf'}
+							placeholder="wie die Stelle zum Muster steht"
+							oninput={(e) => relationFeld(kriterium!, i, 'name', e.currentTarget.value)} />
+						<button class="weg" disabled={phase === 'lauf'} title="Relation entfernen"
+							onclick={() => relationWeg(i)}>×</button>
+					</div>
 					<textarea rows="2" value={r.bedingung} disabled={phase === 'lauf'}
 						placeholder="welche Bestandteile vorliegen müssen und welche nicht"
 						oninput={(e) => relationFeld(kriterium!, i, 'bedingung', e.currentTarget.value)}></textarea>
+					<textarea rows="1" value={r.ertrag} disabled={phase === 'lauf'}
+						placeholder="was diese Relation zeigt — Notiz für dich, geht nicht ins Urteil ein"
+						oninput={(e) => relationFeld(kriterium!, i, 'ertrag', e.currentTarget.value)}></textarea>
 				</div>
 			{/each}
+			<button class="klein" disabled={phase === 'lauf'} onclick={relationDazu}>+ Relation</button>
+
+			{#if !kriteriumTraegt}
+				<p class="hinweis warnung">
+					Es fehlt ein Akteur, ein benannter Bestandteil oder eine benannte Relation — so kann
+					nicht gelaufen werden.
+				</p>
+			{/if}
 
 			<label class="schalter">
 				<input type="checkbox" bind:checked={belegstelleMitpruefen} disabled={phase === 'lauf'} />
@@ -414,7 +503,7 @@
 					<button class="tun aus" onclick={abbrechen}>Abbrechen</button>
 				</div>
 			{:else}
-				<button class="tun" onclick={() => starten()}>
+				<button class="tun" disabled={!kriteriumTraegt} onclick={() => starten()}>
 					{ausDerAkte ? 'Neu durchgehen' : phase === 'fertig' ? 'Erneut durchgehen' : `${zuegeGesamt} Stellen durchgehen`}
 				</button>
 			{/if}
@@ -462,7 +551,8 @@
 							</li>
 						{/each}
 					</ul>
-					<button class="tun" disabled={phase === 'lauf' || ausgewaehlt.size === 0} onclick={reiheStarten}>
+					<button class="tun" disabled={phase === 'lauf' || ausgewaehlt.size === 0 || !kriteriumTraegt}
+					onclick={reiheStarten}>
 						Über {ausgewaehlt.size} {ausgewaehlt.size === 1 ? 'Dokument' : 'Dokumente'} laufen
 						({dokumente.filter((d) => ausgewaehlt.has(d.documentId)).reduce((a, d) => a + d.zuege, 0)} Stellen)
 					</button>
@@ -623,7 +713,22 @@
 	}
 	input:focus, textarea:focus { outline: none; border-color: var(--accent); }
 	.zeile { display: flex; flex-direction: column; gap: 0.2rem; margin-bottom: 0.4rem; }
-	.zeile .name { font-weight: 600; color: var(--text-1); }
+	.zeile .name { font-weight: 600; color: var(--text-1); flex: 1; }
+	.kopfzeile { display: flex; gap: 0.3rem; align-items: center; }
+	.kriterium-kopf { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; }
+	.hinweis.warnung { color: var(--warning); }
+	button.klein {
+		font-size: 0.7rem; padding: 0.15rem 0.45rem; border: 1px solid var(--border);
+		border-radius: 5px; background: var(--surface-1); color: var(--text-3); cursor: pointer;
+	}
+	button.klein:hover:not(:disabled) { color: var(--text-1); border-color: var(--text-4); }
+	button.klein:disabled { opacity: 0.4; cursor: default; }
+	button.weg {
+		border: none; background: none; color: var(--text-4); cursor: pointer;
+		font-size: 0.95rem; line-height: 1; padding: 0 0.25rem;
+	}
+	button.weg:hover:not(:disabled) { color: var(--warning); }
+	button.weg:disabled { opacity: 0.3; cursor: default; }
 	.schalter {
 		flex-direction: row; align-items: flex-start; gap: 0.4rem;
 		margin-top: 0.6rem; font-size: 0.72rem; line-height: 1.4;

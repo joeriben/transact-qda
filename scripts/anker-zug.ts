@@ -38,6 +38,8 @@ import {
 	durchgehen,
 	dokumentStand,
 	verbucheLauf,
+	ladeKriterium,
+	speichereKriterium,
 	LaufAbbruch,
 	kriteriumHash,
 	ladeVolltext,
@@ -373,8 +375,16 @@ async function main() {
 
 	// ── Stand: was gibt es, was ist gelaufen. Ohne Modell, ohne Kosten. ──
 	if (standOnly || alleDokumenteLaufen) {
+		// Aus der Ablage, nicht aus der Datei: „schon gelaufen" muss sich auf das
+		// Kriterium beziehen, mit dem das Panel laufen würde.
 		const kp0 = join(CACHE_DIR, `kriterium-${naming.id}.json`);
-		const k0 = existsSync(kp0) ? (JSON.parse(readFileSync(kp0, 'utf-8')) as Kriterium) : null;
+		const ausDatei0 = existsSync(kp0) ? (JSON.parse(readFileSync(kp0, 'utf-8')) as Kriterium) : null;
+		const abgelegt0 = await ladeKriterium(project.id, naming.id);
+		if (ausDatei0 && (!abgelegt0 || kriteriumHash(ausDatei0) !== kriteriumHash(abgelegt0.kriterium))) {
+			await speichereKriterium(project.id, naming.id, ausDatei0, { vonHand: true });
+			console.log(`\n(Kriterium aus ${kp0} weicht ab — übernommen und abgelegt.)`);
+		}
+		const k0 = ausDatei0 ?? abgelegt0?.kriterium ?? null;
 		const stand = await dokumentStand(project.id, naming.id, k0);
 		zeigeStand(naming.label, stand, k0);
 		if (standOnly) return;
@@ -399,12 +409,25 @@ async function main() {
 		return;
 	}
 
-	// ── Kriterium: aus der Datei, sonst ableiten ──
+	// ── Kriterium: aus der Ablage, sonst ableiten ──
+	//
+	// Die Ablage ist die Datenbank, nicht mehr eine Datei neben dem Skript: Was
+	// hier korrigiert wird, muss im Panel stehen und umgekehrt. Eine Datei
+	// daneben hieße zwei Wahrheiten, und die auseinanderlaufende ist immer die,
+	// die man gerade nicht ansieht. Zum Bearbeiten von Hand wird die abgelegte
+	// Fassung nach .tmp-anker geschrieben und von dort zurückgelesen.
 	if (!existsSync(CACHE_DIR)) mkdirSync(CACHE_DIR, { recursive: true });
 	const kp = join(CACHE_DIR, `kriterium-${naming.id}.json`);
-	const vorhanden = !forceNew && existsSync(kp) ? (JSON.parse(readFileSync(kp, 'utf-8')) as Kriterium) : null;
+	// Eine von Hand geänderte Datei gilt und wandert in die Ablage.
+	const ausDatei = !forceNew && existsSync(kp) ? (JSON.parse(readFileSync(kp, 'utf-8')) as Kriterium) : null;
+	const abgelegt = forceNew ? null : await ladeKriterium(project.id, naming.id);
+	const handEdit = ausDatei && (!abgelegt || kriteriumHash(ausDatei) !== kriteriumHash(abgelegt.kriterium));
+	if (handEdit) {
+		await speichereKriterium(project.id, naming.id, ausDatei!, { vonHand: true });
+		console.log(`\n(Kriterium aus ${kp} weicht ab — übernommen und abgelegt.)`);
+	}
 
-	const v = await vorbereiten(project.id, naming.id, document.id, { kriterium: vorhanden });
+	const v = await vorbereiten(project.id, naming.id, document.id, { neu: forceNew });
 
 	console.log(`\nMuster:    „${v.inscription}"`);
 	console.log(`Memo:      ${v.memos.length > 0 ? short(v.memos.join(' // '), 260) : '(keins)'}`);
@@ -420,10 +443,18 @@ async function main() {
 	}
 
 	if (!v.kriterium) throw new Error('Das Kriterium kam nicht auswertbar zurück.');
-	if (!vorhanden) writeFileSync(kp, JSON.stringify(v.kriterium, null, '\t'), 'utf-8');
-	else console.log(`\n(Kriterium aus ${kp} — mit --neu neu ableiten)`);
+	// Immer schreiben: Die Datei ist die Bearbeitungsfassung der Ablage, nicht
+	// ihr Konkurrent. Wer sie ändert, ändert beim nächsten Lauf die Ablage.
+	writeFileSync(kp, JSON.stringify(v.kriterium, null, '\t'), 'utf-8');
+	console.log(
+		v.kriteriumVonHand
+			? `\n(Kriterium aus deiner Hand, abgelegt am ${v.kriteriumAbgelegtSeit?.slice(0, 10)} — mit --neu neu ableiten)`
+			: v.kriteriumAbgelegtSeit
+				? `\n(Kriterium abgeleitet und abgelegt am ${v.kriteriumAbgelegtSeit.slice(0, 10)} — mit --neu neu ableiten)`
+				: '\n(Kriterium eben abgeleitet und abgelegt)'
+	);
 	zeigeKriterium(v.kriterium);
-	console.log(`   Liegt in ${kp} — dort ändern, dann erneut laufen lassen.`);
+	console.log(`   Liegt in ${kp} und in der Ablage — dort ändern, dann erneut laufen lassen.`);
 
 	if (kriteriumOnly || !doRun) {
 		console.log('\n(Kein Lauf. Mit --lauf das Dokument durchgehen.)\n');

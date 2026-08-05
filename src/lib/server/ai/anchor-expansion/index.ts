@@ -20,6 +20,7 @@
 import { query } from '../../db/index.js';
 import { resolveTier } from '../coding-run/model-tiers.js';
 import { sichten, zuegeOf, zuegeOverlapping, type Gestalt, type Zug } from './gestalt.js';
+import { ladeKriterium, speichereKriterium, neuAbleiten } from './kriterien.js';
 import {
 	ableitenKriterium,
 	pruefeStellen,
@@ -35,6 +36,8 @@ export { sichten, zuegeOf, zuegeOverlapping, bauformName } from './gestalt.js';
 export type { Gestalt, Zug, Bruch, Position, Verteilung } from './gestalt.js';
 export { NICHT_EINSCHLAEGIG, LaufAbbruch } from './recognize.js';
 export { kriteriumHash, dokumentStand, verbucheLauf, ladeLauf } from './runs.js';
+export { ladeKriterium, speichereKriterium, neuAbleiten } from './kriterien.js';
+export type { AbgelegtesKriterium } from './kriterien.js';
 export type { DokumentStand, LaufNotiz, LaufEintrag } from './runs.js';
 export type {
 	Kriterium,
@@ -234,6 +237,10 @@ export interface Vorbereitung {
 	inscription: string;
 	memos: string[];
 	kriterium: Kriterium | null;
+	/** Das Kriterium kam aus der Hand des Forschers, nicht aus der Ableitung. */
+	kriteriumVonHand: boolean;
+	/** Seit wann es abgelegt ist — null, wenn es gerade erst abgeleitet wurde. */
+	kriteriumAbgelegtSeit: string | null;
 }
 
 /**
@@ -245,7 +252,14 @@ export async function vorbereiten(
 	projectId: string,
 	namingId: string,
 	documentId: string,
-	opts: { kriterium?: Kriterium | null; signal?: AbortSignal; modell?: PruefOptions['modell'] } = {}
+	opts: {
+		kriterium?: Kriterium | null;
+		signal?: AbortSignal;
+		modell?: PruefOptions['modell'];
+		/** Die Ableitung erzwingen, auch wenn ein Kriterium abgelegt ist. */
+		neu?: boolean;
+		userId?: string | null;
+	} = {}
 ): Promise<Vorbereitung> {
 	const [muster, fullText] = await Promise.all([
 		ladeMuster(projectId, namingId),
@@ -261,13 +275,26 @@ export async function vorbereiten(
 		fullText
 	);
 
-	// Das Kriterium hängt nicht an einer Marke: Es kommt aus Naming und Memo.
+	// Das Kriterium hängt nicht an einer Marke: Es kommt aus Naming und Memo —
+	// abgeleitet aber nur, wenn keines abgelegt ist. Sonst gälte die Korrektur
+	// des Forschers bis zum Schließen des Panels und keinen Aufruf länger.
+	if (opts.neu) await neuAbleiten(projectId, namingId);
+	const abgelegt = opts.kriterium ? null : opts.neu ? null : await ladeKriterium(projectId, namingId);
 	const kriterium =
-		opts.kriterium ?? (await ableitenKriterium(muster.inscription, muster.memos, opts.signal, opts.modell));
+		opts.kriterium ??
+		abgelegt?.kriterium ??
+		(await ableitenKriterium(muster.inscription, muster.memos, opts.signal, opts.modell));
+	// Was frisch abgeleitet wurde, wird gleich abgelegt: Der nächste Aufruf soll
+	// dasselbe vorfinden, nicht eine zweite Ableitung mit anderen Bestandteilen.
+	if (!opts.kriterium && !abgelegt) {
+		await speichereKriterium(projectId, namingId, kriterium, { vonHand: false, userId: opts.userId });
+	}
 
 	return {
 		gestalt,
 		zuegeGesamt: zuege.length,
+		kriteriumVonHand: abgelegt?.vonHand ?? false,
+		kriteriumAbgelegtSeit: abgelegt?.updatedAt ?? null,
 		belegstelle: beleg?.text ?? null,
 		belegAusAnderemDokument: ausAnderemDokument,
 		belegZuege: ausAnderemDokument
