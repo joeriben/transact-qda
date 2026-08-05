@@ -146,6 +146,8 @@ An jeder Stelle stellst du zuerst diese Frage, und nur diese:
 
 Der Gegenstand gehört in die Antwort — als das, worüber geredet wird, nicht als das, worum es geht. Die Form einer Antwort ist: „redet über X so, dass X als … dasteht" — ein Verb des Tuns und ein Wie. „Hier geht es um X" ist keine Antwort, sondern eine Themenangabe.
 
+AUFNAHME: Was ein Zug tut, steht selten in ihm allein. „Welche Erhebungsmethode ziehen Sie vor?" trägt seine Zweiwertigkeit nicht im Wortlaut — sie zeigt sich daran, dass der Adressat zwischen zwei Nummern wählen soll. Deshalb steht bei jeder Stelle, was danach geschieht. Lies daran ab, was der Zug vorgelegt hat: was der Adressat aufnimmt, zurückweist, ergänzen muss oder übergeht. Beurteilt wird die Stelle, nicht die Aufnahme — aber ohne sie beurteilst du einen Vollzug an seinem Wortlaut statt an dem, was er getan hat.
+
 WER HANDELT: Im Kopf jeder Stelle steht, welcher Position ihre Rede zugeschrieben ist. Diese Zuschreibung folgt aus den Marken des Textes, nicht aus dem Inhalt: Steht eine Passage in einem Block der einen Position unter einer Marke wie „Frage:", so ist sie zitierte Rede der anderen. Heißt die Zuschreibung „unklar", entscheide aus dem Text — und sag in \`begruendung\`, wenn sie sich nicht entscheiden lässt.
 
 RISSE: Wo unter einer Stelle ein Riss vermerkt ist, fehlt dem Protokoll etwas, worauf sie sich bezieht — eine zitierte Frage ohne Original, ein Verweis auf eine Aufzählung, die nicht dasteht. Das ist keine Panne, an der du vorbeisiehst: Das Fehlende ist oft genau der Zug. Wo eine Antwort auf etwas antwortet, das aus dem Protokoll gefallen ist, kannst du den Zug nur an ihrer Spur in der Antwort erkennen — dann sag das, statt den Zug für abwesend zu erklären.
@@ -175,7 +177,8 @@ export function befundMessage(
 	memos: string[],
 	belegstelleMitAnlauf: string,
 	zug: Zug,
-	anlauf: string[]
+	anlauf: string[],
+	aufnahme: string[]
 ): string {
 	const prev = zug.previousTurn
 		? `VORANGEHENDER BLOCK (${zug.previousTurn.speakerMark}):\n"""\n${zug.previousTurn.text}\n"""\n\n`
@@ -210,7 +213,7 @@ ${anlauf.length > 0 ? `ANLAUF (unmittelbar davor):\n"""\n${anlauf.join('\n')}\n"
 ${zug.text}
 """
 
-Was geschieht hier, und in welchem Verhältnis steht es zum Muster? JSON-Objekt.`;
+${aufnahme.length > 0 ? `AUFNAHME — was danach geschieht. Nicht die zu prüfende Stelle; sie steht hier, weil sich an ihr zeigt, was der Zug getan hat:\n"""\n${aufnahme.join('\n')}\n"""\n\n` : ''}Was geschieht hier, und in welchem Verhältnis steht es zum Muster? JSON-Objekt.`;
 }
 
 // ── Ausführung ────────────────────────────────────────────────────
@@ -337,6 +340,36 @@ export interface PruefOptions {
  * Jede übergebene Passage prüfen. Ohne Vorauswahl — wer hier nach Themen
  * vorsortiert, entfernt die strukturisomorphen Fälle.
  */
+/**
+ * Was der Adressat mit dem Zug gemacht hat.
+ *
+ * Ohne das ist ein Zug oft nicht zu beurteilen. „Welche Erhebungsmethode ziehen
+ * Sie vor? Davon hängt das gesamte Projekt ab." trägt seine Zweiwertigkeit nicht in
+ * sich — die beiden Optionen stehen an anderer Stelle im Protokoll, und was die
+ * Frage als Entweder-oder kenntlich macht, ist die Antwort „Begründe 1 vs. 2".
+ * Der Forscher hatte genau diese Stelle markiert; ohne die Aufnahme kam seine
+ * eigene Belegstelle als „Gegenüberstellung fehlt" zurück.
+ *
+ * Genommen wird, was folgt, bis der Adressat gesprochen hat und der Sprecher
+ * wieder an der Reihe ist — der Wechsel ist die Grenze, nicht eine Zeichenzahl.
+ */
+function aufnahmeOf(alle: Zug[], idx: number, maxZuege = 3, maxChars = 1800): string[] {
+	const eigen = alle[idx]?.position;
+	const out: string[] = [];
+	let adressatHatGesprochen = false;
+	let chars = 0;
+	for (let i = idx + 1; i < alle.length && out.length < maxZuege; i++) {
+		const z = alle[i];
+		const fremd = z.position !== eigen;
+		if (adressatHatGesprochen && !fremd) break;
+		if (fremd) adressatHatGesprochen = true;
+		out.push(`[${z.position}] ${z.text}`);
+		chars += z.text.length;
+		if (chars >= maxChars) break;
+	}
+	return out;
+}
+
 export async function pruefeStellen(
 	inscription: string,
 	memos: string[],
@@ -363,7 +396,7 @@ export async function pruefeStellen(
 		try {
 			const res = await chatJson<Befund>(
 				system,
-				befundMessage(inscription, memos, belegstelleMitAnlauf, z, anlauf),
+				befundMessage(inscription, memos, belegstelleMitAnlauf, z, anlauf, aufnahmeOf(alleZuege, idx)),
 				{ tier, signal: opts.signal, cacheable: system, versuche: 2 }
 			);
 			if (!res.ok) return res;
