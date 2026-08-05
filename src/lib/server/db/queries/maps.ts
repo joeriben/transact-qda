@@ -215,12 +215,17 @@ export async function getMapsByProject(projectId: string) {
 }
 
 export async function getMap(mapId: string, projectId: string) {
+	// Nur echte Karten (mapType). Infrastruktur-Perspektiven — Grounding
+	// Workspace, researcher, memo-system, phase … — sind ebenfalls
+	// mode='perspective'; ohne den Filter öffnet ihre UUID unter /maps/<id>
+	// eine vollwertige Karte, und jede mapId-gescopte Mutation nimmt sie an.
 	return queryOne(
 		`SELECT n.id, n.inscription as label, n.created_at, a.properties
 		 FROM namings n
 		 JOIN appearances a ON a.naming_id = n.id AND a.perspective_id = n.id
 		 WHERE n.id = $1 AND n.project_id = $2 AND n.deleted_at IS NULL
-		   AND a.mode = 'perspective'`,
+		   AND a.mode = 'perspective'
+		   AND a.properties ? 'mapType'`,
 		[mapId, projectId]
 	);
 }

@@ -605,11 +605,16 @@ export async function getAllProjectNamings(projectId: string) {
 			   (SELECT a.properties->>'aiPersona' FROM appearances a
 			    WHERE a.naming_id = n.id AND a.properties->>'aiPersona' IS NOT NULL
 			    LIMIT 1) as ai_persona,
-			   -- Which maps does this naming appear on?
+			   -- Which maps does this naming appear on? Nur echte Karten (mapType):
+			   -- ohne den Filter bekam jedes in-vivo- und Coding-Run-Naming einen
+			   -- Chip "Grounding Workspace", der die Infrastruktur-Perspektive als
+			   -- Karte öffnete.
 			   (SELECT json_agg(json_build_object('id', mp.id, 'label', mp.inscription))
 			    FROM (SELECT DISTINCT m.id, m.inscription
 			          FROM appearances a2
 			          JOIN namings m ON m.id = a2.perspective_id
+			          JOIN appearances ms ON ms.naming_id = m.id AND ms.perspective_id = m.id
+			            AND ms.mode = 'perspective' AND ms.properties ? 'mapType'
 			          WHERE a2.naming_id = n.id AND a2.perspective_id != n.id
 			            AND m.deleted_at IS NULL) mp) as appears_on_maps
 			 FROM namings n
