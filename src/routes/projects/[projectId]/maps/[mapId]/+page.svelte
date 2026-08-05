@@ -119,6 +119,15 @@
 		ctxMenuId = null;
 	}
 
+	// Doppelklick öffnet das Stack-Panel. Ohne ihn war eine Karte auf dem Canvas
+	// stumm: der Stack war nur über das Kontextmenü erreichbar, und ein Naming
+	// ohne Memo zeigte beim Überfahren gar nichts — genau der Fall bei KI-Cues
+	// aus Coding-Runs, die keine Memos tragen.
+	function handleNodeDblClick(id: string) {
+		if (ms.editingId === id) return;
+		ms.showStack(id);
+	}
+
 	let ctxMenuId = $state<string | null>(null);
 	let ctxMenuPos = $state({ x: 0, y: 0 });
 
@@ -215,6 +224,26 @@
 		}
 		window.addEventListener('beforeunload', onBeforeUnload);
 		return () => window.removeEventListener('beforeunload', onBeforeUnload);
+	});
+
+	// ─── ai-eval: verworfene Cues ───
+	// Die Karte zeigte einen im Reader verworfenen KI-Cue unverändert. Das
+	// Ausgrauen ist Folge des Urteils, kein Schreibvorgang im Kern: ohne die
+	// Auditschicht liefert der Endpunkt nichts und die Karte sieht aus wie zuvor.
+	$effect(() => {
+		const pid = data.projectId;
+		let cancelled = false;
+		(async () => {
+			try {
+				const res = await fetch(`/api/projects/${pid}/ai-eval`);
+				if (!res.ok || cancelled) return;
+				const body = (await res.json()) as { rejected?: string[] };
+				ms.rejectedNamings = new Set(body.rejected ?? []);
+			} catch {
+				// Ohne Urteile graut nichts aus — die Karte bleibt benutzbar.
+			}
+		})();
+		return () => { cancelled = true; };
 	});
 
 	// ─── SSE ───
@@ -429,6 +458,7 @@
 							zoom={viewport.zoom}
 							ondragend={cp.handleNodeDragEnd}
 							onclick={handleNodeClick}
+							ondblclick={handleNodeDblClick}
 							oncontextmenu={handleNodeContextMenu}
 						>
 							{#if ms.mapType === 'social-worlds' && el.sw_role}
@@ -472,6 +502,7 @@
 							zoom={viewport.zoom}
 							draggable={false}
 							onclick={handleNodeClick}
+							ondblclick={handleNodeDblClick}
 							oncontextmenu={handleNodeContextMenu}
 						>
 							<CanvasRelationNode {rel} {cp} />
@@ -491,6 +522,7 @@
 							zoom={viewport.zoom}
 							ondragend={cp.handleNodeDragEnd}
 							onclick={handleNodeClick}
+							ondblclick={handleNodeDblClick}
 							oncontextmenu={handleNodeContextMenu}
 						>
 							<div class="silence-node" class:phase-dimmed={ms.highlightedPhase} class:centered-dim={cp.centeredConnections && !cp.centeredConnections.has(s.naming_id)}>
@@ -570,7 +602,7 @@
 			{/if}
 		</div>
 
-		<PhasesSidebar {selection} />
+		<PhasesSidebar />
 	</div>
 </div>
 

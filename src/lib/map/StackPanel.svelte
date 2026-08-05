@@ -4,11 +4,24 @@
 -->
 <script lang="ts">
 	import { getMapState } from './mapState.svelte.js';
+	import { createFloatingPanel } from './floatingPanel.svelte.js';
 	import { CLARKE_SW_QUESTIONS, CLARKE_ARENA_QUESTIONS, ANALYTICAL_DEEPENING } from '$lib/shared/constants.js';
 
 	let { mode, item }: { mode: 'floating' | 'inline'; item?: any } = $props();
 
 	const ms = getMapState();
+
+	// Eigene Ecke (links oben) statt der von der Halde besetzten rechten: das
+	// Angeklickte darf nicht hinter dem Vorrat liegen. Beweglich und ziehbar.
+	const panel = createFloatingPanel({
+		key: `${ms.mapId}:stack`,
+		width: 340,
+		height: 420,
+		anchor: 'top-left',
+		minWidth: 240,
+		minHeight: 160,
+		maxWidth: 720
+	});
 
 	const stackNode = $derived(mode === 'floating' ? ms.findNode(ms.stackId!) : item);
 
@@ -17,6 +30,29 @@
 	const situatingSpansMaps = $derived(
 		new Set((ms.stackData?.situating ?? []).map((s: any) => s.map_inscription)).size > 1
 	);
+
+	// Begründung je Passage: die Akte tragen die Passagen-ID in
+	// linked_naming_ids (coding-run/write.ts). Sie stehen unter der Passage, für
+	// die sie gelten, nicht als eigener Block — die Begründung gehört zum Zitat.
+	const reasoningByAnnotation = $derived.by(() => {
+		const out = new Map<string, any[]>();
+		for (const r of ms.stackData?.reasonings ?? []) {
+			for (const id of r.linked_naming_ids ?? []) {
+				if (!out.has(id)) out.set(id, []);
+				out.get(id)!.push(r);
+			}
+		}
+		return out;
+	});
+
+	// Begründungen ohne Passage (oder deren Passage nicht mehr sichtbar ist)
+	// gingen sonst verloren.
+	const looseReasonings = $derived.by(() => {
+		const shown = new Set((ms.stackData?.annotations ?? []).map((a: any) => a.id));
+		return (ms.stackData?.reasonings ?? []).filter(
+			(r: any) => !(r.linked_naming_ids ?? []).some((id: string) => shown.has(id))
+		);
+	});
 
 	// Group annotations by document for the Material section
 	const annotationsByDoc = $derived.by(() => {
@@ -35,13 +71,18 @@
 </script>
 
 {#if ms.stackId && ms.stackData}
-	<div class={mode === 'floating' ? 'canvas-stack-panel' : 'history-panel'}>
+	<div class={mode === 'floating' ? 'canvas-stack-panel' : 'history-panel'}
+		use:panel.attach={mode === 'floating'} style={mode === 'floating' ? panel.style : undefined}>
 		{#if mode === 'floating'}
-			<div class="stack-panel-header">
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div class="stack-panel-header" onpointerdown={panel.drag}
+				ondblclick={(e) => { if (!(e.target as Element).closest('button, a')) panel.reset(); }}
+				title="Drag to move · double-click resets">
 				<span class="stack-title">{stackNode?.inscription || '(unnamed)'}</span>
 				<button class="btn-link" onclick={() => { ms.stackId = null; ms.stackData = null; }}>close</button>
 			</div>
 		{/if}
+		<div class={mode === 'floating' ? 'stack-body' : 'stack-body-inline'}>
 		{#if stackNode?.is_collapsed}
 			<button class="btn-xs btn-unpin" onclick={() => ms.unpinLayer(ms.stackId!)}>
 				unpin (show latest)
@@ -172,8 +213,25 @@
 						{#each group.passages as p}
 							<div class="material-passage">
 								<span class="material-text">{p.properties?.anchor?.text || '(no text)'}</span>
+								{#each reasoningByAnnotation.get(p.id) ?? [] as r}
+									<div class="material-reasoning">
+										<span class="mr-by">{r.by_inscription}</span>
+										<span class="mr-text">{r.memo_text}</span>
+									</div>
+								{/each}
 							</div>
 						{/each}
+					</div>
+				{/each}
+			</div>
+		{/if}
+		{#if looseReasonings.length > 0}
+			<div class="history-section">
+				<span class="history-label">Reasoning</span>
+				{#each looseReasonings as r}
+					<div class="material-reasoning">
+						<span class="mr-by">{r.by_inscription}</span>
+						<span class="mr-text">{r.memo_text}</span>
 					</div>
 				{/each}
 			</div>
@@ -253,24 +311,58 @@
 				</div>
 			{/if}
 		{/if}
+		</div>
+		{#if mode === 'floating'}
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div class="sp-grip sp-grip-w" onpointerdown={(e) => panel.resize(e, 'w')}></div>
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div class="sp-grip sp-grip-e" onpointerdown={(e) => panel.resize(e, 'e')}></div>
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div class="sp-grip sp-grip-s" onpointerdown={(e) => panel.resize(e, 's')}></div>
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div class="sp-grip sp-grip-sw" onpointerdown={(e) => panel.resize(e, 'sw')} title="Drag to resize"></div>
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div class="sp-grip sp-grip-se" onpointerdown={(e) => panel.resize(e, 'se')} title="Drag to resize"></div>
+		{/if}
 	</div>
 {/if}
 
 <style>
-	/* Floating (canvas) */
+	/* Floating (canvas) — Position und Größe kommen aus floatingPanel. */
 	.canvas-stack-panel {
-		position: absolute; top: 0.75rem; right: 0.75rem;
-		width: 320px; max-height: calc(100% - 1.5rem);
-		overflow-y: auto;
+		position: absolute;
+		display: flex; flex-direction: column;
 		background: #161822; border: 1px solid #2a2d3a; border-radius: 8px;
-		padding: 0.75rem; z-index: 20;
+		padding: 0.75rem;
+		/* Über der Halde: was der Forscher angeklickt hat, liegt vorn. */
+		z-index: 45;
 		box-shadow: 0 4px 12px rgba(0,0,0,0.4);
 	}
 	.stack-panel-header {
 		display: flex; align-items: center; justify-content: space-between;
 		margin-bottom: 0.5rem;
+		cursor: move; touch-action: none; flex-shrink: 0;
 	}
-	.stack-title { font-size: 0.9rem; font-weight: 600; color: #e1e4e8; }
+	.stack-title {
+		font-size: 0.9rem; font-weight: 600; color: #e1e4e8;
+		overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+	}
+	.stack-body { flex: 1; min-height: 0; overflow-y: auto; }
+
+	/* Ziehleisten */
+	.sp-grip { position: absolute; touch-action: none; }
+	.sp-grip-w { left: -3px; top: 0; bottom: 8px; width: 7px; cursor: ew-resize; }
+	.sp-grip-e { right: -3px; top: 0; bottom: 8px; width: 7px; cursor: ew-resize; }
+	.sp-grip-s { left: 8px; right: 8px; bottom: -3px; height: 7px; cursor: ns-resize; }
+	.sp-grip-sw { left: -3px; bottom: -3px; width: 14px; height: 14px; cursor: nesw-resize; }
+	.sp-grip-se { right: -3px; bottom: -3px; width: 14px; height: 14px; cursor: nwse-resize; }
+	.sp-grip-se::after, .sp-grip-sw::after {
+		content: ''; position: absolute; bottom: 3px; width: 6px; height: 6px;
+		border-bottom: 2px solid #3a3d4a;
+	}
+	.sp-grip-se::after { right: 3px; border-right: 2px solid #3a3d4a; }
+	.sp-grip-sw::after { left: 3px; border-left: 2px solid #3a3d4a; }
+	.sp-grip:hover::after { border-color: #8b9cf7; }
 
 	/* Inline (list) */
 	.history-panel {
@@ -370,6 +462,21 @@
 	.material-text {
 		font-size: 0.72rem; color: #c9cdd5; display: block;
 		white-space: pre-wrap; max-height: 3.5em; overflow-y: auto;
+	}
+	/* Begründung unter dem Zitat, in der Farbe der KI-Herkunft — sichtbar
+	   nachgeordnet, damit das Material die Passage bleibt und die Begründung
+	   dazu gesagt ist, nicht an ihrer Stelle steht. */
+	.material-reasoning {
+		margin-top: 0.25rem; padding-top: 0.25rem;
+		border-top: 1px dashed rgba(139, 156, 247, 0.25);
+	}
+	.mr-by {
+		font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.04em;
+		color: #8b9cf7; display: block;
+	}
+	.mr-text {
+		font-size: 0.72rem; color: #a0a4b0; display: block;
+		white-space: pre-wrap;
 	}
 
 	/* AI discussion */

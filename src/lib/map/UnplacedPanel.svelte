@@ -4,10 +4,22 @@
 -->
 <script lang="ts">
 	import { getMapState } from './mapState.svelte.js';
+	import { createFloatingPanel } from './floatingPanel.svelte.js';
 
 	let { viewport }: { viewport: { x: number; y: number; zoom: number } } = $props();
 
 	const ms = getMapState();
+
+	// Beweglich und in der Größe ziehbar; Lage pro Karte gemerkt.
+	const panel = createFloatingPanel({
+		key: `${ms.mapId}:unplaced`,
+		width: 280,
+		height: 360,
+		anchor: 'top-right',
+		minWidth: 200,
+		minHeight: 140,
+		maxWidth: 620
+	});
 
 	type GroupKey = 'phase' | 'document';
 	let groupBy = $state<GroupKey>('document');
@@ -75,8 +87,11 @@
 </script>
 
 {#if ms.isPrimary && unplaced.length > 0}
-	<aside class="unplaced-panel" class:collapsed>
-		<header class="up-head">
+	<aside class="unplaced-panel" class:collapsed use:panel.attach style={panel.style}>
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<header class="up-head" onpointerdown={panel.drag}
+			ondblclick={(e) => { if (!(e.target as Element).closest('button, select, a, input')) panel.reset(); }}
+			title="Drag to move · double-click resets">
 			<button class="up-toggle" onclick={() => collapsed = !collapsed} title={collapsed ? 'Expand' : 'Collapse'}>
 				{collapsed ? '▸' : '▾'}
 			</button>
@@ -105,9 +120,15 @@
 							<!-- svelte-ignore a11y_no_static_element_interactions -->
 							<div
 								class="up-item"
+								class:up-rejected={ms.isRejected(it)}
+								class:up-hidden={ms.isHidden(it)}
 								draggable="true"
 								ondragstart={(e) => onDragStart(e, it.naming_id)}
-								title="Drag onto the canvas to place, or use the button for the viewport center"
+								title={ms.isRejected(it)
+									? 'You rejected this cue — shown because the hidden/rejected filter is off'
+									: ms.isHidden(it)
+										? 'All its passages are hidden in the material — shown because the hidden/rejected filter is off'
+										: 'Drag onto the canvas to place, or use the button for the viewport center'}
 							>
 								<span class="up-mode" data-mode={it.mode}></span>
 								<!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -121,17 +142,24 @@
 					</div>
 				{/each}
 			</div>
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div class="up-grip up-grip-w" onpointerdown={(e) => panel.resize(e, 'w')}></div>
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div class="up-grip up-grip-e" onpointerdown={(e) => panel.resize(e, 'e')}></div>
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div class="up-grip up-grip-s" onpointerdown={(e) => panel.resize(e, 's')}></div>
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div class="up-grip up-grip-sw" onpointerdown={(e) => panel.resize(e, 'sw')} title="Drag to resize"></div>
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div class="up-grip up-grip-se" onpointerdown={(e) => panel.resize(e, 'se')} title="Drag to resize"></div>
 		{/if}
 	</aside>
 {/if}
 
 <style>
 	.unplaced-panel {
+		/* Position und Größe kommen aus floatingPanel (Inline-Style). */
 		position: absolute;
-		top: 0.75rem;
-		right: 0.75rem;
-		width: 280px;
-		max-height: calc(100% - 1.5rem);
 		display: flex;
 		flex-direction: column;
 		background: rgba(22, 24, 34, 0.97);
@@ -139,15 +167,20 @@
 		border-radius: 8px;
 		color: #e1e4e8;
 		font-size: 0.8rem;
-		z-index: 40;
+		/* Unter dem Stack-Panel: die Halde ist Vorrat, das Stack-Panel ist das,
+		   was der Forscher gerade ansieht. */
+		z-index: 30;
 		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 	}
-	.unplaced-panel.collapsed { width: auto; }
+	.unplaced-panel.collapsed { width: auto !important; height: auto !important; }
 
 	.up-head {
 		display: flex; align-items: center; gap: 0.4rem;
 		padding: 0.45rem 0.6rem;
 		border-bottom: 1px solid #2a2d3a;
+		cursor: move;
+		touch-action: none;
+		flex-shrink: 0;
 	}
 	.up-toggle {
 		background: none; border: none; color: #8b9cf7;
@@ -169,9 +202,25 @@
 	.up-hint {
 		padding: 0.5rem 0.7rem 0; margin: 0;
 		font-size: 0.7rem; color: #8b8fa3; line-height: 1.4;
+		flex-shrink: 0;
 	}
 
-	.up-body { overflow-y: auto; padding: 0.4rem 0.4rem 0.6rem; }
+	.up-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0.4rem 0.4rem 0.6rem; }
+
+	/* Ziehleisten — gleiche Geste wie die Reader-Spalten, nur an vier Kanten. */
+	.up-grip { position: absolute; touch-action: none; }
+	.up-grip-w { left: -3px; top: 0; bottom: 8px; width: 7px; cursor: ew-resize; }
+	.up-grip-e { right: -3px; top: 0; bottom: 8px; width: 7px; cursor: ew-resize; }
+	.up-grip-s { left: 8px; right: 8px; bottom: -3px; height: 7px; cursor: ns-resize; }
+	.up-grip-sw { left: -3px; bottom: -3px; width: 14px; height: 14px; cursor: nesw-resize; }
+	.up-grip-se { right: -3px; bottom: -3px; width: 14px; height: 14px; cursor: nwse-resize; }
+	.up-grip-se::after, .up-grip-sw::after {
+		content: ''; position: absolute; bottom: 3px; width: 6px; height: 6px;
+		border-bottom: 2px solid #3a3d4a;
+	}
+	.up-grip-se::after { right: 3px; border-right: 2px solid #3a3d4a; }
+	.up-grip-sw::after { left: 3px; border-left: 2px solid #3a3d4a; }
+	.up-grip:hover::after { border-color: #8b9cf7; }
 	.up-group + .up-group { margin-top: 0.5rem; }
 	.up-group-label {
 		font-size: 0.65rem; text-transform: uppercase;
@@ -188,6 +237,11 @@
 	}
 	.up-item:hover { background: rgba(139, 156, 247, 0.08); }
 	.up-item:active { cursor: grabbing; }
+	/* Nur sichtbar, solange der Schalter sie hereinholt — sonst stehen sie gar
+	   nicht in der Liste. Durchstrich = dein Urteil über den Cue; blass =
+	   Passagen im Material ausgeblendet. */
+	.up-item.up-rejected .up-label { text-decoration: line-through; }
+	.up-item.up-rejected, .up-item.up-hidden { opacity: 0.55; }
 	.up-mode {
 		width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
 		background: #6b7280;

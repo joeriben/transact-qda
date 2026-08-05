@@ -17,6 +17,7 @@
 		draggable = true,
 		ondragend,
 		onclick,
+		ondblclick,
 		oncontextmenu,
 		children
 	}: {
@@ -31,6 +32,7 @@
 		draggable?: boolean;
 		ondragend?: (id: string, x: number, y: number) => void;
 		onclick?: (id: string, e: MouseEvent) => void;
+		ondblclick?: (id: string, e: MouseEvent) => void;
 		oncontextmenu?: (id: string, e: MouseEvent) => void;
 		children?: Snippet;
 	} = $props();
@@ -82,6 +84,15 @@
 		if (!didDrag) onclick?.(id, e);
 	}
 
+	function handleDblClick(e: MouseEvent) {
+		// Ein Doppelklick auf eine Karte in Bearbeitung (Umbenennen) gehört dem
+		// Textfeld, nicht dem Panel.
+		if ((e.target as Element).closest('.inline-rename')) return;
+		if (didDrag) return;
+		e.stopPropagation();
+		ondblclick?.(id, e);
+	}
+
 	function handleContextMenu(e: MouseEvent) {
 		e.preventDefault();
 		e.stopPropagation();
@@ -99,6 +110,7 @@
 	onpointermove={onPointerMove}
 	onpointerup={onPointerUp}
 	onclick={handleClick}
+	ondblclick={handleDblClick}
 	oncontextmenu={handleContextMenu}
 >
 	{#if children}
@@ -122,6 +134,12 @@
 	.canvas-element.dragging {
 		cursor: grabbing;
 		z-index: 100;
+	}
+
+	/* Die überfahrene Karte nach vorn, sonst verdecken spätere Nachbarn ihren
+	   Hover-Kasten. */
+	.canvas-element:hover {
+		z-index: 60;
 	}
 
 	.element-body {

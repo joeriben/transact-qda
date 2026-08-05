@@ -647,6 +647,7 @@ export async function getNamingStack(namingId: string, projectId?: string) {
 				designations: [],
 				memos: [],
 				annotations: [],
+				reasonings: [],
 				discussion: [],
 				aiReasoning: null,
 				aiSuggested: false,
@@ -755,11 +756,30 @@ export async function getNamingStack(namingId: string, projectId?: string) {
 	// Fetch document annotations (material) for this naming
 	const annotations = projectId ? await getAnnotationsByCode(projectId, namingId) : [];
 
+	// Begründungs-Akte: naming_acts, die weder Inschrift noch Designation
+	// tragen, sondern nur memo_text — und in linked_naming_ids die Passage, für
+	// die sie gelten (so schreibt coding-run/write.ts). Sie sind die Begründung
+	// des KI-Cues. Ohne sie zeigt der Stack eines Coding-Run-Cues eine einzige
+	// Zeile ('cue') und sonst nichts, obwohl die Begründung in der Datenbank
+	// steht — die Karte wirkt tot.
+	const reasonings = await query(
+		`SELECT na.seq, na.memo_text, na.created_at, na.linked_naming_ids,
+		        n.inscription as by_inscription
+		 FROM naming_acts na
+		 JOIN namings n ON n.id = na.by
+		 WHERE na.naming_id = $1
+		   AND na.memo_text IS NOT NULL AND na.memo_text <> ''
+		   AND na.inscription IS NULL AND na.designation IS NULL
+		 ORDER BY na.seq ASC`,
+		[namingId]
+	);
+
 	return {
 		inscriptions: inscriptions.rows,
 		designations: designations.rows,
 		memos: enrichedMemos,
 		annotations,
+		reasonings: reasonings.rows,
 		discussion: discussion.map((m: any) => ({
 			id: m.id,
 			role: m.label === 'Discussion: researcher' ? 'researcher' : 'ai',
@@ -810,6 +830,26 @@ export async function getMapAppearances(mapId: string, projectId: string) {
 			     SELECT 1 FROM appearances ann
 			     WHERE ann.directed_from = a.naming_id AND ann.valence = 'codes'
 			   ) as has_document_anchor,
+			   -- Ausgeblendet: der Forscher hat JEDE Passage dieses Namings im Reader
+			   -- ausgeblendet (properties.hidden) — dann steht in der Unplaced-Liste
+			   -- nichts mehr an, was im Material noch zu sehen wäre. Kein Löschen:
+			   -- die Appearances bleiben, der Schalter holt sie zurück.
+			   -- Valenzen wie in getAnnotationsByCode (codes UND thematizes) —
+			   -- 'codes' allein ließ jedes nur thematisierend verankerte Naming
+			   -- unausblendbar.
+			   (
+			     EXISTS (
+			       SELECT 1 FROM appearances ann
+			       WHERE ann.directed_from = a.naming_id
+			         AND ann.valence IN ('codes', 'thematizes')
+			     )
+			     AND NOT EXISTS (
+			       SELECT 1 FROM appearances ann
+			       WHERE ann.directed_from = a.naming_id
+			         AND ann.valence IN ('codes', 'thematizes')
+			         AND COALESCE(ann.properties->>'hidden', 'false') <> 'true'
+			     )
+			   ) as anchors_hidden,
 			   -- Provenance: analytical grounding (linked to a memo)
 			   EXISTS (
 			     SELECT 1 FROM participations mp

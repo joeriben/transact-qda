@@ -158,6 +158,18 @@
 		{/if}
 	{/if}
 
+	<!-- Abgeräumtes fällt aus der Unplaced-Liste, bleibt aber erreichbar — sonst
+	     wäre „ausblenden" ein Verschwinden ohne Rückweg (wie im Reader-Fuß). -->
+	{#if ms.hiddenCount > 0 || ms.showHidden}
+		<button class="hidden-badge" class:showing={ms.showHidden}
+			onclick={() => ms.showHidden = !ms.showHidden}
+			title={ms.showHidden
+				? 'Take them out of Unplaced again'
+				: 'Unplaced namings whose passages you hid in the reader, or whose cue you rejected. Click to list them again.'}>
+			{ms.hiddenCount} hidden/rejected
+		</button>
+	{/if}
+
 	<div class="toolbar-actions">
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -313,6 +325,13 @@
 		font-size: 0.75rem; color: #10b981; background: rgba(16, 185, 129, 0.1);
 		padding: 0.15rem 0.5rem; border-radius: 4px;
 	}
+	.hidden-badge {
+		font-size: 0.75rem; color: #9ca3af; background: rgba(107, 114, 128, 0.12);
+		border: 1px solid rgba(107, 114, 128, 0.3); border-radius: 4px;
+		padding: 0.15rem 0.5rem; cursor: pointer;
+	}
+	.hidden-badge:hover { color: #e1e4e8; border-color: #6b7280; }
+	.hidden-badge.showing { color: #f59e0b; border-color: rgba(245, 158, 11, 0.45); background: rgba(245, 158, 11, 0.1); }
 	.toolbar-actions { display: flex; align-items: center; gap: 0.5rem; margin-left: auto; }
 
 	/* View toggle */

@@ -140,6 +140,32 @@ export async function getEvaluationsForDocument(
 }
 
 /**
+ * Letztes Urteil je beurteiltem Naming im ganzen Projekt.
+ *
+ * Für Ansichten, die ein Naming zeigen, ohne an einem Dokument zu stehen — die
+ * Karte etwa. Dort ist die Einheit das Naming, nicht die Passage: maßgeblich ist
+ * das zuletzt gegebene Urteil über dieses Naming, gleich an welcher Passage.
+ * Die Historie bleibt vollständig in der Tabelle; hier steht nur ihr Rand.
+ */
+export async function getLatestVerdictsForProject(
+	projectId: string
+): Promise<{ subjectNamingId: string; verdict: Verdict; createdAt: string }[]> {
+	const res = await query<{ subject_naming_id: string; verdict: Verdict; created_at: string }>(
+		`SELECT DISTINCT ON (subject_naming_id)
+		        subject_naming_id, verdict, created_at
+		 FROM ai_naming_evaluations
+		 WHERE project_id = $1 AND subject_naming_id IS NOT NULL
+		 ORDER BY subject_naming_id, created_at DESC`,
+		[projectId]
+	);
+	return res.rows.map((r) => ({
+		subjectNamingId: r.subject_naming_id,
+		verdict: r.verdict,
+		createdAt: r.created_at
+	}));
+}
+
+/**
  * Corpus size, split by verdict. The training question ("enough data yet?") is
  * this one query away — no archaeology through logs or on-disk traces.
  * Pass a projectId to scope, or omit for the whole installation.

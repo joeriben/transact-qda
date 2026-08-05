@@ -8,12 +8,26 @@
 	let { item, listGroupBy }: { item: any; listGroupBy: string } = $props();
 
 	const ms = getMapState();
+
+	// Zustand in Worten am title, nicht als weiteres Abzeichen in einer Zeile,
+	// die schon Punkt, Symbol, Memo-Zahl und Badges trägt. ai-eval: 'rejected'
+	// ist das Urteil des Forschers, 'withdrawn' die Absage an die Karte — zwei
+	// verschiedene Akte, deshalb zwei verschiedene Wörter.
+	const cardTitle = $derived(
+		[
+			item.properties?.aiReasoning || null,
+			ms.isRejected(item) ? 'Rejected by your verdict' : null,
+			ms.isHidden(item) ? 'All its passages are hidden in the material' : null
+		]
+			.filter(Boolean)
+			.join(' — ')
+	);
 </script>
 
 {#if item.mode === 'relation'}
 	{@const srcId = item.directed_from || item.part_source_id}
 	{@const tgtId = item.directed_to || item.part_target_id}
-	<div class="element-card relation-card" class:ai-suggested={item.properties?.aiSuggested === true} class:ai-withdrawn={ms.isWithdrawn(item.properties)} title={item.properties?.aiReasoning || ''}>
+	<div class="element-card relation-card" class:ai-suggested={item.properties?.aiSuggested === true} class:ai-withdrawn={ms.isWithdrawn(item.properties)} class:ai-rejected={ms.isRejected(item)} class:ai-hidden={ms.isHidden(item)} title={cardTitle}>
 		<div class="el-main">
 			{#if item.is_collapsed}<img class="collapsed-indicator" src="/icons/keep.svg" alt="pinned" title="Pinned to specific layer" />{/if}
 			<span class="designation-dot" style="background: {ms.designationColor(item.designation)}"></span>
@@ -88,7 +102,7 @@
 		</div>
 	</div>
 {:else if item.mode === 'silence'}
-	<div class="element-card silence-card" class:ai-suggested={item.properties?.aiSuggested === true} class:ai-withdrawn={ms.isWithdrawn(item.properties)} title={item.properties?.aiReasoning || ''}>
+	<div class="element-card silence-card" class:ai-suggested={item.properties?.aiSuggested === true} class:ai-withdrawn={ms.isWithdrawn(item.properties)} class:ai-rejected={ms.isRejected(item)} class:ai-hidden={ms.isHidden(item)} title={cardTitle}>
 		<div class="el-main">
 			{#if item.has_document_anchor}
 				<img class="provenance-indicator" src="/icons/text_snippet.svg" alt="empirical" title="Empirically grounded" />
@@ -128,7 +142,7 @@
 	</div>
 {:else}
 	<!-- Entity (element) -->
-	<div class="element-card" class:ai-suggested={item.properties?.aiSuggested === true} class:ai-withdrawn={ms.isWithdrawn(item.properties)} class:pos-absent={ms.mapType === 'positional' && item.properties?.absent} class:unresolved={ms.isUnresolved(item)} title={item.properties?.aiReasoning || ''}>
+	<div class="element-card" class:ai-suggested={item.properties?.aiSuggested === true} class:ai-withdrawn={ms.isWithdrawn(item.properties)} class:ai-rejected={ms.isRejected(item)} class:ai-hidden={ms.isHidden(item)} class:pos-absent={ms.mapType === 'positional' && item.properties?.absent} class:unresolved={ms.isUnresolved(item)} title={cardTitle}>
 		<div class="el-main">
 			{#if item.is_collapsed}<img class="collapsed-indicator" src="/icons/keep.svg" alt="pinned" title="Pinned to specific layer" />{/if}
 			{#if ms.isPrimary}
@@ -209,6 +223,11 @@
 	.element-card:hover { border-color: #3a3d4a; }
 	.element-card.ai-withdrawn { opacity: 0.4; }
 	.element-card.ai-withdrawn :global(.el-inscription) { text-decoration: line-through; }
+	/* ai-eval: Ausgrauen als Folge des Urteils; der Wortlaut steht im title. */
+	.element-card.ai-rejected { opacity: 0.5; }
+	.element-card.ai-rejected .el-inscription,
+	.element-card.ai-rejected .rel-inscription { text-decoration: line-through; }
+	.element-card.ai-hidden { opacity: 0.45; border-style: dashed; }
 	.element-card.unresolved { border-style: dashed; border-color: rgba(245, 158, 11, 0.3); }
 	.placement-dot { font-size: 0.65rem; color: #6b7280; flex-shrink: 0; width: 10px; text-align: center; }
 	.relation-card { background: #141620; }

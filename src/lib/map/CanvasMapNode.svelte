@@ -17,7 +17,7 @@
 	const ms = getMapState();
 </script>
 
-<div class="map-node" class:absent={el.properties?.absent} class:ai-suggested={el.properties?.aiSuggested} class:ai-withdrawn={ms.isWithdrawn(el.properties)} class:phase-member={ms.highlightedPhase && ms.isPhaseHighlighted(el)} class:phase-dimmed={ms.highlightedPhase && !ms.isPhaseHighlighted(el)} class:centered-dim={cp.centeredConnections && !cp.centeredConnections.has(el.naming_id)} class:centered-anchor={cp.centeredId === el.naming_id}
+<div class="map-node" class:absent={el.properties?.absent} class:ai-suggested={el.properties?.aiSuggested} class:ai-withdrawn={ms.isWithdrawn(el.properties)} class:ai-rejected={ms.isRejected(el)} class:phase-member={ms.highlightedPhase && ms.isPhaseHighlighted(el)} class:phase-dimmed={ms.highlightedPhase && !ms.isPhaseHighlighted(el)} class:centered-dim={cp.centeredConnections && !cp.centeredConnections.has(el.naming_id)} class:centered-anchor={cp.centeredId === el.naming_id}
 	style="{ms.highlightedPhase && ms.isPhaseHighlighted(el) ? `--phase-color: ${ms.phaseColorMap.get(ms.highlightedPhase)};` : ''}">
 	<div class="node-header">
 		<span class="designation-dot" style="background: {ms.designationColor(el.designation)}"></span>
@@ -97,6 +97,10 @@
 	.map-node.absent .node-label { color: #6b7280; font-style: italic; }
 	.map-node.ai-suggested { border-style: dashed; border-color: rgba(139, 156, 247, 0.5); background: rgba(139, 156, 247, 0.04); }
 	.map-node.ai-withdrawn { opacity: 0.3; border-color: rgba(139, 156, 247, 0.2); }
+	/* ai-eval: dein Urteil über den Cue. Durchstrich statt bloßer Blässe, damit es
+	   nicht mit 'withdrawn' (Absage an diese Karte) verwechselt wird. */
+	.map-node.ai-rejected { opacity: 0.5; }
+	.map-node.ai-rejected .node-label { text-decoration: line-through; }
 	.map-node.phase-dimmed { opacity: 0.3; transition: opacity 0.3s; }
 	.map-node.centered-dim { opacity: 0.35; transition: opacity 0.3s; }
 	.map-node.centered-anchor { box-shadow: 0 0 12px rgba(245, 158, 11, 0.6), 0 0 4px rgba(245, 158, 11, 0.3); }

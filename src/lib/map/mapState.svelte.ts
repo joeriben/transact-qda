@@ -13,6 +13,10 @@ export type StackData = {
 	designations: any[];
 	memos: any[];
 	annotations?: any[];
+	/** Akte, die nur eine Begründung tragen (memo_text ohne Inschrift/
+	 *  Designation), verlinkt auf die Passage, für die sie gilt. Das ist die
+	 *  Begründung eines KI-Cues. */
+	reasonings?: any[];
 	/** Entering/leaving a map's situation — a topological history, not a
 	 *  designation history (see migrations/034_situating_acts.sql). */
 	situating?: any[];
@@ -59,11 +63,45 @@ export function createMapState(
 		allItems.filter((n: any) => isWithdrawn(n.properties)).length
 	);
 
+	// ─── Ausgeblendete und verworfene KI-Cues ───
+	// Ausgeblendet = jede Passage des Namings ist im Reader ausgeblendet.
+	// Verworfen = das letzte Urteil der Auditschicht lautet 'reject'.
+	// Beides hält sie aus der Unplaced-Liste heraus: dort steht, was noch zu
+	// platzieren ist, und was der Forscher schon abgeräumt hat, gehört da nicht
+	// mehr hin. Auf dem Canvas bleiben sie stehen — ein platziertes Naming
+	// verschwindet nicht, es wird nur als verworfen markiert.
+	// `showHidden` holt sie in die Liste zurück, wie der Fuß der Passagenliste.
+	let showHidden = $state(false);
+	// ai-eval: verworfene Cues (letztes Urteil = reject). Reine Audit-Folge —
+	// ohne die Audit-Schicht ist die Menge leer und nichts ändert sich.
+	let rejectedNamings = $state<Set<string>>(new Set());
+
+	function isHidden(node: any): boolean {
+		return node?.anchors_hidden === true;
+	}
+
+	function isRejected(node: any): boolean {
+		return rejectedNamings.has(node?.naming_id);
+	}
+
 	// ─── Unresolved tracking (primary SitMap only) ───
 	// A naming is "unresolved" if it has no canvas position and is not declined.
 	// The positionsRef is set externally by canvasPositions after init.
 	let positionsRef = $state<Map<string, { x: number; y: number }> | null>(null);
 	let listFilter = $state<'all' | 'placed' | 'unresolved' | 'declined'>('all');
+
+	// Zählt, was der Schalter zurückholt: unplatzierte Namings, die nur wegen
+	// Ausblenden/Verwerfen nicht in der Unplaced-Liste stehen.
+	const hiddenCount = $derived(
+		isPrimary && positionsRef
+			? allItems.filter(
+					(n: any) =>
+						(isHidden(n) || isRejected(n)) &&
+						!positionsRef!.has(n.naming_id) &&
+						!isWithdrawn(n.properties)
+				).length
+			: 0
+	);
 
 	// ─── Shared interaction state ───
 	let stackId = $state<string | null>(null);
@@ -140,6 +178,9 @@ export function createMapState(
 
 	function isUnresolved(node: any): boolean {
 		if (!isPrimary || !positionsRef) return false;
+		// Ausgeblendetes und Verworfenes ist abgeräumt und steht nicht mehr zur
+		// Platzierung an — auf dem Canvas bleibt es unberührt.
+		if ((isHidden(node) || isRejected(node)) && !showHidden) return false;
 		return !positionsRef.has(node.naming_id) && !isWithdrawn(node.properties);
 	}
 
@@ -150,7 +191,7 @@ export function createMapState(
 
 	function unresolvedCount(): number {
 		if (!isPrimary || !positionsRef) return 0;
-		return allItems.filter((n: any) => !positionsRef!.has(n.naming_id) && !isWithdrawn(n.properties)).length;
+		return allItems.filter((n: any) => isUnresolved(n)).length;
 	}
 
 	function filterItem(node: any): boolean {
@@ -701,6 +742,14 @@ export function createMapState(
 		get declinedCount() { return declinedCount; },
 		get isDeclinedFilter() { return isDeclinedFilter; },
 		DECLINED_PHASE,
+
+		// Ausgeblendet (Kern) / verworfen (ai-eval)
+		get hiddenCount() { return hiddenCount; },
+		get showHidden() { return showHidden; },
+		set showHidden(v: boolean) { showHidden = v; },
+		isHidden,
+		isRejected,
+		set rejectedNamings(v: Set<string>) { rejectedNamings = v; },
 
 		// Unresolved tracking
 		set positionsRef(v: Map<string, { x: number; y: number }> | null) { positionsRef = v; },

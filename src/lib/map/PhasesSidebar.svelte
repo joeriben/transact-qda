@@ -4,11 +4,12 @@
 -->
 <script lang="ts">
 	import { getMapState } from './mapState.svelte.js';
-	import { createSelection } from '$lib/canvas/selection.svelte.js';
 	import { regionColor } from '$lib/canvas/regions.js';
 
-	let { selection }: { selection: ReturnType<typeof createSelection> } = $props();
-
+	// Die Auswahl stand hier als Liste aus Punkt und Namen — ohne Link, ohne
+	// Handlung. Der Knoten auf dem Canvas ist bereits sichtbar markiert; die
+	// Wiederholung in der Spalte war eine Anzeige, aus der nichts folgt. Zum
+	// Naming selbst führt der Doppelklick auf den Knoten (Stack-Panel).
 	const ms = getMapState();
 </script>
 
@@ -89,20 +90,6 @@
 		</div>
 	{/if}
 
-	{#if selection.count > 0}
-		<div class="selection-info">
-			<h4>Selected ({selection.count})</h4>
-			{#each [...selection.ids] as id}
-				{@const node = ms.findNode(id)}
-				{#if node}
-					<div class="selected-item">
-						<span class="designation-dot-sm" style="background: {ms.designationColor(node.designation)}"></span>
-						<span>{node.inscription || '(unnamed)'}</span>
-					</div>
-				{/if}
-			{/each}
-		</div>
-	{/if}
 </div>
 
 <style>
@@ -144,14 +131,6 @@
 		padding: 0.15rem 0; font-size: 0.75rem; color: #c9cdd5;
 	}
 	.phase-el-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.selection-info {
-		margin-top: 1rem; border-top: 1px solid #2a2d3a; padding-top: 0.75rem;
-	}
-	.selection-info h4 { font-size: 0.75rem; color: #6b7280; margin: 0 0 0.3rem; text-transform: uppercase; }
-	.selected-item {
-		display: flex; align-items: center; gap: 0.3rem;
-		font-size: 0.8rem; color: #c9cdd5; padding: 0.1rem 0;
-	}
 	.designation-dot-sm { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
 	.btn-sm {
 		background: #1e2030; border: 1px solid #2a2d3a; border-radius: 4px;
