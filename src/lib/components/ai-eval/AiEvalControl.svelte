@@ -32,7 +32,7 @@
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { verdicts, type EvalRow, type Verdict } from './verdicts.svelte.js';
+	import { verdicts, evaluatorLabel, type EvalRow, type Verdict } from './verdicts.svelte.js';
 
 	let {
 		projectId,
@@ -135,6 +135,8 @@
 			}
 			const { id, createdAt } = (await res.json()) as { id: string; createdAt: string };
 			// Append-only, exactly like the table: the verdict stays visible.
+			// Dieses hier ist das eigene — der Server bestätigt es beim nächsten
+			// Laden mit Namen und Konto.
 			verdicts.add({
 				id,
 				createdAt,
@@ -143,7 +145,10 @@
 				anchor: cleanAnchor as EvalRow['anchor'],
 				verdict,
 				rationale: sentRationale,
-				betterReading: sentBetterReading
+				betterReading: sentBetterReading,
+				evaluatorUserId: null,
+				evaluatorName: null,
+				mine: true
 			});
 			open = false;
 			verdict = null;
@@ -293,6 +298,9 @@
 				<li class="ai-eval-entry">
 					<div class="ai-eval-entry-head">
 						<span class="ai-eval-verdict ai-eval-verdict-{row.verdict}">{LABELS[row.verdict]}</span>
+						<!-- Wer geurteilt hat. In einem geteilten Projekt ist das nicht
+						     selbstverständlich der Betrachter. -->
+						<span class="ai-eval-who" class:foreign={!row.mine}>{evaluatorLabel(row)}</span>
 						<span class="ai-eval-when">{fmt(row.createdAt)}</span>
 					</div>
 					{#if row.betterReading}
@@ -440,6 +448,16 @@
 	.ai-eval-when {
 		opacity: 0.5;
 		font-size: 0.7rem;
+	}
+	/* Das eigene Urteil ruhig, das eines Mitglieds markiert — der Unterschied
+	   soll auffallen, ohne die Zeile zu einem Abzeichen zu machen. */
+	.ai-eval-who {
+		font-size: 0.7rem;
+		opacity: 0.7;
+	}
+	.ai-eval-who.foreign {
+		opacity: 1;
+		color: #f59e0b;
 	}
 	.ai-eval-reading {
 		margin-top: 0.1rem;

@@ -91,5 +91,9 @@ export const GET: RequestHandler = async ({ params, locals }) => {
 	await ensureDocAccess(projectId, docId, locals.user.id);
 
 	const evaluations = await getEvaluationsForDocument(projectId, docId);
-	return json({ evaluations });
+	// `mine` gehoert zum Aufrufer, nicht zum Datensatz: der Reader muss ein
+	// fremdes Urteil als fremdes zeigen und darf es nicht als das eigene ausgeben.
+	return json({
+		evaluations: evaluations.map((e) => ({ ...e, mine: e.evaluatorUserId === locals.user!.id }))
+	});
 };

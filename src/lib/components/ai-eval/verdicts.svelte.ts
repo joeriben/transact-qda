@@ -26,7 +26,17 @@ export interface EvalRow {
 	verdict: Verdict;
 	rationale: string | null;
 	betterReading: string | null;
+	/** Wer geurteilt hat. Ein Projekt kann mehrere Mitglieder haben; ein Urteil
+	 *  ohne Urteilenden anzuzeigen schreibt die Handlung des einen dem anderen zu. */
+	evaluatorUserId: string | null;
+	evaluatorName: string | null;
+	mine: boolean;
 	createdAt: string;
+}
+
+/** „You" bzw. der Name — für Historie und Tooltip an derselben Stelle gebildet. */
+export function evaluatorLabel(row: { mine: boolean; evaluatorName: string | null }): string {
+	return row.mine ? 'You' : (row.evaluatorName ?? 'Another member');
 }
 
 /** Same cue, same passage — a verdict is given at one anchor, not on a naming in general. */
@@ -98,6 +108,26 @@ class VerdictStore {
 		anchor?: { pos0?: number | null; pos1?: number | null } | null
 	): boolean {
 		return this.latestFor(namingId, anchor)?.verdict === 'reject';
+	}
+
+	/**
+	 * Ein Satz für den ausgegrauten Cue: von wem, wann — und ob mehrere
+	 * Mitglieder darüber geurteilt haben, damit „das letzte gewinnt" keine
+	 * Meinungsverschiedenheit verschweigt.
+	 */
+	rejectionLabel(
+		namingId: string | null,
+		anchor?: { pos0?: number | null; pos1?: number | null } | null
+	): string | null {
+		const rows = this.forSubject(namingId, anchor);
+		const last = rows.length ? rows[rows.length - 1] : null;
+		if (last?.verdict !== 'reject') return null;
+		const when = last.createdAt ? new Date(last.createdAt).toLocaleDateString() : null;
+		const base = `${evaluatorLabel(last)} rejected this cue${when ? ` on ${when}` : ''}`;
+		const judges = new Set(rows.map((r) => r.evaluatorUserId ?? 'unknown')).size;
+		return judges > 1
+			? `${base} — ${judges} members have judged it, the latest verdict counts here`
+			: base;
 	}
 }
 

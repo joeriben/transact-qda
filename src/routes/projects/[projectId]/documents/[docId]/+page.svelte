@@ -76,10 +76,30 @@
 			verdicts.isRejected(ann.code_id, ann.properties?.anchor)
 		);
 	}
+	// ai-eval: wessen Urteil das Ausgrauen ist. Ein Projekt kann mehrere
+	// Mitglieder haben; ohne diesen Satz gibt die Ansicht das Urteil einer
+	// Kollegin als das eigene aus.
+	function rejectionTitle(ann: any): string | undefined {
+		return verdicts.rejectionLabel(ann.code_id, ann.properties?.anchor) ?? undefined;
+	}
 	/** Ein Cue gilt als verworfen, wenn keine seiner sichtbaren Passagen mehr steht. */
 	function isRejectedNaming(codeId: string): boolean {
 		const anns = codeAnnotations.filter((a: any) => a.code_id === codeId);
 		return anns.length > 0 && anns.every(isRejectedAnn);
+	}
+	// ai-eval: der Cue kann an mehreren Passagen verworfen worden sein, unter
+	// Umständen von verschiedenen Mitgliedern. Genannt wird, wer zuletzt geurteilt
+	// hat; wo sich die Urteilenden unterscheiden, steht das dabei.
+	function rejectionTitleForNaming(codeId: string): string | undefined {
+		const labels = codeAnnotations
+			.filter((a: any) => a.code_id === codeId)
+			.map((a: any) => verdicts.rejectionLabel(a.code_id, a.properties?.anchor))
+			.filter((l: string | null): l is string => !!l);
+		if (labels.length === 0) return undefined;
+		const distinct = [...new Set(labels)];
+		return distinct.length === 1
+			? distinct[0]
+			: `Rejected at ${labels.length} passages — ${distinct.join('; ')}`;
 	}
 
 	// TOC-Sortierung: nach sequenceMeta.seq (vom coding-run gesetzt, in
@@ -1513,7 +1533,7 @@
 							<span class="naming-group-label">{group.label}</span>
 							{#each group.items as c (c.id)}
 								<!-- svelte-ignore a11y_no_static_element_interactions -->
-								<div class="naming-row" class:naming-expanded={expandedNamingId === c.id} class:naming-selected={selectedNamingIds.has(c.id)} class:naming-rejected={isRejectedNaming(c.id)} class:apply-mode={hasSelection} data-naming-id={c.id} draggable="true" ondragstart={(e) => handleNamingDragStart(c.id, e)}>
+								<div class="naming-row" class:naming-expanded={expandedNamingId === c.id} class:naming-selected={selectedNamingIds.has(c.id)} class:naming-rejected={isRejectedNaming(c.id)} class:apply-mode={hasSelection} data-naming-id={c.id} title={rejectionTitleForNaming(c.id)} draggable="true" ondragstart={(e) => handleNamingDragStart(c.id, e)}>
 									<div class="naming-main" onclick={(e) => handleNamingClick(c.id, e)} oncontextmenu={(e) => handleNamingContextMenu(c.id, e)}>
 										<span class="color-dot" style="background: {c.color || '#8b9cf7'}"></span>
 										<span
@@ -1733,6 +1753,7 @@
 								class:ann-expanded={expandedAnnId === ann.id}
 								class:ann-rejected={isRejectedAnn(ann)}
 								class:ann-hidden={ann.properties?.hidden}
+								title={rejectionTitle(ann)}
 								onmouseenter={() => { highlightedAnnotationId = ann.id; }}
 								onmouseleave={() => { highlightedAnnotationId = null; }}
 							>

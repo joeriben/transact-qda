@@ -54,6 +54,8 @@ export interface EvaluationRow {
 	rationale: string | null;
 	betterReading: string | null;
 	evaluatorUserId: string | null;
+	/** Anzeigename des Urteilenden; null, wenn das Konto nicht mehr existiert. */
+	evaluatorName: string | null;
 	createdAt: string;
 }
 
@@ -69,6 +71,7 @@ interface EvalDbRow {
 	rationale: string | null;
 	better_reading: string | null;
 	evaluator_user_id: string | null;
+	evaluator_name: string | null;
 	created_at: string;
 }
 
@@ -86,6 +89,7 @@ function mapRow(r: EvalDbRow): EvaluationRow {
 		rationale: r.rationale,
 		betterReading: r.better_reading,
 		evaluatorUserId: r.evaluator_user_id,
+		evaluatorName: r.evaluator_name,
 		createdAt: r.created_at
 	};
 }
@@ -122,18 +126,27 @@ export async function recordEvaluation(
 	return { id: row!.id, createdAt: row!.created_at };
 }
 
-/** Full append-only history of verdicts for one document (newest last). */
+/**
+ * Full append-only history of verdicts for one document (newest last).
+ *
+ * Mit dem Anzeigenamen des Urteilenden: ein Projekt kann mehrere Mitglieder
+ * haben, und eine Historie, die nur sagt WAS geurteilt wurde, aber nicht VON
+ * WEM, ist als Auditspur unvollstaendig.
+ */
 export async function getEvaluationsForDocument(
 	projectId: string,
 	documentId: string
 ): Promise<EvaluationRow[]> {
 	const res = await query<EvalDbRow>(
-		`SELECT id, document_id, subject_naming_id, subject_label,
-		        anchor_pos0, anchor_pos1, anchor_text,
-		        verdict, rationale, better_reading, evaluator_user_id, created_at
-		 FROM ai_naming_evaluations
-		 WHERE project_id = $1 AND document_id = $2
-		 ORDER BY created_at`,
+		`SELECT e.id, e.document_id, e.subject_naming_id, e.subject_label,
+		        e.anchor_pos0, e.anchor_pos1, e.anchor_text,
+		        e.verdict, e.rationale, e.better_reading, e.evaluator_user_id,
+		        COALESCE(NULLIF(u.display_name, ''), u.email) AS evaluator_name,
+		        e.created_at
+		 FROM ai_naming_evaluations e
+		 LEFT JOIN users u ON u.id = e.evaluator_user_id
+		 WHERE e.project_id = $1 AND e.document_id = $2
+		 ORDER BY e.created_at`,
 		[projectId, documentId]
 	);
 	return res.rows.map(mapRow);
