@@ -38,6 +38,7 @@ import {
 	durchgehen,
 	dokumentStand,
 	verbucheLauf,
+	LaufAbbruch,
 	kriteriumHash,
 	ladeVolltext,
 	sichten,
@@ -299,6 +300,7 @@ async function laufeUeberAlle(
 			console.log(`${String(r.stellen.length).padStart(4)} Stellen von ${r.geprueft}   ${sek}s`);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
+			const ausfall = err instanceof LaufAbbruch;
 			await verbucheLauf({
 				projectId,
 				namingId: naming.id,
@@ -314,8 +316,17 @@ async function laufeUeberAlle(
 				verbrauch: { aufrufe: 0, eingabe: 0, ausgabe: 0, cacheGeschrieben: 0, cacheGelesen: 0 },
 				sekunden: Math.round((Date.now() - t0) / 1000),
 				abgebrochen: true,
-				fehler: msg.slice(0, 300)
+				fehler: (ausfall ? `Ausfall ${(err as LaufAbbruch).kennung}: ${msg}` : msg).slice(0, 300)
 			});
+			if (ausfall) {
+				// Guthaben weg oder Schlüssel ungültig: Die übrigen Dokumente würden
+				// nur noch Ausfälle verbuchen, die im Stand wie geprüfte Dokumente
+				// ohne Fund aussehen. Der Reihenlauf endet hier.
+				console.log(`AUSFALL (${(err as LaufAbbruch).kennung}): ${msg.slice(0, 90)}`);
+				console.log(`\n  Kein Zugang zum Modell. ${offen.length - i - 1} Dokumente bleiben unangetastet;`);
+				console.log('  ein erneuter Aufruf setzt dort fort, wo es aufhörte.');
+				break;
+			}
 			console.log(`ABBRUCH: ${msg.slice(0, 70)}`);
 		}
 	}
@@ -455,7 +466,14 @@ async function main() {
 
 main()
 	.catch((err) => {
-		console.error(`\nFehlgeschlagen: ${err instanceof Error ? err.message : String(err)}\n`);
+		// Ein Ausfall des Zugangs ist kein Ergebnis über das Material. Er wird als
+		// das benannt, was er ist, damit niemand ihn als „nichts gefunden" liest.
+		if (err instanceof LaufAbbruch) {
+			console.error(`\nAUSFALL (${err.kennung}): ${err.message}`);
+			console.error('Kein Zugang zum Modell — es wurde nichts geprüft.\n');
+		} else {
+			console.error(`\nFehlgeschlagen: ${err instanceof Error ? err.message : String(err)}\n`);
+		}
 		process.exitCode = 1;
 	})
 	.finally(() => pool.end());

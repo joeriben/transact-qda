@@ -26,6 +26,7 @@ import {
 	vorbereiten,
 	durchgehen,
 	ladeMuster,
+	LaufAbbruch,
 	type Kriterium,
 	type Stelle
 } from '../src/lib/server/ai/anchor-expansion/index.js';
@@ -141,7 +142,7 @@ async function main() {
 	}
 
 	const ergebnisse: Ergebnis[] = [];
-	for (const modell of modelle) {
+	abbruch: for (const modell of modelle) {
 		console.log(`\n\n════ ${modell}`);
 		for (const f of faelle) {
 			const t0 = Date.now();
@@ -183,6 +184,13 @@ async function main() {
 				);
 			} catch (err) {
 				const msg = err instanceof Error ? err.message : String(err);
+				// Guthaben weg, Schlüssel ungültig: Weiterlaufen erzeugt nur noch
+				// Nullzeilen, die wie Modellversagen aussehen.
+				if (err instanceof LaufAbbruch) {
+					console.log(`\n\n  AUSFALL (${err.kennung}): ${msg}\n`);
+					console.log('  Der Vergleich endet hier. Was bis hierhin gemessen wurde, steht unten.\n');
+					break abbruch;
+				}
 				ergebnisse.push({
 					modell,
 					fall: f.inscription,
@@ -232,7 +240,14 @@ async function main() {
 
 main()
 	.catch((e) => {
-		console.error(e);
+		// Auch beim Ableiten der Kriterien kann der Zugang wegfallen. Dann ist der
+		// Vergleich nicht schlecht ausgefallen, sondern gar nicht gelaufen.
+		if (e instanceof LaufAbbruch) {
+			console.error(`\nAUSFALL (${e.kennung}): ${e.message}`);
+			console.error('Kein Zugang zum Modell — es wurde nichts verglichen.\n');
+		} else {
+			console.error(e);
+		}
 		process.exitCode = 1;
 	})
 	.finally(() => pool.end());

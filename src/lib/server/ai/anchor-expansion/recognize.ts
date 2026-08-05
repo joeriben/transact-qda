@@ -33,7 +33,7 @@
 // Nichts hiervon schreibt in den Datenraum. Das Ergebnis ist eine Liste von
 // Hinweisen; ob daraus ein Anker wird, entscheidet ein Akt des Forschers.
 
-import { chat } from '../client.js';
+import { chat, isFatalProviderError } from '../client.js';
 import { resolveTier } from '../coding-run/model-tiers.js';
 import { gestaltBlock, type Gestalt, type Zug } from './gestalt.js';
 
@@ -130,6 +130,43 @@ export interface Verbrauch {
 	ausgabe: number;
 	cacheGeschrieben: number;
 	cacheGelesen: number;
+}
+
+/**
+ * Ein Fehler, der den ganzen Durchgang beendet, statt eine Stelle zu betreffen.
+ *
+ * Guthaben erschöpft, Schlüssel ungültig, Zugang gesperrt: Da hat kein Modell
+ * schlecht geantwortet, sondern es hat gar keinen Aufruf gegeben. Ohne diese
+ * Unterscheidung läuft ein Durchgang über 173 Stellen in vier Sekunden durch
+ * und meldet 173 „unlesbare" Antworten — ein Ausfall, der im Ergebnis aussieht
+ * wie ein Modell, das die Aufgabe nicht kann. Genau so ist ein Modellvergleich
+ * einmal komplett ins Leere gelaufen.
+ */
+export class LaufAbbruch extends Error {
+	constructor(
+		message: string,
+		/** Der HTTP-Status, wenn der Provider einen genannt hat. */
+		readonly status: number | null
+	) {
+		super(message);
+		this.name = 'LaufAbbruch';
+	}
+
+	/** Wie der Ausfall benannt wird, wenn kein Status dabei war. */
+	get kennung(): string {
+		return this.status ? `HTTP ${this.status}` : 'ohne Statuscode';
+	}
+}
+
+/**
+ * Fehler, nach denen weiterzumachen sinnlos ist — jeder weitere Aufruf
+ * scheitert gleich. Die Erkennung steht in client.ts und wird hier nicht
+ * nachgebaut; ein zweiter Katalog liefe dem ersten hinterher.
+ */
+function abbruchStatus(err: unknown): number | null | false {
+	if (!isFatalProviderError(err)) return false;
+	const status = (err as { status?: unknown })?.status;
+	return typeof status === 'number' ? status : null;
 }
 
 export const leererVerbrauch = (): Verbrauch => ({
@@ -290,19 +327,28 @@ async function chatJson<T>(
 	let letzter = 'kein Versuch';
 	let nachfassen = '';
 	for (let i = 0; i < versuche; i++) {
-		const res = await chat({
-			system,
-			messages: [{ role: 'user', content: message + nachfassen }],
-			modelOverride: opts.tier,
-			responseFormat: 'json',
-			cacheableSystemPrefix: opts.cacheable,
-			// Der Default in client.ts sind 3 Minuten. Bei langen Blöcken und
-			// nachdenkenden Modellen reicht das nicht — ein Lauf starb daran mit
-			// „This operation was aborted". Hier steht deshalb eine Grenze, die nur
-			// noch gegen echte Hänger greift und nicht gegen langsame Antworten.
-			timeoutMs: 30 * 60_000,
-			signal: opts.signal
-		});
+		let res;
+		try {
+			res = await chat({
+				system,
+				messages: [{ role: 'user', content: message + nachfassen }],
+				modelOverride: opts.tier,
+				responseFormat: 'json',
+				cacheableSystemPrefix: opts.cacheable,
+				// Der Default in client.ts sind 3 Minuten. Bei langen Blöcken und
+				// nachdenkenden Modellen reicht das nicht — ein Lauf starb daran mit
+				// „This operation was aborted". Hier steht deshalb eine Grenze, die nur
+				// noch gegen echte Hänger greift und nicht gegen langsame Antworten.
+				timeoutMs: 30 * 60_000,
+				signal: opts.signal
+			});
+		} catch (err) {
+			const status = abbruchStatus(err);
+			if (status !== false) {
+				throw new LaufAbbruch(err instanceof Error ? err.message : String(err), status);
+			}
+			throw err;
+		}
 		if (opts.verbrauch) {
 			opts.verbrauch.aufrufe += 1;
 			opts.verbrauch.eingabe += res.inputTokens;
@@ -519,6 +565,9 @@ export async function pruefeStellen(
 			}
 			return res;
 		} catch (err) {
+			// Abbruch und Client-Weg gehen durch: Das sind keine Antworten dieser
+			// Stelle, und der Rest des Durchgangs würde genauso scheitern.
+			if (err instanceof LaufAbbruch) throw err;
 			if (err instanceof Error && (err.name === 'AbortError' || err.name === 'TimeoutError')) throw err;
 			return { ok: false as const, fehler: err instanceof Error ? err.message : String(err) };
 		} finally {

@@ -23,7 +23,7 @@
 //   { kind: 'stelle',   stelle }            — sofort bei jedem Fund
 //   { kind: 'progress', done, total }
 //   { kind: 'done',     runId, stellen, unlesbar, nichtBelegt, geprueft, geprueftJePosition }
-//   { kind: 'failed',   message }
+//   { kind: 'failed',   message[, abbruch, status] }  — abbruch: kein Modellzugang
 //   { kind: 'alive',    at }                — Heartbeat ~10 s
 //
 // Diese Route SCHREIBT NICHT in den Datenraum. Was sie zurückgibt, sind
@@ -42,6 +42,7 @@ import {
 	sichten,
 	zuegeOf,
 	verbucheLauf,
+	LaufAbbruch,
 	type Kriterium,
 	type Stelle
 } from '$lib/server/ai/anchor-expansion/index.js';
@@ -113,6 +114,10 @@ export const GET: RequestHandler = async ({ params, url, locals }) => {
 	try {
 		return json(await vorbereiten(projectId, namingId!, documentId!));
 	} catch (err) {
+		// Kein Zugang zum Modell ist etwas anderes als eine unbrauchbare Antwort.
+		if (err instanceof LaufAbbruch) {
+			error(503, `Kein Zugang zum Modell (${err.kennung}): ${err.message}`);
+		}
 		error(502, err instanceof Error ? err.message : 'Das Kriterium kam nicht auswertbar zurück');
 	}
 };
@@ -169,6 +174,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 
 			const alive = setInterval(() => send({ kind: 'alive', at: new Date().toISOString() }), 10_000);
 
+			const t0 = Date.now();
 			try {
 				const stellen: Stelle[] = [];
 				const result = await durchgehen(projectId, namingId!, documentId!, kriterium, {
@@ -180,8 +186,27 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 						send({ kind: 'stelle', stelle: s });
 					}
 				});
+				// Verbuchen, bevor gemeldet wird: Wer das Ergebnis sieht, soll es
+				// wiederfinden können, ohne den Durchgang ein zweites Mal zu bezahlen.
+				const runId = await verbucheLauf({
+					projectId,
+					namingId: namingId!,
+					documentId: documentId!,
+					kriterium,
+					provider: result.modell.provider,
+					model: result.modell.model,
+					zuegeGesamt: result.zuegeGesamt,
+					geprueft: result.geprueft,
+					stellen: result.stellen,
+					unlesbar: result.unlesbar.length,
+					nichtBelegt: result.nichtBelegt.length,
+					verbrauch: result.verbrauch,
+					sekunden: Math.round((Date.now() - t0) / 1000),
+					userId: locals.user?.id ?? null
+				});
 				send({
 					kind: 'done',
+					runId,
 					stellen: result.stellen,
 					unlesbar: result.unlesbar.length,
 					nichtBelegt: result.nichtBelegt.length,
@@ -191,6 +216,29 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			} catch (err) {
 				if (err instanceof Error && (err.name === 'AbortError' || err.name === 'TimeoutError')) {
 					/* Client weg — nichts zu melden */
+				} else if (err instanceof LaufAbbruch) {
+					// Kein Zugang zum Modell. Das ist ein Ausfall und kein Befund über
+					// dieses Dokument — es wird als Ausfall verbucht und als Ausfall
+					// gemeldet, damit „nichts gefunden" nicht danebensteht.
+					await verbucheLauf({
+						projectId,
+						namingId: namingId!,
+						documentId: documentId!,
+						kriterium,
+						provider: 'unbekannt',
+						model: 'unbekannt',
+						zuegeGesamt: 0,
+						geprueft: 0,
+						stellen: [],
+						unlesbar: 0,
+						nichtBelegt: 0,
+						verbrauch: { aufrufe: 0, eingabe: 0, ausgabe: 0, cacheGeschrieben: 0, cacheGelesen: 0 },
+						sekunden: Math.round((Date.now() - t0) / 1000),
+						abgebrochen: true,
+						fehler: `Ausfall ${err.kennung}: ${err.message}`.slice(0, 300),
+						userId: locals.user?.id ?? null
+					}).catch(() => undefined);
+					send({ kind: 'failed', abbruch: true, status: err.status, message: err.message });
 				} else {
 					send({ kind: 'failed', message: err instanceof Error ? err.message : String(err) });
 				}

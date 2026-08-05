@@ -33,7 +33,7 @@ import {
 
 export { sichten, zuegeOf, zuegeOverlapping, bauformName } from './gestalt.js';
 export type { Gestalt, Zug, Bruch, Position, Verteilung } from './gestalt.js';
-export { NICHT_EINSCHLAEGIG } from './recognize.js';
+export { NICHT_EINSCHLAEGIG, LaufAbbruch } from './recognize.js';
 export { kriteriumHash, dokumentStand, verbucheLauf, ladeLauf } from './runs.js';
 export type { DokumentStand, LaufNotiz, LaufEintrag } from './runs.js';
 export type {

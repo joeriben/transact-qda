@@ -63,6 +63,8 @@
 
 	let phase = $state<'laden' | 'kriterium' | 'lauf' | 'fertig' | 'fehler'>('laden');
 	let fehler = $state('');
+	/** Kein Zugang zum Modell — der Lauf hat nichts geprüft, statt nichts gefunden. */
+	let ausfall = $state(false);
 	let gestalt = $state<Gestalt | null>(null);
 	let zuegeGesamt = $state(0);
 	let belegstelle = $state<string | null>(null);
@@ -164,6 +166,7 @@
 			stellen = [];
 			ausDerAkte = null;
 		}
+		ausfall = false;
 		done = 0;
 		total = 0;
 		unlesbar = 0;
@@ -210,7 +213,15 @@
 						}
 						gefunden = ev.stellen?.length ?? 0;
 						phase = 'fertig';
-					} else if (ev.kind === 'failed') { fehler = ev.message; phase = 'fehler'; }
+					} else if (ev.kind === 'failed') {
+						// Ein Ausfall des Zugangs sagt über dieses Dokument nichts. Er wird
+						// als Ausfall gezeigt, damit er nicht als „nichts gefunden" zählt.
+						ausfall = ev.abbruch === true;
+						fehler = ausfall
+							? `Kein Zugang zum Modell${ev.status ? ` (HTTP ${ev.status})` : ''}. Es wurde nichts geprüft — das ist kein Ergebnis über dieses Dokument. ${ev.message}`
+							: ev.message;
+						phase = 'fehler';
+					}
 				}
 			}
 			if (phase === 'lauf') phase = 'fertig';
@@ -238,12 +249,21 @@
 			gefunden = 0;
 			try {
 				await starten(d.documentId);
-				reihe[i] = { ...reihe[i], stellen: gefunden };
+				// Ohne diese Unterscheidung stünde nach einem Ausfall „0 Stellen" da —
+				// gleich gelesen wie ein Dokument, das geprüft wurde und nichts hergab.
+				reihe[i] =
+					phase === 'fehler'
+						? { ...reihe[i], stellen: null, fehler: ausfall ? 'Ausfall' : 'Fehler' }
+						: { ...reihe[i], stellen: gefunden };
 			} catch (e) {
-				reihe[i] = { ...reihe[i], stellen: 0, fehler: e instanceof Error ? e.message : String(e) };
+				reihe[i] = { ...reihe[i], stellen: null, fehler: e instanceof Error ? e.message : String(e) };
 			}
 			reihe = [...reihe];
-			if (phase === 'fehler') break;
+			if (phase === 'fehler') {
+				for (let j = i + 1; j < reihe.length; j++) reihe[j] = { ...reihe[j], fehler: 'nicht gelaufen' };
+				reihe = [...reihe];
+				break;
+			}
 		}
 		await standLaden();
 	}
@@ -452,8 +472,8 @@
 						{#each reihe as r}
 							<li>
 								<span class="name">{r.label}</span>
-								<span class="ergebnis">
-									{#if r.fehler}Fehler{:else if r.stellen === null}…{:else}{r.stellen} Stellen{/if}
+								<span class="ergebnis" class:schlecht={r.fehler} title={r.fehler ?? ''}>
+									{#if r.fehler}{r.fehler.slice(0, 24)}{:else if r.stellen === null}…{:else}{r.stellen} Stellen{/if}
 								</span>
 							</li>
 						{/each}
@@ -679,5 +699,6 @@
 		border: 1px solid var(--border); border-radius: 6px; padding: 0.4rem 0.5rem;
 	}
 	.unlesbar strong { color: var(--warning); }
+	.ergebnis.schlecht { color: var(--warning); }
 	.fehler { font-size: 0.75rem; color: var(--warning); line-height: 1.5; overflow-wrap: anywhere; }
 </style>
