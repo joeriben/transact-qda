@@ -119,6 +119,9 @@
 	}
 
 	function selectProvider(id: string) {
+		// Ein Klick auf den schon gewählten Provider ist kein Wechsel und darf
+		// das eingetragene Modell nicht auf den Default zurücksetzen.
+		if (id === selectedProvider) return;
 		selectedProvider = id;
 		const info = providers.find(p => p.id === id);
 		if (info) model = info.defaultModel;

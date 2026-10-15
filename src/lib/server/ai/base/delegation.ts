@@ -5,7 +5,7 @@
 // The chief decides autonomously when to delegate — it only needs accurate descriptions
 // of available agent-LLMs.
 
-import { type ToolDef, type ChatResponse, loadSettings, PROVIDERS, readApiKey, type Provider, anthropicModelMaxOutput, openAiCompatMaxOutput } from '../client.js';
+import { type ToolDef, type ChatResponse, loadSettings, PROVIDERS, readApiKey, type Provider, anthropicModelMaxOutput, openAiCompatMaxOutput, openRouterBaseURL, adoptPermittedOpenRouterHost } from '../client.js';
 import { logInteraction } from '../index.js';
 
 // ── Agent model interface ────────────────────────────────────────
@@ -166,7 +166,15 @@ export async function executeDelegation(
 	}
 
 	try {
-		const response = await delegateChat(agent.provider, agent.model, fullTask, systemPrompt);
+		let response: ChatResponse;
+		try {
+			response = await delegateChat(agent.provider, agent.model, fullTask, systemPrompt);
+		} catch (err) {
+			// Datenregion per Guardrail: einmal über den zulässigen Host
+			// wiederholen (siehe client.ts, OpenRouter-Abschnitt).
+			if (agent.provider !== 'openrouter' || !(await adoptPermittedOpenRouterHost(err))) throw err;
+			response = await delegateChat(agent.provider, agent.model, fullTask, systemPrompt);
+		}
 
 		// Log the delegated call
 		if (projectId) {
@@ -251,7 +259,7 @@ async function delegateChat(
 	} else {
 		const client = new OpenAI({
 			apiKey: apiKey || 'ollama',
-			baseURL: def.baseURL
+			baseURL: provider === 'openrouter' && apiKey ? await openRouterBaseURL(apiKey) : def.baseURL
 		});
 
 		// max_tokens nur, wo Weglassen einen kleinen Provider-Default

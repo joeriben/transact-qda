@@ -385,6 +385,101 @@ export function maskKey(key: string | null): string {
 	return key.slice(0, 7) + '...' + key.slice(-4);
 }
 
+// ── OpenRouter: Datenregion des Schlüssels ────────────────────────
+//
+// Ein OpenRouter-Workspace kann per Guardrail festlegen, über welche
+// Datenregion seine Schlüssel anfragen dürfen. Ein auf Europa beschränkter
+// Schlüssel wird auf openrouter.ai für JEDES Modell mit 403 abgewiesen und
+// geht nur über eu.openrouter.ai. Welcher Host gilt, ist damit eine
+// Eigenschaft des Schlüssels, nicht der Installation, und steht hier nicht
+// fest:
+//   1) OpenRouter nennt die erlaubten Regionen zum Schlüssel
+//      (GET /api/v1/key → allowed_data_regions, auf jedem Host abrufbar).
+//   2) Für eine Region, die unten noch nicht eingetragen ist, nennt die
+//      403-Antwort die zulässigen Hostnamen; der Aufruf wechselt dorthin und
+//      wird einmal wiederholt (adoptPermittedOpenRouterHost).
+// Angenommen wird nur ein Hostname unter openrouter.ai: Der Schlüssel geht
+// nie an einen Host, den eine Fehlermeldung nennt und der nicht OpenRouter
+// gehört.
+
+const OPENROUTER_DEFAULT_HOST = 'openrouter.ai';
+const OPENROUTER_REGION_HOSTS: Record<string, string> = { europe: 'eu.openrouter.ai' };
+const OPENROUTER_HOST = /^(?:[a-z0-9-]+\.)*openrouter\.ai$/;
+
+const openRouterHostByKey = new Map<string, Promise<string>>();
+const openRouterClients = new Map<string, OpenAI>();
+
+function openRouterHost(apiKey: string): Promise<string> {
+	let host = openRouterHostByKey.get(apiKey);
+	if (!host) {
+		host = lookupOpenRouterHost(apiKey);
+		openRouterHostByKey.set(apiKey, host);
+	}
+	return host;
+}
+
+async function lookupOpenRouterHost(apiKey: string): Promise<string> {
+	try {
+		// Eine Metadaten-Abfrage, kein Modellaufruf — die Frist schützt nur
+		// davor, dass ein hängender Lookup jeden Aufruf mit aufhält.
+		const res = await fetch(`https://${OPENROUTER_DEFAULT_HOST}/api/v1/key`, {
+			headers: { Authorization: `Bearer ${apiKey}` },
+			signal: AbortSignal.timeout(15_000)
+		});
+		if (!res.ok) return OPENROUTER_DEFAULT_HOST;
+		const regions = (await res.json())?.data?.allowed_data_regions;
+		if (!Array.isArray(regions)) return OPENROUTER_DEFAULT_HOST;
+		for (const region of regions) {
+			const host = OPENROUTER_REGION_HOSTS[String(region).toLowerCase()];
+			if (host) return host;
+		}
+	} catch {
+		// Nicht erreichbar: globaler Host; eine Guardrail-403 korrigiert (2).
+	}
+	return OPENROUTER_DEFAULT_HOST;
+}
+
+/** Basis-URL für OpenRouter, passend zur Datenregion dieses Schlüssels. */
+export async function openRouterBaseURL(apiKey: string): Promise<string> {
+	return `https://${await openRouterHost(apiKey)}/api/v1`;
+}
+
+async function openRouterClient(apiKey: string): Promise<OpenAI> {
+	const baseURL = await openRouterBaseURL(apiKey);
+	const id = `${baseURL} ${apiKey}`;
+	let client = openRouterClients.get(id);
+	if (!client) {
+		client = new OpenAI({ apiKey, baseURL });
+		openRouterClients.set(id, client);
+	}
+	return client;
+}
+
+/**
+ * Nach einer Guardrail-403 („permits requests only on these OpenRouter
+ * hostnames: …") auf den dort genannten Host wechseln. true = der Aufruf
+ * kann wiederholt werden; false = der Fehler ist keiner dieser Art.
+ */
+export async function adoptPermittedOpenRouterHost(err: unknown): Promise<boolean> {
+	const e = err as { status?: unknown; message?: unknown } | null;
+	if (e?.status !== 403 || typeof e.message !== 'string') return false;
+	const listed = e.message.split(/hostnames?\s*:/i)[1];
+	if (!listed) return false;
+	const apiKey = readApiKey('openrouter');
+	if (!apiKey) return false;
+	const current = await openRouterHost(apiKey);
+	// Ganze Hostnamen prüfen, nicht Teilstücke: „openrouter.ai.example.com"
+	// ist kein OpenRouter-Host. Der Satzpunkt nach dem letzten Namen fällt weg.
+	for (const token of listed.split(/[\s,;]+/)) {
+		const host = token.replace(/\.+$/, '').toLowerCase();
+		if (host !== current && OPENROUTER_HOST.test(host)) {
+			openRouterHostByKey.set(apiKey, Promise.resolve(host));
+			return true;
+		}
+	}
+	return false;
+}
+
 // ── Client init ───────────────────────────────────────────────────
 
 let _initialized = false;
@@ -511,7 +606,22 @@ export interface ChatResponse {
 
 // ── Chat ──────────────────────────────────────────────────────────
 
-export async function chat(opts: {
+export async function chat(opts: ChatOptions): Promise<ChatResponse> {
+	try {
+		return await chatOnce(opts);
+	} catch (err) {
+		// Der Schlüssel darf nur über einen anderen OpenRouter-Host anfragen
+		// (Datenregion per Guardrail). Einmal dort wiederholen — danach gilt
+		// der Host für alle weiteren Aufrufe mit diesem Schlüssel.
+		const provider = opts.modelOverride?.provider ?? getProvider();
+		if (provider === 'openrouter' && (await adoptPermittedOpenRouterHost(err))) {
+			return chatOnce(opts);
+		}
+		throw err;
+	}
+}
+
+type ChatOptions = {
 	system?: string;
 	messages: { role: 'user' | 'assistant'; content: string }[];
 	tools?: ToolDef[];
@@ -571,7 +681,9 @@ export async function chat(opts: {
 	 * drei Quellen reißt den SDK-Call ab; der Caller fängt `AbortError`.
 	 */
 	signal?: AbortSignal;
-}): Promise<ChatResponse> {
+};
+
+async function chatOnce(opts: ChatOptions): Promise<ChatResponse> {
 	init();
 
 	const provider = opts.modelOverride?.provider ?? _provider;
@@ -596,7 +708,13 @@ export async function chat(opts: {
 		}
 	}
 	const useAnthropic = provider === 'anthropic' ? (oneShotAnthropic ?? anthropicClient!) : null;
-	const useOpenAI = provider !== 'anthropic' ? (oneShotOpenAI ?? openaiClient!) : null;
+	let useOpenAI = provider !== 'anthropic' ? (oneShotOpenAI ?? openaiClient!) : null;
+	if (provider === 'openrouter') {
+		// Host nach der Datenregion des Schlüssels, nicht fest (siehe oben).
+		const apiKey = readApiKey('openrouter');
+		if (!apiKey) throw new Error('No API key found for OpenRouter. Add openrouter.key or change provider in settings.');
+		useOpenAI = await openRouterClient(apiKey);
+	}
 
 	// Cancel/Timeout-Signal komponieren. Drei Quellen, alle optional, alle
 	// gleichberechtigt: jeder Abort von einer reißt den Call ab.
