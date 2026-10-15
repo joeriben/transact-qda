@@ -33,7 +33,7 @@
 // Nichts hiervon schreibt in den Datenraum. Das Ergebnis ist eine Liste von
 // Hinweisen; ob daraus ein Anker wird, entscheidet ein Akt des Forschers.
 
-import { chat, isFatalProviderError } from '../client.js';
+import { chat, effectiveRoute, isFatalProviderError } from '../client.js';
 import { resolveTier } from '../coding-run/model-tiers.js';
 import { gestaltBlock, type Gestalt, type Zug } from './gestalt.js';
 
@@ -335,11 +335,6 @@ async function chatJson<T>(
 				modelOverride: opts.tier,
 				responseFormat: 'json',
 				cacheableSystemPrefix: opts.cacheable,
-				// Der Default in client.ts sind 3 Minuten. Bei langen Blöcken und
-				// nachdenkenden Modellen reicht das nicht — ein Lauf starb daran mit
-				// „This operation was aborted". Hier steht deshalb eine Grenze, die nur
-				// noch gegen echte Hänger greift und nicht gegen langsame Antworten.
-				timeoutMs: 30 * 60_000,
 				signal: opts.signal
 			});
 		} catch (err) {
@@ -406,7 +401,7 @@ export async function ableitenKriterium(
 	const res = await chatJson<Kriterium>(
 		kriteriumSystem(),
 		kriteriumMessage(inscription, memos),
-		{ tier: modell ?? resolveTier('anker.wiedererkennung'), signal }
+		{ tier: await effectiveRoute(modell ?? resolveTier('anker.wiedererkennung')), signal }
 	);
 	if (!res.ok) throw new Error(`Das Kriterium kam auch nach drei Versuchen nicht auswertbar zurück: ${res.fehler}`);
 	return res.value;
@@ -539,7 +534,7 @@ export async function pruefeStellen(
 	nichtBelegt: UnbelegteStelle[];
 	verbrauch: Verbrauch;
 }> {
-	const tier = opts.modell ?? resolveTier('anker.wiedererkennung');
+	const tier = await effectiveRoute(opts.modell ?? resolveTier('anker.wiedererkennung'));
 	const verbrauch = leererVerbrauch();
 	const system = befundSystem(kriterium, gestalt, inscription, memos, beleg);
 	const anlaufN = opts.anlaufZuege ?? 2;

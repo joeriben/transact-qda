@@ -19,7 +19,7 @@
 // Pattern: chat() ist Primitiv — eine SDK-Antwort, drinnen rate-limit-Retry
 // und das geteilte AbortSignal-Komponieren. ESKALATION ist eine Schicht
 // darüber: primary → wenn leer, retry primary noch einmal → wenn immer
-// noch leer, einmal mit dem Fallback-Modell (Sonnet, siehe
+// noch leer, einmal mit dem Fallback-Modell (je Tier, siehe
 // model-tiers.ts:resolveFallback). Drei Attempts maximal, danach gibt der
 // Helper die letzte (leere) Antwort durch und der Loop trifft den
 // Status-quo: leere Sequenz, weiter zum nächsten.
@@ -79,7 +79,6 @@ export interface ChatWithEmptyRetryOptions {
 	cacheableSystemPrefix?: string;
 	responseFormat?: 'json';
 	documentIds?: string[];
-	timeoutMs?: number;
 	signal?: AbortSignal;
 
 	/** Primary-Modell — der gemessene Default für den Tier. */
@@ -129,7 +128,6 @@ export async function chatWithEmptyRetry(
 		cacheableSystemPrefix: opts.cacheableSystemPrefix,
 		responseFormat: opts.responseFormat,
 		documentIds: opts.documentIds,
-		timeoutMs: opts.timeoutMs,
 		signal: opts.signal
 	};
 

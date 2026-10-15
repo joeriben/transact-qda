@@ -34,8 +34,8 @@
 //     Idempotenz in commitCodedPassage ist die zweite Linie.
 //   * chatWithEmptyRetry pro H1/H2-Step (siehe chat-with-retry.ts):
 //     leere/unparseable Antwort → eine zweite Primary-Probe → wenn auch
-//     diese leer ist, einmal Eskalation auf resolveFallback(tier) (default
-//     Sonnet). Adressiert den MiMo-Token-Meltdown auf langen Sequenzen
+//     diese leer ist, einmal Eskalation auf resolveFallback(tier) (Ziel
+//     je Tier in model-tiers.ts). Adressiert den MiMo-Token-Meltdown auf langen Sequenzen
 //     (Lab-Befund 2026-05-24, v1-DE seg 2/3 produzierten je 0 Codes;
 //     Methode hielt, aber das Dokument verlor Sequenzen). Eskalations-
 //     Modell und ob überhaupt eskaliert wird sind tier-konfigurierbar.
@@ -46,7 +46,7 @@ import type { WriteProvenance } from '../runtime/tool-executor.js';
 import { isFatalProviderError } from '../client.js';
 import { setStepLabel } from './activity-tracker.js';
 import { segmentDocument, type Sequence } from './segmentation.js';
-import { resolveTier, resolveFallback } from './model-tiers.js';
+import { resolveTierRoute, resolveFallbackRoute } from './model-tiers.js';
 import { chatWithEmptyRetry } from './chat-with-retry.js';
 import {
 	getOrCreateCodingRunNaming,
@@ -448,10 +448,12 @@ export async function runCodingRunLoop(
 
 	const prov: WriteProvenance = { persona: 'coding-run', runId };
 
-	const h1Tier = resolveTier('coding-run.h1');
-	const h2Tier = resolveTier('coding-run.h2');
-	const h1Fallback = resolveFallback('coding-run.h1');
-	const h2Fallback = resolveFallback('coding-run.h2');
+	// Mit regionalem Ersatz aufgelöst, damit h1Model/h2Model das Modell
+	// ausweisen, das tatsächlich rechnet (model-policy.ts).
+	const h1Tier = await resolveTierRoute('coding-run.h1');
+	const h2Tier = await resolveTierRoute('coding-run.h2');
+	const h1Fallback = await resolveFallbackRoute('coding-run.h1');
+	const h2Fallback = await resolveFallbackRoute('coding-run.h2');
 	const h1Model = `${h1Tier.provider}/${h1Tier.model}`;
 	const h2Model = `${h2Tier.provider}/${h2Tier.model}`;
 

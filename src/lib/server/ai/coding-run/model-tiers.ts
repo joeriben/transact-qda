@@ -35,7 +35,7 @@
 //     each with a tier-specific note. KNOWN_ROUTES holds the tier-
 //     independent master data (label, price, region, DSGVO).
 
-import { loadSettings, type Provider } from '../client.js';
+import { loadSettings, effectiveRoute, type Provider } from '../client.js';
 
 export type Tier =
 	| 'coding-run.h1' // H1 propose + react — code extraction, frictionless, many calls
@@ -62,15 +62,15 @@ export interface RouteOption {
 	dsgvo: boolean;
 }
 
+// OpenRouter-Routen laufen in der Datenregion des Schlüssels (client.ts,
+// OpenRouter-Abschnitt): ein EU-beschränkter Schlüssel rechnet in der EU,
+// sonst US. Kimi K3 hat keinen EU-Endpunkt; dort rechnet Opus 5.5
+// (model-policy.ts). Preise Stand 15.10.2026.
 export const KNOWN_ROUTES: RouteOption[] = [
-	{ provider: 'mistral', model: 'mistral-large-latest', label: 'mistral-large (Mistral nativ EU)', inputUSDPerMTok: 0.5, outputUSDPerMTok: 1.5, region: 'EU', dsgvo: true },
-	{ provider: 'openrouter', model: 'xiaomi/mimo-v2.5-pro', label: 'mimo-v2.5-pro (OpenRouter)', inputUSDPerMTok: 0.43, outputUSDPerMTok: 0.87, region: 'US', dsgvo: false },
-	{ provider: 'openrouter', model: 'z-ai/glm-5.2', label: 'glm-5.2 (OpenRouter)', inputUSDPerMTok: 0.76, outputUSDPerMTok: 2.42, region: 'US', dsgvo: false },
-	{ provider: 'openrouter', model: 'anthropic/claude-sonnet-4.6', label: 'claude-sonnet-4.6 (OpenRouter)', inputUSDPerMTok: 3.0, outputUSDPerMTok: 15.0, region: 'US', dsgvo: false },
-	{ provider: 'mammouth', model: 'claude-sonnet-4-6', label: 'claude-sonnet-4-6 (Mammouth, EU-vermittelt)', inputUSDPerMTok: 3.0, outputUSDPerMTok: 15.0, region: 'EU', dsgvo: true },
-	{ provider: 'openrouter', model: 'anthropic/claude-opus-4.7', label: 'claude-opus-4.7 (OpenRouter)', inputUSDPerMTok: 5.0, outputUSDPerMTok: 25.0, region: 'US', dsgvo: false },
-	{ provider: 'mammouth', model: 'kimi-k2.5', label: 'kimi-k2.5 (Mammouth, EU-vermittelt)', inputUSDPerMTok: 0.45, outputUSDPerMTok: 2.25, region: 'EU', dsgvo: true },
-	{ provider: 'openrouter', model: 'moonshotai/kimi-k2.5', label: 'kimi-k2.5 (OpenRouter)', inputUSDPerMTok: 0.45, outputUSDPerMTok: 2.25, region: 'US', dsgvo: false }
+	{ provider: 'openrouter', model: 'z-ai/glm-5.3', label: 'glm-5.3 (OpenRouter)', inputUSDPerMTok: 0.2, outputUSDPerMTok: 4.8, region: 'EU/US je nach Schlüssel', dsgvo: false },
+	{ provider: 'openrouter', model: 'moonshotai/kimi-k3', label: 'kimi-k3 (OpenRouter)', inputUSDPerMTok: 0.45, outputUSDPerMTok: 15.0, region: 'US (kein EU-Endpunkt)', dsgvo: false },
+	{ provider: 'openrouter', model: 'anthropic/claude-opus-5.5', label: 'claude-opus-5.5 (OpenRouter)', inputUSDPerMTok: 4.0, outputUSDPerMTok: 20.0, region: 'EU/US je nach Schlüssel', dsgvo: false },
+	{ provider: 'mistral', model: 'mistral-large-latest', label: 'mistral-large (Mistral nativ EU)', inputUSDPerMTok: 0.5, outputUSDPerMTok: 1.5, region: 'EU', dsgvo: true }
 ];
 
 export interface TierCandidate {
@@ -97,14 +97,18 @@ export interface TierMeta {
 	fallback: TierModel | null;
 }
 
+// Zuordnung (Setzung 15.10.2026): GLM 5.3 für das meiste, Kimi K3 für die
+// interpretativ anspruchsvollen Schritte — H2 (Lesart, Konfrontation,
+// CName-Forensik) und die komparative Dimensionalisierung, die über den
+// H2-Tier läuft. Reasoning-Stärke je Modell steht in model-policy.ts.
+const GLM: TierModel = { provider: 'openrouter', model: 'z-ai/glm-5.3' };
+const KIMI: TierModel = { provider: 'openrouter', model: 'moonshotai/kimi-k3' };
+const OPUS: TierModel = { provider: 'openrouter', model: 'anthropic/claude-opus-5.5' };
 const MISTRAL: TierModel = { provider: 'mistral', model: 'mistral-large-latest' };
-const MIMO: TierModel = { provider: 'openrouter', model: 'xiaomi/mimo-v2.5-pro' };
-const GLM: TierModel = { provider: 'openrouter', model: 'z-ai/glm-5.2' };
-const SONNET_OR: TierModel = { provider: 'openrouter', model: 'anthropic/claude-sonnet-4.6' };
-const SONNET_MAMMOUTH: TierModel = { provider: 'mammouth', model: 'claude-sonnet-4-6' };
-const OPUS_OR: TierModel = { provider: 'openrouter', model: 'anthropic/claude-opus-4.7' };
-const KIMI_MAMMOUTH: TierModel = { provider: 'mammouth', model: 'kimi-k2.5' };
-const KIMI_OR: TierModel = { provider: 'openrouter', model: 'moonshotai/kimi-k2.5' };
+
+const KIMI_NOT_IN_EU = 'In der EU nicht verfügbar; unter EU-Schlüssel rechnet Opus 5.5, und der Lauf weist das aus.';
+const MISTRAL_NOTE =
+	'Native EU-Route ohne OpenRouter. Driftet unter Last die Sprache (Französisch bzw. Deutsch je nach Position der Sprach-Direktive) — nur mit fest konfigurierter Sprache und Drift-Prüfung.';
 
 export const TIER_REGISTRY: Record<Tier, TierMeta> = {
 	'coding-run.h1': {
@@ -115,29 +119,16 @@ export const TIER_REGISTRY: Record<Tier, TierMeta> = {
 			'die Disziplin gegen Over-Coding ist strukturell H2s Konfrontation, nicht ' +
 			'H1s Zurückhaltung. Sprach-Lock ist hier kritisch: H1 generiert die ' +
 			'sichtbaren Code-Labels, ein Sprachdrift kontaminiert das ganze Projekt.',
-		recommended: MIMO,
-		fallback: SONNET_OR,
+		recommended: GLM,
+		fallback: KIMI,
 		candidates: [
 			{
-				...MIMO,
-				note: 'Empfehlung: hält den Sprach-Lock (PASSAGE-Sprache → Output-Sprache) zuverlässig. In internen Testläufen lang_match=true, gerund_ratio=1.0, memo_connective=1.0 auf englischer und deutscher Quelle. Reasoning-Klasse, geeignet für die Strauss-Process-Code-Disziplin.'
+				...GLM,
+				note: 'Empfehlung: günstig bei hoher Call-Zahl, Reasoning max. Für die Coding-Linie noch nicht gemessen — Sprach-Lock auf deutscher Quelle vor dem ersten Produktivlauf prüfen.'
 			},
-			{
-				...MISTRAL,
-				note: 'Günstiger und EU-DSGVO — driftet aber unter Last die Sprache: mit der Sprach-Direktive im Footer defaultete er auf Französisch, mit front-anchored STEP-0-Direktive auf Deutsch. Kein Prompt-Position kuriert den Drift. Nur einsetzen, wenn Sprache pro Projekt fix konfiguriert ist UND eine Drift-Prüfung läuft.'
-			},
-			{
-				...KIMI_MAMMOUTH,
-				note: 'Preis-Profil nahe Mistral (~0.45/2.25 USD/MTok), EU-vermittelt über Mammouth. Nicht spezifisch für die Coding-Linie gemessen — Sprach-Lock-Verhalten unverifiziert.'
-			},
-			{
-				...KIMI_OR,
-				note: 'OpenRouter-Fallback zur Mammouth-Variante, preisidentisch. Nicht DSGVO-konform (US-Routing).'
-			},
-			{
-				...SONNET_OR,
-				note: 'Goldstandard-Referenz, ~3× teurer als MiMo. Für H1 nicht nötig — die Strauss-Disziplin ist eine Prompt-Funktion, nicht Reasoning-Tiefe.'
-			}
+			{ ...KIMI, note: `Stärker, im Output gut dreimal so teuer. Für H1 nicht nötig — die Disziplin liegt in H2. ${KIMI_NOT_IN_EU}` },
+			{ ...OPUS, note: 'Höchste Tiefe, Reasoning xhigh; im Input 20-, im Output 4-mal so teuer wie GLM. Für H1 nicht nötig.' },
+			{ ...MISTRAL, note: MISTRAL_NOTE }
 		]
 	},
 	'anker.geschehen': {
@@ -149,13 +140,13 @@ export const TIER_REGISTRY: Record<Tier, TierMeta> = {
 			'nicht rückwärts aus einem gesuchten Begriff gebildet wird. Läuft einmal ' +
 			'je Dokument und wird für jedes Naming wiederverwendet; entsprechend ' +
 			'hohe Call-Zahl bei einmaligen Kosten.',
-		recommended: MIMO,
-		fallback: SONNET_OR,
+		recommended: GLM,
+		fallback: KIMI,
 		candidates: [
-			{ ...MIMO, note: 'Empfehlung: Reasoning-Klasse zu MiMo-Preis, hält den Sprach-Lock. Die Aufgabe ist Lesart, nicht Tiefe.' },
-			{ ...SONNET_OR, note: 'Referenz für die Lesart. ~3× teurer; bei einmaligem Lauf je Dokument vertretbar.' },
-			{ ...KIMI_MAMMOUTH, note: 'Preisnah zu Mistral, EU-vermittelt. Für diese Aufgabe nicht gemessen.' },
-			{ ...MISTRAL, note: 'Günstigste EU-Route. Sprachdrift beobachtet (siehe H1) — nur mit fest konfigurierter Sprache.' }
+			{ ...GLM, note: 'Empfehlung: Lesart je Einheit bei hoher Call-Zahl; günstig, Reasoning max.' },
+			{ ...KIMI, note: `Für schwierige Register erwägenswert; für diese Aufgabe nicht gemessen. ${KIMI_NOT_IN_EU}` },
+			{ ...OPUS, note: 'Referenz für die Lesart, Reasoning xhigh. Bei einmaligem Lauf je Dokument vertretbar; nicht gemessen.' },
+			{ ...MISTRAL, note: MISTRAL_NOTE }
 		]
 	},
 	'anker.wiedererkennung': {
@@ -167,25 +158,20 @@ export const TIER_REGISTRY: Record<Tier, TierMeta> = {
 			'trägt die Unterscheidung, die alles entscheidet — hier gehört das ' +
 			'schärfere Modell hin.',
 		recommended: GLM,
-		fallback: MIMO,
+		fallback: KIMI,
 		candidates: [
 			{
 				...GLM,
 				note:
-					'Empfehlung, gemessen am 05.08.2026 (3 Namings, 4 eigene Marken, 173 Züge): ' +
-					'3/4 Marken als Fall — gleichauf mit den teuersten — für $0.52 statt $2.46–3.88 ' +
-					'und in einem Fünftel der Zeit.'
+					'Empfehlung. Gemessen am 05.08.2026 am Vorgänger glm-5.2 (3 Namings, 4 eigene Marken, ' +
+					'173 Züge): 3/4 Marken als Fall — gleichauf mit den teuersten — für $0.52 statt ' +
+					'$2.46–3.88. Die verfehlte Marke war eine Kriteriums-, keine Modellfrage. glm-5.3 selbst ist hier ungemessen.'
 			},
-			{ ...MIMO, note: 'Gleiche 3/4 Marken für $0.42, aber sechsmal so lange Laufzeit (30 statt 5 Minuten).' },
 			{
-				...SONNET_OR,
-				note:
-					'Frühere Empfehlung, ungemessen: Der Vergleich fiel für Sonnet aus (Guthaben erschöpft). ' +
-					'Die Annahme, hier sei Reasoning-Tiefe der Punkt, wird von den fünf gleichauf ' +
-					'liegenden Modellen nicht gestützt.'
+				...KIMI,
+				note: `Für schwierige Züge (Haltung, Ironie) erwägenswert; ungemessen. Läuft je Naming über alle Einheiten — die Output-Kosten verdreifachen sich gegenüber GLM. ${KIMI_NOT_IN_EU}`
 			},
-			{ ...SONNET_MAMMOUTH, note: 'Wie Sonnet OR, EU-vermittelt über Mammouth. Ebenfalls ungemessen.' },
-			{ ...OPUS_OR, note: 'Höchste Tiefe, ~8× teurer als MiMo. Für schwierige Züge (Haltung, Ironie) erwägenswert; ungemessen.' }
+			{ ...OPUS, note: 'Höchste Tiefe, Reasoning xhigh; im Output 4-mal so teuer wie GLM, ungemessen.' }
 		]
 	},
 	'coding-run.h2': {
@@ -194,30 +180,16 @@ export const TIER_REGISTRY: Record<Tier, TierMeta> = {
 			'H2 liest jeden Absatz unabhängig (H1-agnostisch), führt die kumulative ' +
 			'Verständnislinie fort und konfrontiert H1s Codes (keep/revise/drop + ' +
 			'Code-Memo). H2s Lesart IST das Maß gegen Over-Coding — hier gehört das ' +
-			'schärfere Modell hin.',
-		recommended: MIMO,
-		fallback: SONNET_OR,
+			'schärfere Modell hin. Derselbe Tier trägt die CName-Forensik und die ' +
+			'komparative Dimensionalisierung.',
+		recommended: KIMI,
+		// Die Eskalation fällt nicht unter die Schärfe der Messlatte zurück.
+		fallback: OPUS,
 		candidates: [
-			{
-				...MIMO,
-				note: 'Empfehlung: Reasoning-Klasse, für synthetische Per-Absatz-Memos validiert — ≈ Sonnet im Inhalt, 3× günstiger. Trägt die konnektive Comprehension und die Konfrontation.'
-			},
-			{
-				...SONNET_OR,
-				note: 'Goldstandard-Referenz für reflektierende Per-Absatz-Lesart, 3× teurer als mimo ohne gemessenen Vorteil.'
-			},
-			{
-				...SONNET_MAMMOUTH,
-				note: 'Wie Sonnet OR, EU-vermittelt über Mammouth — für DSGVO-Pflicht.'
-			},
-			{
-				...OPUS_OR,
-				note: 'Höhere Reasoning-Tiefe für die Konfrontation, ~8× teurer als mimo. Verteidigbare Höher-Tier-Wahl, für die Coding-Linie aber nicht gemessen.'
-			},
-			{
-				...MISTRAL,
-				note: 'Günstigste Route, EU-DSGVO. Tragfähig, wenn H1 und H2 dasselbe Modell teilen sollen — H2 verliert dann die Reasoning-Schärfe gegenüber H1.'
-			}
+			{ ...KIMI, note: `Empfehlung für die Interpretationsarbeit, Reasoning max. Für die Konfrontation noch nicht gemessen. ${KIMI_NOT_IN_EU}` },
+			{ ...OPUS, note: 'EU-Ersatz für Kimi K3, Reasoning xhigh (nicht höher). Teuerste Route.' },
+			{ ...GLM, note: 'Günstig. Teilen H1 und H2 dasselbe Modell, verliert H2 die Schärfe gegenüber H1.' },
+			{ ...MISTRAL, note: MISTRAL_NOTE }
 		]
 	}
 };
@@ -254,6 +226,20 @@ export function resolveFallback(tier: Tier): TierModel | null {
 		return { provider: choice.provider, model: choice.model };
 	}
 	return TIER_REGISTRY[tier].fallback;
+}
+
+/**
+ * Wie resolveTier/resolveFallback, aber mit regionalem Ersatz aufgelöst:
+ * das Modell, das unter dem aktuellen Schlüssel tatsächlich rechnet. Am
+ * Laufstart aufrufen, wo das Modell in Ergebnis und Protokoll eingeht.
+ */
+export async function resolveTierRoute(tier: Tier): Promise<TierModel> {
+	return effectiveRoute(resolveTier(tier));
+}
+
+export async function resolveFallbackRoute(tier: Tier): Promise<TierModel | null> {
+	const fallback = resolveFallback(tier);
+	return fallback ? effectiveRoute(fallback) : null;
 }
 
 export interface DescribedCandidate {

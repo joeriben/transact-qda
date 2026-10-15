@@ -377,7 +377,6 @@ export interface RunForensicOptions {
 	primary: TierModel;
 	fallback: TierModel | null;
 	signal?: AbortSignal;
-	timeoutMs?: number;
 	prov: WriteProvenance;
 	onCall?: (call: ActantCall, phaseLabel: string) => Promise<void> | void;
 }
@@ -395,8 +394,7 @@ function baseChatOpts(opts: RunForensicOptions, phaseLabel: string) {
 		emptyMode: 'prose' as const,
 		runId: opts.runId,
 		phaseLabel,
-		documentIds: [opts.documentId],
-		timeoutMs: opts.timeoutMs
+		documentIds: [opts.documentId]
 	};
 }
 

@@ -19,6 +19,7 @@
 
 import { query } from '../../db/index.js';
 import { resolveTier } from '../coding-run/model-tiers.js';
+import { effectiveRoute } from '../client.js';
 import { sichten, zuegeOf, zuegeOverlapping, type Gestalt, type Zug } from './gestalt.js';
 import { ladeKriterium, speichereKriterium, neuAbleiten } from './kriterien.js';
 import {
@@ -426,7 +427,7 @@ export async function durchgehen(
 		unlesbar,
 		nichtBelegt,
 		verbrauch,
-		modell: opts.modell ?? resolveTier('anker.wiedererkennung'),
+		modell: await effectiveRoute(opts.modell ?? resolveTier('anker.wiedererkennung')),
 		zuegeGesamt: zuege.length,
 		geprueft: scope.length,
 		geprueftJePosition,

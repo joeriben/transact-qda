@@ -23,8 +23,9 @@
 // Scope = actant C/E only: does NOT touch H1/H2 (SName), Richter/D, or runtime/agent.ts.
 
 import { query, queryOne } from '../../db/index.js';
+import { effectiveRoute } from '../client.js';
 import { chatWithEmptyRetry } from '../coding-run/chat-with-retry.js';
-import { resolveTier, resolveFallback, type TierModel } from '../coding-run/model-tiers.js';
+import { resolveTierRoute, resolveFallbackRoute, type TierModel } from '../coding-run/model-tiers.js';
 import { retrieveComparisonMaterialForText } from '../coding-companion/retrieval.js';
 import { embed } from '../../documents/embeddings.js';
 import {
@@ -126,7 +127,7 @@ export interface ComparativeParams {
 	persist?: boolean;
 	/** User id attributed as the acting system for `by` (researcher-naming). Default AI_SYSTEM. */
 	byUserId?: string;
-	/** Override the H2 tier (e.g. when the default route is degraded). Default resolveTier('coding-run.h2'). */
+	/** Override the H2 tier (e.g. when the default route is degraded). Default resolveTierRoute('coding-run.h2'). */
 	modelOverride?: TierModel;
 	/** Abort signal — propagated to every LLM call so a client disconnect tears down in-flight fetches. */
 	signal?: AbortSignal;
@@ -190,7 +191,6 @@ function makeChat(
 			runId,
 			phaseLabel: phase,
 			documentIds: docIds,
-			timeoutMs: 120000,
 			signal,
 			system,
 			messages: [{ role: 'user', content }]
@@ -417,8 +417,8 @@ export async function runComparativeDimensionalization(params: ComparativeParams
 
 	if (cases.length < 2) throw new Error('comparative engine needs ≥2 cases (cases[0] = anchor case).');
 
-	const primary = modelOverride ?? resolveTier('coding-run.h2');
-	const fallback = resolveFallback('coding-run.h2');
+	const primary = modelOverride ? await effectiveRoute(modelOverride) : await resolveTierRoute('coding-run.h2');
+	const fallback = await resolveFallbackRoute('coding-run.h2');
 	let totalTokens = 0;
 	const runId = `comparative-${projectId.slice(0, 8)}-${crypto.randomUUID().slice(0, 8)}`;
 	const docIds = cases.map((c) => c.docId);

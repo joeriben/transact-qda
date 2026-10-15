@@ -5,7 +5,8 @@
 // The chief decides autonomously when to delegate — it only needs accurate descriptions
 // of available agent-LLMs.
 
-import { type ToolDef, type ChatResponse, loadSettings, PROVIDERS, readApiKey, type Provider, anthropicModelMaxOutput, openAiCompatMaxOutput, openRouterBaseURL, adoptPermittedOpenRouterHost } from '../client.js';
+import { type ToolDef, type ChatResponse, loadSettings, PROVIDERS, readApiKey, type Provider, anthropicModelMaxOutput, openAiCompatMaxOutput, openRouterBaseURL, adoptPermittedOpenRouterHost, effectiveRoute } from '../client.js';
+import { reasoningEffortFor } from '../model-policy.js';
 import { logInteraction } from '../index.js';
 
 // ── Agent model interface ────────────────────────────────────────
@@ -166,14 +167,16 @@ export async function executeDelegation(
 	}
 
 	try {
+		// Regionaler Ersatz wie in chat() (siehe model-policy.ts).
+		const route = await effectiveRoute({ provider: agent.provider, model: agent.model });
 		let response: ChatResponse;
 		try {
-			response = await delegateChat(agent.provider, agent.model, fullTask, systemPrompt);
+			response = await delegateChat(route.provider, route.model, fullTask, systemPrompt);
 		} catch (err) {
 			// Datenregion per Guardrail: einmal über den zulässigen Host
 			// wiederholen (siehe client.ts, OpenRouter-Abschnitt).
-			if (agent.provider !== 'openrouter' || !(await adoptPermittedOpenRouterHost(err))) throw err;
-			response = await delegateChat(agent.provider, agent.model, fullTask, systemPrompt);
+			if (route.provider !== 'openrouter' || !(await adoptPermittedOpenRouterHost(err))) throw err;
+			response = await delegateChat(route.provider, route.model, fullTask, systemPrompt);
 		}
 
 		// Log the delegated call
@@ -219,18 +222,25 @@ async function delegateChat(
 ): Promise<ChatResponse> {
 	const def = PROVIDERS[provider];
 	const apiKey = readApiKey(provider);
+	// Reasoning-Stärke nach model-policy.ts — wie in chat().
+	const effort = reasoningEffortFor(model);
 
 	if (provider === 'anthropic') {
 		const client = new Anthropic({ apiKey: apiKey! });
-		const response = await client.messages.create({
+		// Gestreamt, weil das SDK einen nicht gestreamten Aufruf mit dem
+		// Modell-Maximum vorab ablehnt („Streaming is required …").
+		const response = await client.messages.stream({
 			model,
 			// Anthropic verlangt max_tokens als required body parameter — die
 			// einzige zulässige Ausnahme. Wert: immer das Modell-Maximum.
 			// Dieser Pfad geht an client.ts vorbei; die Regel gilt hier gleich.
 			max_tokens: anthropicModelMaxOutput(model),
+			...(effort
+				? { output_config: { effort } as unknown as Anthropic.Messages.MessageCreateParams['output_config'] }
+				: {}),
 			...(systemPrompt ? { system: systemPrompt } : {}),
 			messages: [{ role: 'user', content: task }]
-		});
+		}).finalMessage();
 
 		const inputTokens = response.usage.input_tokens;
 		const outputTokens = response.usage.output_tokens;
@@ -280,6 +290,7 @@ async function delegateChat(
 		const response = await client.chat.completions.create({
 			model,
 			...tokenParam,
+			...(effort && provider === 'openrouter' ? ({ reasoning: { effort } } as Record<string, unknown>) : {}),
 			messages
 		});
 

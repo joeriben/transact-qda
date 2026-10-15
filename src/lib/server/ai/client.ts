@@ -10,12 +10,16 @@
 //     transient socket-Drops (UND_ERR_SOCKET, ECONNRESET) + Provider-5xx
 //     (HTTP-Status + body-internal-5xx über OpenAI-kompatible Proxies wie
 //     OpenRouter) + retryable-429 (Backpressure mit Retry-After-Header).
-//   * withDeadline — Wall-Clock-Failsafe gegen SDK-Hänger, die das
-//     AbortSignal nicht respektieren (beobachtet 2026-05-17).
+//   * untilAborted — ein Abbruch befreit den Aufrufer auch dann, wenn das
+//     SDK das AbortSignal nicht respektiert (Hänger beobachtet 2026-05-17).
 //   * Run-Cancel-Signal-Threading — via AsyncLocalStorage aus
 //     coding-run/activity-tracker.ts; `chat()` kombiniert es mit dem
-//     Timeout-Signal via AbortSignal.any(). Mid-Call-Cancel wird wirksam,
+//     Caller-Signal via AbortSignal.any(). Mid-Call-Cancel wird wirksam,
 //     nicht erst zwischen Atomen.
+//   * Keine Zeitgrenze für Modellaufrufe. Mit hoher Reasoning-Stärke
+//     (model-policy.ts) dauert eine gültige Antwort mehrere Minuten; eine
+//     feste Grenze schnitte sie ab und ließe den Retry den bezahlten
+//     Aufruf wiederholen. Beendet wird ein Aufruf durch Abbruch.
 //   * Malformed-Response-Guard — OpenRouter et al. liefern in seltenen
 //     Fällen HTTP-200 mit `{error:{...}}` ohne `choices`-Array; wir
 //     normalisieren und markieren 5xx-Body-Codes als upstreamTransient.
@@ -35,39 +39,26 @@ import OpenAI from 'openai';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { getAiSettingsFile, getApiKeyFile } from '../paths.js';
 import { startLlmCall, endLlmCall, getRunAbortSignal } from './coding-run/activity-tracker.js';
+import { reasoningEffortFor, REGION_SUBSTITUTES, type ReasoningEffort } from './model-policy.js';
 
-// Default per-call hard timeout. Coding-Run-LLM-Aufrufe sind typisch
-// 10–60 s (H1-Propose, H2-Read, H2-Confront, H1-React je 1 Call/Sequenz).
-// 3 min als Default deckt den schwersten Fall (Konfrontation auf voller
-// Sequenz mit Reasoning-Modell) mit Reserve.
-const DEFAULT_CHAT_TIMEOUT_MS = 180_000;
-
-// ── Wall-Clock-Deadline ──────────────────────────────────────────────
+// ── Abbruch gegen SDK-Hänger ─────────────────────────────────────────
 //
-// Hard-Failsafe gegen Hänger, bei denen das SDK das übergebene AbortSignal
-// nicht respektiert (beobachtet 2026-05-17: 2h 39min stiller Hang
-// trotz Default-3-min-Timeout-Signal). Diese Race-Wrapper setzt eine
-// zweite, unabhängige Deadline über setTimeout, die vom Event-Loop
-// garantiert gefeuert wird, selbst wenn der zugrundeliegende fetch in
-// einem Zustand hängt, der die Abort-Semantik nicht mehr beachtet. Bei
-// Timeout wirft `WallClockTimeoutError`; der Hintergrund-Promise mag noch
-// laufen, aber der Run-Loop läuft sauber weiter bzw. wird im Catch sauber
-// als failed markiert.
-class WallClockTimeoutError extends Error {
-	readonly isWallClockTimeout = true;
-	constructor(label: string, ms: number) {
-		super(`Wall-clock timeout: ${label} did not resolve within ${ms}ms (SDK ignored AbortSignal)`);
-		this.name = 'WallClockTimeoutError';
-	}
-}
-
-function withDeadline<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-	let timer: NodeJS.Timeout | undefined;
-	const deadline = new Promise<never>((_, reject) => {
-		timer = setTimeout(() => reject(new WallClockTimeoutError(label, ms)), ms);
+// Beobachtet 2026-05-17: ein SDK-Aufruf hing 2h 39min still, obwohl sein
+// AbortSignal längst gefeuert hatte. Deshalb rennt jeder Aufruf zusätzlich
+// gegen das Signal selbst: feuert es, wirft der Aufrufer sofort, auch wenn
+// der zugrundeliegende fetch die Abort-Semantik nicht mehr beachtet. Der
+// Hintergrund-Promise mag weiterlaufen; der Run-Loop läuft sauber weiter
+// bzw. wird im Catch als abgebrochen markiert.
+function untilAborted<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+	if (!signal) return promise;
+	let onAbort: (() => void) | undefined;
+	const aborted = new Promise<never>((_, reject) => {
+		onAbort = () => reject(signal.reason ?? new DOMException('Aborted', 'AbortError'));
+		if (signal.aborted) onAbort();
+		else signal.addEventListener('abort', onAbort, { once: true });
 	});
-	return Promise.race([promise, deadline]).finally(() => {
-		if (timer) clearTimeout(timer);
+	return Promise.race([promise, aborted]).finally(() => {
+		if (onAbort) signal.removeEventListener('abort', onAbort);
 	});
 }
 
@@ -264,9 +255,9 @@ export const PROVIDERS: Record<Provider, ProviderDef> = {
 	mistral:    { label: 'Mistral AI',      baseURL: 'https://api.mistral.ai/v1',                           defaultModel: 'mistral-large-latest',                 keyFile: 'mistral.key',    dsgvo: true,  region: 'EU' },
 	ionos:      { label: 'IONOS',           baseURL: 'https://openai.inference.de-txl.ionos.com/v1',        defaultModel: 'meta-llama/Meta-Llama-3.1-70B-Instruct', keyFile: 'ionos.key',   dsgvo: true,  region: 'EU (Berlin)' },
 	mammouth:   { label: 'Mammouth AI',     baseURL: 'https://api.mammouth.ai/v1',                          defaultModel: 'claude-sonnet-4-6',                    keyFile: 'mammouth.key',   dsgvo: true,  region: 'EU' },
-	anthropic:  { label: 'Anthropic',       baseURL: 'https://api.anthropic.com',                           defaultModel: 'claude-opus-4-6',                      keyFile: 'anthropic.key',  dsgvo: false, region: 'US' },
+	anthropic:  { label: 'Anthropic',       baseURL: 'https://api.anthropic.com',                           defaultModel: 'claude-opus-5-5',                      keyFile: 'anthropic.key',  dsgvo: false, region: 'US' },
 	openai:     { label: 'OpenAI',          baseURL: 'https://api.openai.com/v1',                           defaultModel: 'gpt-5.4-pro',                          keyFile: 'openai.key',    dsgvo: false, region: 'US' },
-	openrouter: { label: 'OpenRouter',      baseURL: 'https://openrouter.ai/api/v1',                        defaultModel: 'anthropic/claude-opus-4-6',            keyFile: 'openrouter.key', dsgvo: false, region: 'US' },
+	openrouter: { label: 'OpenRouter',      baseURL: 'https://openrouter.ai/api/v1',                        defaultModel: 'z-ai/glm-5.3',                         keyFile: 'openrouter.key', dsgvo: false, region: 'US' },
 };
 
 // ── Settings persistence ──────────────────────────────────────────
@@ -480,6 +471,78 @@ export async function adoptPermittedOpenRouterHost(err: unknown): Promise<boolea
 	return false;
 }
 
+// ── Regionaler Ersatz (siehe model-policy.ts) ─────────────────────
+
+/** Provider, Modell und — optional — ausdrückliche Reasoning-Stärke eines Aufrufs. */
+export interface ModelRoute {
+	provider: Provider;
+	model: string;
+	effort?: ReasoningEffort;
+}
+
+const servedByHostAndModel = new Map<string, Promise<boolean>>();
+const unavailableNoted = new Set<string>();
+
+/** Hat das Modell in der Datenregion dieses Schlüssels mindestens einen Endpunkt? */
+function servedInRegion(apiKey: string, model: string): Promise<boolean> {
+	return openRouterHost(apiKey).then((host) => {
+		const id = `${host} ${model}`;
+		let served = servedByHostAndModel.get(id);
+		if (!served) {
+			served = (async () => {
+				try {
+					const res = await fetch(`https://${host}/api/v1/models/${model}/endpoints`, {
+						headers: { Authorization: `Bearer ${apiKey}` },
+						signal: AbortSignal.timeout(15_000)
+					});
+					// Unklare Antwort: als bedient behandeln — scheitert der Aufruf
+					// dann doch, korrigiert chat() nach der 404 (siehe dort).
+					if (!res.ok) return true;
+					const endpoints = (await res.json())?.data?.endpoints;
+					return !Array.isArray(endpoints) || endpoints.length > 0;
+				} catch {
+					return true;
+				}
+			})();
+			servedByHostAndModel.set(id, served);
+		}
+		return served;
+	});
+}
+
+function noteSubstitution(model: string, substitute: string): void {
+	if (unavailableNoted.has(model)) return;
+	unavailableNoted.add(model);
+	console.warn(
+		`[ai] ${model} wird in der Datenregion dieses OpenRouter-Schlüssels nicht bedient — ` +
+			`stattdessen ${substitute}.`
+	);
+}
+
+/**
+ * Das Modell, das für diese Route tatsächlich rechnen wird: die Route selbst,
+ * oder ihr Ersatz aus model-policy.ts, wenn das Modell in der Datenregion des
+ * Schlüssels keinen Endpunkt hat. Aufrufer, die das Modell protokollieren
+ * (Coding-Run, Anker-Zug), lösen hierüber auf — sonst stünde im Lauf ein
+ * Modell, das nie gerechnet hat.
+ */
+export async function effectiveRoute(route: ModelRoute): Promise<ModelRoute> {
+	if (route.provider !== 'openrouter') return route;
+	const substitute = REGION_SUBSTITUTES[route.model];
+	if (!substitute) return route;
+	const apiKey = readApiKey('openrouter');
+	if (!apiKey || (await servedInRegion(apiKey, route.model))) return route;
+	noteSubstitution(route.model, substitute);
+	// Die Stärke folgt dem Ersatzmodell (model-policy.ts), nicht dem Original.
+	return { provider: route.provider, model: substitute };
+}
+
+/** Eine 404 „No endpoints found …": Region oder Datenrichtlinie schließen das Modell aus. */
+function isNoEndpointError(err: unknown): boolean {
+	const e = err as { status?: unknown; message?: unknown } | null;
+	return e?.status === 404 && typeof e.message === 'string' && /no endpoints found/i.test(e.message);
+}
+
 // ── Client init ───────────────────────────────────────────────────
 
 let _initialized = false;
@@ -535,6 +598,14 @@ export function getProvider(): Provider {
 // Callsite-Override mehr (Setzung 05.08.2026, siehe chat() unten).
 export function anthropicModelMaxOutput(model: string): number {
 	switch (model) {
+		case 'claude-fable-5-1':
+		case 'claude-fable-5':
+		case 'claude-opus-5-5':
+		case 'claude-opus-5':
+		case 'claude-opus-4-8':
+		case 'claude-sonnet-5-5':
+		case 'claude-sonnet-5':
+		case 'claude-haiku-5-5':   return 128_000;
 		case 'claude-opus-4-7':    return 128_000;
 		case 'claude-sonnet-4-6':  return  64_000;
 		case 'claude-haiku-4-5':
@@ -607,15 +678,32 @@ export interface ChatResponse {
 // ── Chat ──────────────────────────────────────────────────────────
 
 export async function chat(opts: ChatOptions): Promise<ChatResponse> {
+	return routeAndCall(opts, 0);
+}
+
+async function routeAndCall(opts: ChatOptions, hostSwitches: number): Promise<ChatResponse> {
+	init();
+	const requested: ModelRoute = opts.modelOverride ?? { provider: _provider, model: _model };
+	const route = await effectiveRoute(requested);
 	try {
-		return await chatOnce(opts);
+		return await chatOnce(route === requested ? opts : { ...opts, modelOverride: route });
 	} catch (err) {
+		if (route.provider !== 'openrouter') throw err;
 		// Der Schlüssel darf nur über einen anderen OpenRouter-Host anfragen
-		// (Datenregion per Guardrail). Einmal dort wiederholen — danach gilt
-		// der Host für alle weiteren Aufrufe mit diesem Schlüssel.
-		const provider = opts.modelOverride?.provider ?? getProvider();
-		if (provider === 'openrouter' && (await adoptPermittedOpenRouterHost(err))) {
-			return chatOnce(opts);
+		// (Datenregion per Guardrail). Dort neu auflösen und wiederholen —
+		// danach gilt der Host für alle weiteren Aufrufe mit diesem Schlüssel.
+		if (hostSwitches < 2 && (await adoptPermittedOpenRouterHost(err))) {
+			return routeAndCall(opts, hostSwitches + 1);
+		}
+		// Das Modell ist für diesen Schlüssel nicht erreichbar, obwohl die
+		// Region Endpunkte meldet (etwa eine Anbieter-Richtlinie der
+		// Guardrail). Steht ein Ersatz fest, ab jetzt diesen nehmen.
+		const substitute = REGION_SUBSTITUTES[route.model];
+		const apiKey = readApiKey('openrouter');
+		if (substitute && apiKey && isNoEndpointError(err)) {
+			servedByHostAndModel.set(`${await openRouterHost(apiKey)} ${route.model}`, Promise.resolve(false));
+			noteSubstitution(route.model, substitute);
+			return chatOnce({ ...opts, modelOverride: { provider: 'openrouter', model: substitute } });
 		}
 		throw err;
 	}
@@ -653,7 +741,7 @@ type ChatOptions = {
 	 * H2). The override builds a one-shot client; it does NOT mutate the
 	 * shared client state, so concurrent default-config calls are unaffected.
 	 */
-	modelOverride?: { provider: Provider; model: string };
+	modelOverride?: ModelRoute;
 	/**
 	 * If 'json', request strict JSON output. Passed as `response_format:
 	 * { type: 'json_object' }` on OpenAI-compat providers. Reduces Markdown-
@@ -668,17 +756,10 @@ type ChatOptions = {
 	 */
 	documentIds?: string[];
 	/**
-	 * Hard timeout für diesen Call (ms). Default: 3 min. Bei Erreichen wird
-	 * der Call via AbortSignal abgebrochen und wirft `AbortError`. Plus eine
-	 * unabhängige Wall-Clock-Deadline (siehe withDeadline) — Failsafe gegen
-	 * SDKs, die das Signal ignorieren.
-	 */
-	timeoutMs?: number;
-	/**
 	 * Externes Cancel-Signal von der Callsite. Wird mit dem Run-Cancel-Signal
-	 * (aus AsyncLocalStorage via withRun) und dem internen Timeout-Signal
-	 * via `AbortSignal.any` kombiniert. Eintreffender Abort von einer der
-	 * drei Quellen reißt den SDK-Call ab; der Caller fängt `AbortError`.
+	 * (aus AsyncLocalStorage via withRun) via `AbortSignal.any` kombiniert.
+	 * Eintreffender Abort von einer der beiden Quellen reißt den SDK-Call ab;
+	 * der Caller fängt `AbortError`.
 	 */
 	signal?: AbortSignal;
 };
@@ -688,6 +769,8 @@ async function chatOnce(opts: ChatOptions): Promise<ChatResponse> {
 
 	const provider = opts.modelOverride?.provider ?? _provider;
 	const model = opts.modelOverride?.model ?? _model;
+	// Reasoning-Stärke: ausdrücklich am Aufruf, sonst nach model-policy.ts.
+	const effort = opts.modelOverride?.effort ?? reasoningEffortFor(model);
 
 	// documentIds ist aktuell no-op (siehe Header). Wenn das PII-Failsafe
 	// nachgezogen wird, kommt hier assertSafeForExternal(payload, ids, provider).
@@ -716,21 +799,18 @@ async function chatOnce(opts: ChatOptions): Promise<ChatResponse> {
 		useOpenAI = await openRouterClient(apiKey);
 	}
 
-	// Cancel/Timeout-Signal komponieren. Drei Quellen, alle optional, alle
+	// Cancel-Signal komponieren. Zwei Quellen, beide optional, beide
 	// gleichberechtigt: jeder Abort von einer reißt den Call ab.
 	//   1) opts.signal — direkter Caller-Override (selten)
 	//   2) Run-Signal aus AsyncLocalStorage — User-Cancel via Watcher in
 	//      coding-run/+server.ts; greift mid-fetch, nicht nur zwischen Atomen
-	//   3) Timeout — Default 3 min, via opts.timeoutMs überschreibbar
 	// Außerhalb eines Run-Contexts (Connection-Test, coach-library, etc.)
-	// fehlt (2); Timeout (3) gilt immer.
-	const timeoutMs = opts.timeoutMs ?? DEFAULT_CHAT_TIMEOUT_MS;
-	const timeoutSignal = AbortSignal.timeout(timeoutMs);
+	// fehlt (2). Eine Zeitgrenze gibt es bewusst nicht (siehe Kopf).
 	const runSignal = getRunAbortSignal();
-	const signals: AbortSignal[] = [timeoutSignal];
+	const signals: AbortSignal[] = [];
 	if (opts.signal) signals.push(opts.signal);
 	if (runSignal) signals.push(runSignal);
-	const combinedSignal = signals.length === 1 ? signals[0] : AbortSignal.any(signals);
+	const combinedSignal = signals.length > 1 ? AbortSignal.any(signals) : signals[0];
 
 	// Live-Activity-Tracker: meldet dem Status-Layer „LLM-Call aktiv,
 	// provider/model X". No-op außerhalb eines withRun-Blocks.
@@ -756,25 +836,34 @@ async function chatOnce(opts: ChatOptions): Promise<ChatResponse> {
 
 			// max_tokens ist bei Anthropic ein required body parameter — die
 			// einzige zulässige Ausnahme. Wert: immer das Modell-Maximum.
+			// Gestreamt, weil das SDK einen nicht gestreamten Aufruf mit diesem
+			// Maximum vorab ablehnt („Streaming is required …").
 			const maxTokensValue = anthropicModelMaxOutput(model);
+			// Stärke über output_config.effort. Die SDK-Typen dieser Version
+			// kennen `xhigh` noch nicht; die API nimmt es an.
+			const effortParam = effort
+				? { output_config: { effort } as unknown as Anthropic.Messages.MessageCreateParams['output_config'] }
+				: {};
 
-			const response = await withDeadline(
+			const response = await untilAborted(
 				executeWithNetworkRetry(
 					() =>
-						useAnthropic!.messages.create(
-							{
-								model,
-								max_tokens: maxTokensValue,
-								system: systemParam,
-								messages: opts.messages,
-								tools: opts.tools as Anthropic.Messages.Tool[]
-							},
-							{ signal: combinedSignal }
-						),
+						useAnthropic!.messages
+							.stream(
+								{
+									model,
+									max_tokens: maxTokensValue,
+									...effortParam,
+									system: systemParam,
+									messages: opts.messages,
+									tools: opts.tools as Anthropic.Messages.Tool[]
+								},
+								{ signal: combinedSignal }
+							)
+							.finalMessage(),
 					{ provider, model, signal: combinedSignal }
 				),
-				timeoutMs,
-				`${provider}/${model}`
+				combinedSignal
 			);
 
 			const inputTokens = response.usage.input_tokens;
@@ -865,9 +954,16 @@ async function chatOnce(opts: ChatOptions): Promise<ChatResponse> {
 				? { response_format: { type: 'json_object' as const } }
 				: {};
 
+			// Reasoning-Stärke: nur OpenRouter hat dafür einen einheitlichen
+			// Parameter. Andere OpenAI-kompatible Anbieter bekommen keinen, statt
+			// einen, den sie mit 400/422 ablehnen könnten.
+			const reasoningParam = effort && provider === 'openrouter'
+				? ({ reasoning: { effort } } as Record<string, unknown>)
+				: {};
+
 			let response: OpenAI.Chat.Completions.ChatCompletion;
 			try {
-				response = await withDeadline(
+				response = await untilAborted(
 					executeWithNetworkRetry(
 						async () => {
 							const r = await useOpenAI!.chat.completions.create(
@@ -875,6 +971,7 @@ async function chatOnce(opts: ChatOptions): Promise<ChatResponse> {
 									model,
 									...tokenParam,
 									...responseFormatParam,
+									...reasoningParam,
 									messages,
 									tools
 								},
@@ -931,8 +1028,7 @@ async function chatOnce(opts: ChatOptions): Promise<ChatResponse> {
 						},
 						{ provider, model, signal: combinedSignal }
 					),
-					timeoutMs,
-					`${provider}/${model}`
+					combinedSignal
 				);
 			} catch (err) {
 				// OpenRouter (und andere OpenAI-kompatible Proxies) packen
