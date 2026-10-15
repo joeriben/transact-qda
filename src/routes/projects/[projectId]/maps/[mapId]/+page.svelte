@@ -26,6 +26,9 @@
 	import MemoCreateForm from '$lib/map/MemoCreateForm.svelte';
 	import CanvasMapNode from '$lib/map/CanvasMapNode.svelte';
 	import CanvasRelationNode from '$lib/map/CanvasRelationNode.svelte';
+	import { page } from '$app/stores';
+	import { tick } from 'svelte';
+	import { scrollIntoViewStable } from '$lib/shared/rueckweg.js';
 
 	let { data } = $props();
 
@@ -107,6 +110,47 @@
 		cp.initIfNeeded(data.map.id);
 		posMapFitted = false; // reset fit-to-viewport for new map
 		contentFitted = false;
+	});
+
+	// ─── Rückweg: ?focus=<namingId> schlägt die Karte an einer Stelle auf ───
+	//
+	// Bewusst NICHT cp.centerOn: das legt die Karte radial um das Naming herum
+	// neu und wäre ein Eingriff in die Anordnung, die der Forscher gebaut hat.
+	// Hier wird nur der Ausschnitt verschoben und der Stack geöffnet — hinsehen,
+	// nicht umräumen. Das Einpassen auf den Gesamtinhalt entfällt dann; sonst
+	// stünde man wieder vor der ganzen Karte statt vor der einen Stelle.
+	const focusId = $derived($page.url.searchParams.get('focus'));
+	let focusedOn: string | null = null;
+
+	$effect(() => {
+		const id = focusId;
+		if (!id || focusedOn === id) return;
+		if (!ms.findNode(id)) return; // Kartendaten noch nicht da
+
+		// tick(), nicht requestAnimationFrame: in einem Hintergrund-Tab (Link mit
+		// Mittelklick geöffnet) feuert rAF nicht, und die Karte stünde beim
+		// Hinsehen unverschoben da — ohne erneuten Anlass, es nachzuholen.
+		if (viewMode === 'list') {
+			focusedOn = id;
+			ms.showStack(id);
+			tick().then(() => {
+				const el = document.querySelector(`[data-naming-id="${id}"]`);
+				if (el) scrollIntoViewStable(el);
+			});
+			return;
+		}
+
+		if (cp.positions.size === 0 || !canvasContainerEl) return; // Positionen stehen noch nicht
+		focusedOn = id;
+		ms.showStack(id);
+		contentFitted = true;
+		const el = canvasContainerEl;
+		tick().then(() => {
+			if (!cp.positions.has(id)) return; // unplatziert — dann bleibt der Ausschnitt
+			const c = cp.nodeCenter(id);
+			viewport.x = el.clientWidth / (2 * viewport.zoom) - c.x;
+			viewport.y = el.clientHeight / (2 * viewport.zoom) - c.y;
+		});
 	});
 
 	// ─── Canvas interactions ───
@@ -615,7 +659,10 @@
 					{/if}
 					<div class="element-list">
 						{#each group.items as item}
-							<ListItemCard {item} {listGroupBy} />
+							<!-- data-naming-id: Sprungziel für ?focus= (siehe shared/rueckweg.ts) -->
+							<div data-naming-id={item.naming_id}>
+								<ListItemCard {item} {listGroupBy} />
+							</div>
 							{#if ms.stackId === item.naming_id && ms.stackData}
 								<StackPanel mode="inline" {item} />
 							{/if}

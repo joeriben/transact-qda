@@ -4,6 +4,7 @@
 -->
 <script lang="ts">
 	import { getMapState } from './mapState.svelte.js';
+	import { viewHref } from '$lib/shared/rueckweg.js';
 
 	let {
 		namingId,
@@ -60,6 +61,16 @@
 		</button>
 	{/if}
 	<button class="ctx-item" onclick={() => { ms.showStack(namingId); onclose(); }}>Stack</button>
+	<!-- Voll bearbeiten heißt: in der Naming-Liste, mit Rückweg auf diese Karte. -->
+	<a class="ctx-item"
+		href={viewHref(`/projects/${ms.projectId}/namings`, {
+			focus: namingId,
+			from: `/projects/${ms.projectId}/maps/${ms.mapId}`
+		})}
+		onclick={onclose}
+		title="In der Naming-Liste öffnen — dort ist alles bearbeitbar; der Rückweg führt hierher zurück">
+		Open in Namings
+	</a>
 	<button class="ctx-item" onclick={() => { ms.openMemoCreate([namingId]); onclose(); }}>Write memo</button>
 	<button class="ctx-item" onclick={() => { oncenter(namingId); onclose(); }}>
 		Center
@@ -100,6 +111,7 @@
 		padding: 0.35rem 0.75rem; font-size: 0.8rem; cursor: pointer; text-align: left;
 	}
 	.ctx-item:hover { background: #2a2d3a; }
+	a.ctx-item { text-decoration: none; }
 	.ctx-separator { height: 1px; background: #2a2d3a; margin: 0.2rem 0; }
 	.designation-dot-sm { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
 </style>

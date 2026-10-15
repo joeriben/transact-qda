@@ -5,11 +5,15 @@
 <script lang="ts">
 	import { getMapState } from './mapState.svelte.js';
 	import { createFloatingPanel } from './floatingPanel.svelte.js';
+	import { viewHref } from '$lib/shared/rueckweg.js';
 	import { CLARKE_SW_QUESTIONS, CLARKE_ARENA_QUESTIONS, ANALYTICAL_DEEPENING } from '$lib/shared/constants.js';
 
 	let { mode, item }: { mode: 'floating' | 'inline'; item?: any } = $props();
 
 	const ms = getMapState();
+
+	// Rückweg-Adresse dieser Karte — Ziel jedes Sprungs, der von hier ausgeht.
+	const mapPath = $derived(`/projects/${ms.projectId}/maps/${ms.mapId}`);
 
 	// Eigene Ecke (links oben) statt der von der Halde besetzten rechten: das
 	// Angeklickte darf nicht hinter dem Vorrat liegen. Beweglich und ziehbar.
@@ -83,6 +87,13 @@
 			</div>
 		{/if}
 		<div class={mode === 'floating' ? 'stack-body' : 'stack-body-inline'}>
+		<!-- Der Stack zeigt die Geschichte, die Liste lässt sie bearbeiten. Der
+		     Weg dorthin trägt den Rückweg auf diese Karte mit (shared/rueckweg.ts). -->
+		<a class="open-in-namings"
+			href={viewHref(`/projects/${ms.projectId}/namings`, { focus: ms.stackId, from: mapPath })}
+			title="In der Naming-Liste öffnen — dort ist alles bearbeitbar; der Rückweg führt hierher zurück">
+			Open in Namings &rarr;
+		</a>
 		{#if stackNode?.is_collapsed}
 			<button class="btn-xs btn-unpin" onclick={() => ms.unpinLayer(ms.stackId!)}>
 				unpin (show latest)
@@ -207,12 +218,16 @@
 				<span class="history-label">Material ({ms.stackData.annotations?.length})</span>
 				{#each annotationsByDoc as group}
 					<div class="material-doc-group">
-						<a class="material-doc-label" href="/projects/{ms.projectId}/documents/{group.docId}">
+						<a class="material-doc-label" href={viewHref(`/projects/${ms.projectId}/documents/${group.docId}`, { focus: ms.stackId, from: mapPath })}>
 							{group.docLabel}
 						</a>
 						{#each group.passages as p}
 							<div class="material-passage">
-								<span class="material-text">{p.properties?.anchor?.text || '(no text)'}</span>
+								<!-- Auf die Stelle springen, nicht bloß ins Dokument: ohne
+								     ?passage= landet man oben im Transkript und sucht. -->
+								<a class="material-text"
+									href={viewHref(`/projects/${ms.projectId}/documents/${group.docId}`, { focus: ms.stackId, passage: p.id, from: mapPath })}
+									title="Im Material aufschlagen — der Rückweg führt hierher zurück">{p.properties?.anchor?.text || '(no text)'}</a>
 								{#each reasoningByAnnotation.get(p.id) ?? [] as r}
 									<div class="material-reasoning">
 										<span class="mr-by">{r.by_inscription}</span>
@@ -448,6 +463,18 @@
 	}
 	.material-doc-group { margin-bottom: 0.35rem; }
 	.material-doc-group:last-child { margin-bottom: 0; }
+	/* Der Weg in die Liste steht oben im Stack, nicht bei den Aktionen: er
+	   verlässt die Karte, alles andere darunter bleibt auf ihr. */
+	.open-in-namings {
+		display: inline-block; margin-bottom: 0.5rem;
+		padding: 0.15rem 0.5rem;
+		border: 1px solid rgba(139, 156, 247, 0.35); border-radius: 999px;
+		background: rgba(139, 156, 247, 0.08);
+		color: #8b9cf7; font-size: 0.7rem; text-decoration: none;
+	}
+	.open-in-namings:hover {
+		border-color: #8b9cf7; background: rgba(139, 156, 247, 0.16); color: #b6c2ff;
+	}
 	.material-doc-label {
 		font-size: 0.7rem; color: #10b981; display: block;
 		margin-bottom: 0.15rem; text-decoration: none;
@@ -462,7 +489,9 @@
 	.material-text {
 		font-size: 0.72rem; color: #c9cdd5; display: block;
 		white-space: pre-wrap; max-height: 3.5em; overflow-y: auto;
+		text-decoration: none; cursor: pointer;
 	}
+	.material-text:hover { color: #e1e4e8; text-decoration: underline dotted; text-underline-offset: 3px; }
 	/* Begründung unter dem Zitat, in der Farbe der KI-Herkunft — sichtbar
 	   nachgeordnet, damit das Material die Passage bleibt und die Begründung
 	   dazu gesagt ist, nicht an ihrer Stelle steht. */

@@ -6,6 +6,7 @@
 	import type { Snippet } from 'svelte';
 	import { page } from '$app/stores';
 	import CoachPanel from '$lib/coach/CoachPanel.svelte';
+	import Rueckweg from '$lib/components/Rueckweg.svelte';
 	import { createCoachState, setCoachState } from '$lib/coach/coachState.svelte.js';
 	import { docOutline, type OutlineEntry } from '$lib/stores/docOutline.svelte.js';
 
@@ -138,7 +139,9 @@
 	const mapTypeOrder = ['situational', 'social-worlds', 'positional'];
 </script>
 
-<div class="project-layout">
+<!-- --content-left: linke Kante des Inhaltsbereichs. Der Rückweg (unten links,
+     fest) muss die Menüspalte kennen, deren Breite ziehbar und einklappbar ist. -->
+<div class="project-layout" style="--content-left: {sidebarOpen ? sidebarWidth + 5 : 18}px;">
 	{#if !sidebarOpen}
 		<button class="sidebar-rail" onclick={() => { sidebarOpen = true; }} title="Menüspalte einblenden">⟩</button>
 	{/if}
@@ -260,6 +263,10 @@
 	</div>
 
 	<CoachPanel />
+
+	<!-- Der Rückweg gilt für jede Ansicht des Projekts, nicht für eine Seite —
+	     deshalb hier, einmal, und nicht in drei Kopfzeilen. -->
+	<Rueckweg />
 
 	<!-- Kein Autonoma-Panel: deprecated, siehe Kommentar oben im Script. -->
 </div>

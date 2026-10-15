@@ -18,6 +18,8 @@
 	import AnkerZugPanel from './AnkerZugPanel.svelte';
 	import { docOutline } from '$lib/stores/docOutline.svelte.js';
 	import { invalidateAll } from '$app/navigation';
+	import { page } from '$app/stores';
+	import { scrollIntoViewStable } from '$lib/shared/rueckweg.js';
 
 	let { data } = $props();
 	const doc = $derived(data.document);
@@ -1085,6 +1087,43 @@
 		setTimeout(() => { highlightedSegSeq = null; }, 2200);
 		return true;
 	}
+
+	// ─── Rückweg: ?passage=<annId> schlägt das Material an der Stelle auf ───
+	//
+	// Zwei Anker, weil es zwei Sorten Verankerung gibt: gewöhnliche Passagen
+	// stehen als coded-text im Fluss, Sequenz-Namings dagegen nur als Anker am
+	// Segmentanfang (siehe scrollToSequence). Ohne den zweiten führte der Sprung
+	// genau bei dem ins Leere, was ein Coding-Lauf erzeugt hat.
+	//
+	// Eigener Scroll statt scrollToPassage/scrollToSequence: beim Ankommen ist
+	// das Transkript noch im Aufbau (Randnotizen kommen nach), da braucht es das
+	// Nachfassen von scrollIntoViewStable — und keine weiche Animation über
+	// zehntausend Pixel, die damit kollidiert.
+	const passageId = $derived($page.url.searchParams.get('passage'));
+	let jumpedToPassage: string | null = null;
+
+	$effect(() => {
+		const id = passageId;
+		if (!id || jumpedToPassage === id || isImage) return;
+		if (!textEl || textSegments.length === 0) return; // Text noch nicht gerendert
+		jumpedToPassage = id;
+		const el = textEl;
+		// tick(), nicht requestAnimationFrame: in einem Hintergrund-Tab feuert rAF
+		// nicht, und der Sprung bliebe aus, bis man hinsieht — dann aber ohne
+		// erneuten Anlass.
+		tick().then(() => {
+			const coded = el.querySelector(`.coded-text[data-ann-start="${id}"]`);
+			const target = coded ?? el.querySelector(`[data-seq-anchor~="${id}"]`);
+			if (!target) return;
+			scrollIntoViewStable(target, { block: coded ? 'center' : 'start' });
+			if (coded) highlightedAnnotationId = id;
+			else highlightedSeqId = id;
+			setTimeout(() => {
+				if (highlightedAnnotationId === id) highlightedAnnotationId = null;
+				if (highlightedSeqId === id) highlightedSeqId = null;
+			}, 2200);
+		});
+	});
 
 	// Naming click handler: select naming(s) to show their passages
 	function handleNamingClick(namingId: string, e: MouseEvent) {

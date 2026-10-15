@@ -7,6 +7,9 @@
 	import NamingRow, { type NamingActions } from '$lib/components/NamingRow.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import FilterBar, { type FilterGroup, type Toggle } from '$lib/components/FilterBar.svelte';
+	import { page } from '$app/stores';
+	import { tick } from 'svelte';
+	import { viewHref, scrollIntoViewStable } from '$lib/shared/rueckweg.js';
 
 	let { data } = $props();
 
@@ -108,6 +111,29 @@
 		}, RECENTLY_TOUCHED_MS);
 	}
 
+	// ---- Rückweg: ?focus=<namingId> schlägt die Liste bei einem Naming auf ----
+	//
+	// Der Fokus überlebt die Filter (siehe keepTouched unten) und läuft nicht ab.
+	// Wer von einer Karte kommt, um ein Naming zu bearbeiten, darf es hier nicht
+	// suchen müssen — und schon gar nicht feststellen, dass die zuletzt gesetzten
+	// Filter es gar nicht durchlassen.
+	const focusId = $derived($page.url.searchParams.get('focus'));
+	let focusedOn: string | null = null;
+
+	$effect(() => {
+		const id = focusId;
+		if (!id || focusedOn === id) return;
+		if (!namings.some(n => n.naming_id === id)) return;
+		focusedOn = id;
+		// tick(), nicht requestAnimationFrame: in einem Hintergrund-Tab (Link mit
+		// Mittelklick geöffnet) feuert rAF nicht, und der Sprung bliebe aus, bis
+		// man hinsieht — dann aber ohne erneuten Anlass.
+		tick().then(() => {
+			const el = document.querySelector(`[data-naming-id="${id}"]`);
+			if (el) scrollIntoViewStable(el);
+		});
+	});
+
 	// ---- Helpers ----
 	function designationColor(d: string | null | undefined) {
 		if (d === 'specification') return CCS_SPEC;
@@ -138,7 +164,9 @@
 
 		// Recently-touched items bypass all filters so the result of an action
 		// stays visible for RECENTLY_TOUCHED_MS even if it no longer matches.
-		const keepTouched = (n: NamingRow) => recentlyTouched.has(n.naming_id);
+		// Das per ?focus= aufgeschlagene Naming ebenso — dauerhaft, nicht auf Zeit.
+		const keepTouched = (n: NamingRow) =>
+			recentlyTouched.has(n.naming_id) || n.naming_id === focusId;
 
 		if (filterCCS !== 'all') {
 			result = result.filter(n => keepTouched(n) || (n.designation || 'cue') === filterCCS);
@@ -678,7 +706,15 @@
 		{#if n.appears_on_maps && n.appears_on_maps.length > 0}
 			<div class="map-links">
 				{#each n.appears_on_maps as m (m.id)}
-					<a href="/projects/{data.projectId}/maps/{m.id}" class="map-link">{m.label}</a>
+					<!-- ?focus= führt auf die Karte UND auf die Stelle darauf; ohne das
+					     landet man vor der ganzen Karte und sucht sein Naming. -->
+					<a
+						href={viewHref(`/projects/${data.projectId}/maps/${m.id}`, {
+							focus: n.naming_id,
+							from: `/projects/${data.projectId}/namings`
+						})}
+						class="map-link"
+					>{m.label}</a>
 				{/each}
 			</div>
 		{/if}
@@ -784,26 +820,31 @@
 			<h2 class="section-label">Namings <span class="section-count">{entitiesAndRelations.length}</span></h2>
 			<div class="naming-list">
 				{#each entitiesAndRelations as n (n.naming_id)}
-					<NamingRow
-						item={n}
-						density="rich"
-						isEditing={editingId === n.naming_id}
-						bind:editingValue
-						isEditingValence={editingValenceId === n.naming_id}
-						bind:editingValenceValue
-						relatingFrom={relateSource}
-						relatingTo={relateTarget}
-						{assigningToPhase}
-						{mergeSurvivorId}
-						recentlyTouched={recentlyTouched.has(n.naming_id)}
-						detailHref={`/projects/${data.projectId}/namings/${n.naming_id}`}
-						actions={namingsActions}
-					>
-						{#snippet after()}
-							{@render mapLinksFor(n)}
-							{@render stackPanelFor(n, true)}
-						{/snippet}
-					</NamingRow>
+					<div data-naming-id={n.naming_id} class:focused={focusId === n.naming_id}>
+						<NamingRow
+							item={n}
+							density="rich"
+							isEditing={editingId === n.naming_id}
+							bind:editingValue
+							isEditingValence={editingValenceId === n.naming_id}
+							bind:editingValenceValue
+							relatingFrom={relateSource}
+							relatingTo={relateTarget}
+							{assigningToPhase}
+							{mergeSurvivorId}
+							recentlyTouched={recentlyTouched.has(n.naming_id)}
+							detailHref={viewHref(`/projects/${data.projectId}/namings/${n.naming_id}`, {
+								focus: n.naming_id,
+								from: $page.url.searchParams.get("from")
+							})}
+							actions={namingsActions}
+						>
+							{#snippet after()}
+								{@render mapLinksFor(n)}
+								{@render stackPanelFor(n, true)}
+							{/snippet}
+						</NamingRow>
+					</div>
 				{/each}
 			</div>
 		</div>
@@ -815,19 +856,24 @@
 			<h2 class="section-label">Silences <span class="section-count">{silences.length}</span></h2>
 			<div class="naming-list">
 				{#each silences as n (n.naming_id)}
-					<NamingRow
-						item={n}
-						density="rich"
-						isEditing={editingId === n.naming_id}
-						bind:editingValue
-						recentlyTouched={recentlyTouched.has(n.naming_id)}
-						detailHref={`/projects/${data.projectId}/namings/${n.naming_id}`}
-						actions={namingsActions}
-					>
-						{#snippet after()}
-							{@render stackPanelFor(n, false)}
-						{/snippet}
-					</NamingRow>
+					<div data-naming-id={n.naming_id} class:focused={focusId === n.naming_id}>
+						<NamingRow
+							item={n}
+							density="rich"
+							isEditing={editingId === n.naming_id}
+							bind:editingValue
+							recentlyTouched={recentlyTouched.has(n.naming_id)}
+							detailHref={viewHref(`/projects/${data.projectId}/namings/${n.naming_id}`, {
+								focus: n.naming_id,
+								from: $page.url.searchParams.get("from")
+							})}
+							actions={namingsActions}
+						>
+							{#snippet after()}
+								{@render stackPanelFor(n, false)}
+							{/snippet}
+						</NamingRow>
+					</div>
 				{/each}
 			</div>
 		</div>
@@ -1151,6 +1197,14 @@
 		border: 1px solid #2a2d3a;
 		border-radius: 8px;
 		padding: 0.25rem;
+	}
+
+	/* Das per ?focus= aufgeschlagene Naming: markiert, solange man hier ist —
+	   nicht als Blitz, der weg ist, bevor man am Ziel angekommen ist. */
+	.focused {
+		border-radius: 5px;
+		box-shadow: inset 0 0 0 1px rgba(139, 156, 247, 0.55);
+		background: rgba(139, 156, 247, 0.07);
 	}
 
 	/* Buttons reused across banners, act-prompt, phase panel, and stack-panel snippet. */

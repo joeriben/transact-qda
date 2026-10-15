@@ -4,10 +4,14 @@
 -->
 <script lang="ts">
 	import { getMapState } from './mapState.svelte.js';
+	import { viewHref } from '$lib/shared/rueckweg.js';
 
 	let { item, listGroupBy }: { item: any; listGroupBy: string } = $props();
 
 	const ms = getMapState();
+
+	// Rückweg-Adresse dieser Karte — Ziel jedes Sprungs, der von hier ausgeht.
+	const mapPath = $derived(`/projects/${ms.projectId}/maps/${ms.mapId}`);
 
 	// Zustand in Worten am title, nicht als weiteres Abzeichen in einer Zeile,
 	// die schon Punkt, Symbol, Memo-Zahl und Badges trägt. ai-eval: 'rejected'
@@ -89,6 +93,9 @@
 				<option value="specification">specification</option>
 			</select>
 			<button class="btn-xs" title="naming stack" onclick={() => ms.showStack(item.naming_id)}>stack</button>
+			<a class="btn-xs btn-list"
+				href={viewHref(`/projects/${ms.projectId}/namings`, { focus: item.naming_id, from: mapPath })}
+				title="In der Naming-Liste öffnen — dort ist alles bearbeitbar; der Rückweg führt hierher zurück">list</a>
 			<button class="btn-xs btn-withdraw" onclick={() => ms.toggleWithdraw(item.naming_id, ms.isWithdrawn(item.properties))}>
 				{ms.isWithdrawn(item.properties) ? 'restore' : 'withdraw'}
 			</button>
@@ -131,6 +138,9 @@
 		</div>
 		<div class="el-actions">
 			<button class="btn-xs" title="naming stack" onclick={() => ms.showStack(item.naming_id)}>stack</button>
+			<a class="btn-xs btn-list"
+				href={viewHref(`/projects/${ms.projectId}/namings`, { focus: item.naming_id, from: mapPath })}
+				title="In der Naming-Liste öffnen — dort ist alles bearbeitbar; der Rückweg führt hierher zurück">list</a>
 			<button class="btn-xs btn-withdraw" onclick={() => ms.toggleWithdraw(item.naming_id, ms.isWithdrawn(item.properties))}>
 				{ms.isWithdrawn(item.properties) ? 'restore' : 'withdraw'}
 			</button>
@@ -200,6 +210,9 @@
 				<option value="specification">specification</option>
 			</select>
 			<button class="btn-xs" title="naming stack" onclick={() => ms.showStack(item.naming_id)}>stack</button>
+			<a class="btn-xs btn-list"
+				href={viewHref(`/projects/${ms.projectId}/namings`, { focus: item.naming_id, from: mapPath })}
+				title="In der Naming-Liste öffnen — dort ist alles bearbeitbar; der Rückweg führt hierher zurück">list</a>
 			<button class="btn-xs btn-withdraw" onclick={() => ms.toggleWithdraw(item.naming_id, ms.isWithdrawn(item.properties))}>
 				{ms.isWithdrawn(item.properties) ? 'restore' : 'withdraw'}
 			</button>
@@ -273,6 +286,7 @@
 		color: #8b8fa3; font-size: 0.7rem; padding: 0.15rem 0.4rem; cursor: pointer;
 	}
 	.btn-xs:hover { border-color: #8b9cf7; }
+	.btn-list { text-decoration: none; line-height: 1.35; }
 	.btn-sm {
 		background: #1e2030; border: 1px solid #2a2d3a; border-radius: 4px;
 		color: #c9cdd5; font-size: 0.75rem; padding: 0.25rem 0.5rem; cursor: pointer;
