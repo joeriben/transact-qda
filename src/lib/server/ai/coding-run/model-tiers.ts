@@ -15,8 +15,10 @@
 //
 //   H2 — the COMPREHENSION line: re-reads each sequence independently,
 //        carries the cumulative Verständnislinie, and confronts H1's codes.
-//        H2's reading is the *measure* against which over-coding is tested,
-//        so H2 should be the sharper model.
+//        H2's reading is the *measure* against which over-coding is tested.
+//        Its independence from H1 lies in separate calls and prompts; in the
+//        tests (17.10.2026) a stronger model was barely better here, so both
+//        lines run on the same model.
 //
 // Two tiers, one per faculty:
 //   - 'coding-run.h1' routes H1-propose + H1-react.
@@ -97,15 +99,16 @@ export interface TierMeta {
 	fallback: TierModel | null;
 }
 
-// Zuordnung (Setzung 15.10.2026): GLM 5.3 für das meiste, Kimi K3 für die
-// interpretativ anspruchsvollen Schritte — H2 (Lesart, Konfrontation,
-// CName-Forensik) und die komparative Dimensionalisierung, die über den
-// H2-Tier läuft. Reasoning-Stärke je Modell steht in model-policy.ts.
+// Zuordnung (Setzung 17.10.2026): alle Tiers auf GLM 5.3, Reasoning max
+// (model-policy.ts). Kimi K3 war in allen Tests kaum besser. Der Fallback ist
+// ebenfalls GLM 5.3 — nach zwei leeren Antworten ein dritter Versuch, keine
+// Eskalation auf ein teureres Modell.
 const GLM: TierModel = { provider: 'openrouter', model: 'z-ai/glm-5.3' };
 const KIMI: TierModel = { provider: 'openrouter', model: 'moonshotai/kimi-k3' };
 const OPUS: TierModel = { provider: 'openrouter', model: 'anthropic/claude-opus-5.5' };
 const MISTRAL: TierModel = { provider: 'mistral', model: 'mistral-large-latest' };
 
+const KIMI_BARELY_BETTER = 'In allen Tests (Stand 17.10.2026) kaum besser als GLM 5.3, im Output gut dreimal so teuer.';
 const KIMI_NOT_IN_EU = 'In der EU nicht verfügbar; unter EU-Schlüssel rechnet Opus 5.5, und der Lauf weist das aus.';
 const MISTRAL_NOTE =
 	'Native EU-Route ohne OpenRouter. Driftet unter Last die Sprache (Französisch bzw. Deutsch je nach Position der Sprach-Direktive) — nur mit fest konfigurierter Sprache und Drift-Prüfung.';
@@ -120,13 +123,13 @@ export const TIER_REGISTRY: Record<Tier, TierMeta> = {
 			'H1s Zurückhaltung. Sprach-Lock ist hier kritisch: H1 generiert die ' +
 			'sichtbaren Code-Labels, ein Sprachdrift kontaminiert das ganze Projekt.',
 		recommended: GLM,
-		fallback: KIMI,
+		fallback: GLM,
 		candidates: [
 			{
 				...GLM,
 				note: 'Empfehlung: günstig bei hoher Call-Zahl, Reasoning max. Für die Coding-Linie noch nicht gemessen — Sprach-Lock auf deutscher Quelle vor dem ersten Produktivlauf prüfen.'
 			},
-			{ ...KIMI, note: `Stärker, im Output gut dreimal so teuer. Für H1 nicht nötig — die Disziplin liegt in H2. ${KIMI_NOT_IN_EU}` },
+			{ ...KIMI, note: `${KIMI_BARELY_BETTER} ${KIMI_NOT_IN_EU}` },
 			{ ...OPUS, note: 'Höchste Tiefe, Reasoning xhigh; im Input 20-, im Output 4-mal so teuer wie GLM. Für H1 nicht nötig.' },
 			{ ...MISTRAL, note: MISTRAL_NOTE }
 		]
@@ -141,10 +144,10 @@ export const TIER_REGISTRY: Record<Tier, TierMeta> = {
 			'je Dokument und wird für jedes Naming wiederverwendet; entsprechend ' +
 			'hohe Call-Zahl bei einmaligen Kosten.',
 		recommended: GLM,
-		fallback: KIMI,
+		fallback: GLM,
 		candidates: [
 			{ ...GLM, note: 'Empfehlung: Lesart je Einheit bei hoher Call-Zahl; günstig, Reasoning max.' },
-			{ ...KIMI, note: `Für schwierige Register erwägenswert; für diese Aufgabe nicht gemessen. ${KIMI_NOT_IN_EU}` },
+			{ ...KIMI, note: `${KIMI_BARELY_BETTER} ${KIMI_NOT_IN_EU}` },
 			{ ...OPUS, note: 'Referenz für die Lesart, Reasoning xhigh. Bei einmaligem Lauf je Dokument vertretbar; nicht gemessen.' },
 			{ ...MISTRAL, note: MISTRAL_NOTE }
 		]
@@ -155,10 +158,9 @@ export const TIER_REGISTRY: Record<Tier, TierMeta> = {
 			'Entscheidet je Einheit, ob das dort Geschehene unter das Naming des ' +
 			'Forschers fällt. Bekommt Naming, Memo und die Belegstelle des Forschers ' +
 			'samt deren Geschehen-Beschreibung. Nein ist die Vorgabe. Diese Stufe ' +
-			'trägt die Unterscheidung, die alles entscheidet — hier gehört das ' +
-			'schärfere Modell hin.',
+			'trägt die Unterscheidung, die alles entscheidet.',
 		recommended: GLM,
-		fallback: KIMI,
+		fallback: GLM,
 		candidates: [
 			{
 				...GLM,
@@ -169,7 +171,7 @@ export const TIER_REGISTRY: Record<Tier, TierMeta> = {
 			},
 			{
 				...KIMI,
-				note: `Für schwierige Züge (Haltung, Ironie) erwägenswert; ungemessen. Läuft je Naming über alle Einheiten — die Output-Kosten verdreifachen sich gegenüber GLM. ${KIMI_NOT_IN_EU}`
+				note: `${KIMI_BARELY_BETTER} Läuft je Naming über alle Einheiten — die Output-Kosten verdreifachen sich gegenüber GLM. ${KIMI_NOT_IN_EU}`
 			},
 			{ ...OPUS, note: 'Höchste Tiefe, Reasoning xhigh; im Output 4-mal so teuer wie GLM, ungemessen.' }
 		]
@@ -179,16 +181,14 @@ export const TIER_REGISTRY: Record<Tier, TierMeta> = {
 		description:
 			'H2 liest jeden Absatz unabhängig (H1-agnostisch), führt die kumulative ' +
 			'Verständnislinie fort und konfrontiert H1s Codes (keep/revise/drop + ' +
-			'Code-Memo). H2s Lesart IST das Maß gegen Over-Coding — hier gehört das ' +
-			'schärfere Modell hin. Derselbe Tier trägt die CName-Forensik und die ' +
-			'komparative Dimensionalisierung.',
-		recommended: KIMI,
-		// Die Eskalation fällt nicht unter die Schärfe der Messlatte zurück.
-		fallback: OPUS,
+			'Code-Memo). H2s Lesart IST das Maß gegen Over-Coding. Derselbe Tier ' +
+			'trägt die CName-Forensik und die komparative Dimensionalisierung.',
+		recommended: GLM,
+		fallback: GLM,
 		candidates: [
-			{ ...KIMI, note: `Empfehlung für die Interpretationsarbeit, Reasoning max. Für die Konfrontation noch nicht gemessen. ${KIMI_NOT_IN_EU}` },
-			{ ...OPUS, note: 'EU-Ersatz für Kimi K3, Reasoning xhigh (nicht höher). Teuerste Route.' },
-			{ ...GLM, note: 'Günstig. Teilen H1 und H2 dasselbe Modell, verliert H2 die Schärfe gegenüber H1.' },
+			{ ...GLM, note: 'Empfehlung, Reasoning max. H1 und H2 rechnen damit auf demselben Modell; ihre Unabhängigkeit liegt in getrennten Aufrufen und Prompts.' },
+			{ ...KIMI, note: `${KIMI_BARELY_BETTER} ${KIMI_NOT_IN_EU}` },
+			{ ...OPUS, note: 'Reasoning xhigh (nicht höher). Teuerste Route, ungemessen.' },
 			{ ...MISTRAL, note: MISTRAL_NOTE }
 		]
 	}
