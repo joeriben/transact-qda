@@ -39,7 +39,7 @@ import OpenAI from 'openai';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { getAiSettingsFile, getApiKeyFile } from '../paths.js';
 import { startLlmCall, endLlmCall, getRunAbortSignal } from './coding-run/activity-tracker.js';
-import { reasoningEffortFor, REGION_SUBSTITUTES, type ReasoningEffort } from './model-policy.js';
+import { openRouterRequestParams, reasoningEffortFor, REGION_SUBSTITUTES, type ReasoningEffort } from './model-policy.js';
 
 // ── Abbruch gegen SDK-Hänger ─────────────────────────────────────────
 //
@@ -954,12 +954,10 @@ async function chatOnce(opts: ChatOptions): Promise<ChatResponse> {
 				? { response_format: { type: 'json_object' as const } }
 				: {};
 
-			// Reasoning-Stärke: nur OpenRouter hat dafür einen einheitlichen
-			// Parameter. Andere OpenAI-kompatible Anbieter bekommen keinen, statt
-			// einen, den sie mit 400/422 ablehnen könnten.
-			const reasoningParam = effort && provider === 'openrouter'
-				? ({ reasoning: { effort } } as Record<string, unknown>)
-				: {};
+			// Anbieterwahl und Reasoning-Stärke (model-policy.ts): nur OpenRouter
+			// hat dafür einheitliche Parameter. Andere OpenAI-kompatible Anbieter
+			// bekommen keine, statt solcher, die sie mit 400/422 ablehnen könnten.
+			const openRouterParams = provider === 'openrouter' ? openRouterRequestParams(effort) : {};
 
 			let response: OpenAI.Chat.Completions.ChatCompletion;
 			try {
@@ -971,7 +969,7 @@ async function chatOnce(opts: ChatOptions): Promise<ChatResponse> {
 									model,
 									...tokenParam,
 									...responseFormatParam,
-									...reasoningParam,
+									...openRouterParams,
 									messages,
 									tools
 								},

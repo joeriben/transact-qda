@@ -6,7 +6,7 @@
 // of available agent-LLMs.
 
 import { type ToolDef, type ChatResponse, loadSettings, PROVIDERS, readApiKey, type Provider, anthropicModelMaxOutput, openAiCompatMaxOutput, openRouterBaseURL, adoptPermittedOpenRouterHost, effectiveRoute } from '../client.js';
-import { reasoningEffortFor } from '../model-policy.js';
+import { openRouterRequestParams, reasoningEffortFor } from '../model-policy.js';
 import { logInteraction } from '../index.js';
 
 // ── Agent model interface ────────────────────────────────────────
@@ -290,7 +290,7 @@ async function delegateChat(
 		const response = await client.chat.completions.create({
 			model,
 			...tokenParam,
-			...(effort && provider === 'openrouter' ? ({ reasoning: { effort } } as Record<string, unknown>) : {}),
+			...(provider === 'openrouter' ? openRouterRequestParams(effort) : {}),
 			messages
 		});
 
