@@ -24,44 +24,42 @@
 	let loading = $state(false);
 	let comparing = $state(false);
 	let retrieval = $state<any>(null);
-	let comparison = $state<any>(null);
 	let error = $state<string | null>(null);
+	let compareError = $state<string | null>(null);
 
 	// Retrieval scope for the Similar mode
 	let scope = $state<'in-document' | 'cross-document'>('in-document');
+
+	// Ein bezahlter Vergleich bleibt stehen, solange die Seite offen ist:
+	// je Markierung und Bereich. Umschalten und Zurückkehren holt ihn
+	// wieder, statt ihn zu verwerfen.
+	let comparisons = $state<Record<string, any>>({});
+	const cacheKey = (text: string, s: string) => `${s}\u0000${text}`;
+	let comparison = $derived(selection ? comparisons[cacheKey(selection.text, scope)] ?? null : null);
+	let comparisonOpen = $state(true);
+	// Eigene Namings mit Verankerung im gewählten Bereich — nur gegen sie
+	// wird verglichen (coding-companion/retrieval.ts).
+	let ownNamingCount = $derived(retrieval?.existingCodes?.length ?? 0);
 
 	// Inline memo state
 	let showMemoForm = $state(false);
 	let memoText = $state('');
 	let memoSaving = $state(false);
 	let memoSaved = $state(false);
-	let linkedCodeIds = $state<Set<string>>(new Set());
-
-	// Discussion state
-	let discussionHistory = $state<{ role: 'user' | 'assistant'; content: string }[]>([]);
-	let discussInput = $state('');
-	let discussing = $state(false);
+	let linkedNamingIds = $state<Set<string>>(new Set());
 
 	// Fetch retrieval data when selection or scope changes
 	$effect(() => {
 		const currentScope = scope; // explicit dependency — triggers refetch on scope change
 
-		if (!selection || !selection.text || selection.text.length < 10) {
-			retrieval = null;
-			comparison = null;
-			showMemoForm = false;
-			memoSaved = false;
-			linkedCodeIds = new Set();
-			return;
-		}
-
-		// Reset on any change (new selection or new scope)
-		comparison = null;
 		showMemoForm = false;
 		memoSaved = false;
-		linkedCodeIds = new Set();
-		discussionHistory = [];
-		discussInput = '';
+		compareError = null;
+
+		if (!selection || !selection.text || selection.text.length < 10) {
+			retrieval = null;
+			return;
+		}
 
 		const timeout = setTimeout(() => {
 			fetchRetrieval(selection!.text, currentScope);
@@ -83,9 +81,6 @@
 		loading = true;
 		error = null;
 		retrieval = null;
-		comparison = null;
-		showMemoForm = false;
-		memoSaved = false;
 
 		try {
 			const res = await fetch(`/api/projects/${projectId}/documents/${docId}/coding-companion`, {
@@ -95,14 +90,14 @@
 			});
 
 			if (!res.ok) {
-				error = `Retrieval failed (${res.status})`;
+				error = `Suche fehlgeschlagen (${res.status})`;
 				return;
 			}
 
 			const data = await res.json();
 			retrieval = data.retrieval;
 		} catch (e) {
-			error = 'Connection error';
+			error = 'Keine Verbindung zum Server';
 		} finally {
 			loading = false;
 		}
@@ -110,41 +105,47 @@
 
 	async function runComparison() {
 		if (!selection?.text) return;
+		// Schlüssel zum Zeitpunkt der Anfrage: wird währenddessen der Bereich
+		// gewechselt, landet das Ergebnis trotzdem bei seinem Bereich.
+		const text = selection.text;
+		const requestScope = scope;
 		comparing = true;
-		error = null;
+		compareError = null;
 
 		try {
 			const res = await fetch(`/api/projects/${projectId}/documents/${docId}/coding-companion`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ text: selection.text, compare: true, scope })
+				body: JSON.stringify({ text, compare: true, scope: requestScope })
 			});
+			const data = await res.json().catch(() => null);
 
-			if (!res.ok) {
-				error = `Comparison failed (${res.status})`;
+			if (!res.ok || !data?.comparison) {
+				compareError = data?.error
+					? `Vergleich fehlgeschlagen: ${data.error}`
+					: `Vergleich fehlgeschlagen (${res.status})`;
 				return;
 			}
 
-			const data = await res.json();
-			retrieval = data.retrieval;
-			comparison = data.comparison;
-
-			// Pre-select all compared codes for memo linking
-			if (comparison?.comparisons) {
-				linkedCodeIds = new Set(comparison.comparisons.map((c: any) => c.codeId));
-			}
+			comparisons = { ...comparisons, [cacheKey(text, requestScope)]: data.comparison };
+			comparisonOpen = true;
 		} catch (e) {
-			error = 'Connection error';
+			compareError = 'Keine Verbindung zum Server';
 		} finally {
 			comparing = false;
 		}
 	}
 
-	function toggleCodeLink(codeId: string) {
-		const next = new Set(linkedCodeIds);
-		if (next.has(codeId)) next.delete(codeId);
-		else next.add(codeId);
-		linkedCodeIds = next;
+	function openMemoForm() {
+		linkedNamingIds = new Set((comparison?.comparisons ?? []).map((c: any) => c.namingId));
+		showMemoForm = true;
+	}
+
+	function toggleNamingLink(namingId: string) {
+		const next = new Set(linkedNamingIds);
+		if (next.has(namingId)) next.delete(namingId);
+		else next.add(namingId);
+		linkedNamingIds = next;
 	}
 
 	async function saveMemo() {
@@ -173,7 +174,7 @@
 				body: JSON.stringify({
 					label,
 					content,
-					linkedElementIds: [...linkedCodeIds]
+					linkedElementIds: [...linkedNamingIds]
 				})
 			});
 
@@ -182,45 +183,12 @@
 				memoText = '';
 				showMemoForm = false;
 			} else {
-				error = `Memo save failed (${res.status})`;
+				compareError = `Memo nicht gespeichert (${res.status})`;
 			}
 		} catch (e) {
-			error = 'Memo save failed';
+			compareError = 'Memo nicht gespeichert';
 		} finally {
 			memoSaving = false;
-		}
-	}
-
-	async function sendDiscussMessage() {
-		const msg = discussInput.trim();
-		if (!msg || !retrieval || !comparison) return;
-		discussing = true;
-		discussInput = '';
-		discussionHistory = [...discussionHistory, { role: 'user' as const, content: msg }];
-
-		try {
-			const res = await fetch(`/api/projects/${projectId}/documents/${docId}/coding-companion`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					discuss: true,
-					retrieval,
-					comparisonResult: comparison,
-					discussionHistory: discussionHistory.slice(0, -1), // exclude the just-added user message
-					userMessage: msg
-				})
-			});
-
-			if (res.ok) {
-				const data = await res.json();
-				discussionHistory = [...discussionHistory, { role: 'assistant' as const, content: data.discussion.response }];
-			} else {
-				discussionHistory = [...discussionHistory, { role: 'assistant' as const, content: '(Error: discussion failed)' }];
-			}
-		} catch {
-			discussionHistory = [...discussionHistory, { role: 'assistant' as const, content: '(Connection error)' }];
-		} finally {
-			discussing = false;
 		}
 	}
 
@@ -245,7 +213,7 @@
 {#if mode === 'similar'}
 <div class="comparison-panel">
 	{#if loading}
-		<div class="loading">Retrieving…</div>
+		<div class="loading">Sucht ähnliche Stellen…</div>
 	{:else if error}
 		<div class="error-msg">{error}</div>
 	{:else if retrieval}
@@ -255,121 +223,121 @@
 				class="scope-btn"
 				class:active={scope === 'in-document'}
 				onclick={() => { scope = 'in-document'; }}
-			>In Document</button>
+			>Im Dokument</button>
 			<button
 				class="scope-btn"
 				class:active={scope === 'cross-document'}
 				onclick={() => { scope = 'cross-document'; }}
-			>Cross-Document</button>
+			>Alle Dokumente</button>
 		</div>
 
-		<!-- Compare: a distinct ACTION (stateless), not a mode -->
-		<div class="action-row">
+		<!-- LLM-Vergleich: eigener Block mit eigener Zahl. Er vergleicht mit
+		     Namings, die Liste darunter zeigt Stellen — zwei Listen, zwei
+		     Überschriften. -->
+		{#if !comparison}
+			<div class="action-row">
+				<button
+					class="action-btn compare-btn"
+					onclick={runComparison}
+					disabled={comparing || ownNamingCount === 0}
+				>{comparing ? 'Vergleiche…' : 'Vergleich per LLM'}</button>
+			</div>
+			<div class="compare-hint">
+				{#if ownNamingCount === 0}
+					Im gewählten Bereich gibt es noch keine eigenen Namings mit Verankerung — nichts, womit verglichen werden könnte.
+				{:else}
+					Schickt die Markierung und {ownNamingCount} eigene {ownNamingCount === 1 ? 'Naming' : 'Namings'} samt Verankerungen an das eingestellte Sprachmodell.
+				{/if}
+			</div>
+		{:else}
 			<button
-				class="action-btn compare-btn"
-				onclick={runComparison}
-				disabled={comparing || !!comparison}
-			>{comparing ? 'Vergleiche…' : comparison ? 'Verglichen ✓' : 'Vergleich per LLM'}</button>
-		</div>
-
-
-		<!-- LLM comparison results -->
-		{#if comparison}
-			{#if comparison.comparisons.length > 0}
-				<div class="section-label">Comparison</div>
+				class="comparison-head"
+				onclick={() => { comparisonOpen = !comparisonOpen; }}
+				aria-expanded={comparisonOpen}
+			>
+				<span class="comparison-caret">{comparisonOpen ? '▾' : '▸'}</span>
+				LLM-Vergleich mit deinen Namings
+				<span class="comparison-count">{comparison.comparisons.length}</span>
+			</button>
+			{#if comparisonOpen}
+				{#if comparison.comparisons.length === 0}
+					<div class="compare-hint">
+						Kein Befund: bei keinem der {comparison.comparedWith} verglichenen Namings sah das Modell etwas Tragendes.
+					</div>
+				{/if}
 				{#each comparison.comparisons as comp}
 					<div class="comparison-card">
 						<div class="comp-header">
-							<!-- svelte-ignore a11y_no_static_element_interactions -->
-							<span
-								class="comp-code clickable"
-								onclick={() => onannotate(comp.codeId)}
-								title="Click to anchor this naming here"
-							>
-								<span class="badge {designationClass(comp.designation)}">{designationBadge(comp.designation)}</span>
-								{comp.codeLabel}
-							</span>
-						</div>
-						<div class="comp-analysis">{comp.analysis}</div>
-					</div>
-				{/each}
-			{/if}
-
-			{#if comparison.questions.length > 0}
-				<div class="section-label">Questions</div>
-				<ul class="questions-list">
-					{#each comparison.questions as q}
-						<li>{q}</li>
-					{/each}
-				</ul>
-			{/if}
-
-			<!-- Discussion thread -->
-			<div class="discussion-section">
-				{#each discussionHistory as msg}
-					<div class="discuss-msg" class:discuss-user={msg.role === 'user'} class:discuss-ai={msg.role === 'assistant'}>
-						<span class="discuss-role">{msg.role === 'user' ? 'You' : 'AI'}</span>
-						<span class="discuss-text">{msg.content}</span>
-					</div>
-				{/each}
-				{#if discussing}
-					<div class="discuss-msg discuss-ai">
-						<span class="discuss-role">AI</span>
-						<span class="discuss-text loading-dots">Thinking</span>
-					</div>
-				{/if}
-				<form class="discuss-form" onsubmit={e => { e.preventDefault(); sendDiscussMessage(); }}>
-					<input
-						type="text"
-						class="discuss-input"
-						placeholder="Ask about this comparison..."
-						bind:value={discussInput}
-						disabled={discussing}
-					/>
-				</form>
-			</div>
-
-			<!-- Inline memo creation -->
-			{#if memoSaved}
-				<div class="memo-saved">Memo saved</div>
-			{:else if showMemoForm}
-				<div class="memo-form">
-					<div class="section-label">Memo</div>
-					<textarea
-						class="memo-textarea"
-						placeholder="Analytical note…"
-						bind:value={memoText}
-						rows="3"
-					></textarea>
-					<div class="memo-links">
-						<span class="memo-links-label">Linked namings:</span>
-						{#each comparison.comparisons as comp}
 							<!-- svelte-ignore a11y_click_events_have_key_events -->
 							<!-- svelte-ignore a11y_no_static_element_interactions -->
 							<span
-								class="memo-code-chip"
-								class:selected={linkedCodeIds.has(comp.codeId)}
-								onclick={() => toggleCodeLink(comp.codeId)}
+								class="comp-naming clickable"
+								onclick={() => onannotate(comp.namingId)}
+								title="Dieses Naming an der markierten Stelle verankern"
 							>
 								<span class="badge {designationClass(comp.designation)}">{designationBadge(comp.designation)}</span>
-								{comp.codeLabel}
+								{comp.namingLabel}
 							</span>
+						</div>
+						<div class="comp-analysis">{comp.analysis}</div>
+						{#each comp.anchors as a}
+							<blockquote class="comp-anchor">„{a.text}“ <span class="comp-anchor-doc">{a.documentTitle}</span></blockquote>
 						{/each}
 					</div>
-					<div class="memo-actions">
-						<button class="btn-memo-save" onclick={saveMemo} disabled={memoSaving || !memoText.trim()}>
-							{memoSaving ? 'Saving…' : 'Save Memo'}
-						</button>
-						<button class="btn-memo-cancel" onclick={() => { showMemoForm = false; memoText = ''; }}>
-							Cancel
-						</button>
+				{/each}
+				{#if comparison.droppedUnanchored > 0}
+					<div class="compare-hint">
+						{comparison.droppedUnanchored} {comparison.droppedUnanchored === 1 ? 'Vergleich' : 'Vergleiche'} ohne gültigen Beleg verworfen.
 					</div>
-				</div>
-			{:else}
-				<button class="btn-create-memo" onclick={() => { showMemoForm = true; }}>
-					Create Memo
-				</button>
+				{/if}
+
+				<!-- Inline memo creation -->
+				{#if memoSaved}
+					<div class="memo-saved">Memo gespeichert</div>
+				{:else if showMemoForm}
+					<div class="memo-form">
+						<div class="section-label">Memo</div>
+						<textarea
+							class="memo-textarea"
+							placeholder="Analytische Notiz…"
+							bind:value={memoText}
+							rows="3"
+						></textarea>
+						{#if comparison.comparisons.length > 0}
+							<div class="memo-links">
+								<span class="memo-links-label">Verknüpfte Namings:</span>
+								{#each comparison.comparisons as comp}
+									<!-- svelte-ignore a11y_click_events_have_key_events -->
+									<!-- svelte-ignore a11y_no_static_element_interactions -->
+									<span
+										class="memo-naming-chip"
+										class:selected={linkedNamingIds.has(comp.namingId)}
+										onclick={() => toggleNamingLink(comp.namingId)}
+									>
+										<span class="badge {designationClass(comp.designation)}">{designationBadge(comp.designation)}</span>
+										{comp.namingLabel}
+									</span>
+								{/each}
+							</div>
+						{/if}
+						<div class="memo-actions">
+							<button class="btn-memo-save" onclick={saveMemo} disabled={memoSaving || !memoText.trim()}>
+								{memoSaving ? 'Speichert…' : 'Memo speichern'}
+							</button>
+							<button class="btn-memo-cancel" onclick={() => { showMemoForm = false; memoText = ''; }}>
+								Abbrechen
+							</button>
+						</div>
+					</div>
+				{:else}
+					<button class="btn-create-memo" onclick={openMemoForm}>
+						Memo anlegen
+					</button>
+				{/if}
 			{/if}
+		{/if}
+		{#if compareError}
+			<div class="error-msg">{compareError}</div>
 		{/if}
 	{/if}
 </div>
@@ -384,12 +352,13 @@
 		font-size: 0.78rem;
 	}
 
-	.loading, .error-msg, .empty-hint {
+	.loading, .error-msg, .compare-hint {
 		color: #6b7280;
 		font-size: 0.75rem;
 		padding: 0.25rem 0;
 	}
 	.error-msg { color: #ef4444; }
+	.compare-hint { font-size: 0.7rem; line-height: 1.35; }
 
 	/* Scope toggle */
 	.scope-row {
@@ -463,54 +432,30 @@
 	}
 	.section-label:first-child { margin-top: 0; }
 
-	/* Similar passages */
-	.similar-card {
-		background: #1e2030;
-		border: 1px solid #2a2d3a;
-		border-radius: 4px;
-		padding: 0.4rem;
-		margin-bottom: 0.3rem;
-	}
-	.similar-codes {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.25rem;
-		margin-bottom: 0.2rem;
-	}
-	.code-tag {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.2rem;
-		font-size: 0.72rem;
-		color: #c9cdd5;
-		background: #252840;
-		border: 1px solid #2a2d3a;
-		border-radius: 3px;
-		padding: 0.1rem 0.35rem;
-	}
-	.code-tag.clickable { cursor: pointer; }
-	.code-tag.clickable:hover { border-color: #8b9cf7; color: #fff; }
-	.similar-text {
-		color: #9ca3af;
-		font-style: italic;
-		line-height: 1.3;
-		margin-bottom: 0.15rem;
-	}
-	.similar-meta {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-	}
-	.similar-doc {
-		color: #4b5563;
-		font-size: 0.68rem;
-	}
-	.similar-score {
-		color: #6b7280;
-		font-size: 0.62rem;
-	}
-
 	/* Comparison results */
+	.comparison-head {
+		display: flex;
+		align-items: center;
+		gap: 0.35rem;
+		width: 100%;
+		margin: 0.1rem 0 0.35rem;
+		padding: 0.2rem 0;
+		background: none;
+		border: none;
+		border-bottom: 1px solid #2a2d3a;
+		color: #c9cdd5;
+		font-size: 0.72rem;
+		font-weight: 600;
+		text-align: left;
+		cursor: pointer;
+	}
+	.comparison-head:hover { color: #e1e4e8; }
+	.comparison-caret { color: #6b7280; width: 0.7rem; }
+	.comparison-count {
+		margin-left: auto;
+		color: #6b7280;
+		font-weight: 500;
+	}
 	.comparison-card {
 		background: #1e2030;
 		border: 1px solid #2a2d3a;
@@ -519,7 +464,7 @@
 		margin-bottom: 0.3rem;
 	}
 	.comp-header { margin-bottom: 0.2rem; }
-	.comp-code {
+	.comp-naming {
 		display: inline-flex;
 		align-items: center;
 		gap: 0.25rem;
@@ -527,14 +472,28 @@
 		font-weight: 500;
 		color: #e1e4e8;
 	}
-	.comp-code.clickable { cursor: pointer; }
-	.comp-code.clickable:hover { color: #8b9cf7; }
+	.comp-naming.clickable { cursor: pointer; }
+	.comp-naming.clickable:hover { color: #8b9cf7; }
 	.comp-analysis {
 		color: #9ca3af;
 		line-height: 1.4;
 	}
+	/* Der Beleg: die Verankerung des Namings, auf die sich der Vergleich stützt. */
+	.comp-anchor {
+		margin: 0.3rem 0 0;
+		padding: 0.15rem 0 0.15rem 0.45rem;
+		border-left: 2px solid #3a3f52;
+		color: #c9cdd5;
+		font-style: italic;
+		line-height: 1.35;
+	}
+	.comp-anchor-doc {
+		font-style: normal;
+		color: #4b5563;
+		font-size: 0.66rem;
+	}
 
-	/* Designation badges */
+	/* Designation badges — CCS-Farben aus tokens.css */
 	.badge {
 		display: inline-block;
 		font-size: 0.6rem;
@@ -542,72 +501,11 @@
 		padding: 0.05rem 0.25rem;
 		border-radius: 3px;
 		line-height: 1.2;
+		background: #252840;
 	}
-	.badge-c { background: #374151; color: #9ca3af; }
-	.badge-ch { background: #1e3a5f; color: #60a5fa; }
-	.badge-sp { background: #1a3b2a; color: #4ade80; }
-
-	/* Questions */
-	.questions-list {
-		margin: 0;
-		padding-left: 1.2rem;
-		color: #d1d5db;
-		line-height: 1.5;
-	}
-	.questions-list li { margin-bottom: 0.2rem; }
-
-	/* Discussion thread */
-	.discussion-section {
-		margin-top: 0.5rem;
-		border-top: 1px solid #2a2d3a;
-		padding-top: 0.4rem;
-	}
-	.discuss-msg {
-		padding: 0.3rem 0.4rem;
-		margin-bottom: 0.25rem;
-		border-radius: 4px;
-		font-size: 0.75rem;
-		line-height: 1.4;
-	}
-	.discuss-user {
-		background: rgba(139, 156, 247, 0.08);
-		border-left: 2px solid #8b9cf7;
-	}
-	.discuss-ai {
-		background: #1e2030;
-		border-left: 2px solid #4b5563;
-	}
-	.discuss-role {
-		font-size: 0.6rem;
-		font-weight: 600;
-		text-transform: uppercase;
-		color: #6b7280;
-		display: block;
-		margin-bottom: 0.1rem;
-	}
-	.discuss-text { color: #d1d5db; }
-	.loading-dots::after {
-		content: '...';
-		animation: dots 1.2s steps(3) infinite;
-	}
-	@keyframes dots {
-		0% { content: '.'; }
-		33% { content: '..'; }
-		66% { content: '...'; }
-	}
-	.discuss-form { margin-top: 0.3rem; }
-	.discuss-input {
-		width: 100%;
-		background: #0f1117;
-		border: 1px solid #2a2d3a;
-		border-radius: 4px;
-		padding: 0.35rem 0.5rem;
-		color: #e1e4e8;
-		font-size: 0.75rem;
-		box-sizing: border-box;
-	}
-	.discuss-input:focus { outline: none; border-color: #8b9cf7; }
-	.discuss-input:disabled { opacity: 0.5; }
+	.badge-c { color: var(--ccs-cue); }
+	.badge-ch { color: var(--ccs-char); }
+	.badge-sp { color: var(--ccs-spec); }
 
 	/* Create Memo button */
 	.btn-create-memo {
@@ -657,7 +555,7 @@
 		color: #6b7280;
 		margin-right: 0.15rem;
 	}
-	.memo-code-chip {
+	.memo-naming-chip {
 		display: inline-flex;
 		align-items: center;
 		gap: 0.2rem;
@@ -670,12 +568,12 @@
 		cursor: pointer;
 		transition: all 0.15s;
 	}
-	.memo-code-chip.selected {
+	.memo-naming-chip.selected {
 		border-color: #4ade80;
 		color: #e1e4e8;
 		background: rgba(76, 175, 80, 0.1);
 	}
-	.memo-code-chip:hover { border-color: #4ade80; }
+	.memo-naming-chip:hover { border-color: #4ade80; }
 
 	.memo-actions {
 		display: flex;

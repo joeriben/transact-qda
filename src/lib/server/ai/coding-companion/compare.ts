@@ -4,13 +4,19 @@
 /**
  * Coding Companion — LLM Comparator
  *
- * Receives material assembled by the retrieval layer and performs
- * multi-level comparison: semantic, structural, pragmatic, analytical.
- * The LLM processes all material simultaneously — it does not read
- * sequentially like a human.
+ * Receives material assembled by the retrieval layer and compares the
+ * marked passage with the researcher's own namings on several levels at
+ * once: semantic, structural, pragmatic, analytic. The LLM processes all
+ * material simultaneously — it does not read sequentially like a human.
  *
- * Output is a comparison result, NOT code suggestions. The researcher
- * (or Autonoma) makes the coding decision.
+ * Unter der Verfassung der KI-Schicht (docs/design-begleiten.md):
+ * - Nachbarschaft zeigen, nie Zugehörigkeit behaupten (Satz I).
+ * - Jeder Vergleich trägt die Verankerungen, auf die er sich stützt, im
+ *   Wortlaut; einer ohne gültigen Beleg wird verworfen (Satz II).
+ * - Ein leeres Ergebnis ist zulässig; keine Fragen an den Forscher, kein
+ *   Gesprächsfaden (Satz III).
+ * Nichts davon schreibt in den Datenraum. Ob aus einem Vergleich eine
+ * Verankerung oder ein Memo wird, entscheidet ein Akt des Forschers.
  */
 
 import { chat } from '../client.js';
@@ -20,182 +26,133 @@ import type { RetrievalResult } from './retrieval.js';
 // ── Types ──────────────────────────────────────────────────────────────────
 
 export interface PassageComparison {
-	codeId: string;
-	codeLabel: string;
+	namingId: string;
+	namingLabel: string;
 	designation: string;
-	/** What connects/distinguishes the current passage and this code's groundings */
+	/** What connects and what distinguishes the passage and this naming's anchors */
 	analysis: string;
+	/** The anchors of this naming the comparison rests on — wording, not a pointer */
+	anchors: Array<{ text: string; documentTitle: string }>;
 }
 
 export interface ComparisonResult {
 	comparisons: PassageComparison[];
-	/** Open questions for the researcher — not suggestions */
-	questions: string[];
+	/** How many namings the model compared against — makes an empty result readable */
+	comparedWith: number;
+	/** Comparisons dropped because they cited no valid anchor */
+	droppedUnanchored: number;
 	/** Token usage for cost tracking */
 	tokensUsed: number;
 }
 
 // ── Prompt ─────────────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `You are a comparison engine for qualitative data analysis (Grounded Theory / Situational Analysis). Your ONLY task is to compare a passage with existing codes and their grounded passages.
+const SYSTEM_PROMPT = `„Du bist ein Freund des Materials — Du bist ein Freund der/s codierenden Forscher_in — achte darauf, dass F gut und angemessen mit M umgeht; unterstütze F in dem, was es artikulierend vollzieht, und M in dem, was es (nicht) zeigt."
 
-Compare on multiple levels simultaneously:
-- **Semantic**: What is the passage about? Topic, vocabulary, concepts.
-- **Structural**: What rhetorical structure does it have? Argumentation, narration, justification, deflection.
-- **Pragmatic**: What discursive function does it serve? Legitimization, problematization, face-saving, positioning.
-- **Analytical**: What phenomenon does it exhibit — even across topical boundaries? Two passages about different topics can show the same phenomenon.
+(F = the researcher, M = the material.)
+
+The researcher has marked a passage. You compare it with the researcher's own namings — the analytic categories they have anchored in the material — and with the passages those namings are anchored in. You do not name, and you do not decide.
+
+Compare on several levels at once:
+- Semantic: what the passage is about — topic, vocabulary, concepts.
+- Structural: its rhetorical shape — argument, narration, justification, deflection.
+- Pragmatic: the discursive work it does — legitimising, problematising, face-saving, positioning.
+- Analytic: the phenomenon it exhibits, also across topical boundaries. Two passages about different topics can show related moves.
 
 Rules:
-- Compare, do not suggest codes. The researcher decides.
-- Be concise. Each comparison: 2-3 sentences maximum.
-- Formulate open questions, not leading questions.
-- If the passage does not relate to any existing code, say so clearly.
-- Match the language of the passage in your output.
+- Show neighbourhood and difference. Never state that the passage is an instance of a naming or belongs under it, and never claim sameness — not of passages, moves or phenomena. Whether it is the same, is the researcher's cut.
+- Every comparison rests on specific anchored passages of that naming. Cite them by their numbers in the "anchors" field. Leave out any comparison you cannot rest on a cited passage.
+- In the analysis text, refer to an anchored passage by what it says, never by its number: the researcher sees the quoted passages, not the numbers.
+- Speak only where there is something non-trivial to see. Most namings will not be worth a comparison; include only those that are. An empty list is a valid and expected answer.
+- No questions to the researcher, no suggestions for new namings, no advice on what to do next.
+- At most 2–3 sentences per comparison.
+- Write in the language of the passage.
 
-Output format (JSON):
-{
-  "comparisons": [
-    {
-      "codeId": "uuid",
-      "codeLabel": "label",
-      "analysis": "What connects or distinguishes this passage and the existing groundings of this code."
-    }
-  ],
-  "questions": ["Open question 1", "Open question 2"]
-}
-
-Return ONLY the JSON object, no markdown fences, no commentary.`;
+Output: a single JSON object, no Markdown fences, no commentary:
+{"comparisons": [{"namingId": "<id as given>", "anchors": [1, 3], "analysis": "..."}]}`;
 
 // ── Core function ──────────────────────────────────────────────────────────
 
 /**
- * Compare a passage with retrieved material using the LLM.
- * The LLM receives the passage + existing codes with their groundings
- * and performs multi-level comparison.
+ * Compare a passage with the researcher's namings using the LLM. Without
+ * namings to compare against, no call is made.
  */
 export async function comparePassage(
 	retrieval: RetrievalResult,
 	projectId: string,
 	options?: { language?: string }
 ): Promise<ComparisonResult> {
-	// Build the user message with all comparison material
-	const userMessage = formatRetrievalForLLM(retrieval, options?.language);
+	const comparedWith = retrieval.existingCodes.length;
+	if (comparedWith === 0) {
+		return { comparisons: [], comparedWith, droppedUnanchored: 0, tokensUsed: 0 };
+	}
 
 	// Keine Ausgabebegrenzung: die Kürze steht als weiche Vorgabe im
-	// SYSTEM_PROMPT ("2-3 sentences maximum" je Vergleich).
+	// SYSTEM_PROMPT ("2–3 sentences" je Vergleich).
 	const response = await chat({
 		system: SYSTEM_PROMPT,
-		messages: [{ role: 'user', content: userMessage }]
+		messages: [{ role: 'user', content: formatRetrievalForLLM(retrieval, options?.language) }],
+		responseFormat: 'json'
 	});
 
-	// Log for usage tracking
+	let raw: any[] | null = null;
+	try {
+		const parsed = JSON.parse(extractJsonObject(response.text));
+		if (Array.isArray(parsed?.comparisons)) raw = parsed.comparisons;
+	} catch {
+		// raw bleibt null — wird unten nach der Buchung gemeldet
+	}
+
+	const comparisons: PassageComparison[] = [];
+	let droppedUnanchored = 0;
+	for (const c of raw ?? []) {
+		// Nur Namings, die dem Modell vorlagen — eine erfundene ID darf
+		// keinen Klick zum Verankern bekommen.
+		const naming = retrieval.existingCodes.find((ec) => ec.id === c?.namingId);
+		const analysis = typeof c?.analysis === 'string' ? c.analysis.trim() : '';
+		if (!naming || !analysis) continue;
+		type Grounding = (typeof naming.sampleGroundings)[number];
+		const numbers: unknown[] = Array.isArray(c.anchors) ? c.anchors : [];
+		const cited = numbers
+			.map((n) => naming.sampleGroundings[Number(n) - 1])
+			.filter((g): g is Grounding => !!g);
+		const anchors = [...new Set(cited)].map((g) => ({ text: g.text, documentTitle: g.documentTitle }));
+		if (anchors.length === 0) {
+			droppedUnanchored++;
+			continue;
+		}
+		comparisons.push({
+			namingId: naming.id,
+			namingLabel: naming.label,
+			designation: naming.designation,
+			analysis,
+			anchors
+		});
+	}
+
 	await logInteraction(
 		projectId,
 		'coding-companion',
 		response.model,
-		{ passageElementId: retrieval.passage.elementId, passageLength: retrieval.passage.content.length },
-		{ comparisonsCount: 0, questionsCount: 0 },
+		{ passageLength: retrieval.passage.content.length, comparedWith },
+		{ parsed: raw !== null, comparisonsCount: comparisons.length, droppedUnanchored },
 		response.tokensUsed,
 		response.provider,
 		response.inputTokens,
 		response.outputTokens
 	);
 
-	// Parse structured response
-	try {
-		const parsed = JSON.parse(response.text.trim());
-		const comparisons: PassageComparison[] = (parsed.comparisons || []).map((c: any) => ({
-			codeId: c.codeId || '',
-			codeLabel: c.codeLabel || '',
-			designation: retrieval.existingCodes.find(ec => ec.id === c.codeId)?.designation || 'cue',
-			analysis: c.analysis || ''
-		}));
-		const questions: string[] = parsed.questions || [];
-
-		return { comparisons, questions, tokensUsed: response.tokensUsed };
-	} catch {
-		// If JSON parsing fails, return the raw text as a single question
-		return {
-			comparisons: [],
-			questions: [response.text.trim()],
-			tokensUsed: response.tokensUsed
-		};
+	if (raw === null) {
+		throw new Error('Die Antwort des Modells war nicht auswertbar.');
 	}
+	return { comparisons, comparedWith, droppedUnanchored, tokensUsed: response.tokensUsed };
 }
 
-// ── Follow-up discussion ──────────────────────────────────────────────────
-
-/**
- * Continue a discussion about a comparison result.
- * The researcher can ask follow-up questions, request deeper analysis,
- * or ask the AI to search for related passages/patterns.
- */
-export async function discussComparison(
-	retrieval: RetrievalResult,
-	comparisonResult: ComparisonResult,
-	history: { role: 'user' | 'assistant'; content: string }[],
-	userMessage: string,
-	projectId: string,
-	options?: { language?: string }
-): Promise<{ response: string; tokensUsed: number }> {
-	// Build the initial context from the comparison
-	const contextMessage = formatRetrievalForLLM(retrieval, options?.language);
-	const comparisonSummary = formatComparisonForDiscussion(comparisonResult);
-
-	const messages: { role: 'user' | 'assistant'; content: string }[] = [
-		{ role: 'user', content: contextMessage },
-		{ role: 'assistant', content: comparisonSummary },
-		...history,
-		{ role: 'user', content: userMessage }
-	];
-
-	// Keine Ausgabebegrenzung: "2-4 sentences per response" steht im Prompt.
-	const response = await chat({
-		system: DISCUSSION_SYSTEM_PROMPT,
-		messages
-	});
-
-	await logInteraction(
-		projectId,
-		'coding-companion-discuss',
-		response.model,
-		{ passageLength: retrieval.passage.content.length, historyLength: history.length },
-		{ responseLength: response.text.length },
-		response.tokensUsed,
-		response.provider,
-		response.inputTokens,
-		response.outputTokens
-	);
-
-	return { response: response.text, tokensUsed: response.tokensUsed };
-}
-
-const DISCUSSION_SYSTEM_PROMPT = `You are a comparison companion for qualitative data analysis. A researcher is coding a text passage and has received comparison results. They now want to discuss, deepen, or redirect the analysis.
-
-Your role:
-- Answer the researcher's questions about the passage, the codes, or the comparison.
-- When asked to "look for similar passages" or patterns, refer to the material you have and point out connections.
-- Stay Socratic: ask back, point out tensions, suggest angles — but do NOT code for the researcher.
-- Be concise. 2-4 sentences per response unless the researcher asks for more detail.
-- Match the language of the conversation.
-- You may suggest looking at specific parts of the text or specific codes more closely.
-- Do NOT suggest new code names or make coding decisions.`;
-
-function formatComparisonForDiscussion(result: ComparisonResult): string {
-	const parts: string[] = [];
-	if (result.comparisons.length > 0) {
-		parts.push('Here are the comparisons I found:\n');
-		for (const c of result.comparisons) {
-			parts.push(`**${c.codeLabel}** [${c.designation}]: ${c.analysis}`);
-		}
-	}
-	if (result.questions.length > 0) {
-		parts.push('\nQuestions for consideration:');
-		for (const q of result.questions) {
-			parts.push(`- ${q}`);
-		}
-	}
-	return parts.join('\n');
+/** Tolerates Markdown fences or a preamble around the JSON object. */
+function extractJsonObject(text: string): string {
+	const start = text.indexOf('{');
+	const end = text.lastIndexOf('}');
+	return start >= 0 && end > start ? text.slice(start, end + 1) : text;
 }
 
 // ── Formatting ─────────────────────────────────────────────────────────────
@@ -207,34 +164,30 @@ function formatRetrievalForLLM(retrieval: RetrievalResult, language?: string): s
 		parts.push(`Output language: ${language}\n`);
 	}
 
-	// The passage being coded
-	parts.push(`## Passage to compare\n`);
+	parts.push(`## Marked passage\n`);
 	parts.push(`Document: ${retrieval.passage.documentTitle}`);
-	parts.push(`Text: "${retrieval.passage.content}"\n`);
+	parts.push(`"${retrieval.passage.content}"\n`);
 
-	// Existing codes with their groundings
-	if (retrieval.existingCodes.length > 0) {
-		parts.push(`## Existing codes with grounded passages\n`);
-		for (const code of retrieval.existingCodes) {
-			parts.push(`### ${code.label} [${code.designation}] (${code.groundingCount} groundings)`);
-			for (const g of code.sampleGroundings) {
-				parts.push(`  - "${g.text}" (${g.documentTitle})`);
-			}
-			parts.push(`  Code ID: ${code.id}\n`);
-		}
-	} else {
-		parts.push(`## No existing codes yet\n`);
-		parts.push(`This is the first passage being coded. No comparison material available.`);
+	parts.push(`## The researcher's namings and their anchored passages\n`);
+	for (const naming of retrieval.existingCodes) {
+		parts.push(`### ${naming.label} [${naming.designation}] — namingId: ${naming.id}, anchored ${naming.groundingCount}×`);
+		naming.sampleGroundings.forEach((g, i) => {
+			parts.push(`[${i + 1}] "${g.text}" (${g.documentTitle})`);
+		});
+		parts.push('');
 	}
 
-	// Topically similar passages (for additional context)
-	const codedSimilar = retrieval.similarPassages.filter(sp => sp.codes.length > 0);
-	if (codedSimilar.length > 0) {
-		parts.push(`## Topically related passages (embedding-based retrieval)\n`);
-		parts.push(`Note: These are passages with similar vocabulary/topic. Analytical similarity may differ.\n`);
-		for (const sp of codedSimilar.slice(0, 5)) {
-			const codeLabels = sp.codes.map(c => `${c.label} [${c.designation}]`).join(', ');
-			parts.push(`- "${sp.content}" (${sp.documentTitle}) — coded as: ${codeLabels}`);
+	// Embedding-Nachbarn mit eigenen Namings: Zugang ins Material, nicht
+	// Befund — sie liegen nah im Vokabular oder Register.
+	const nearby = retrieval.similarPassages
+		.map((sp) => ({ ...sp, own: sp.codes.filter((c) => c.own) }))
+		.filter((sp) => sp.own.length > 0);
+	if (nearby.length > 0) {
+		parts.push(`## Further passages near the marked one\n`);
+		parts.push(`Near in vocabulary or register (embedding neighbourhood), not necessarily the same phenomenon. For context only — do not cite them.\n`);
+		for (const sp of nearby.slice(0, 5)) {
+			const labels = sp.own.map((c) => `${c.label} [${c.designation}]`).join(', ');
+			parts.push(`- "${sp.content}" (${sp.documentTitle}) — the researcher anchored here: ${labels}`);
 		}
 	}
 

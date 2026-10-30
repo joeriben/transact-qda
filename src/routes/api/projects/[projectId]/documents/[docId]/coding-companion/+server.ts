@@ -5,60 +5,31 @@ import { json, error } from '@sveltejs/kit';
 import {
 	retrieveComparisonMaterial,
 	retrieveComparisonMaterialForText,
-	comparePassage,
-	discussComparison
+	comparePassage
 } from '$lib/server/ai/coding-companion/index.js';
 import { loadSettings } from '$lib/server/ai/client.js';
 
 /**
  * POST /api/projects/[projectId]/documents/[docId]/coding-companion
  *
- * Retrieves comparison material for a passage being coded.
- * With compare=true, also performs LLM-based multi-level comparison.
- * With discuss=true, continues a conversation about the comparison.
+ * Retrieves comparison material for a marked passage.
+ * With compare=true, also performs the LLM comparison against the
+ * researcher's own namings.
  */
 export async function POST({ params, request }: { params: { projectId: string; docId: string }; request: Request }) {
 	const { projectId, docId } = params;
 	const body = await request.json();
 
-	const {
-		elementId, text, compare, discuss,
-		maxSimilar, maxCodes, maxGroundingsPerCode, scope,
-		retrieval: clientRetrieval, comparisonResult, discussionHistory, userMessage
-	} = body as {
+	const { elementId, text, compare, maxSimilar, maxCodes, maxGroundingsPerCode, scope } = body as {
 		elementId?: string;
 		text?: string;
 		compare?: boolean;
-		discuss?: boolean;
 		maxSimilar?: number;
 		maxCodes?: number;
 		maxGroundingsPerCode?: number;
 		scope?: 'in-document' | 'cross-document';
-		// Discussion mode fields
-		retrieval?: any;
-		comparisonResult?: any;
-		discussionHistory?: { role: 'user' | 'assistant'; content: string }[];
-		userMessage?: string;
 	};
 
-	// Discussion mode: continue conversation about a comparison
-	if (discuss) {
-		if (!clientRetrieval || !comparisonResult || !userMessage) {
-			throw error(400, 'Discussion requires retrieval, comparisonResult, and userMessage');
-		}
-		const settings = loadSettings();
-		const result = await discussComparison(
-			clientRetrieval,
-			comparisonResult,
-			discussionHistory || [],
-			userMessage,
-			projectId,
-			{ language: settings.language }
-		);
-		return json({ discussion: result });
-	}
-
-	// Retrieval / comparison mode
 	if (!elementId && !text) {
 		throw error(400, 'Either elementId or text is required');
 	}
@@ -73,11 +44,14 @@ export async function POST({ params, request }: { params: { projectId: string; d
 		return json({ retrieval });
 	}
 
-	// LLM comparison
 	const settings = loadSettings();
-	const comparison = await comparePassage(retrieval, projectId, {
-		language: settings.language
-	});
-
-	return json({ retrieval, comparison });
+	try {
+		const comparison = await comparePassage(retrieval, projectId, {
+			language: settings.language
+		});
+		return json({ retrieval, comparison });
+	} catch (e) {
+		const message = e instanceof Error ? e.message : String(e);
+		return json({ retrieval, error: message }, { status: 502 });
+	}
 }

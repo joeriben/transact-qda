@@ -1736,6 +1736,9 @@
 					{:else if similarPassages.length === 0}
 						<p class="empty">Keine ähnlichen Stellen gefunden.</p>
 					{:else}
+						<!-- Eigene Überschrift, damit die gezählten Stellen nicht mit dem
+						     LLM-Vergleich darüber (Namings, nicht Stellen) verwechselt werden. -->
+						<div class="similar-list-head">Ähnliche Stellen <span class="similar-list-count">{similarPassages.length}</span></div>
 						{#each similarPassages as sp, i (i)}
 							<!-- svelte-ignore a11y_no_static_element_interactions -->
 							<div
@@ -2339,6 +2342,21 @@
 	}
 	.passages-panel.panel-similar .similar-score {
 		color: #2dd4bf;
+	}
+	.similar-list-head {
+		display: flex;
+		align-items: center;
+		padding: 0.2rem 0;
+		margin-bottom: 0.35rem;
+		border-bottom: 1px solid #2a2d3a;
+		color: #c9cdd5;
+		font-size: 0.72rem;
+		font-weight: 600;
+	}
+	.similar-list-count {
+		margin-left: auto;
+		color: #2dd4bf;
+		font-weight: 500;
 	}
 	.scope-right {
 		display: flex;

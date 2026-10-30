@@ -12,7 +12,6 @@ export {
 
 export {
 	comparePassage,
-	discussComparison,
 	type ComparisonResult,
 	type PassageComparison
 } from './compare.js';

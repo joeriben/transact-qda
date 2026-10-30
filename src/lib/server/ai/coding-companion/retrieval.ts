@@ -19,6 +19,8 @@ export interface PassageCode {
 	id: string;
 	label: string;
 	designation: 'cue' | 'characterization' | 'specification';
+	/** Naming des Forschers (siehe ownNamingSql), nicht bloß ein KI-Hinweis. */
+	own: boolean;
 }
 
 export interface SimilarPassage {
@@ -159,6 +161,28 @@ export async function retrieveComparisonMaterialForText(
 // ── Internal queries ───────────────────────────────────────────────────────
 
 /**
+ * Vergleichsgrund sind die Namings des Forschers, nicht die Hinweise der KI.
+ * Eigen ist ein Naming ohne KI-Provenienz — oder ein KI-Cue, an dem ein
+ * Forscher selbst gehandelt hat (designiert, umbenannt, revidiert): dann
+ * steht sein Akt im Stack. Ein ungeprüfter oder verworfener Cue ist ein
+ * Hinweis, keine Kategorie; ohne diese Grenze verglich das Modell eine
+ * Passage überwiegend mit Ausgaben des Coding-Runs.
+ *
+ * Das Urteil der Auditschicht (ai_naming_evaluations) wird hier bewusst
+ * nicht gelesen — sie muss sich restlos entfernen lassen.
+ */
+function ownNamingSql(alias: string): string {
+	return `(NOT EXISTS (SELECT 1 FROM appearances ai
+	                    WHERE ai.naming_id = ${alias}.id AND ai.properties->>'aiPersona' IS NOT NULL)
+	         OR EXISTS (SELECT 1 FROM naming_acts fa
+	                    JOIN researcher_namings rn ON rn.naming_id = fa.by AND rn.project_id = ${alias}.project_id
+	                    WHERE fa.naming_id = ${alias}.id))`;
+}
+
+/** Im Reader ausgeblendete Verankerungen zählen nicht als Material. */
+const NOT_HIDDEN = `COALESCE(ann.properties->>'hidden', 'false') <> 'true'`;
+
+/**
  * Find similar passages (by element embedding) enriched with their code annotations.
  */
 async function findSimilarWithCodes(
@@ -180,6 +204,7 @@ async function findSimilarWithCodes(
 		code_id: string | null;
 		code_label: string | null;
 		code_designation: string | null;
+		code_own: boolean | null;
 	}>(
 		`WITH source AS (
 		   SELECT embedding FROM document_elements WHERE id = $1
@@ -193,7 +218,8 @@ async function findSimilarWithCodes(
 		        code.inscription AS code_label,
 		        (SELECT na.designation FROM naming_acts na
 		         WHERE na.naming_id = code.id AND na.designation IS NOT NULL
-		         ORDER BY na.seq DESC LIMIT 1) AS code_designation
+		         ORDER BY na.seq DESC LIMIT 1) AS code_designation,
+		        ${ownNamingSql('code')} AS code_own
 		 FROM document_elements e2
 		 CROSS JOIN source s
 		 JOIN namings doc ON doc.id = e2.document_id AND doc.deleted_at IS NULL
@@ -202,6 +228,7 @@ async function findSimilarWithCodes(
 		 -- usually absent, so match [pos0,pos1) against [char_start,char_end).
 		 LEFT JOIN appearances ann ON ann.directed_to = e2.document_id
 		   AND ann.valence = 'codes'
+		   AND ${NOT_HIDDEN}
 		   AND (ann.properties->'anchor'->>'pos0') ~ '^[0-9]+$'
 		   AND (ann.properties->'anchor'->>'pos1') ~ '^[0-9]+$'
 		   AND (ann.properties->'anchor'->>'pos0')::int < e2.char_end
@@ -245,6 +272,7 @@ async function findSimilarToTextWithCodes(
 		code_id: string | null;
 		code_label: string | null;
 		code_designation: string | null;
+		code_own: boolean | null;
 	}>(
 		`SELECT e.id AS element_id,
 		        e.content,
@@ -255,11 +283,13 @@ async function findSimilarToTextWithCodes(
 		        code.inscription AS code_label,
 		        (SELECT na.designation FROM naming_acts na
 		         WHERE na.naming_id = code.id AND na.designation IS NOT NULL
-		         ORDER BY na.seq DESC LIMIT 1) AS code_designation
+		         ORDER BY na.seq DESC LIMIT 1) AS code_designation,
+		        ${ownNamingSql('code')} AS code_own
 		 FROM document_elements e
 		 JOIN namings doc ON doc.id = e.document_id AND doc.deleted_at IS NULL
 		 LEFT JOIN appearances ann ON ann.directed_to = e.document_id
 		   AND ann.valence = 'codes'
+		   AND ${NOT_HIDDEN}
 		   AND (ann.properties->'anchor'->>'pos0') ~ '^[0-9]+$'
 		   AND (ann.properties->'anchor'->>'pos1') ~ '^[0-9]+$'
 		   AND (ann.properties->'anchor'->>'pos0')::int < e.char_end
@@ -291,6 +321,7 @@ function groupPassageCodes(
 		code_id: string | null;
 		code_label: string | null;
 		code_designation: string | null;
+		code_own: boolean | null;
 	}>
 ): SimilarPassage[] {
 	const map = new Map<string, SimilarPassage>();
@@ -314,7 +345,8 @@ function groupPassageCodes(
 			entry.codes.push({
 				id: row.code_id,
 				label: row.code_label,
-				designation: (row.code_designation as PassageCode['designation']) ?? 'cue'
+				designation: (row.code_designation as PassageCode['designation']) ?? 'cue',
+				own: row.code_own === true
 			});
 		}
 	}
@@ -323,8 +355,9 @@ function groupPassageCodes(
 }
 
 /**
- * Get all existing codes in the project with sample groundings.
- * These represent the researcher's analytical categories.
+ * The researcher's own namings (ownNamingSql) that are anchored in the
+ * material, with sample anchors — the analytic categories a passage is
+ * compared against.
  */
 async function getCodesWithGroundings(
 	projectId: string,
@@ -332,8 +365,8 @@ async function getCodesWithGroundings(
 	maxGroundingsPerCode: number,
 	scopeDocumentId?: string
 ): Promise<CodeWithGroundings[]> {
-	// Get codes that have document anchors, ordered by grounding count
-	// When scoped to a document, only return codes grounded in that document
+	// Ordered by anchor count. When scoped to a document, only namings
+	// anchored in that document.
 	const scopeClause = scopeDocumentId ? `AND ann.directed_to = $3` : '';
 	const params: any[] = [projectId, maxCodes];
 	if (scopeDocumentId) params.push(scopeDocumentId);
@@ -352,8 +385,10 @@ async function getCodesWithGroundings(
 		        COUNT(ann.naming_id) AS grounding_count
 		 FROM namings code
 		 JOIN appearances ann ON ann.directed_from = code.id AND ann.valence = 'codes'
+		   AND ${NOT_HIDDEN}
 		 JOIN namings ann_n ON ann_n.id = ann.naming_id AND ann_n.deleted_at IS NULL
 		 WHERE code.project_id = $1 AND code.deleted_at IS NULL
+		   AND ${ownNamingSql('code')}
 		   ${scopeClause}
 		 GROUP BY code.id, code.inscription
 		 ORDER BY grounding_count DESC
@@ -384,6 +419,7 @@ async function getCodesWithGroundings(
 			 JOIN namings doc ON doc.id = ann.directed_to AND doc.deleted_at IS NULL
 			 LEFT JOIN document_elements e ON e.id::text = (ann.properties->'anchor'->>'elementId')
 			 WHERE ann.directed_from = $1 AND ann.valence = 'codes'
+			   AND ${NOT_HIDDEN}
 			   AND ann_n.project_id = $2
 			 ORDER BY ann_n.created_at
 			 LIMIT $3`,
