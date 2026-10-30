@@ -137,6 +137,12 @@ export function createMapState(
 	// ─── Shared interaction state ───
 	let stackId = $state<string | null>(null);
 	let stackData = $state<StackData | null>(null);
+	// Memo-Vorschau beim Überfahren eines Knotens. Gerendert außerhalb der
+	// skalierten Canvas-Ebene (MemoTooltip.svelte) — darin wuchs und schrumpfte
+	// sie mit dem Zoom. Das kurze Nachlaufen beim Verlassen des Knotens lässt
+	// den Weg in den Kasten zu, zu "open stack".
+	let memoTip = $state.raw<{ el: any; rect: DOMRect } | null>(null);
+	let memoTipTimer: ReturnType<typeof setTimeout> | null = null;
 	let editingId = $state<string | null>(null);
 	let editingValue = $state('');
 	let relatingFrom = $state<string | null>(null);
@@ -337,6 +343,19 @@ export function createMapState(
 		if (stackId === namingId) { stackId = null; stackData = null; return; }
 		stackId = namingId;
 		stackData = await mapAction('getStack', { namingId });
+	}
+
+	function keepMemoTip() {
+		if (memoTipTimer) { clearTimeout(memoTipTimer); memoTipTimer = null; }
+	}
+	function showMemoTip(el: any, rect: DOMRect) {
+		keepMemoTip();
+		memoTip = { el, rect };
+	}
+	function hideMemoTip(delay = 0) {
+		keepMemoTip();
+		if (delay <= 0) { memoTip = null; return; }
+		memoTipTimer = setTimeout(() => { memoTip = null; memoTipTimer = null; }, delay);
 	}
 
 	async function submitAct() {
@@ -799,6 +818,7 @@ export function createMapState(
 		set stackId(v) { stackId = v; },
 		get stackData() { return stackData; },
 		set stackData(v) { stackData = v; },
+		get memoTip() { return memoTip; },
 		get editingId() { return editingId; },
 		set editingId(v) { editingId = v; },
 		get editingValue() { return editingValue; },
@@ -897,6 +917,9 @@ export function createMapState(
 
 		// Actions
 		showStack,
+		showMemoTip,
+		keepMemoTip,
+		hideMemoTip,
 		submitAct,
 		skipAct,
 		loadActMemos,

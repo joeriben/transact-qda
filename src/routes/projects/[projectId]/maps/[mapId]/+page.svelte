@@ -25,6 +25,7 @@
 	import OutsidePanel from '$lib/map/OutsidePanel.svelte';
 	import MemoCreateForm from '$lib/map/MemoCreateForm.svelte';
 	import CanvasMapNode from '$lib/map/CanvasMapNode.svelte';
+	import MemoTooltip from '$lib/map/MemoTooltip.svelte';
 	import CanvasRelationNode from '$lib/map/CanvasRelationNode.svelte';
 	import { page } from '$app/stores';
 	import { tick } from 'svelte';
@@ -628,6 +629,7 @@
 			{#if ms.stackId}
 				<StackPanel mode="floating" />
 			{/if}
+			<MemoTooltip />
 		</div>
 
 		<!-- List view -->

@@ -15,9 +15,27 @@
 	} = $props();
 
 	const ms = getMapState();
+
+	let nodeEl: HTMLDivElement | undefined = $state();
+
+	// Die Memo-Vorschau rendert MemoTooltip.svelte außerhalb der skalierten Ebene;
+	// der Knoten meldet nur, wo er gerade auf dem Bildschirm steht.
+	function enter() {
+		if (nodeEl && el.memo_previews?.length) ms.showMemoTip(el, nodeEl.getBoundingClientRect());
+	}
+	function leave() {
+		if (ms.memoTip?.el === el) ms.hideMemoTip(150);
+	}
+
+	// Verschwindet der Knoten unter der Maus (Filter, Neuladen), kommt kein
+	// mouseleave mehr — dann nimmt er seine Vorschau selbst mit.
+	$effect(() => () => {
+		if (ms.memoTip?.el === el) ms.hideMemoTip();
+	});
 </script>
 
-<div class="map-node" class:absent={el.properties?.absent} class:ai-suggested={el.properties?.aiSuggested} class:ai-withdrawn={ms.isWithdrawn(el.properties)} class:ai-rejected={ms.isRejected(el)} class:phase-member={ms.highlightedPhase && ms.isPhaseHighlighted(el)} class:phase-dimmed={ms.highlightedPhase && !ms.isPhaseHighlighted(el)} class:centered-dim={cp.centeredConnections && !cp.centeredConnections.has(el.naming_id)} class:centered-anchor={cp.centeredId === el.naming_id}
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div class="map-node" bind:this={nodeEl} onmouseenter={enter} onmouseleave={leave} class:absent={el.properties?.absent} class:ai-suggested={el.properties?.aiSuggested} class:ai-withdrawn={ms.isWithdrawn(el.properties)} class:ai-rejected={ms.isRejected(el)} class:phase-member={ms.highlightedPhase && ms.isPhaseHighlighted(el)} class:phase-dimmed={ms.highlightedPhase && !ms.isPhaseHighlighted(el)} class:centered-dim={cp.centeredConnections && !cp.centeredConnections.has(el.naming_id)} class:centered-anchor={cp.centeredId === el.naming_id}
 	style="{ms.highlightedPhase && ms.isPhaseHighlighted(el) ? `--phase-color: ${ms.phaseColorMap.get(ms.highlightedPhase)};` : ''}"
 	title={ms.rejectionLabel(el) ?? undefined}>
 	<div class="node-header">
@@ -56,28 +74,6 @@
 	{/if}
 	{#if el.is_collapsed && el.current_inscription && el.current_inscription !== el.inscription}
 		<span class="collapsed-hint">now: {el.current_inscription}</span>
-	{/if}
-	{#if el.memo_previews?.length}
-		<div class="memo-tooltip">
-			{#each el.memo_previews.slice(0, 4) as mp}
-				<div class="memo-tip-entry">
-					<div class="memo-tip-header">
-						<span class="memo-tip-provenance" class:tip-ai={mp.isAi}>{mp.isAi ? 'AI' : 'R'}</span>
-						<span class="memo-tip-label">{mp.label}</span>
-						{#if mp.status && mp.status !== 'active'}
-							<span class="memo-tip-status tip-status-{mp.status}">{mp.status}</span>
-						{/if}
-					</div>
-					{#if mp.content}<span class="memo-tip-content">{mp.content.slice(0, 150)}{mp.content.length > 150 ? '\u2026' : ''}</span>{/if}
-				</div>
-			{/each}
-			{#if el.memo_previews.length > 4}
-				<span class="memo-tip-more">+{el.memo_previews.length - 4} more</span>
-			{/if}
-			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<span class="memo-tip-open" onclick={(e) => { e.stopPropagation(); ms.showStack(el.naming_id); }}>open stack</span>
-		</div>
 	{/if}
 </div>
 
@@ -125,38 +121,6 @@
 		text-align: center; cursor: pointer; flex-shrink: 0; margin-left: auto;
 	}
 	.memo-badge:hover { background: rgba(245, 158, 11, 0.25); }
-	.memo-tooltip {
-		display: none; position: absolute; top: 100%; left: 0; margin-top: 4px;
-		min-width: 280px; max-width: 320px;
-		background: #1e2030; border: 1px solid #2a2d3a; border-radius: 6px;
-		padding: 0.5rem; z-index: 50; box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-	}
-	.map-node:hover > .memo-tooltip { display: block; }
-	.memo-tip-entry { padding: 0.25rem 0; border-bottom: 1px solid #161822; }
-	.memo-tip-entry:last-child { border-bottom: none; }
-	.memo-tip-header { display: flex; align-items: center; gap: 0.3rem; }
-	.memo-tip-provenance {
-		font-size: 0.55rem; font-weight: 700; text-transform: uppercase;
-		background: rgba(107, 114, 128, 0.2); color: #9ca3af;
-		padding: 0 0.2rem; border-radius: 2px; flex-shrink: 0;
-	}
-	.memo-tip-provenance.tip-ai { background: rgba(139, 156, 247, 0.15); color: #8b9cf7; }
-	.memo-tip-label { font-size: 0.7rem; color: #f59e0b; }
-	.memo-tip-status {
-		font-size: 0.55rem; font-weight: 600; text-transform: uppercase;
-		padding: 0 0.2rem; border-radius: 2px; flex-shrink: 0; margin-left: auto;
-	}
-	:global(.tip-status-presented) { background: rgba(139, 156, 247, 0.15); color: #8b9cf7; }
-	:global(.tip-status-discussed) { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
-	:global(.tip-status-acknowledged) { background: rgba(16, 185, 129, 0.15); color: #10b981; }
-	:global(.tip-status-dismissed) { background: rgba(107, 114, 128, 0.15); color: #6b7280; }
-	.memo-tip-content { font-size: 0.75rem; color: #a0a4b0; display: block; margin-top: 0.1rem; }
-	.memo-tip-more { font-size: 0.7rem; color: #6b7280; margin-top: 0.2rem; display: block; }
-	.memo-tip-open {
-		font-size: 0.68rem; color: #8b9cf7; cursor: pointer; display: block;
-		margin-top: 0.3rem; padding-top: 0.2rem; border-top: 1px solid #2a2d3a;
-	}
-	.memo-tip-open:hover { text-decoration: underline; }
 	.inline-rename { display: flex; gap: 0.3rem; align-items: center; }
 	.inline-rename input {
 		background: #0f1117; border: 1px solid #8b9cf7; border-radius: 4px;

@@ -36,6 +36,9 @@ export type ResizeDir = 'w' | 'e' | 's' | 'sw' | 'se';
 /** Mindestens so viel Panel bleibt immer im Container greifbar. */
 const KEEP_VISIBLE = 60;
 
+/** Abstand zum unteren Containerrand: dort liegt die untere Ziehleiste. */
+const EDGE = 8;
+
 function clamp(v: number, lo: number, hi: number): number {
 	return Math.max(lo, Math.min(hi, v));
 }
@@ -50,6 +53,8 @@ export function createFloatingPanel(opts: FloatingPanelOptions) {
 	let y = $state<number | null>(null);
 	let w = $state(opts.width);
 	let h = $state<number | null>(opts.height ?? null);
+	/** Platz von der Oberkante des Panels bis zum unteren Containerrand. */
+	let room = $state<number | null>(null);
 	let el: HTMLElement | null = null;
 	let hydrated = false;
 
@@ -83,7 +88,12 @@ export function createFloatingPanel(opts: FloatingPanelOptions) {
 		w = clamp(w, minW, Math.max(minW, Math.min(maxW, c.width - 8)));
 		if (h !== null) h = clamp(h, minH, Math.max(minH, c.height - 8));
 		x = clamp(x, KEEP_VISIBLE - w, Math.max(0, c.width - KEEP_VISIBLE));
-		y = clamp(y, 0, Math.max(0, c.height - 32));
+		// Seitlich darf das Panel hinausgeschoben werden, nach unten nicht: ragt es
+		// unten aus dem Container, ist die untere Ziehleiste nicht mehr zu fassen.
+		// Ein tiefer geschobenes Panel wird stattdessen niedriger angezeigt; die
+		// gezogene Höhe bleibt gespeichert und kehrt weiter oben zurück.
+		y = clamp(y, 0, Math.max(0, c.height - minH - EDGE));
+		room = Math.max(minH, c.height - y - EDGE);
 	}
 
 	function hydrate() {
@@ -187,7 +197,7 @@ export function createFloatingPanel(opts: FloatingPanelOptions) {
 				w = nw;
 			}
 			if (dir.includes('s')) {
-				h = clamp(box.h + dy, minH, Math.max(minH, c.height - box.y));
+				h = clamp(box.h + dy, minH, Math.max(minH, c.height - box.y - EDGE));
 			}
 		}
 		function onUp(ev: PointerEvent) {
@@ -225,12 +235,15 @@ export function createFloatingPanel(opts: FloatingPanelOptions) {
 		get style() {
 			// Vor der Hydration (SSR/erster Frame) die alte Anker-Position, damit das
 			// Panel nicht kurz in der Ecke aufblitzt.
-			if (x === null || y === null) {
+			if (x === null || y === null || room === null) {
 				const side = opts.anchor === 'top-left' ? 'left' : 'right';
 				return `${side}: ${offset}px; top: ${offset}px; width: ${w}px;` +
+					` max-height: calc(100% - ${offset + EDGE}px);` +
 					(h !== null ? ` height: ${h}px;` : '');
 			}
-			return `left: ${x}px; top: ${y}px; width: ${w}px;` + (h !== null ? ` height: ${h}px;` : '');
+			// Ohne gezogene Höhe so hoch wie der Inhalt, höchstens bis zum unteren Rand.
+			return `left: ${x}px; top: ${y}px; width: ${w}px; max-height: ${room}px;` +
+				(h !== null ? ` height: ${Math.min(h, room)}px;` : '');
 		},
 		get width() {
 			return w;

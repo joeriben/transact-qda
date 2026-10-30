@@ -17,10 +17,12 @@
 
 	// Eigene Ecke (links oben) statt der von der Halde besetzten rechten: das
 	// Angeklickte darf nicht hinter dem Vorrat liegen. Beweglich und ziehbar.
+	// Ohne feste Höhe: ein kurzer Stack bekommt ein kurzes Panel. Neuer
+	// Schlüssel, weil unter dem alten die frühere feste Höhe (420 px) gespeichert
+	// ist.
 	const panel = createFloatingPanel({
-		key: `${ms.mapId}:stack`,
+		key: `${ms.mapId}:stack-panel`,
 		width: 340,
-		height: 420,
 		anchor: 'top-left',
 		minWidth: 240,
 		minHeight: 160,
