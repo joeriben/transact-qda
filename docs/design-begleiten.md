@@ -51,3 +51,57 @@
 - **Erster Batchtest (Stufe 1, Embedding-Nachbarschaft):** Kill-Kriterium ausgelöst (4/14 ack). Verfassungslesart des Scheiterns: Die Hinweisform verstieß gegen Satz I — sie behauptete Identität („vermutlich dieselbe Beobachtung") statt Nachbarschaft zu zeigen; die del-Verdikte waren die Zurückweisung dieser Anmaßung. Die Schweige-Seite war zuverlässig (beide Schweige-Fälle als korrekt bestätigt) — verfassungskonform: Embedding taugt als Schweige-Gate und Kandidaten-Sieb, nie als Sprecher.
 - **Messlatte für den Freund des Materials:** Beim Bewerten produzierte die Forscherin selbst den nächsten Naming-Kandidaten aus einer Transkriptstelle, die indexikalische Referenz, Perspektivzuschreibung und einen impliziten Generationenkontrast in einem Zug trug. An dieser Sorte Stelle entscheidet sich, ob ein Hinweis „auf hohem Niveau scheitert" oder trivial ist.
 - **Erste Verdikt-Daten:** 16 menschliche Verdikte (2× Schweigen bestätigt, 4 ack, 8 del, 2 dismiss) liegen vor — der Anfang des Mediums aus Satz V.
+
+---
+
+## 4. Der Dialog an der Passage (Entwurf, 31.10.2026)
+
+*Quelle: Benjamin Jörissen, 31.10.2026, im Anschluss an eine Sichtung der SA-Praxis (lokal, nicht im Repo). Wortlaut:*
+
+> Was die Transkripte betrifft: KI sollte unterstützen, nicht selbst kodieren. ZB Markiere ich eine Passage und habe dazu eine Idee. KI könnte als Dialogpartner helfen, damit umzugehen.
+
+### Ableitung
+
+**Gegenstand ist die noch unfertige Formulierung von F an einer Passage**, bevor es eine Benennung gibt. Das ist die Präambel wörtlich genommen: unterstützen, was F artikulierend vollzieht. Geprüft wird die Idee am Material.
+
+**Was der Partner tut**
+
+- Er hält die Idee gegen den Wortlaut der Passage: wo die Passage sie trägt, wo sie sich sperrt, was sie darüber hinaus zeigt.
+- Er zeigt Nachbarschaft zu den eigenen Namings von F und deren Verankerungen. Das Retrieval dafür gibt es im Vergleich im Reader (`ai/coding-companion/`), der seit 30.10.2026 nur Namings von F heranzieht.
+- Er darf fragen, welche Art Benennung die Idee ist: Element der Situation, Begriff der Beteiligten, eigenes analytisches Konzept. Die Art setzt F. An ihr hängt, ob die Benennung auf die Situations-Map geht (`design-mother-map-and-coding-flow.md`, *Routing by Kind of Naming*).
+
+**Was er nicht tut**
+
+- Er schlägt keine Benennung vor und formuliert die Idee nicht für F aus (Satz I).
+- Er bringt nichts ein, was weder in der Passage noch in der Akte-Geschichte steht (Satz II).
+- Er schreibt nichts in den Datenraum (Satz IV).
+
+**Zusatz zu Satz III.** Schweigen als Default regelt ungefragtes Sprechen. Den Dialog eröffnet F; für ihn gilt die Rechenschaftspflicht je Antwort: warum das, an welcher Stelle. Kürze gehört zur Verankerung und steht als weiche Vorgabe im Prompt, nie als hartes Ausgabelimit. Ein ausführlicher Partner schreibt die Rahmen des Modells in F ein (§2).
+
+**Ausgang nur über einen Akt von F.** Der Gesprächsverlauf lebt außerhalb des Datenraums, nach dem Muster der Hinweise (eigene Tabelle, restlos entfernbar). Ins Material kommt etwas auf drei Wegen:
+
+1. benennen — die Idee wird Memo am neuen Naming;
+2. das Gespräch ganz oder in Teilen als Memo übernehmen (edit2memo);
+3. verwerfen.
+
+Die drei Abschlüsse sind Verdikte im Sinn von Satz V. Der Verlauf enthält Material und bleibt in der Datenbank der Installation, nie im Repo.
+
+**Material an den Modellanbieter.** Der Dialog schickt Passage, Idee und Verankerungen an den Anbieter. Das Eröffnen des Dialogs ist das ausdrückliche Wort von F für diese Passage, wie beim Vergleich im Reader.
+
+### Was es schon gibt
+
+| Vorhanden | Was es tut | Was der Dialog davon übernimmt |
+|---|---|---|
+| Vergleich im Reader (`coding-companion`) | eine Antwort zur markierten Passage, ohne Rückfrage, ohne Faden; die Idee geht nicht ein | Retrieval der eigenen Namings, Belegpflicht im Wortlaut |
+| Feld „Naming-Memo" beim Benennen | die Idee ist notierbar, niemand antwortet | wird Ausgang 1 |
+| Cowork | fragende Haltung, aber nur auf Maps und mit Werkzeugen, die Elemente vorschlagen | die Haltung, nicht die Werkzeuge |
+
+### Kleinster prüfbarer Schritt
+
+Im Reader nach dem Markieren ein Feld „Meine Idee" mit „Besprechen"; wenige Wechsel; Ausgang über die drei Akte. F probiert es an etwa zehn Passagen eines eigenen Projekts.
+
+**Kill-Kriterium:** Wenn die Antworten in mehr als der Hälfte der Fälle die Idee weder schärfen noch am Material prüfen, oder Gesichtspunkte einbringen, die nicht in der Passage stehen, wird der Dialog nicht weitergebaut.
+
+### Der KI-Lauf auf Transkripten
+
+Der Lauf markiert Transkripte selbst und setzt Cues. Aus der Routing-Regel folgt: Diese Cues gehen nicht per Voreinstellung auf die Situations-Map, weil ihre Art erst F setzt. Offen ist, ob der Lauf auf Transkripten weiter eigene Cues setzt oder nur das thematische Inhaltsverzeichnis (SNames) liefert.
