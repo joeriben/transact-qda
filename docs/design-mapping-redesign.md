@@ -5,12 +5,11 @@
 > Baubarkeit, Prämisse) und gegen die kanonischen Design-Docs geprüft. Terminal entscheidet der
 > Mensch: die Reihenfolge der Phasen ist umkehrbar, die Prinzipien nicht.
 
-> **Revision 2026-10-31:** Nicht jede Benennung im Reader fällt mehr in die Halde. Per
-> Voreinstellung landen Elemente der Situation und In-vivo-Begriffe der Beteiligten; eigene
-> analytische Konzepte bleiben im Reader, bis die Forscherin sie bewusst hebt. KI-Cues landen
-> erst, wenn die Forscherin ihre Art gesetzt hat. Ungeerdet (∅) mit angegebener Herkunft ist auf
-> der Situations-Map ein gültiger Endzustand. Begründung und offene Fragen:
-> `design-mother-map-and-coding-flow.md`, *Routing by Kind of Naming*.
+> **Revision 2026-10-31:** Die Halde ist Präsenz, keine Aufgabenliste. Das Ziel, jede Benennung
+> zu situieren oder abzulehnen, und der Offen-Zähler entfallen. Cues des KI-Laufs kommen erst in
+> die Halde, wenn die Forscherin an ihnen gehandelt hat. Ungeerdet (∅) ist kein Mangel.
+> Begründung: `design-mother-map-and-coding-flow.md`. Eine am selben Tag eingeführte
+> Weiterleitung nach „Art der Benennung" ist zurückgezogen; sie widersprach der Grundlegung.
 
 ## 0. Die eine Entscheidung
 
@@ -79,9 +78,8 @@ Eine primäre Situational Map. Coden einer Passage → Naming bekommt eine Appea
 3. **Drei-Schichten-Hierarchie.** Datenstruktur = ground truth · Liste = privilegierte, vollständige
    Repräsentation · Canvas/Map = bequeme, epistemisch untergeordnete Projektion. Beide Sichten auf
    denselben Pool.
-4. **Material↔Map-Fusion.** Benennen im Material *ist* ein Naming-Akt. Elemente der Situation und
-   In-vivo-Begriffe landen per Voreinstellung in der Situation, analytische Konzepte erst durch
-   bewusstes Heben (Revision 31.10.2026). Rücklink
+4. **Material↔Map-Fusion.** Benennen im Material *ist* ein Naming-Akt, der in der Situation landet
+   (Cues des KI-Laufs erst nach einem Akt der Forscherin, Revision 31.10.2026). Rücklink
    Knoten→Passage und Passage→Knoten ist ein Klick, kein Seitenwechsel-Bruch.
 5. **CCS ⊥ Grounding sichtbar.** Jeder Knoten trägt Designation (cue/char/spec), Provenienz (∅/📄/📝)
    und Situierungszustand sichtbar. „unresolved" ist ein erstklassiger Zustand mit Ort.
@@ -118,8 +116,7 @@ Kein Seitenwechsel zwischen „Lesen" und „Mappen". Eine Arbeitsfläche, drei 
 ```
 
 - **Material (links):** der Reader, angedockt. Passage markieren → benennen → der Cue fällt
-  **sichtbar** in die Halde der Canvas (📄 grounded) — seit 31.10.2026 nur Elemente der Situation
-  und In-vivo-Begriffe, s. o. Kein „auf welche Map?", kein Bruch.
+  **sichtbar** in die Halde der Canvas (📄 grounded). Kein „auf welche Map?", kein Bruch.
 - **Canvas (Mitte):** der *volle* Wurf — alle Cues gleichzeitig präsent. Situierte Knoten im Feld;
   offene (un-situierte) Cues in der **Halde** am Rand — präsent, aber gedämpft/gestrichelt, lose
   gestapelt. *Keine* versteckte Sidebar-Ablage: die messy map zeigt alles, das Situieren macht das
@@ -146,9 +143,7 @@ verankert und noch nicht situiert?* ist die tägliche Frage.
 
 Die fehlende Handlung, gebaut als *eine* Bewegung vom Material bis ins Feld:
 
-1. Im Reader Passage markieren → benennen → Art angeben. Ist es ein Element der Situation oder ein
-   In-vivo-Begriff, **erscheint der Cue sichtbar in der Halde** (📄); ein analytisches Konzept
-   bleibt im Reader (Revision 31.10.2026).
+1. Im Reader Passage markieren → benennen → **Cue erscheint sichtbar in der Halde** (📄).
 2. **Ziehen aus der Halde ins Feld = situieren.** On drop: Appearance bekommt x/y; der Cue verlässt
    die Halde; der Akt wird append-only in der Topologie-Historie protokolliert (Mensch-Akt, umkehrbar).
 3. **Zurücknehmen:** Knoten → „zurück in die Halde" = Situierung revidieren (auch protokolliert).

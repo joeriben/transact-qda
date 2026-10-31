@@ -38,12 +38,12 @@ Whether the document is an interview transcript, a photograph, a policy text, or
 
 |  | No memo | Has memo (📝) |
 |---|---|---|
-| **No document anchor** | ∅ Ungrounded | Ungrounded, origin stated in memo — valid on situational maps |
+| **No document anchor** | ∅ Ungrounded | Reflected but ungrounded — legitimate on situational maps |
 | **Has document anchor (📄)** | Grounded but unreflected | Fully accountable |
 
 - **📄 (empirical grounding)**: This naming has evidence in the material corpus. The corpus includes ALL material in the situation — primary data, discourse texts, theoretical references, policy documents. No primary/secondary distinction.
 - **📝 (analytical reflection)**: The researcher has documented their reasoning about this naming. This is the reflexive process, not a grounding mechanism.
-- **∅ (ungrounded)**: Legitimate on situational maps — prior knowledge, literature outside the corpus, absence, participants, other procedures (Clarke/Friese/Washburn 2018). Complete once its origin is stated. No AI actant flags these. Positions are the exception: they need document anchors. *(Revised 2026-10-31, see `design-mother-map-and-coding-flow.md`; previously: "should be resolved. The AI agent flags these.")*
+- **∅ (ungrounded)**: Legitimate on situational maps (Clarke/Friese/Washburn 2018). Its provenance is relational — participations and memos (Foundations §12–13). No AI actant flags these. Positions are the exception: they need document anchors. *(Revised 2026-10-31, see `design-mother-map-and-coding-flow.md`; previously: "should be resolved. The AI agent flags these.")*
 
 *Revised 2026-10-31:* The 📝-without-📄 case is the normal form of an element from prior knowledge: the memo states where it comes from. Incorporating the relevant material into the corpus remains possible and is the way to ground literature and discourse texts. Only on positional maps is 📝-without-📄 a gap. *(Previously: "methodologically problematic from an SA perspective".)*
 

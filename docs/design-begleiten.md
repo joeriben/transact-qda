@@ -68,7 +68,7 @@
 
 - Er hält die Idee gegen den Wortlaut der Passage: wo die Passage sie trägt, wo sie sich sperrt, was sie darüber hinaus zeigt.
 - Er zeigt Nachbarschaft zu den eigenen Namings von F und deren Verankerungen. Das Retrieval dafür gibt es im Vergleich im Reader (`ai/coding-companion/`), der seit 30.10.2026 nur Namings von F heranzieht.
-- Er darf fragen, welche Art Benennung die Idee ist: Element der Situation, Begriff der Beteiligten, eigenes analytisches Konzept. Die Art setzt F. An ihr hängt, ob die Benennung auf die Situations-Map geht (`design-mother-map-and-coding-flow.md`, *Routing by Kind of Naming*).
+- Er darf fragen, was die Idee an der Passage greift und was sie unbenannt lässt. Das ist die Frage der Grundlegung, was eine Benennung unzählbar macht (Foundations §12), hier an die noch unfertige Formulierung von F gerichtet.
 
 **Was er nicht tut**
 
@@ -104,4 +104,8 @@ Im Reader nach dem Markieren ein Feld „Meine Idee" mit „Besprechen"; wenige 
 
 ### Der KI-Lauf auf Transkripten
 
-Der Lauf markiert Transkripte selbst und setzt Cues. Aus der Routing-Regel folgt: Diese Cues gehen nicht per Voreinstellung auf die Situations-Map, weil ihre Art erst F setzt. Offen ist, ob der Lauf auf Transkripten weiter eigene Cues setzt oder nur das thematische Inhaltsverzeichnis (SNames) liefert.
+Der Lauf markiert Transkripte selbst und setzt positive Cues auf Passagen; mit Silences tut er nichts. Seine Cues kommen erst an den Rand der Situations-Map, wenn F an ihnen gehandelt hat (`design-mother-map-and-coding-flow.md`).
+
+Die Grundlegung gibt der eigenen Arbeit der KI einen anderen Gegenstand: was die Benennungen unbenannt lassen, und zwar die beobachteten im Material ebenso wie die eigenen von F (Foundations §12). Eine Silence bleibt Cue (`design-mapping-redesign.md` §4.7). Das ist genau die Höhe, auf der die KI schreiben darf; artikuliert wird die Silence dann von F als neues Naming. Verankert ist sie über die Participations zu den Namings, deren Muster sie hervorbringt. Das ist Satz II für das, was M *nicht* zeigt.
+
+Offen ist, ob die eigene Arbeit des Laufs an Transkripten dorthin wandert und ob der Cue-Teil dann bleibt. Die SName-Heuristik bleibt davon unberührt.
