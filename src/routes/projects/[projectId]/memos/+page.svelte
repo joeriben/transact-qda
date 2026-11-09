@@ -252,14 +252,18 @@
 			{#if showCreate}
 				<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 				<form class="create-form" onsubmit={e => { e.preventDefault(); createMemo(); }}
-					onkeydown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); closeCreate(); } }}>
+					onkeydown={(e) => {
+						if (e.key === 'Escape') { e.stopPropagation(); closeCreate(); }
+						// ⌘↵ legt an, aus Titel und Text (Testlauf 10).
+						else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); if (!creating) createMemo(); }
+					}}>
 					<div class="create-fields">
 						<input type="text" placeholder="Memo title" aria-label="Memo title" bind:value={newLabel} required use:focusSelect />
 						<textarea placeholder="Text (optional, you can also write it on the next page)" aria-label="Memo text"
 							rows="4" bind:value={newContent}></textarea>
 						{#if createError}<span class="create-error" role="alert">{createError}</span>{/if}
 					</div>
-					<button type="submit" class="btn-primary" disabled={creating || !newLabel.trim()}>Create</button>
+					<button type="submit" class="btn-primary" disabled={creating || !newLabel.trim()} title="Create (⌘↵)">Create</button>
 				</form>
 			{/if}
 		{/snippet}
@@ -341,7 +345,8 @@
 						<!-- Actions. ack/dismiss/promote/discuss gehören zum Lebenszyklus
 						     eines KI-Hinweises; an eigenen Memos bleibt „edit". -->
 						<div class="memo-actions">
-							<a href="/projects/{data.projectId}/memos/{memo.id}" class="btn-xs btn-edit">{memo.isAiAuthored ? 'open' : 'edit'}</a>
+							<a href="/projects/{data.projectId}/memos/{memo.id}" class="btn-xs btn-edit"
+								title={memo.isAiAuthored ? 'Cowork’s memos are not edited — judge it, or write a memo of your own' : undefined}>{memo.isAiAuthored ? 'open' : 'edit'}</a>
 							{#if memo.isAiAuthored}
 								{#if memo.status === 'active' || memo.status === 'presented' || memo.status === 'discussed'}
 									<button class="btn-xs" onclick={() => setStatus(memo.id, 'acknowledged')}>ack</button>
@@ -383,9 +388,16 @@
 						<div class="memo-card-meta">
 							<div class="quick-actions">
 								{#if memo.isAiAuthored}
+									<!-- Dieselben Urteile wie aufgeklappt (Testlauf 10: „promote" fehlte
+									     hier, obwohl der Hinweistext es für die Memo-Seite verspricht). -->
 									{#if memo.status === 'active' || memo.status === 'presented' || memo.status === 'discussed'}
 										<button class="btn-xs" onclick={() => setStatus(memo.id, 'acknowledged')}>ack</button>
 										<button class="btn-xs" onclick={() => setStatus(memo.id, 'dismissed')}>dismiss</button>
+										<button class="btn-xs btn-promote" onclick={() => setStatus(memo.id, 'promoted')}>promote</button>
+									{/if}
+									{#if memo.status === 'acknowledged'}
+										<button class="btn-xs" onclick={() => setStatus(memo.id, 'dismissed')}>dismiss</button>
+										<button class="btn-xs btn-promote" onclick={() => setStatus(memo.id, 'promoted')} title="Acknowledged is not taken in — promote takes it in">promote</button>
 									{/if}
 									{#if memo.status === 'dismissed'}
 										<button class="btn-xs" onclick={() => setStatus(memo.id, 'presented')}>restore</button>

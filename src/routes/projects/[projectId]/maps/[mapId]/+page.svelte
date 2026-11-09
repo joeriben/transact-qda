@@ -175,18 +175,32 @@
 	// Die Leiste oben (Snapshots, Akt-Dialog, Hinweise) weicht dem offenen
 	// Unplaced-Panel oben rechts aus, statt unter oder über ihm zu liegen
 	// (Testlauf 09.11.: Snapshot-Panel überlappte Unplaced).
+	// Auch das eingeklappte Panel zählt (Testlauf 10: das Snapshot-Panel lag
+	// über dem Unplaced-Knopf). Reicht der Platz daneben nicht, rückt die Leiste
+	// unter das Panel.
 	let overlayRight = $state(0);
+	let overlayLeft = $state(0);
+	let overlayTop = $state(0);
 	function measureOverlayRight() {
 		const el = canvasContainerEl;
 		if (!el) return;
 		const c = el.getBoundingClientRect();
-		const r = el.querySelector<HTMLElement>('.unplaced-panel:not(.collapsed)')?.getBoundingClientRect();
+		const r = el.querySelector<HTMLElement>('.unplaced-panel')?.getBoundingClientRect();
 		let right = 0;
-		if (r && r.width > 0 && r.top - c.top < 140 && (r.left + r.right) / 2 > c.left + c.width / 2) {
-			right = Math.max(0, c.right - r.left + 8);
-			if (c.width - right - 32 < 340) right = 0; // zu wenig Platz daneben: dann wie bisher mittig
+		let left = 0;
+		let top = 0;
+		if (r && r.width > 0 && r.top - c.top < 140) {
+			const onRight = (r.left + r.right) / 2 > c.left + c.width / 2;
+			const side = onRight ? Math.max(0, c.right - r.left + 8) : Math.max(0, r.right - c.left + 8);
+			if (c.width - side - 32 >= 340) {
+				if (onRight) right = side; else left = side;
+			} else {
+				top = Math.max(0, r.bottom - c.top + 8);
+			}
 		}
 		if (right !== overlayRight) overlayRight = right;
+		if (left !== overlayLeft) overlayLeft = left;
+		if (top !== overlayTop) overlayTop = top;
 	}
 	function maybeReframe() {
 		measureOverlayRight();
@@ -200,9 +214,19 @@
 		const el = canvasContainerEl;
 		if (!el) return;
 		let raf = 0;
+		let fallback: ReturnType<typeof setTimeout> | undefined;
+		// rAF ruht in einem verdeckten Fenster; dann misst der Zeitgeber nach.
 		const schedule = () => {
 			if (raf) return;
-			raf = requestAnimationFrame(() => { raf = 0; maybeReframe(); });
+			const run = () => {
+				if (!raf) return;
+				cancelAnimationFrame(raf);
+				clearTimeout(fallback);
+				raf = 0;
+				maybeReframe();
+			};
+			raf = requestAnimationFrame(run);
+			fallback = setTimeout(run, 120);
 		};
 		// Fenster oder Menüspalte ändern die Größe der Fläche (Testlauf 09.11.:
 		// nach dem Verkleinern nicht neu gerahmt, die Zoom-Leiste über einem
@@ -247,6 +271,7 @@
 			ro.disconnect();
 			mo.disconnect();
 			if (raf) cancelAnimationFrame(raf);
+			clearTimeout(fallback);
 			if (reframeRaf) cancelAnimationFrame(reframeRaf);
 		};
 	});
@@ -502,8 +527,7 @@
 		canvasCtxMenu = null;
 		ms.highlightedPhase = null;
 		if (ms.relatingFrom) ms.relatingFrom = null;
-		// Die KI-Memo-Karte schließt ohne Urteil (das Memo bleibt „presented").
-		ms.closeMemoPanel();
+		// Die KI-Memo-Karte bleibt stehen (schließen: × oder Escape).
 	}
 
 	// ─── Rauten ziehen ───
@@ -549,6 +573,12 @@
 	}
 
 	function ctxRename(id: string) {
+		// Ein Akt nach dem anderen: Solange der Dialog zum vorigen offen ist,
+		// öffnet kein zweites Umbenennen (Testlauf 10, Achsen der Positional Map).
+		if (ms.actTarget) {
+			ms.showAiNotification('Finish the open act first — save, skip memo or cancel.');
+			return;
+		}
 		const node = ms.findNode(id);
 		ms.editingId = id;
 		ms.editingValue = node?.inscription || '';
@@ -841,7 +871,7 @@
 		<div class="map-stage">
 		<!-- Hinweise und Formulare liegen ÜBER der Karte: sie schieben sie nicht
 		     nach unten (vorher rückte die Karte um 23–160 px). -->
-		<div class="map-overlays" bind:this={overlaysEl} style="--ov-right: {overlayRight}px;">
+		<div class="map-overlays" bind:this={overlaysEl} style="--ov-right: {overlayRight}px; --ov-left: {overlayLeft}px; --ov-top: {overlayTop}px;">
 			{#if showTopoPanel && viewMode === 'canvas'}
 				<TopoPanel
 					snapshots={topoSnapshots}
@@ -901,7 +931,9 @@
 							aria-label="Close this message" title="Close">×</button>
 					</div>
 				{:else}
-					<div class="map-notice" class:has-link={!!n.link || !!n.action} role="status">
+					<div class="map-notice" class:has-link={!!n.link || !!n.action} role="status"
+						onpointerenter={() => ms.holdNotice(n.id)} onpointerleave={() => ms.releaseNotice(n.id)}
+						onfocusin={() => ms.holdNotice(n.id)} onfocusout={() => ms.releaseNotice(n.id)}>
 						<span class="notice-text">{n.text}</span>
 						{#if n.link}<a class="notice-link" href={n.link.href}>{n.link.label}</a>{/if}
 						{#if n.action}
@@ -1227,8 +1259,10 @@
 	/* z 960: über der Cowork-Karte (950) — Meldungen, Akt-Abfrage und
 	   Relationsformular bleiben lesbar. */
 	.map-overlays {
-		/* Mittig in der Fläche links vom offenen Unplaced-Panel (--ov-right). */
-		position: absolute; top: 0.6rem; left: 1rem; right: calc(1rem + var(--ov-right, 0px));
+		/* Mittig in der Fläche neben dem Unplaced-Panel (--ov-right/--ov-left),
+		   oder darunter, wenn daneben kein Platz ist (--ov-top). */
+		position: absolute; top: calc(0.6rem + var(--ov-top, 0px));
+		left: calc(1rem + var(--ov-left, 0px)); right: calc(1rem + var(--ov-right, 0px));
 		margin-inline: auto; max-width: 560px;
 		z-index: 960;
 		display: flex; flex-direction: column; gap: 0.4rem;

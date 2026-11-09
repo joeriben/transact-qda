@@ -59,7 +59,7 @@ export async function buildProjectContext(projectId: string): Promise<string> {
 			   AND (
 			     EXISTS (SELECT 1 FROM appearances a WHERE a.naming_id = n.id
 			             AND a.mode IN ('entity','relation','silence'))
-			     OR EXISTS (SELECT 1 FROM researcher_namings rn WHERE rn.naming_id = n.id)
+			     OR EXISTS (SELECT 1 FROM researcher_namings rn WHERE rn.naming_id = n.id AND rn.user_id <> '00000000-0000-0000-0000-000000000000')
 			   )) as namings,
 			(SELECT COUNT(*) FROM memo_content mc
 			 JOIN namings n ON n.id = mc.naming_id

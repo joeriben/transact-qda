@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { query, queryOne, transaction } from '../index.js';
-import { createNaming, setAppearance, getOrCreateResearcherNaming } from './namings.js';
+import { createNaming, setAppearance, getOrCreateResearcherNaming, researcherMemoSql } from './namings.js';
 
 // The "grounding workspace" perspective is a project-level naming
 // that holds orphan in-vivo namings (not yet placed on a map) and
@@ -66,17 +66,8 @@ export async function getAnnotationCandidates(projectId: string) {
 		          WHERE ann.directed_from = n.id AND ann.valence = 'codes'
 		            AND EXISTS (SELECT 1 FROM namings ann_n WHERE ann_n.id = ann.naming_id AND ann_n.deleted_at IS NULL)
 		        ) as has_document_anchor,
-		        -- Has memo link? (mirrors getAllProjectNamings)
-		        EXISTS (
-		          SELECT 1 FROM participations mp
-		          JOIN namings pn ON pn.id = mp.id AND pn.deleted_at IS NULL
-		          JOIN memo_content mc ON mc.naming_id = CASE
-		            WHEN mp.naming_id = n.id THEN mp.participant_id
-		            ELSE mp.naming_id END
-		          JOIN namings mn ON mn.id = mc.naming_id AND mn.deleted_at IS NULL AND NOT (mn.created_by = '00000000-0000-0000-0000-000000000000' AND mc.status IS DISTINCT FROM 'promoted')
-		          -- KI-Memos verankern nichts, bis die Forscherin sie hereinholt (promote); ack ist ein Verdikt, kein Hereinholen (Satz IV)
-		          WHERE mp.naming_id = n.id OR mp.participant_id = n.id
-		        ) as has_memo_link,
+		        -- Memo zu diesem Naming oder mit Verweis auf es (researcherMemoSql, wie Liste und Map)
+		        ${researcherMemoSql('n.id')} as has_memo_link,
 		        -- Current designation (latest non-NULL in stack)
 		        (SELECT na.designation FROM naming_acts na
 		         WHERE na.naming_id = n.id AND na.designation IS NOT NULL

@@ -26,7 +26,7 @@ export const load: PageServerLoad = async ({ params }) => {
 				                             WHERE ms.naming_id = a.perspective_id
 				                               AND ms.perspective_id = a.perspective_id
 				                               AND ms.properties->>'role' = 'memo-system'))
-				     OR EXISTS (SELECT 1 FROM researcher_namings rn WHERE rn.naming_id = n.id)
+				     OR EXISTS (SELECT 1 FROM researcher_namings rn WHERE rn.naming_id = n.id AND rn.user_id <> '00000000-0000-0000-0000-000000000000')
 				   ))
 			SELECT
 				(SELECT COUNT(*) FROM document_content dc

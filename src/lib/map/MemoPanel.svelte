@@ -91,23 +91,9 @@
 		expanded = false;
 	});
 
-	// Klick daneben schließt — außer im Stack-Panel (dorthin führen die
-	// Naming-Chips der Karte) und in Menüs. Erst nach dem laufenden Ereignis
-	// angemeldet, sonst schlösse der Klick, der die Karte geöffnet hat, sie gleich.
-	$effect(() => {
-		if (!p) return;
-		const onDown = (e: PointerEvent) => {
-			const t = e.target as Element | null;
-			if (!t || cardEl?.contains(t)) return;
-			if (t.closest('.canvas-stack-panel, .context-menu, .canvas-context-menu')) return;
-			ms.closeMemoPanel();
-		};
-		const timer = setTimeout(() => window.addEventListener('pointerdown', onDown, true), 0);
-		return () => {
-			clearTimeout(timer);
-			window.removeEventListener('pointerdown', onDown, true);
-		};
-	});
+	// Die Karte bleibt stehen, bis man urteilt, sie schließt (×) oder Escape
+	// drückt — ein Klick daneben schloss sie, ehe man sie gelesen hatte
+	// (Testlauf 10).
 
 	const LIMIT = 280;
 	const content = $derived(p ? memoText(p.content) : '');

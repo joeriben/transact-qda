@@ -32,7 +32,15 @@
 				{/each}
 			</div>
 		{/if}
-		<form onsubmit={(e) => { e.preventDefault(); ms.createMapMemo(); }}>
+		<!-- ⌘↵ speichert aus jedem Feld, wie in den anderen Memo-Formularen (Testlauf 10). -->
+		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+		<form onsubmit={(e) => { e.preventDefault(); ms.createMapMemo(); }}
+			onkeydown={(e) => {
+				if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+					e.preventDefault();
+					if (ms.memoCreateTitle.trim() && !ms.memoCreateSaving) ms.createMapMemo();
+				}
+			}}>
 			<input
 				type="text"
 				class="mcf-input"
@@ -55,6 +63,7 @@
 					{ms.memoCreateSaving ? 'Saving…' : 'Create'}
 				</button>
 				<button type="button" class="btn-sm" onclick={() => ms.cancelMemoCreate()}>Cancel</button>
+				<span class="mcf-hint">⌘↵ saves</span>
 			</div>
 		</form>
 	</div>
@@ -107,7 +116,8 @@
 		font-family: inherit; resize: vertical; margin-bottom: 0.4rem;
 	}
 	.mcf-textarea:focus { outline: none; border-color: #8b9cf7; }
-	.mcf-actions { display: flex; gap: 0.4rem; }
+	.mcf-actions { display: flex; gap: 0.4rem; align-items: center; }
+	.mcf-hint { margin-left: auto; font-size: 0.7rem; color: #6b7280; }
 	.btn-primary {
 		background: #8b9cf7; color: #0f1117; border: none; border-radius: 6px;
 		padding: 0.4rem 0.75rem; font-size: 0.8rem; font-weight: 600; cursor: pointer;

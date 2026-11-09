@@ -182,6 +182,7 @@ function ownNamingSql(alias: string): string {
 	                    WHERE ai.naming_id = ${alias}.id AND ai.properties->>'aiPersona' IS NOT NULL)
 	         OR EXISTS (SELECT 1 FROM naming_acts fa
 	                    JOIN researcher_namings rn ON rn.naming_id = fa.by AND rn.project_id = ${alias}.project_id
+	                     AND rn.user_id <> '00000000-0000-0000-0000-000000000000'
 	                    WHERE fa.naming_id = ${alias}.id))`;
 }
 

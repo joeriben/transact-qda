@@ -834,7 +834,7 @@ export function createMapState(
 		await reload();
 		// Rückmeldung mit dem Weg zurück — abgedunkelt allein sagte es nichts (Testlauf 09.11.).
 		if (res && !currentlyWithdrawn) {
-			pushNotice(`“${findInscription(namingId)}” withdrawn — it stays in its stack.`, 'info', undefined, 9000,
+			pushNotice(`“${findInscription(namingId)}” withdrawn — it stays in its stack.`, 'info', undefined, 15000,
 				{ label: 'restore', run: () => { void toggleWithdraw(namingId, true); } });
 		}
 	}
@@ -858,6 +858,20 @@ export function createMapState(
 	function dismissNotice(id: number) {
 		clearNoticeTimer(id);
 		notices = notices.filter((n) => n.id !== id);
+	}
+
+	// Solange der Zeiger auf einem Hinweis liegt, läuft seine Zeit nicht ab;
+	// danach bleiben ihm noch einige Sekunden (Testlauf 10: „restore" war weg,
+	// bevor man klicken konnte).
+	function holdNotice(id: number) {
+		const n = notices.find((x) => x.id === id);
+		if (n?.kind === 'info') clearNoticeTimer(id);
+	}
+	function releaseNotice(id: number) {
+		const n = notices.find((x) => x.id === id);
+		if (n?.kind !== 'info') return;
+		clearNoticeTimer(id);
+		noticeTimers.set(id, setTimeout(() => dismissNotice(id), n.action || n.link ? 6000 : 2500));
 	}
 
 	function pushNotice(text: string, kind: Notice['kind'], link?: Notice['link'], duration = 4000, action?: Notice['action']): number {
@@ -1365,6 +1379,8 @@ export function createMapState(
 		 *  bleiben, bis sie geschlossen werden. */
 		get notices() { return notices; },
 		dismissNotice,
+		holdNotice,
+		releaseNotice,
 		get memoPanel() { return memoPanel; },
 		get memoPanelBusy() { return memoPanelBusy; },
 		get memoPanelThread() { return memoPanelThread; },

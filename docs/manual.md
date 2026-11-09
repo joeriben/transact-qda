@@ -298,6 +298,8 @@ Phases are the bridge between naming in documents and situational mapping. Dewey
 
 **Recursive forming a phase** is supported: a phase can itself be a member of another phase. This enables multi-level analytical organization without imposing a fixed hierarchy.
 
+**No sequence.** Phases are listed alphabetically, not in the order they were created. "Phase" is not meant as a step in a process but, in Benjamin Jörissen's words, as an "impliziter Reminder dass alle ENtitäen Superpositionen sind" (Session 29); an order of first, second, third phase would suggest the sequence the term is not meant to carry. To read phases in a sequence of your own, name them so (e.g. "1 Before the council decision").
+
 ### 5.6 Memos
 
 Memos are the **shared inquiry medium** of the analytical process. They capture observations, questions, tensions, and theoretical connections that span the research situation. transact-qda distinguishes kinds of memos:
@@ -323,6 +325,8 @@ Analytic and organization memos are entries of their own on the Memos page and d
 **Memo discussions** use the same infrastructure as cue discussions (Section 5.7): the researcher can engage the AI in dialogue about a memo's content. Discussion turns are stored like memos and linked to the parent memo. The AI can respond with analytical depth or revise the memo if the discussion warrants it.
 
 **Memos are NOT grounding.** They document reflexive reasoning — CCS movement, analytical process, theoretical connections. Only document anchors constitute empirical grounding. This distinction is epistemologically important: a memo about a pattern of silences is an analytical observation, not evidence.
+
+**The grounding filter in the naming list** therefore has two values for grounding and splits the second one by reflection: **Doc anchor** (grounded: a document anchor), and two kinds of *not grounded* — **Memo, no anchor** (reflected, not grounded) and **No anchor** (neither). A naming counts as having a memo when one of your memos is *on* it or *refers to* it: a memo in its stack (also in the stack of a naming merged into it), a memo on another naming that names it among the namings you had in mind, or a memo from the Memos page linked to it. Cowork's memos count only once you have promoted them; an acknowledgement is a verdict, not taking it in. The memo symbol on a map card follows the same rule.
 
 ### 5.7 Cowork: the AI on maps
 

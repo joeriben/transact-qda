@@ -4,6 +4,20 @@
 import { query, queryOne, transaction } from '../index.js';
 import type { CollapseMode } from '$lib/shared/types/index.js';
 import { createMemo } from './memos.js';
+import { getOrCreateAiNaming } from './ai.js';
+
+/** Der Plattform-Nutzer, unter dem KI-Pfade schreiben. */
+export const AI_SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000000';
+
+/**
+ * Ist dieses Naming ein Forschenden-Naming (kein KI-Akteur)? Ältere Projekte
+ * tragen noch ein Forscher-Naming „AI System“ des Plattform-Nutzers; seine
+ * Akte sind KI-Akte und zählen nicht als die der Forschenden.
+ */
+export function isResearcherNamingSql(namingIdExpr: string): string {
+	return `EXISTS (SELECT 1 FROM researcher_namings rq_ WHERE rq_.naming_id = ${namingIdExpr}
+	                  AND rq_.user_id <> '${AI_SYSTEM_USER_ID}')`;
+}
 
 /**
  * Der Merge-Akt (mergeNamings): Er setzt nichts und verweist nur auf das
@@ -23,12 +37,53 @@ export function mergedIntoSql(alias: string): string {
 	          ORDER BY mi_.seq DESC LIMIT 1)`;
 }
 
+/**
+ * Hat das Naming ein Memo der Forschenden? Dieselbe Regel für Naming-Liste
+ * (Filter „Memo, no anchor"), Map (Symbol am Knoten) und Dokumentansicht —
+ * vorher zählten Verweise aus Memo-Namings, aber nicht aus Notizen
+ * (Testlauf 09.11.). Es zählt ein Memo ZU dem Naming oder MIT VERWEIS auf es:
+ *  - eine Notiz in seinem Stack oder im Stack eines in es aufgenommenen Namings,
+ *  - eine Notiz an einem anderen Naming, die auf es verweist („namings I have in mind"),
+ *    auch wenn jenes inzwischen in ein drittes aufgenommen wurde,
+ *  - ein Memo der Memo-Seite, das mit ihm verknüpft ist; KI-Memos erst nach
+ *    promote (Satz IV: ack ist ein Verdikt, kein Hereinholen).
+ * Ein Memo erdet nicht (S08); es ist Reflexion — darum „Memo, no anchor".
+ */
+export function researcherMemoSql(id: string): string {
+	return `(EXISTS (SELECT 1 FROM naming_acts rm_na
+	                   JOIN researcher_namings rm_rn ON rm_rn.naming_id = rm_na.by AND rm_rn.user_id <> '${AI_SYSTEM_USER_ID}'
+	                  WHERE rm_na.naming_id = ${id} AND rm_na.memo_text IS NOT NULL AND btrim(rm_na.memo_text) <> '')
+	     OR ${id} IN (SELECT unnest(rm_na.linked_naming_ids) FROM naming_acts rm_na
+	                    JOIN researcher_namings rm_rn ON rm_rn.naming_id = rm_na.by AND rm_rn.user_id <> '${AI_SYSTEM_USER_ID}'
+	                    JOIN namings rm_on ON rm_on.id = rm_na.naming_id
+	                     AND (rm_on.deleted_at IS NULL OR ${mergedIntoSql('rm_on')} IS NOT NULL)
+	                   WHERE rm_na.memo_text IS NOT NULL AND btrim(rm_na.memo_text) <> '')
+	     OR EXISTS (SELECT 1 FROM naming_acts rm_mg
+	                  JOIN naming_acts rm_na ON rm_na.naming_id = ANY(rm_mg.linked_naming_ids)
+	                  JOIN researcher_namings rm_rn ON rm_rn.naming_id = rm_na.by AND rm_rn.user_id <> '${AI_SYSTEM_USER_ID}'
+	                 WHERE rm_mg.naming_id = ${id} AND ${mergeActSql('rm_mg')}
+	                   AND rm_na.memo_text IS NOT NULL AND btrim(rm_na.memo_text) <> '')
+	     OR EXISTS (SELECT 1 FROM participations rm_p
+	                  JOIN namings rm_pn ON rm_pn.id = rm_p.id AND rm_pn.deleted_at IS NULL
+	                  JOIN memo_content rm_mc ON rm_mc.naming_id = CASE WHEN rm_p.naming_id = ${id} THEN rm_p.participant_id ELSE rm_p.naming_id END
+	                  JOIN namings rm_mn ON rm_mn.id = rm_mc.naming_id AND rm_mn.deleted_at IS NULL
+	                   AND NOT (rm_mn.created_by = '${AI_SYSTEM_USER_ID}' AND rm_mc.status IS DISTINCT FROM 'promoted')
+	                 WHERE rm_p.naming_id = ${id} OR rm_p.participant_id = ${id}))`;
+}
+
 // ---- Researcher-naming: the user as naming in the data space ----
 
 export async function getOrCreateResearcherNaming(
 	projectId: string,
 	userId: string
 ): Promise<string> {
+	// Die KI ist kein Forschender: Ihr Akteur im Datenraum ist das KI-Naming
+	// des Projekts (Analysis-Agent). Legte Cowork das erste Memo eines
+	// Projekts an, entstand sonst ein Forscher-Naming „AI System“, das in der
+	// Naming-Liste als RESEARCHER stand und Akte als Forschende zeichnete
+	// (Testlauf 10).
+	if (userId === AI_SYSTEM_USER_ID) return getOrCreateAiNaming(projectId, 'platform');
+
 	// Check if researcher-naming already exists
 	const existing = await queryOne<{ naming_id: string }>(
 		`SELECT naming_id FROM researcher_namings WHERE user_id = $1 AND project_id = $2`,
@@ -138,11 +193,12 @@ export async function createNaming(
 	);
 	const naming = res!;
 
-	// Initial act: inscription + designation in one stack entry
+	// Initial act: inscription + designation in one stack entry. Die KI
+	// schreibt nur Cues.
 	await query(
 		`INSERT INTO naming_acts (naming_id, by, inscription, designation)
-		 VALUES ($1, $2, $3, 'characterization')`,
-		[naming.id, researcherNamingId, inscription]
+		 VALUES ($1, $2, $3, $4)`,
+		[naming.id, researcherNamingId, inscription, userId === AI_SYSTEM_USER_ID ? 'cue' : 'characterization']
 	);
 
 	return naming;
@@ -633,9 +689,13 @@ export async function getAggregatedNaming(namingId: string, projectId: string) {
 			role: 'source' | 'target';
 			valence: string | null;
 			is_withdrawn: boolean;
+			partner_is_silence: boolean;
 			map_appearances: { id: string; label: string; mode: string; withdrawn: boolean }[] | null;
 		}>(
 			`SELECT p.id as relation_id, pn.inscription as relation_inscription,
+			        -- Ist das Gegenüber eine Stille, ist die Participation ihr Muster,
+			        -- keine Relation (Testlauf 10).
+			        EXISTS (SELECT 1 FROM appearances sa WHERE sa.naming_id = partner.id AND sa.mode = 'silence') as partner_is_silence,
 			        partner.id as partner_id, partner.inscription as partner_inscription,
 			        (SELECT na.designation FROM naming_acts na
 			         WHERE na.naming_id = partner.id AND na.designation IS NOT NULL
@@ -777,26 +837,8 @@ export async function getAllProjectNamings(projectId: string) {
 			   EXISTS(SELECT 1 FROM appearances a
 			    WHERE a.directed_from = n.id
 			      AND a.valence IN ('codes', 'thematizes')) as has_document_anchor,
-			   -- Memo: ein Memo zu diesem Naming im Stack (Akt mit memo_text einer
-			   -- Forscherin) oder ein Memo-Naming, das auf es verweist.
-			   (EXISTS(SELECT 1 FROM naming_acts na
-			      JOIN researcher_namings rn ON rn.naming_id = na.by
-			      WHERE na.naming_id = n.id AND na.memo_text IS NOT NULL AND btrim(na.memo_text) <> '')
-			    -- … oder im Stack eines in dieses aufgenommenen Namings (Merge): Er
-			    -- steht unter dem Merge-Akt in seinem Stack (Testlauf 09.11.).
-			    OR EXISTS(SELECT 1 FROM naming_acts mg
-			      JOIN naming_acts na ON na.naming_id = ANY(mg.linked_naming_ids)
-			      JOIN researcher_namings rn ON rn.naming_id = na.by
-			      WHERE mg.naming_id = n.id AND ${mergeActSql('mg')}
-			        AND na.memo_text IS NOT NULL AND btrim(na.memo_text) <> '')
-			    OR EXISTS(SELECT 1 FROM participations mp
-			    JOIN namings pn ON pn.id = mp.id AND pn.deleted_at IS NULL
-			    JOIN memo_content mc ON mc.naming_id = CASE
-			      WHEN mp.naming_id = n.id THEN mp.participant_id
-			      ELSE mp.naming_id END
-			    JOIN namings mn ON mn.id = mc.naming_id AND mn.deleted_at IS NULL AND NOT (mn.created_by = '00000000-0000-0000-0000-000000000000' AND mc.status IS DISTINCT FROM 'promoted')
-			    -- KI-Memos verankern nichts, bis die Forscherin sie hereinholt (promote); ack ist ein Verdikt, kein Hereinholen (Satz IV)
-			    WHERE mp.naming_id = n.id OR mp.participant_id = n.id)) as has_memo_link,
+			   -- Memo zu diesem Naming oder mit Verweis auf es (researcherMemoSql)
+			   ${researcherMemoSql('n.id')} as has_memo_link,
 			   -- Mode from any appearance
 			   (SELECT a.mode FROM appearances a
 			    WHERE a.naming_id = n.id AND a.mode IN ('entity','relation','silence')
@@ -867,7 +909,7 @@ export async function getAllProjectNamings(projectId: string) {
 			                             WHERE ms.naming_id = a.perspective_id
 			                               AND ms.perspective_id = a.perspective_id
 			                               AND ms.properties->>'role' = 'memo-system'))
-			     OR EXISTS (SELECT 1 FROM researcher_namings rn WHERE rn.naming_id = n.id)
+			     OR ${isResearcherNamingSql('n.id')}
 			   )
 			 ORDER BY n.seq DESC`,
 			[projectId]
@@ -1036,7 +1078,7 @@ export async function mergeNamings(
 		const brought = await client.query(
 			`SELECT 1 FROM naming_acts na
 			  WHERE na.naming_id = $1 AND na.memo_text IS NOT NULL AND btrim(na.memo_text) <> ''
-			    AND EXISTS (SELECT 1 FROM researcher_namings rn WHERE rn.naming_id = na.by)
+			    AND ${isResearcherNamingSql('na.by')}
 			  LIMIT 1`,
 			[mergedId]
 		);

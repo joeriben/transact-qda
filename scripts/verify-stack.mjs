@@ -305,6 +305,29 @@ async function run() {
 			JSON.stringify({ status: r.status, loop: loop.c, relDeleted }));
 	}
 
+	// 7c. Stand das übrige Naming unplatziert und das aufgenommene platziert,
+	//     übernimmt es dessen Lage; das Platzieren steht in seinem Stack, und
+	//     der Stack des aufgenommenen zeigt dessen eigene Platzierung weiter.
+	{
+		const C1 = (await post(N, { action: 'create', inscription: 'Schulhof' })).body.id;
+		const C2 = await make('Hof');
+		await post(M, { action: 'updatePosition', namingId: C2, x: 120, y: -80 });
+		const r = await post(N, { action: 'merge', survivorId: C1, mergedId: C2 });
+		const pos = await one(
+			`SELECT properties->>'x' AS x, properties->>'y' AS y FROM appearances WHERE naming_id = $1 AND perspective_id = $2`,
+			[C1, mapId]
+		);
+		const situated = await one(
+			`SELECT count(*)::int AS c FROM situating_acts WHERE naming_id = $1 AND map_id = $2 AND act = 'situate'`,
+			[C1, mapId]
+		);
+		const stack = await post(N, { action: 'getStack', namingId: C1 });
+		const absorbedPlaced = (stack.body?.acts ?? []).some((a) => (a.absorbed ?? []).some((b) => b.kind === 'situate'));
+		record('Zusammenführen: unplatziertes übriges Naming übernimmt die Lage des aufgenommenen (Platzierungsakt), dessen Platzierung bleibt in seinem Stack sichtbar',
+			r.status < 300 && Number(pos?.x) === 120 && Number(pos?.y) === -80 && situated.c === 1 && absorbedPlaced,
+			JSON.stringify({ status: r.status, pos, situated: situated.c, absorbedPlaced }));
+	}
+
 	// 8. Anlegen in der Naming-Liste und in der Dokumentansicht: der Stack
 	//    beginnt mit der Inschrift als Cue, und das Naming steht unplatziert
 	//    auf der Situations-Map (S26: nicht willkürlich ausschließen).

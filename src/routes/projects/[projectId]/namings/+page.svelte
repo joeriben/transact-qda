@@ -379,11 +379,24 @@
 	let infoNotice = $state<string | null>(null);
 	let infoTimer: ReturnType<typeof setTimeout> | null = null;
 	let infoUndo = $state<{ label: string; run: () => void } | null>(null);
+	// Mit Rückgängig-Aktion bleibt die Meldung 15 s stehen, und solange der
+	// Zeiger auf ihr liegt, läuft keine Zeit ab (Testlauf 10: nach 5 s war
+	// „restore" weg).
+	function armInfoTimer(ms: number) {
+		if (infoTimer) clearTimeout(infoTimer);
+		infoTimer = setTimeout(() => { infoNotice = null; infoUndo = null; }, ms);
+	}
 	function showInfo(text: string, undo: { label: string; run: () => void } | null = null) {
 		infoNotice = text;
 		infoUndo = undo;
+		armInfoTimer(undo ? 15000 : 5000);
+	}
+	function holdInfo() {
 		if (infoTimer) clearTimeout(infoTimer);
-		infoTimer = setTimeout(() => { infoNotice = null; infoUndo = null; }, undo ? 9000 : 5000);
+		infoTimer = null;
+	}
+	function releaseInfo() {
+		if (infoNotice) armInfoTimer(infoUndo ? 6000 : 3000);
 	}
 	async function openExisting(id: string) {
 		actionError = null;
@@ -791,8 +804,8 @@
 			options: [
 				{ value: 'all', label: 'All' },
 				{ value: 'grounded', label: 'Doc anchor', icon: '/icons/text_snippet.svg', title: 'Grounded: anchored in a document passage' },
-				{ value: 'memo', label: 'Memo, no anchor', icon: '/icons/stylus_note.svg', title: 'Not grounded: has a memo, no document anchor' },
-				{ value: 'ungrounded', label: 'No anchor', icon: '/icons/question_mark.svg', title: 'Not grounded: no document anchor, no memo yet' }
+				{ value: 'memo', label: 'Memo, no anchor', icon: '/icons/stylus_note.svg', title: 'Not grounded, but reflected: a memo of yours is on it or refers to it (Cowork memos once promoted). No document anchor.' },
+				{ value: 'ungrounded', label: 'No anchor', icon: '/icons/question_mark.svg', title: 'Not grounded: no document anchor, and no memo on it or referring to it' }
 			],
 			onchange: (v: string) => filterGrounding = v as typeof filterGrounding
 		},
@@ -897,7 +910,7 @@
 				</div>
 			{/if}
 			{#if infoNotice}
-				<div class="action-info" role="status">
+				<div class="action-info" role="status" onpointerenter={holdInfo} onpointerleave={releaseInfo} onfocusin={holdInfo} onfocusout={releaseInfo}>
 					<span>{infoNotice}</span>
 					{#if infoUndo}
 						<!-- Die Rückgängig-Aktion vor dem Schließen festhalten: {@const}

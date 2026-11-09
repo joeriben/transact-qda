@@ -18,7 +18,7 @@ const ANALYTIC_MEMO_FILTER = `n.project_id = $1 AND n.deleted_at IS NULL
 // bei dem, in das es aufging.
 const NAMING_MEMO_FILTER = `n.project_id = $1 AND (n.deleted_at IS NULL OR ${mergedIntoSql('n')} IS NOT NULL)
 	AND na.memo_text IS NOT NULL AND btrim(na.memo_text) <> ''
-	AND EXISTS (SELECT 1 FROM researcher_namings rn WHERE rn.naming_id = na.by)`;
+	AND EXISTS (SELECT 1 FROM researcher_namings rn WHERE rn.naming_id = na.by AND rn.user_id <> '00000000-0000-0000-0000-000000000000')`;
 
 // Aktuelle Inschrift (letzter Inskriptions-Akt) eines Namings.
 function currentInscriptionSql(alias: string): string {

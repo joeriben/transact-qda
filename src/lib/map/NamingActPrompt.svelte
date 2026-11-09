@@ -20,7 +20,10 @@
 {#if ms.actTarget}
 	{@const actLabel = ms.findInscription(ms.actTarget)}
 	{@const allMapNamings = [...ms.elements, ...ms.relations].filter((e: any) => e.naming_id !== ms.actTarget)}
-	<div class="act-prompt-bar">
+	<!-- ⌘↵ übernimmt von überall im Dialog, auch aus der Liste der
+	     Namings (Testlauf 10). -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div class="act-prompt-bar" onkeydown={onKeydown}>
 		<div class="act-header">
 			{#if ms.actType === 'rename'}
 				Rename: <strong>{actLabel}</strong> → <strong>{ms.actNewValue}</strong>
@@ -53,7 +56,7 @@
 			</div>
 		{/if}
 		<textarea placeholder="What influenced this act? What changed in your understanding?" bind:value={ms.actMemo} rows="2"
-			aria-label="Memo on this act" use:focusSelect onkeydown={onKeydown}></textarea>
+			aria-label="Memo on this act" use:focusSelect></textarea>
 		<div class="act-links-toggle">
 			<!-- Gleicher Name offen und zu; den Zustand sagen Pfeil und aria-expanded. -->
 			<button class="btn-xs" onclick={() => ms.showActLinks = !ms.showActLinks} aria-expanded={ms.showActLinks}
@@ -79,6 +82,7 @@
 				title={ms.actMemo.trim() ? 'Ctrl/⌘+Enter' : ms.actType === 'relate' ? 'Write a memo first' : 'Write a memo first — or apply without one'}>{ms.actType === 'relate' ? 'Save memo' : 'Apply + memo'}</button>
 			<button class="btn-link" onclick={ms.skipAct} title={ms.actType === 'relate' ? 'Keep the relation without a memo (Esc)' : 'Apply without a memo'}>skip memo</button>
 			{#if ms.actType !== 'relate'}<button class="btn-link" onclick={ms.cancelAct} title="Discard this {ms.actType === 'rename' ? 'rename' : ms.actType === 'designate' ? 'designation' : 'change'} (Esc)">cancel</button>{/if}
+			<span class="act-hint">⌘↵ saves · Esc {ms.actType === 'relate' ? 'skips the memo' : 'cancels'}</span>
 		</div>
 	</div>
 {/if}
@@ -110,6 +114,7 @@
 		font-family: inherit;
 	}
 	.act-prompt-bar textarea:focus { outline: none; border-color: #8b9cf7; }
+	.act-hint { margin-left: auto; font-size: 0.7rem; color: #6b7280; white-space: nowrap; }
 	.act-links-toggle { margin-top: 0.35rem; }
 	.act-links-list {
 		display: flex; flex-direction: column; gap: 0.15rem;

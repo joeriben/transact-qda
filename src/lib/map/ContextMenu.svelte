@@ -187,16 +187,19 @@
 		border-bottom: 1px solid #2a2d3a; margin-bottom: 0.2rem;
 		overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 	}
-	/* Die aktuelle Designation: markiert, kein Knopf (nichts zu tun). */
-	.ctx-item.ctx-current { color: #e1e4e8; font-weight: 600; cursor: default; background: rgba(139, 156, 247, 0.08); }
-	.ctx-item.ctx-current:hover { background: rgba(139, 156, 247, 0.08); }
+	/* Die aktuelle Designation: nur Haken und Schrift, kein Hintergrund — der
+	   Hintergrund gehört dem Fokus (Testlauf 10: beides sah gleich aus). */
+	.ctx-item.ctx-current { color: #e1e4e8; font-weight: 600; cursor: default; background: none; }
+	.ctx-item.ctx-current:hover { background: none; }
 	.ctx-check { margin-left: auto; color: #8b9cf7; }
 	.ctx-item {
 		display: flex; align-items: center; gap: 0.4rem;
 		width: 100%; background: none; border: none; color: #c9cdd5;
 		padding: 0.35rem 0.75rem; font-size: 0.8rem; cursor: pointer; text-align: left;
 	}
-	.ctx-item:hover, .ctx-item:focus-visible { background: #2a2d3a; outline: none; }
+	.ctx-item:hover { background: #2a2d3a; outline: none; }
+	/* Fokus auch nach Rechtsklick sichtbar (:focus-visible griff da nicht). */
+	.ctx-item:focus { background: #2a2d3a; outline: 1px solid #8b9cf7; outline-offset: -1px; }
 	.ctx-key { margin-left: auto; font-size: 0.68rem; color: #6b7280; }
 	a.ctx-item { text-decoration: none; }
 	.ctx-separator { height: 1px; background: #2a2d3a; margin: 0.2rem 0; }

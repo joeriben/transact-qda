@@ -806,8 +806,8 @@ export function createCanvasPositions(
 			const names = removed.map((id) => ms.findInscription(id)).filter((l) => l && l !== '?');
 			parts.push(
 				names.length === removed.length
-					? `Withdrawn, as the placement no longer shows it: ${names.map((l) => `“${l}”`).join('; ')} (restorable).`
-					: `${removed.length === 1 ? 'A relation' : `${removed.length} relations`} from the earlier placement withdrawn (restorable).`
+					? `Withdrawn, as the placement no longer shows it: ${names.map((l) => `“${l}”`).join('; ')} — moving it back restores it.`
+					: `${removed.length === 1 ? 'A relation' : `${removed.length} relations`} from the earlier placement withdrawn — moving back restores ${removed.length === 1 ? 'it' : 'them'}.`
 			);
 		}
 		return parts.length > 0 ? parts.join(' ') : null;

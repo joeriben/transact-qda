@@ -3,7 +3,7 @@
 
 import { query, queryOne, transaction } from '../index.js';
 import type { MapType, DesignationStage } from '$lib/shared/types/index.js';
-import { getOrCreateResearcherNaming, mergeActSql, mergedIntoSql } from './namings.js';
+import { getOrCreateResearcherNaming, mergeActSql, mergedIntoSql, researcherMemoSql } from './namings.js';
 import { getAnnotationsByNaming } from './annotations.js';
 import { getSituatingActs } from './situating.js';
 
@@ -921,15 +921,19 @@ export async function getNamingStack(
 			                    WHERE l.id = ANY(na.linked_naming_ids))
 			        END AS from_memo,
 			        b.inscription AS by_inscription,
-			        EXISTS (SELECT 1 FROM researcher_namings rn WHERE rn.naming_id = na.by) AS by_researcher,
+			        EXISTS (SELECT 1 FROM researcher_namings rn WHERE rn.naming_id = na.by
+			                   AND rn.user_id <> '00000000-0000-0000-0000-000000000000') AS by_researcher,
 			        -- Verweise auf ein aufgenommenes Naming zeigen auf das, in das
-			        -- es aufgenommen wurde (nicht für den Merge-Akt selbst).
+			        -- es aufgenommen wurde (nicht für den Merge-Akt selbst) — unter dem
+			        -- Namen, den es damals trug, mit dem Hinweis auf den Merge
+			        -- (Testlauf 09.11.: „through relation Eigentümergesellschaft"
+			        -- für einen Akt, der „Immobilienfonds" galt).
 			        COALESCE((SELECT json_agg(DISTINCT jsonb_build_object('id', t.id, 'label', t.label))
 			                  FROM (SELECT l.id, ${namingLabelSql('l')} AS label
 			                          FROM namings l
 			                         WHERE l.id = ANY(na.linked_naming_ids) AND l.deleted_at IS NULL
 			                        UNION
-			                        SELECT sv.id, ${namingLabelSql('sv')} AS label
+			                        SELECT sv.id, ${namingLabelSql('l')} || ' (now merged into “' || ${namingLabelSql('sv')} || '”)' AS label
 			                          FROM namings l
 			                          JOIN namings sv ON sv.id = ${mergedIntoSql('l')}
 			                         WHERE l.id = ANY(na.linked_naming_ids) AND sv.id <> na.naming_id) t), '[]'::json) AS linked,
@@ -984,8 +988,15 @@ export async function getNamingStack(
 			[namingId]
 		));
 	const firstDesignationSeq = actRows.find((a) => !!a.designation)?.seq ?? null;
+	// Als Entität angelegt und erst später „als Relation" gezeigt
+	// (switchAppearanceMode schreibt dann einen Akt mit mode = 'relation'):
+	// Der Anlege-Akt war kein Ziehen einer Relation (Testlauf 09.11.: „drawn
+	// with a name" am Anlege-Akt eines solchen Namings).
+	// Eine gezogene Relation, die später als Entität und wieder als Relation
+	// erschien, hat zuerst einen Akt „entity" — ihr Anlege-Akt bleibt das Ziehen.
+	const becameRelationLater = actRows.find((a) => !!a.mode)?.mode === 'relation';
 	const relationBasis = (a: (typeof actRows)[number]): string | null => {
-		if (!isRelation || a.seq !== firstDesignationSeq) return null;
+		if (!isRelation || becameRelationLater || a.seq !== firstDesignationSeq) return null;
 		// Die Stufenregel gilt für die Forscherin; ein KI-Akt bleibt Cue, was
 		// er auch setzt (Testlauf 09.11.: „drawn without name or valence" an
 		// einer KI-Relation mit Namen und Valenz).
@@ -1277,27 +1288,8 @@ export async function getMapAppearances(mapId: string, projectId: string) {
 			         AND COALESCE(ann.properties->>'hidden', 'false') <> 'true'
 			     )
 			   ) as anchors_hidden,
-			   -- Memo: im Stack (Memo zu diesem Naming) oder ein verweisendes Memo-Naming
-			   EXISTS (
-			     SELECT 1 FROM naming_acts nam
-			     JOIN researcher_namings rnm ON rnm.naming_id = nam.by
-			     WHERE nam.naming_id = a.naming_id AND nam.memo_text IS NOT NULL AND btrim(nam.memo_text) <> ''
-			   ) OR EXISTS (
-			     -- … oder im Stack eines in dieses aufgenommenen Namings (Merge)
-			     SELECT 1 FROM naming_acts mg
-			     JOIN naming_acts nam ON nam.naming_id = ANY(mg.linked_naming_ids)
-			     JOIN researcher_namings rnm ON rnm.naming_id = nam.by
-			     WHERE mg.naming_id = a.naming_id AND ${mergeActSql('mg')}
-			       AND nam.memo_text IS NOT NULL AND btrim(nam.memo_text) <> ''
-			   ) OR EXISTS (
-			     SELECT 1 FROM participations mp
-			     JOIN memo_content mc ON mc.naming_id = CASE
-			       WHEN mp.naming_id = a.naming_id THEN mp.participant_id
-			       ELSE mp.naming_id END
-			     JOIN namings mn ON mn.id = mc.naming_id AND mn.deleted_at IS NULL AND NOT (mn.created_by = '00000000-0000-0000-0000-000000000000' AND mc.status IS DISTINCT FROM 'promoted')
-			     -- KI-Memos verankern nichts, bis die Forscherin sie hereinholt (promote); ack ist ein Verdikt, kein Hereinholen (Satz IV)
-			     WHERE mp.naming_id = a.naming_id OR mp.participant_id = a.naming_id
-			   ) as has_memo_link,
+			   -- Memo zu diesem Naming oder mit Verweis auf es (researcherMemoSql)
+			   ${researcherMemoSql('a.naming_id')} as has_memo_link,
 			   -- Memo previews (all memos incl. AI, for hover tooltips + badges)
 			   -- Memos im Stack dieses Namings (Akte mit memo_text einer Forscherin)
 			   -- und Memo-Namings, die auf es verweisen.
@@ -1327,8 +1319,38 @@ export async function getMapAppearances(mapId: string, projectId: string) {
 			        'status', 'active'
 			      ), nas.created_at
 			      FROM naming_acts nas
-			      JOIN researcher_namings rns ON rns.naming_id = nas.by
+			      JOIN researcher_namings rns ON rns.naming_id = nas.by AND rns.user_id <> '00000000-0000-0000-0000-000000000000'
 			      WHERE nas.naming_id = a.naming_id AND nas.memo_text IS NOT NULL AND btrim(nas.memo_text) <> ''
+			      -- Dieselbe Regel wie has_memo_link (researcherMemoSql): auch Notizen im
+			      -- Stack eines in dieses aufgenommenen Namings (Testlauf 09.11.: nach
+			      -- dem Merge kein Abzeichen) und Notizen an anderen Namings, die auf
+			      -- dieses verweisen.
+			      UNION ALL
+			      SELECT json_build_object(
+			        'label', 'from merged “' || nmg.inscription || '”',
+			        'content', nag.memo_text,
+			        'isAi', false,
+			        'status', 'active'
+			      ), nag.created_at
+			      FROM naming_acts mgs
+			      JOIN naming_acts nag ON nag.naming_id = ANY(mgs.linked_naming_ids)
+			      JOIN namings nmg ON nmg.id = nag.naming_id
+			      JOIN researcher_namings rng ON rng.naming_id = nag.by AND rng.user_id <> '00000000-0000-0000-0000-000000000000'
+			      WHERE mgs.naming_id = a.naming_id AND ${mergeActSql('mgs')}
+			        AND nag.memo_text IS NOT NULL AND btrim(nag.memo_text) <> ''
+			      UNION ALL
+			      SELECT json_build_object(
+			        'label', 'on “' || nro.inscription || '”',
+			        'content', nar.memo_text,
+			        'isAi', false,
+			        'status', 'active'
+			      ), nar.created_at
+			      FROM naming_acts nar
+			      JOIN namings nro ON nro.id = nar.naming_id
+			       AND (nro.deleted_at IS NULL OR ${mergedIntoSql('nro')} IS NOT NULL)
+			      JOIN researcher_namings rnr ON rnr.naming_id = nar.by AND rnr.user_id <> '00000000-0000-0000-0000-000000000000'
+			      WHERE a.naming_id = ANY(nar.linked_naming_ids) AND nar.naming_id <> a.naming_id
+			        AND nar.memo_text IS NOT NULL AND btrim(nar.memo_text) <> ''
 			     ) mx), '[]'::json
 			   ) as memo_previews,
 			   -- SW/A-Rolle: die Art der Erscheinung unter dieser Perspektive

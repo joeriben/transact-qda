@@ -39,6 +39,9 @@
 	const participations = $derived(data.participations);
 	const activeRelations = $derived(participations.filter((p: any) => !p.is_withdrawn).length);
 	const withdrawnRelations = $derived(participations.length - activeRelations);
+	// Eine Stille hat keine eigenen Relationen: ihre Participations SIND das
+	// Muster, aus dem sie folgt (Testlauf 10: sie standen als „relation" da).
+	const isSilencePattern = $derived((data.stack?.silencePattern ?? []).length > 0);
 
 	function isWithdrawnAppearance(props: Record<string, any> | null | undefined) {
 		return !!(props?.withdrawn || props?.aiWithdrawn);
@@ -237,7 +240,7 @@
 			<!-- Participations (Relations) -->
 			{#if participations.length > 0}
 				<section class="detail-section">
-					<h2>Relations ({activeRelations}{withdrawnRelations > 0 ? ` + ${withdrawnRelations} withdrawn` : ''})</h2>
+					<h2 title={isSilencePattern ? 'The silence participates in these namings without appearing: the pattern it follows from' : undefined}>{isSilencePattern ? 'Absent from the pattern of' : 'Relations'} ({activeRelations}{withdrawnRelations > 0 ? ` + ${withdrawnRelations} withdrawn` : ''})</h2>
 					{#each participations as part}
 						<div class="participation-entry" class:withdrawn={part.is_withdrawn}>
 							{#if part.partner_designation}
@@ -250,8 +253,8 @@
 							{#if part.valence}
 								<span class="part-valence">{part.valence}</span>
 							{/if}
-							<a class="part-label" href="/projects/{data.projectId}/namings/{part.relation_id}" title="Open this relation">
-								{part.relation_inscription && !part.relation_inscription.includes('↔') ? `via ${quoted(part.relation_inscription)}` : 'relation'}
+							<a class="part-label" href="/projects/{data.projectId}/namings/{part.relation_id}" title={isSilencePattern ? 'Open this participation' : 'Open this relation'}>
+								{part.relation_inscription && !part.relation_inscription.includes('↔') ? `via ${quoted(part.relation_inscription)}` : isSilencePattern ? 'participation' : part.partner_is_silence ? 'silence: absent from this pattern' : 'relation'}
 							</a>
 							{#if part.relation_designation}
 								<span class="part-designation" title="Designation of the relation" style="color: {designationColor(part.relation_designation)}">{part.relation_designation}</span>
