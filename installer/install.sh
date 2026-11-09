@@ -232,6 +232,10 @@ create_state_dirs() {
 }
 
 checkout_repo() {
+  # git läuft als App-Benutzer; das Arbeitsverzeichnis des Aufrufers (z. B.
+  # /root oder ein privates Home) darf er oft nicht lesen, und neuere git-
+  # Versionen brechen dann ab ("fatal: Invalid path …: Permission denied").
+  cd / || fail "cannot change to /"
   if [ -d "$INSTALL_DIR/.git" ]; then
     log "repository already present, updating checkout"
     runuser -u "$APP_USER" -- git -C "$INSTALL_DIR" fetch --all --tags
