@@ -4,7 +4,7 @@
 -->
 <script lang="ts">
 	import { getMapState } from './mapState.svelte.js';
-	import { SW_ROLES, SW_ROLE_DEFAULTS } from '$lib/shared/constants.js';
+	import { SW_ROLES, SW_ROLE_DEFAULTS, SW_ROLE_LABELS } from '$lib/shared/constants.js';
 	import type { SwRole } from '$lib/shared/types/index.js';
 	import { quoted } from '$lib/shared/namingLabel.js';
 	import { plural } from '$lib/shared/plural.js';
@@ -56,6 +56,7 @@
 	let draftInputRef = $state<HTMLInputElement | null>(null);
 	let draftExisting = $state<{ id: string; inscription: string } | null>(null);
 	let draftDebounce: ReturnType<typeof setTimeout> | undefined;
+	let lastAdded = $state<string | null>(null);
 	const draftOnMap = $derived.by(() => {
 		const q = norm(draftName);
 		if (!q) return null;
@@ -77,6 +78,7 @@
 
 	function cancelNaming() {
 		naming = false;
+		lastAdded = null;
 		draftName = '';
 		draftExisting = null;
 		clearTimeout(draftDebounce);
@@ -102,7 +104,13 @@
 		if (!name || adding) return;
 		if (draftOnMap) { const id = draftOnMap.id; cancelNaming(); revealOnMap(id); return; }
 		const done = await createNaming(name);
-		if (done) cancelNaming();
+		if (done) {
+			// Offen bleiben: mehrere Namings hintereinander benennen (Testlauf 09.11.).
+			lastAdded = name;
+			draftName = '';
+			draftExisting = null;
+			setTimeout(() => draftInputRef?.focus(), 0);
+		}
 	}
 
 	function onDraftKeydown(e: KeyboardEvent) {
@@ -418,7 +426,7 @@
 					<select class="sw-role-select" bind:value={newSwRole} onchange={onRoleChange}
 						aria-label="Type of the new formation" title="Type of the new formation">
 						{#each SW_ROLES as role}
-							<option value={role}>{role}</option>
+							<option value={role}>{SW_ROLE_LABELS[role] ?? role}</option>
 						{/each}
 					</select>
 				{:else if ms.mapType === 'positional'}
@@ -442,9 +450,10 @@
 					<label class="naming-pop-label" for="map-new-naming">New {newWhat}</label>
 					{#if ms.mapType === 'social-worlds'}
 						<div class="naming-pop-opts">
+							<span class="naming-pop-sub">Type</span>
 							<select class="sw-role-select" bind:value={newSwRole} aria-label="Type of the new formation">
 								{#each SW_ROLES as role}
-									<option value={role}>{role}</option>
+									<option value={role}>{SW_ROLE_LABELS[role] ?? role}</option>
 								{/each}
 							</select>
 						</div>
@@ -462,12 +471,14 @@
 						<button type="button" class="btn-primary" onclick={submitNaming} disabled={adding || !draftName.trim()}>
 							{adding ? 'Adding…' : draftOnMap ? 'Show' : 'Add'}
 						</button>
-						<button type="button" class="btn-sm" onclick={cancelNaming} disabled={adding}>Cancel</button>
+						<button type="button" class="btn-sm" onclick={cancelNaming} disabled={adding}>{lastAdded ? 'Done' : 'Cancel'}</button>
 					</div>
 					{#if draftOnMap}
 						<p class="naming-pop-note">{quoted(draftOnMap.label)} is already on this map.</p>
 					{:else if draftExisting}
 						<p class="naming-pop-note">{quoted(draftExisting.inscription)} exists in this project — the existing naming is placed here, no second one.</p>
+					{:else if lastAdded}
+						<p class="naming-pop-hint">Added {quoted(lastAdded)}{ms.isPrimary ? ' (in Unplaced)' : ''}. Name the next one, or Esc to close.</p>
 					{:else}
 						<p class="naming-pop-hint">Enter adds · Esc cancels{ms.isPrimary ? ' · it waits in Unplaced until you place it' : ''}</p>
 					{/if}
@@ -481,6 +492,7 @@
 							<button class="placement-item" class:active={activeIndex === i} role="option" aria-selected={activeIndex === i}
 								onmousedown={(e) => { e.preventDefault(); revealOnMap(m.id); }}
 								title="Already on this map — show it">
+								{#if m.mode === 'relation' || m.mode === 'silence'}<span class="placement-kind">{m.mode}</span>{/if}
 								<span class="placement-inscription" class:withdrawn={m.withdrawn}>{m.label}</span>
 								<span class="placement-badge" style="color: {ms.designationColor(m.designation)}; border-color: {ms.designationColor(m.designation)}">
 									{ms.designationLabel(m.designation)}
@@ -684,7 +696,12 @@
 	}
 	.naming-pop-label { display: block; font-size: 0.68rem; color: #8b8fa3; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.35rem; }
 	.naming-pop-row { display: flex; gap: 0.4rem; }
-	.naming-pop-opts { margin-bottom: 0.4rem; }
+	.naming-pop-opts { margin-bottom: 0.4rem; display: flex; align-items: center; gap: 0.4rem; }
+	.placement-kind {
+		flex-shrink: 0; font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.04em;
+		color: #8b8fa3; border: 1px solid #2a2d3a; border-radius: 3px; padding: 0 0.25rem;
+	}
+	.naming-pop-sub { font-size: 0.72rem; color: #8b8fa3; }
 	.naming-pop-row input {
 		flex: 1; min-width: 0; background: #161822; border: 1px solid #2a2d3a; border-radius: 6px;
 		padding: 0.35rem 0.55rem; color: #e1e4e8; font-size: 0.85rem;

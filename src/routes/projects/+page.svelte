@@ -3,6 +3,7 @@
   SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 <script lang="ts">
+	import { focusSelect } from '$lib/canvas/dom.js';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { quoted } from '$lib/shared/namingLabel.js';
 
@@ -260,6 +261,9 @@
 	);
 </script>
 
+<!-- Escape schließt das Formular, wo immer der Fokus gerade steht. -->
+<svelte:window onkeydown={(e) => { if (e.key === 'Escape' && showCreate) showCreate = false; }} />
+
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="projects-page">
@@ -293,8 +297,10 @@
 	{/if}
 
 	{#if showCreate}
-		<form class="create-form" onsubmit={e => { e.preventDefault(); createProject(); }}>
-			<input type="text" placeholder="Project name" bind:value={name} required />
+		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+		<form class="create-form" onsubmit={e => { e.preventDefault(); createProject(); }}
+			onkeydown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); showCreate = false; } }}>
+			<input type="text" placeholder="Project name" aria-label="Project name" bind:value={name} required use:focusSelect />
 			<textarea placeholder="Description (optional)" bind:value={description} rows="2"></textarea>
 			<button type="submit" class="btn-primary" disabled={creating}>Create</button>
 		</form>

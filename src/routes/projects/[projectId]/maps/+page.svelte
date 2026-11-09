@@ -3,6 +3,7 @@
   SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 <script lang="ts">
+	import { focusSelect } from '$lib/canvas/dom.js';
 	import { goto } from '$app/navigation';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import { formatDay } from '$lib/shared/dates.js';
@@ -60,6 +61,9 @@
 	}
 </script>
 
+<!-- Escape schließt das Formular, wo immer der Fokus gerade steht. -->
+<svelte:window onkeydown={(e) => { if (e.key === 'Escape' && showCreate) showCreate = false; }} />
+
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="maps-page" onclick={() => { ctxMenuId = null; }}>
@@ -71,8 +75,10 @@
 		{/snippet}
 		{#snippet afterHeader()}
 			{#if showCreate}
-				<form class="create-form" onsubmit={e => { e.preventDefault(); createMap(); }}>
-					<input type="text" placeholder="Map name" aria-label="Map name" bind:value={newLabel} required />
+				<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+				<form class="create-form" onsubmit={e => { e.preventDefault(); createMap(); }}
+					onkeydown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); showCreate = false; } }}>
+					<input type="text" placeholder="Map name" aria-label="Map name" bind:value={newLabel} required use:focusSelect />
 					<select bind:value={newType} aria-label="Map type">
 						<option value="situational">Situational Map</option>
 						<option value="social-worlds">Social Worlds / Arenas</option>

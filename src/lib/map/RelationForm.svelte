@@ -23,6 +23,20 @@
 		relDirected = true;
 	});
 
+	// Was das Anlegen designiert, steht vor dem Speichern da (Testlauf 09.11.:
+	// „die Zähler springen, ohne dass ich designiert habe"). Regel wie im
+	// Server (relateElements): Valenz allein ist strukturell und bleibt Cue,
+	// eine eigene Inschrift charakterisiert, Inschrift und Valenz spezifizieren;
+	// verbundene Cues steigen auf characterization.
+	const relDesignation = $derived(
+		relInscription.trim() && relValence.trim() ? 'specification' : relInscription.trim() ? 'characterization' : 'cue'
+	);
+	const liftedEnds = $derived(
+		[ms.relatingFrom, ms.relatingTo]
+			.filter((id): id is string => !!id && (ms.findNode(id)?.designation ?? 'cue') === 'cue')
+			.map((id) => `“${ms.findInscription(id)}”`)
+	);
+
 	async function submit() {
 		if (submitting) return;
 		submitting = true;
@@ -55,6 +69,12 @@
 				aria-label="directed — from {ms.findInscription(ms.relatingFrom)} to {ms.findInscription(ms.relatingTo)}" />
 			<span>directed</span>
 		</label>
+		<p class="rel-effect">
+			Saved as <strong>{relDesignation}</strong>{relDesignation === 'cue' ? ' — a name makes it a characterization, name and valence a specification' : ''}.
+			{#if liftedEnds.length > 0}
+				Relating lifts {liftedEnds.join(' and ')} from cue to characterization.
+			{/if}
+		</p>
 		<button type="submit" class="btn-sm-primary" disabled={submitting}>
 			{submitting ? 'Creating…' : 'Create relation'}
 		</button>
@@ -75,6 +95,8 @@
 		font-size: 0.9rem; color: #e1e4e8; margin-bottom: 0.5rem;
 	}
 	.arrow { color: #8b9cf7; }
+	.rel-effect { font-size: 0.75rem; color: #8b8fa3; margin: 0.1rem 0 0.5rem; line-height: 1.4; max-width: 34rem; }
+	.rel-effect strong { color: #c9cdd5; font-weight: 600; }
 	.field-label { font-size: 0.65rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; }
 	label { display: flex; flex-direction: column; gap: 0.1rem; margin-bottom: 0.4rem; }
 	label input[type="text"] {

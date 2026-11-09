@@ -1164,7 +1164,8 @@ export async function getMapAppearances(mapId: string, projectId: string) {
 			     JOIN memo_content mc ON mc.naming_id = CASE
 			       WHEN mp.naming_id = a.naming_id THEN mp.participant_id
 			       ELSE mp.naming_id END
-			     JOIN namings mn ON mn.id = mc.naming_id AND mn.deleted_at IS NULL
+			     JOIN namings mn ON mn.id = mc.naming_id AND mn.deleted_at IS NULL AND NOT (mn.created_by = '00000000-0000-0000-0000-000000000000' AND mc.status IN ('presented','discussed','dismissed'))
+			     -- unbewertete KI-Memos verankern nichts (Satz IV: Hinweise leben außerhalb des Datenraums)
 			     WHERE mp.naming_id = a.naming_id OR mp.participant_id = a.naming_id
 			   ) as has_memo_link,
 			   -- Memo previews (all memos incl. AI, for hover tooltips + badges)

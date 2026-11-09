@@ -46,14 +46,14 @@
 
 {#if asking}
 	<span class="te-ask" role="group" aria-label="Hide as technical error">
-		<span class="te-q">Hide this {what} everywhere as a technical error? Nothing is deleted.</span>
+		<span class="te-q">Hide this {what} and its links from every view, for good? It stays in the database; its stack records the act.</span>
 		<button class="btn-xs te-yes" onclick={hide} disabled={busy}>{busy ? '…' : 'hide'}</button>
 		<button class="btn-xs" onclick={() => { asking = false; error = ''; }} disabled={busy}>cancel</button>
 		{#if error}<span class="te-error" role="alert">{error}</span>{/if}
 	</span>
 {:else}
 	<button class="btn-xs te-btn" onclick={() => (asking = true)}
-		title="For entries a software error produced: hides it and its links everywhere, permanently. Nothing is deleted; the stack records it.">
+		title="For entries a software error produced: hides it and its links from every view, for good. Nothing is deleted from the database; its stack records the act.">
 		technical error
 	</button>
 {/if}

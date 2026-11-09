@@ -490,6 +490,8 @@ async function run() {
 		const get = await req('GET', '/api/settings/ai', A.cookie);
 		const body = await get.json().catch(() => ({}));
 		record('non-admin sees settings read-only', get.ok && body.canEdit === false, `status ${get.status}, canEdit ${body.canEdit}`);
+		const leaked = (body.providers ?? []).filter((p) => p.keyMasked && p.keyMasked !== 'configured');
+		record('non-admin sees no key fragments', get.ok && leaked.length === 0, `${leaked.length} provider(s) with a key fragment`);
 	}
 
 	// --- 8. Positive control: A on A's own resources -> 2xx -------------------

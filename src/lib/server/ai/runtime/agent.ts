@@ -577,9 +577,13 @@ export async function discussCue(
 
 	// Build discussion context
 	const namingRow = await query(
-		`SELECT n.inscription, a.mode, a.properties, a.directed_from, a.directed_to, a.valence
+		`SELECT n.inscription, a.mode, a.properties, a.valence,
+		        -- ungerichtete Relationen tragen ihre Endpunkte nur in den Participations
+		        COALESCE(a.directed_from, p.naming_id) AS directed_from,
+		        COALESCE(a.directed_to, p.participant_id) AS directed_to
 		 FROM namings n
 		 JOIN appearances a ON a.naming_id = n.id AND a.perspective_id = $2
+		 LEFT JOIN participations p ON p.id = n.id
 		 WHERE n.id = $1`,
 		[namingId, mapId]
 	);

@@ -316,6 +316,8 @@ Technically, analytic and organization memos are stored with their content in `m
 - **Promoted**: Elevated to a naming on a map — the memo's insight becomes a cue-designation entity. This is the transition from reflexive observation to analytical substance.
 - **Dismissed**: Archived. Can be restored to "presented" if later relevant.
 
+**Technical errors.** An entry that a software error produced (a broken memo, a stray naming) can be hidden with **technical error** — on the Memos page, on a memo's page and on a naming's page. It disappears from every view, together with its links, for good; there is no way back in the interface. Nothing is deleted from the database, and the act stands in the entry's stack. It is not meant for analytical decisions: to take a naming off a map or out of the analysis, withdraw it — withdrawing can be undone.
+
 **Memo discussions** use the same infrastructure as cue discussions (Section 5.7): the researcher can engage the AI in dialogue about a memo's content. Discussion turns are stored like memos and linked to the parent memo. The AI can respond with analytical depth or revise the memo if the discussion warrants it.
 
 **Memos are NOT grounding.** They document reflexive reasoning — CCS movement, analytical process, theoretical connections. Only document anchors constitute empirical grounding. This distinction is epistemologically important: a memo about a pattern of silences is an analytical observation, not evidence.

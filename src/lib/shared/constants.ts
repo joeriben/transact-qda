@@ -7,6 +7,14 @@ export const COLLAPSE_MODES = ['entity', 'relation', 'constellation', 'process',
 
 export const SW_ROLES = ['social-world', 'arena', 'discourse', 'organization'] as const;
 
+// Lesbare Namen der Formationstypen (die Werte oben sind gespeicherte Werte).
+export const SW_ROLE_LABELS: Record<string, string> = {
+	'social-world': 'Social world',
+	'arena': 'Arena',
+	'discourse': 'Discourse',
+	'organization': 'Organization',
+};
+
 // Visual styles per formation role on SW/A maps. BJ, Session 14: „Arenas are
 // gestrichelt, SW are dotted, ORGANIZATIONS are gestrichelt rectangulars,
 // discourses have solid lines, but transparent 50% (or grey)."

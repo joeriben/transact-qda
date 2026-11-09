@@ -124,7 +124,7 @@
 			{/if}
 			<div class="te-row">
 				<TechnicalErrorButton projectId={data.projectId} namingId={data.memo.id} what="memo"
-					ondone={() => goto(`/projects/${data.projectId}/memos`)} />
+					ondone={() => goto(`/projects/${data.projectId}/memos?hidden=memo`)} />
 			</div>
 		</div>
 	</div>

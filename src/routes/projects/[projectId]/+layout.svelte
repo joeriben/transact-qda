@@ -726,7 +726,7 @@
 		flex-direction: column;
 		gap: 0.2rem;
 		/* Lange Ergebnislisten ragen sonst unter den Bildschirmrand. */
-		max-height: 40vh;
+		max-height: min(40vh, 260px);
 		overflow-y: auto;
 	}
 	.cowork-stop {

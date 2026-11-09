@@ -337,10 +337,31 @@
 	// Meldung in der Seite statt Browser-Dialog; bleibt, bis man sie schließt
 	// oder die nächste Aktion gelingt.
 	let actionError = $state<string | null>(null);
+	// Bestätigung nach „technical error" auf der Detailseite (?hidden=naming).
+	let hiddenNotice = $state(false);
+	$effect(() => {
+		if (new URL(window.location.href).searchParams.get('hidden')) hiddenNotice = true;
+	});
 	function showActionError(res: any): boolean {
-		if (res?.error) { actionError = String(res.error); return true; }
+		if (res?.error) {
+			actionError = String(res.error);
+			// Schon verbunden: die vorhandene Relation ist einen Klick entfernt.
+			actionErrorOpen = res.alreadyRelated && typeof res.id === 'string' ? res.id : null;
+			return true;
+		}
 		actionError = null;
+		actionErrorOpen = null;
 		return false;
+	}
+	let actionErrorOpen = $state<string | null>(null);
+	async function openExisting(id: string) {
+		actionError = null;
+		actionErrorOpen = null;
+		markTouched(id);
+		if (stackId !== id) await showStack(id);
+		await tick();
+		const el = document.querySelector(`[data-naming-id="${id}"]`);
+		if (el) scrollIntoViewStable(el);
 	}
 
 	// ---- Create ----
@@ -422,9 +443,16 @@
 		if (!relateSource || !relateTarget) return;
 		const srcId = relateSource;
 		const tgtId = relateTarget;
-		const result = await apiAction('relate', { sourceId: srcId, targetId: tgtId });
+		const result = await apiAction('relate', {
+			sourceId: srcId,
+			targetId: tgtId,
+			...(relName.trim() ? { inscription: relName.trim() } : {}),
+			...(relValence.trim() ? { valence: relValence.trim() } : {}),
+			symmetric: !relDirected
+		});
 		relateSource = null;
 		relateTarget = null;
+		resetRelateFields();
 		if (!showActionError(result)) {
 			// Mark source and target so the user sees them flagged after the
 			// relation is created. (The new relation naming itself is not
@@ -439,6 +467,17 @@
 	function cancelRelate() {
 		relateSource = null;
 		relateTarget = null;
+		resetRelateFields();
+	}
+
+	// Wie auf der Karte: Name, Valenz, Richtung (Testlauf 09.11.).
+	let relName = $state('');
+	let relValence = $state('');
+	let relDirected = $state(true);
+	function resetRelateFields() {
+		relName = '';
+		relValence = '';
+		relDirected = true;
 	}
 
 	// ---- Act-prompt actions ----
@@ -499,6 +538,11 @@
 	}
 
 	// ---- Memo Status ----
+	// Satz IV: ein KI-Memo, das der Mensch noch nicht bewertet hat (oder
+	// verworfen hat), gehört nicht zu den Memos des Namings — wie im Map-Stack.
+	const isAiPending = (m: any) =>
+		m.isAiAuthored && (m.status === 'presented' || m.status === 'discussed' || m.status === 'dismissed');
+
 	async function setMemoStatus(memoId: string, status: string) {
 		await fetch(`/api/projects/${data.projectId}/memos/${memoId}/status`, {
 			method: 'PUT',
@@ -743,19 +787,39 @@
 			<FilterBar groups={filterGroups} toggles={filterToggles} bind:search={searchQuery} searchPlaceholder="Search..." />
 		{/snippet}
 		{#snippet afterHeader()}
+			{#if hiddenNotice}
+				<div class="hidden-notice" role="status">
+					<span>The naming is hidden as a technical error. Nothing was deleted; its stack records the act.</span>
+					<button class="btn-xs" onclick={() => (hiddenNotice = false)} aria-label="Dismiss message">×</button>
+				</div>
+			{/if}
 			{#if actionError}
 				<div class="action-error" role="alert">
 					<span>{actionError}</span>
-					<button class="btn-xs" onclick={() => (actionError = null)} aria-label="Dismiss message">×</button>
+					{#if actionErrorOpen}
+						{@const openId = actionErrorOpen}
+						<button class="btn-xs" onclick={() => openExisting(openId)}>Open that relation</button>
+					{/if}
+					<button class="btn-xs" onclick={() => { actionError = null; actionErrorOpen = null; }} aria-label="Dismiss message">×</button>
 				</div>
 			{/if}
 			<!-- Relate mode indicator -->
 			{#if relateSource}
 				<div class="relate-banner">
 					{#if relateTarget}
-						Relate: <strong>{labelOf(findNaming(relateSource))}</strong> → <strong>{labelOf(findNaming(relateTarget))}</strong>
-						<button class="btn-xs btn-confirm" onclick={confirmRelate}>ok</button>
-						<button class="btn-xs" onclick={cancelRelate}>cancel</button>
+						{@const relDesig = relName.trim() && relValence.trim() ? 'specification' : relName.trim() ? 'characterization' : 'cue'}
+						<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+						<form class="relate-form" onsubmit={(e) => { e.preventDefault(); confirmRelate(); }}
+							onkeydown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); cancelRelate(); } }}>
+							<span>Relate <strong>{labelOf(findNaming(relateSource))}</strong> {relDirected ? '→' : '↔'} <strong>{labelOf(findNaming(relateTarget))}</strong></span>
+							<!-- svelte-ignore a11y_autofocus -->
+							<input type="text" class="relate-input" placeholder="Valence (e.g. enables)" aria-label="Valence" bind:value={relValence} autofocus />
+							<input type="text" class="relate-input" placeholder="Name (optional)" aria-label="Name (optional)" bind:value={relName} />
+							<label class="relate-dir"><input type="checkbox" bind:checked={relDirected} /> directed</label>
+							<button type="submit" class="btn-xs btn-confirm">relate</button>
+							<button type="button" class="btn-xs" onclick={cancelRelate}>cancel</button>
+							<span class="relate-effect">Saved as {relDesig}{relDesig === 'cue' ? ' (a name makes it a characterization, name and valence a specification)' : ''}; related cues rise to characterization.</span>
+						</form>
 					{:else}
 						Relating: <strong>{labelOf(findNaming(relateSource))}</strong> — click another naming to connect
 						<button class="btn-xs" onclick={cancelRelate}>cancel</button>
@@ -855,6 +919,8 @@
 
 	{#snippet stackPanelFor(n: NamingRow, includeMemos: boolean)}
 		{#if stackId === n.naming_id && stackData}
+			{@const dataMemos = (stackData.memos ?? []).filter((m: any) => !isAiPending(m))}
+			{@const aiPendingMemos = (stackData.memos ?? []).filter(isAiPending)}
 			<div class="stack-panel">
 				<div class="stack-section">
 					<h4>Stack</h4>
@@ -868,14 +934,29 @@
 							module.invalidateAll();
 						}} />
 				</div>
-				{#if includeMemos && (stackData.memos?.length ?? 0) + (stackData.referringNotes?.length ?? 0) > 0}
+				{#if includeMemos && dataMemos.length + (stackData.referringNotes?.length ?? 0) > 0}
 					<div class="stack-section">
 						<!-- Memos in anderen Stacks und Memo-Namings, die auf dieses Naming
 						     verweisen (analytische Memos, ältere Memos); das Memo ZU diesem
 						     Naming steht im Stack. -->
 						<h4>Memos referring to this</h4>
 						<ReferringNotes notes={stackData.referringNotes ?? []} onopen={(id) => showStack(id)} />
-						{#each stackData.memos as memo}
+						{#each dataMemos as memo}
+							{@render memoEntry(memo)}
+						{/each}
+					</div>
+				{/if}
+				{#if includeMemos && aiPendingMemos.length > 0}
+					<div class="stack-section">
+						<!-- Satz IV: KI-Hinweise stehen außerhalb des Datenraums, bis der
+						     Mensch sie bewertet; deshalb nicht unter den Memos dieses Namings. -->
+						<h4>From Cowork, not yet judged</h4>
+						{#each aiPendingMemos as memo}
+							{@render memoEntry(memo)}
+						{/each}
+					</div>
+				{/if}
+				{#snippet memoEntry(memo: any)}
 							<div class="memo-entry" class:memo-dismissed={memo.status === 'dismissed'}>
 								<div class="memo-entry-header">
 									<span class="memo-author-badge" class:badge-ai={memo.isAiAuthored}>
@@ -906,9 +987,7 @@
 									<a class="btn-xs" href="/projects/{data.projectId}/memos/{memo.id}">edit</a>
 								</div>
 							</div>
-						{/each}
-					</div>
-				{/if}
+				{/snippet}
 				{#if (stackData.annotations ?? []).length > 0}
 					{@const annots = stackData.annotations ?? []}
 					<div class="stack-section">
@@ -1220,11 +1299,19 @@
 
 	/* Relate / merge banner — orange-pulse to break user attention when entering
 	   a mode that requires a second click. Suppressed under reduce-motion. */
+	/* Unten im Fenster, nicht oben in der Seite: wer weit unten „relate"
+	   anklickt, sah Hinweis und Bestätigung nicht (Testlauf 09.11.). */
 	.relate-banner {
-		position: sticky;
-		top: 0;
-		z-index: 10;
-		background: rgba(232, 165, 75, 0.12);
+		position: fixed;
+		bottom: 1rem;
+		left: 50%;
+		transform: translateX(-50%);
+		width: max-content;
+		max-width: min(760px, calc(100vw - 2rem));
+		flex-wrap: wrap;
+		z-index: 60;
+		background: #241d14;
+		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
 		border: 1px solid var(--warning);
 		border-left: 4px solid var(--warning);
 		border-radius: 8px;
@@ -1237,6 +1324,15 @@
 		gap: 0.5rem;
 		animation: banner-pulse 1.8s ease-in-out infinite;
 	}
+
+	.relate-form { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+	.relate-input {
+		background: #0f1117; border: 1px solid #2a2d3a; border-radius: 5px;
+		padding: 0.25rem 0.45rem; color: #e1e4e8; font-size: 0.8rem; font-family: inherit; width: 11rem;
+	}
+	.relate-input:focus { outline: none; border-color: #8b9cf7; }
+	.relate-dir { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.78rem; color: #8b8fa3; }
+	.relate-effect { flex-basis: 100%; font-size: 0.72rem; color: #8b8fa3; }
 
 	@keyframes banner-pulse {
 		0%, 100% { box-shadow: 0 0 0 0 rgba(232, 165, 75, 0.0); }
@@ -1460,9 +1556,19 @@
 	}
 
 	.empty { color: #6b7280; font-size: 0.9rem; }
+	.hidden-notice {
+		display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+		background: #1c1a12; border: 1px solid #b45309; border-radius: 6px;
+		padding: 0.5rem 0.75rem; margin-bottom: 0.75rem; color: #f5d08a; font-size: 0.85rem;
+	}
+	/* Unten im Fenster wie die Relate-Leiste: wer weit unten handelt, sah die
+	   Meldung oben in der Seite nicht. */
 	.action-error {
+		position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%); z-index: 61;
+		width: max-content; max-width: min(760px, calc(100vw - 2rem)); flex-wrap: wrap;
 		display: flex; align-items: center; justify-content: space-between; gap: 0.6rem;
-		margin: 0.4rem 0; padding: 0.45rem 0.7rem; border: 1px solid #7f1d1d; border-radius: 6px;
-		background: rgba(239, 68, 68, 0.08); color: #fca5a5; font-size: 0.82rem;
+		padding: 0.45rem 0.7rem; border: 1px solid #7f1d1d; border-radius: 6px;
+		background: #2a1416; color: #fca5a5; font-size: 0.82rem;
+		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
 	}
 </style>

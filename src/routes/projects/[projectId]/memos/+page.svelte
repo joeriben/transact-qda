@@ -3,6 +3,7 @@
   SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 <script lang="ts">
+	import { focusSelect } from '$lib/canvas/dom.js';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import TechnicalErrorButton from '$lib/components/TechnicalErrorButton.svelte';
 	import FilterBar, { type FilterGroup } from '$lib/components/FilterBar.svelte';
@@ -24,7 +25,20 @@
 	let filterAuthor = $state<'all' | Persona>('all');
 	let showCreate = $state(false);
 	let newLabel = $state('');
+	let newContent = $state('');
 	let creating = $state(false);
+	let createError = $state('');
+	// Bestätigung nach „technical error" (aus der Liste oder, über ?hidden=,
+	// von der Detailseite): ausgeblendet ist nicht gelöscht.
+	let hiddenNotice = $state<string | null>(null);
+	$effect(() => {
+		const what = new URL(window.location.href).searchParams.get('hidden');
+		if (what) hiddenNotice = what;
+	});
+	function closeCreate() {
+		showCreate = false;
+		createError = '';
+	}
 	let expandedId = $state<string | null>(null);
 
 	// Discussion
@@ -87,12 +101,15 @@
 		const res = await fetch(`/api/projects/${data.projectId}/memos`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ label: newLabel.trim() })
+			body: JSON.stringify({ label: newLabel.trim(), content: newContent.trim() })
 		});
 		if (res.ok) {
 			const memo = await res.json();
 			window.location.href = `/projects/${data.projectId}/memos/${memo.id}`;
+			return;
 		}
+		const body = await res.json().catch(() => ({}));
+		createError = body.error || `Memo not created (${res.status})`;
 		creating = false;
 	}
 
@@ -197,10 +214,13 @@
 	});
 </script>
 
+<!-- Escape schließt das Formular, wo immer der Fokus gerade steht. -->
+<svelte:window onkeydown={(e) => { if (e.key === 'Escape' && showCreate) closeCreate(); }} />
+
 <div class="memos-page">
 	<PageHeader title="Memos">
 		{#snippet actions()}
-			<button class="btn-primary" onclick={() => showCreate = !showCreate}>
+			<button class="btn-primary" onclick={() => (showCreate ? closeCreate() : (showCreate = true))}>
 				{showCreate ? 'Cancel' : 'New memo'}
 			</button>
 		{/snippet}
@@ -208,10 +228,23 @@
 			<FilterBar groups={filterGroups} />
 		{/snippet}
 		{#snippet afterHeader()}
+			{#if hiddenNotice}
+				<div class="hidden-notice" role="status">
+					<span>The {hiddenNotice} is hidden as a technical error. Nothing was deleted; its stack records the act.</span>
+					<button class="btn-xs" onclick={() => (hiddenNotice = null)} aria-label="Dismiss message">×</button>
+				</div>
+			{/if}
 			{#if showCreate}
-				<form class="create-form" onsubmit={e => { e.preventDefault(); createMemo(); }}>
-					<input type="text" placeholder="Memo title" bind:value={newLabel} required />
-					<button type="submit" class="btn-primary" disabled={creating}>Create</button>
+				<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+				<form class="create-form" onsubmit={e => { e.preventDefault(); createMemo(); }}
+					onkeydown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); closeCreate(); } }}>
+					<div class="create-fields">
+						<input type="text" placeholder="Memo title" aria-label="Memo title" bind:value={newLabel} required use:focusSelect />
+						<textarea placeholder="Text (optional, you can also write it on the next page)" aria-label="Memo text"
+							rows="4" bind:value={newContent}></textarea>
+						{#if createError}<span class="create-error" role="alert">{createError}</span>{/if}
+					</div>
+					<button type="submit" class="btn-primary" disabled={creating || !newLabel.trim()}>Create</button>
 				</form>
 			{/if}
 		{/snippet}
@@ -317,7 +350,8 @@
 								<!-- Altbestand: eigene Memos, die früher verworfen wurden -->
 								<button class="btn-xs" onclick={() => setStatus(memo.id, 'active')}>restore</button>
 							{/if}
-							<TechnicalErrorButton projectId={data.projectId} namingId={memo.id} what="memo" ondone={refreshMemos} />
+							<TechnicalErrorButton projectId={data.projectId} namingId={memo.id} what="memo"
+								ondone={async () => { hiddenNotice = 'memo'; await refreshMemos(); }} />
 						</div>
 					{:else}
 						<!-- Collapsed actions -->
@@ -415,7 +449,19 @@
 		flex: 1; background: #0f1117; border: 1px solid #2a2d3a; border-radius: 6px;
 		padding: 0.6rem 0.75rem; color: #e1e4e8; font-size: 0.9rem;
 	}
-	.create-form input:focus { outline: none; border-color: #8b9cf7; }
+	.create-form input:focus, .create-form textarea:focus { outline: none; border-color: #8b9cf7; }
+	.create-form { align-items: flex-start; }
+	.create-fields { flex: 1; display: flex; flex-direction: column; gap: 0.5rem; }
+	.create-form textarea {
+		background: #0f1117; border: 1px solid #2a2d3a; border-radius: 6px;
+		padding: 0.6rem 0.75rem; color: #e1e4e8; font-size: 0.9rem; font-family: inherit; resize: vertical;
+	}
+	.create-error { color: #ef4444; font-size: 0.8rem; }
+	.hidden-notice {
+		display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+		background: #1c1a12; border: 1px solid #b45309; border-radius: 6px;
+		padding: 0.5rem 0.75rem; margin-bottom: 1rem; color: #f5d08a; font-size: 0.85rem;
+	}
 
 	.empty { color: #6b7280; font-size: 0.9rem; padding: 2rem 0; text-align: center; }
 

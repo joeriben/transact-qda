@@ -10,6 +10,28 @@ import { getMapsByProject, getMapStructure, getMap, getCrossMapParticipations } 
 import { getMemosByProject } from '../../db/queries/memos.js';
 import { searchChunks } from '../coach-library.js';
 
+// Endpunkte einer Relation: gerichtet stehen sie an der Erscheinung
+// (directed_from/directed_to), ungerichtet nur in den Participations
+// (part_source_id/part_target_id aus getMapAppearances). Ohne diesen Rückgriff
+// sah die KI jede ungerichtete Relation als „? ↔ ?" und schloss daraus auf
+// Namings „ohne eine einzige Relation" (Testlauf 09.11.2026).
+function relationEnds(rel: any): [string | null, string | null] {
+	return [rel.directed_from || rel.part_source_id || null, rel.directed_to || rel.part_target_id || null];
+}
+
+// Namen aller möglichen Endpunkte auf der Map: Relationen können auch
+// Relationen oder Stillen verbinden, nicht nur Elemente.
+function endpointNames(structure: { elements: any[]; relations: any[]; silences: any[]; axes: any[] }): Map<string, string> {
+	const names = new Map<string, string>();
+	for (const a of [...structure.elements, ...structure.silences, ...structure.axes]) {
+		names.set(a.naming_id, a.inscription);
+	}
+	for (const r of structure.relations) {
+		names.set(r.naming_id, r.inscription || '(unnamed relation)');
+	}
+	return names;
+}
+
 // ── Project overview context ──────────────────────────────────────
 // Used by all personas: project name, element counts, maps summary.
 
@@ -165,10 +187,7 @@ export async function buildMapDetail(
 		parts.push(`MAP: "${map?.label || ''}" (${mapType})`);
 
 		// Build element inscription map for relation display
-		const elementMap = new Map<string, string>();
-		for (const el of structure.elements) {
-			elementMap.set(el.naming_id, el.inscription);
-		}
+		const elementMap = endpointNames(structure);
 
 		// Designation profile
 		if (structure.designationProfile.length > 0) {
@@ -292,8 +311,9 @@ export async function buildMapDetail(
 			parts.push(`\nRELATIONS: ${structure.relations.length} total`);
 			for (const rel of structure.relations.slice(0, maxRelations)) {
 				const label = rel.inscription ? `: "${rel.inscription}"` : '';
-				const srcName = elementMap.get(rel.directed_from) || '?';
-				const tgtName = elementMap.get(rel.directed_to) || '?';
+				const [srcId, tgtId] = relationEnds(rel);
+				const srcName = (srcId && elementMap.get(srcId)) || '?';
+				const tgtName = (tgtId && elementMap.get(tgtId)) || '?';
 				const symmetric = !rel.directed_from && !rel.directed_to;
 				const arrow = symmetric ? '↔' : '→';
 				const val = rel.valence ? ` [${rel.valence}]` : '';
@@ -349,8 +369,8 @@ export async function buildMapDetail(
 				.filter((r: any) => r.properties?.spatiallyDerived && !(r.properties?.withdrawn))
 				.map((r: any) => ({
 					type: (r.valence === 'contains' ? 'contains' : 'overlaps') as string,
-					a: elementMap.get(r.directed_from) || '?',
-					b: elementMap.get(r.directed_to) || '?',
+					a: elementMap.get(relationEnds(r)[0] ?? '') || '?',
+					b: elementMap.get(relationEnds(r)[1] ?? '') || '?',
 				}));
 			if (spatial.length > 0) {
 				parts.push('\nSPATIAL STRUCTURE:');
@@ -526,10 +546,7 @@ export async function buildStructuredMapContext(mapId: string, projectId: string
 	const map = await getMap(mapId, projectId);
 	const structure = await getMapStructure(mapId, projectId);
 
-	const elementMap = new Map<string, string>();
-	for (const el of structure.elements) {
-		elementMap.set(el.naming_id, el.inscription);
-	}
+	const elementMap = endpointNames(structure);
 
 	// Batch-fetch discussion summaries for AI-suggested cues
 	const allAppearances = [...structure.elements, ...structure.relations, ...structure.silences];
@@ -587,12 +604,12 @@ export async function buildStructuredMapContext(mapId: string, projectId: string
 		inscription: rel.inscription || '',
 		designation: rel.designation || 'cue',
 		source: {
-			id: rel.directed_from || '',
-			inscription: elementMap.get(rel.directed_from) || '?'
+			id: relationEnds(rel)[0] || '',
+			inscription: elementMap.get(relationEnds(rel)[0] ?? '') || '?'
 		},
 		target: {
-			id: rel.directed_to || '',
-			inscription: elementMap.get(rel.directed_to) || '?'
+			id: relationEnds(rel)[1] || '',
+			inscription: elementMap.get(relationEnds(rel)[1] ?? '') || '?'
 		},
 		valence: rel.valence,
 		symmetric: !rel.directed_from && !rel.directed_to,
@@ -651,8 +668,8 @@ export async function buildStructuredMapContext(mapId: string, projectId: string
 			.filter((r: any) => r.properties?.spatiallyDerived && !r.properties?.withdrawn)
 			.map((r: any) => ({
 				type: (r.valence === 'contains' ? 'contains' : 'overlaps') as 'contains' | 'overlaps',
-				formationA: r.directed_from || '',
-				formationB: r.directed_to || '',
+				formationA: relationEnds(r)[0] || '',
+				formationB: relationEnds(r)[1] || '',
 			}));
 		if (spatial.length > 0) {
 			spatialRelations = spatial;

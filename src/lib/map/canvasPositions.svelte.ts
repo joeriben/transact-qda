@@ -384,14 +384,14 @@ export function createCanvasPositions(
 	}
 
 	/** Freier Platz für einen Knoten nahe (cx, cy); auf der Positionskarte im Diagramm. */
-	function spotFor(node: any, cx: number, cy: number, occupied: Array<Pt & Box>): Pt {
+	function spotFor(node: any, cx: number, cy: number, occupied: Array<Pt & Box>, aspect = 1): Pt {
 		const box = boxOf(node);
 		const within = ms.mapType === 'positional' ? POS_INNER : undefined;
 		if (within) {
 			cx = clamp(cx, within.minX + box.width / 2, within.maxX - box.width / 2);
 			cy = clamp(cy, within.minY + box.height / 2, within.maxY - box.height / 2);
 		}
-		return findFreeSpot(cx, cy, box, occupied, within) ?? fallbackSpot(cx, cy, box, occupied, within);
+		return findFreeSpot(cx, cy, box, occupied, within, aspect) ?? fallbackSpot(cx, cy, box, occupied, within);
 	}
 
 	/** Freier Platz im sichtbaren Ausschnitt, nicht unter einem Panel; sonst wie spotFor. */
@@ -412,7 +412,12 @@ export function createCanvasPositions(
 		const inView = within
 			? findFreeSpot(clamp(c.x, within.minX, within.maxX), clamp(c.y, within.minY, within.maxY), box, occupied, within, aspect)
 			: null;
-		return inView ?? spotFor(node, c.x, c.y, occupied);
+		// Passt es nicht mehr in den Ausschnitt (große Formationen schon ab der
+		// dritten), dann daneben statt darunter: eine in die Breite gezogene
+		// Spirale. Der freie Ausschnitt ist neben den Seitenleisten oft höher als
+		// breit; sein Seitenverhältnis stapelte Formationen senkrecht (Testlauf
+		// 09.11.).
+		return inView ?? spotFor(node, c.x, c.y, occupied, Math.max(aspect, 2));
 	}
 
 	// Place every un-positioned non-relation node from `nodes` into `merged`,

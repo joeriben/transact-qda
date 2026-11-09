@@ -12,7 +12,7 @@
 	import { namingLabel } from '$lib/shared/namingLabel.js';
 	import { formatWhen } from '$lib/shared/dates.js';
 	import NamingMemoForm from '$lib/components/NamingMemoForm.svelte';
-	import { CLARKE_SW_QUESTIONS, CLARKE_ARENA_QUESTIONS, ANALYTICAL_DEEPENING } from '$lib/shared/constants.js';
+	import { CLARKE_SW_QUESTIONS, CLARKE_ARENA_QUESTIONS, ANALYTICAL_DEEPENING, SW_ROLE_LABELS } from '$lib/shared/constants.js';
 
 	let { mode, item }: { mode: 'floating' | 'inline'; item?: any } = $props();
 
@@ -124,6 +124,12 @@
 			</div>
 		{/if}
 		<div class={mode === 'floating' ? 'stack-body' : 'stack-body-inline'}>
+		{#if ms.stackHint}
+			<p class="stack-hint" role="status">
+				{ms.stackHint}
+				<button class="btn-link" onclick={() => ms.clearStackHint()} aria-label="Dismiss">×</button>
+			</p>
+		{/if}
 		<!-- Der Stack zeigt die Geschichte, die Liste lässt sie bearbeiten. Der
 		     Weg dorthin trägt den Rückweg auf diese Karte mit (shared/rueckweg.ts). -->
 		<a class="open-in-namings"
@@ -319,7 +325,7 @@
 				<div class="history-section analytical-questions">
 					<details>
 						<summary class="history-label">
-							Analytical Questions ({swRole})
+							Analytical Questions ({SW_ROLE_LABELS[swRole] ?? swRole})
 							{#if ms.stackData.memos?.length}
 								<span class="aq-depth">{ms.stackData.memos.length} memo{ms.stackData.memos.length !== 1 ? 's' : ''}</span>
 							{/if}
@@ -642,5 +648,10 @@
 	.btn-link {
 		background: none; border: none; color: #8b9cf7; cursor: pointer;
 		font-size: 0.8rem; text-decoration: underline;
+	}
+	.stack-hint {
+		margin: 0 0 0.5rem; padding: 0.35rem 0.5rem; border: 1px solid #38bdf8; border-radius: 5px;
+		background: rgba(56, 189, 248, 0.08); color: #c9cdd5; font-size: 0.75rem; line-height: 1.4;
+		display: flex; gap: 0.4rem; align-items: flex-start; justify-content: space-between;
 	}
 </style>

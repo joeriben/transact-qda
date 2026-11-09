@@ -812,7 +812,10 @@
 							aria-label="Close this message" title="Close">×</button>
 					</div>
 				{:else}
-					<div class="map-notice" role="status">{n.text}</div>
+					<div class="map-notice" class:has-link={!!n.link} role="status">
+						<span class="notice-text">{n.text}</span>
+						{#if n.link}<a class="notice-link" href={n.link.href}>{n.link.label}</a>{/if}
+					</div>
 				{/if}
 			{/each}
 		</div>
@@ -1196,7 +1199,7 @@
 		padding: 0.45rem 0.9rem; font-size: 0.8rem; color: #c9cdd5;
 		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 	}
-	.map-overlays .map-notice:not(.notice-error) { pointer-events: none; }
+	.map-overlays .map-notice:not(.notice-error):not(.has-link) { pointer-events: none; }
 	.map-notice.notice-error { border-color: #f87171; padding-right: 0.35rem; }
 	.notice-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 	.notice-link { color: #8b9cf7; font-size: 0.78rem; white-space: nowrap; }

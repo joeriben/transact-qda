@@ -287,7 +287,7 @@
 	<!-- Für Einträge, die ein Fehler der Software erzeugt hat. -->
 	<div class="te-footer">
 		<TechnicalErrorButton projectId={data.projectId} namingId={n.id} what="naming"
-			ondone={() => goto(`/projects/${data.projectId}/namings`)} />
+			ondone={() => goto(`/projects/${data.projectId}/namings?hidden=naming`)} />
 	</div>
 </div>
 

@@ -24,6 +24,9 @@ const isAdmin = (locals: App.Locals) => locals.user?.role === 'admin';
 // GET: current AI settings + provider list with key status
 export const GET: RequestHandler = async ({ locals }) => {
 	const settings = loadSettings();
+	// Auch Anfang und Ende eines Schlüssels sind Teil des Geheimnisses; wer die
+	// Einstellungen nicht ändern darf, erfährt nur, ob einer hinterlegt ist.
+	const admin = isAdmin(locals);
 	const providers = Object.entries(PROVIDERS).map(([id, def]) => {
 		const key = readApiKey(id as Provider);
 		return {
@@ -32,7 +35,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 			defaultModel: def.defaultModel,
 			needsKey: !!def.keyFile,
 			keyConfigured: !!key,
-			keyMasked: maskKey(key),
+			keyMasked: admin ? maskKey(key) : (key ? 'configured' : ''),
 			dsgvo: def.dsgvo,
 			region: def.region
 		};
@@ -45,7 +48,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 		language: settings.language || 'auto',
 		languages: SUPPORTED_LANGUAGES,
 		providers,
-		canEdit: isAdmin(locals)
+		canEdit: admin
 	});
 };
 

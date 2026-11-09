@@ -374,7 +374,7 @@
 							{#if p.needsKey}
 								<div class="key-status">
 									<span class:status-ok={p.keyConfigured} class:status-missing={!p.keyConfigured}>
-										{p.keyConfigured ? 'Key: ' + p.keyMasked : 'No key'}
+										{p.keyConfigured ? (canEdit ? 'Key: ' + p.keyMasked : 'Key configured') : 'No key'}
 									</span>
 								</div>
 							{:else}

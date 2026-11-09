@@ -501,8 +501,12 @@ export function createMapState(
 	// geladen ist) — nie steht für einen Moment der Stack des vorigen unter der
 	// neuen Zeile. Spät eintreffende Antworten für ein anderes Naming verfallen.
 	let stackRequest = 0;
+	// Ein Satz über dem Stack, warum er gerade aufging (z. B. „schon verbunden").
+	// Gilt nur für dieses Naming; ein anderer Stack räumt ihn ab.
+	let stackHint = $state<{ id: string; text: string } | null>(null);
 
 	async function loadStack(namingId: string) {
+		if (stackHint && stackHint.id !== namingId) stackHint = null;
 		stackId = namingId;
 		stackData = null;
 		const req = ++stackRequest;
@@ -708,7 +712,12 @@ export function createMapState(
 		const msg = responseError(res, fallback);
 		const existing = res.data?.alreadyRelated && typeof res.data.id === 'string' ? (res.data.id as string) : null;
 		if (existing && findNode(existing)) {
-			showError(msg);
+			// Der Stack der vorhandenen Relation öffnet sich; eine stehende
+			// Fehlermeldung verdeckte dann seinen Kopf (Testlauf 09.11.).
+			// Der Satz steht im Stack selbst; eine Meldung über der Karte
+			// verdeckte dessen Kopf. Das Formular stünde sonst davor.
+			cancelRelation();
+			stackHint = { id: existing, text: msg.replace(/ Open that relation to rename or re-designate it\.$/, ' This is that relation: rename or re-designate it here.') };
 			revealNaming(existing, { stack: true });
 		} else if (existing) {
 			showError(`${msg} That relation is not on this map.`, { href: namingsHref(existing), label: 'Open it in Namings' });
@@ -1059,7 +1068,15 @@ export function createMapState(
 				})
 			});
 			if (!res.ok) { showError('Memo not saved'); return; }
+			const created = await res.json().catch(() => null);
 			const linked = memoCreateLinkedIds;
+			// Ein Memo zur Karte oder ein freies hat auf der Karte keinen Platz
+			// (der Abschnitt „Map Memos" ist entfernt, BJ 09.11.); der Hinweis
+			// sagt, wo es steht.
+			if (created?.id && (linked.length === 0 || linked.includes(mapMeta.id))) {
+				pushNotice('Memo saved — map memos are on the Memos page.', 'info',
+					{ href: `/projects/${initialData.projectId}/memos/${created.id}`, label: 'Open it' }, 8000);
+			}
 			memoCreateOpen = false;
 			memoCreateTitle = '';
 			memoCreateContent = '';
@@ -1248,6 +1265,8 @@ export function createMapState(
 		get stackId() { return stackId; },
 		set stackId(v) { stackRequest++; stackId = v; },
 		get stackData() { return stackData; },
+		get stackHint() { return stackHint && stackHint.id === stackId ? stackHint.text : null; },
+		clearStackHint() { stackHint = null; },
 		set stackData(v) { stackData = v; },
 		/** Ein Stack ist angefordert, aber noch nicht da. */
 		get stackLoading() { return stackId !== null && stackData === null; },

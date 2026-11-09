@@ -115,10 +115,12 @@
 </script>
 
 {#if coach.isOpen}
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		class="coach-panel"
 		class:resizing
 		style="width: {panelWidth}px; height: {panelHeight}px;"
+		onkeydown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); coach.isOpen = false; } }}
 	>
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div class="resize-handle" onpointerdown={startResize}></div>
