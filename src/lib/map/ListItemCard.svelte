@@ -6,7 +6,7 @@
 	import { getMapState } from './mapState.svelte.js';
 	import { viewHref } from '$lib/shared/rueckweg.js';
 	import InlineRename from '$lib/canvas/InlineRename.svelte';
-	import { hasOwnInscription } from '$lib/shared/namingLabel.js';
+	import { hasOwnInscription, quoted } from '$lib/shared/namingLabel.js';
 	import { plural } from '$lib/shared/plural.js';
 	import { SW_ROLE_LABELS } from '$lib/shared/constants.js';
 	import { POS_AXIS_LEN } from './canvasPositions.svelte.js';
@@ -135,7 +135,7 @@
 		</div>
 		<div class="el-actions">
 			{#if !withdrawn}
-			<select value={item.designation || 'cue'} aria-label="Designation" onchange={e => ms.startDesignation(item.naming_id, (e.target as HTMLSelectElement).value)}>
+			<select value={item.designation || 'cue'} aria-label="Designation of {quoted(ms.findInscription(item.naming_id))}" onchange={e => ms.startDesignation(item.naming_id, (e.target as HTMLSelectElement).value)}>
 				<option value="cue">cue</option>
 				<option value="characterization">characterization</option>
 				<option value="specification">specification</option>
@@ -266,7 +266,7 @@
 		</div>
 		<div class="el-actions">
 			{#if !withdrawn}
-			<select value={item.designation || 'cue'} aria-label="Designation" onchange={e => ms.startDesignation(item.naming_id, (e.target as HTMLSelectElement).value)}>
+			<select value={item.designation || 'cue'} aria-label="Designation of {quoted(ms.findInscription(item.naming_id))}" onchange={e => ms.startDesignation(item.naming_id, (e.target as HTMLSelectElement).value)}>
 				<option value="cue">cue</option>
 				<option value="characterization">characterization</option>
 				<option value="specification">specification</option>

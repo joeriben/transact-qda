@@ -655,10 +655,10 @@
 		<div class="display-mode-group" style="{viewMode !== 'canvas' ? 'opacity: 0.3; pointer-events: none;' : ''}">
 			<button class="btn-mode" class:active={displayMode === 'entities'}
 				onclick={() => onsetdisplaymode('entities')}
-				title="Entities only (messy map)">Entities</button>
+				title="Show entities only, relations hidden — a view; nothing on the map changes">Entities</button>
 			<button class="btn-mode" class:active={displayMode === 'relations'}
 				onclick={() => onsetdisplaymode('relations')}
-				title="Relations only (relational map)">Relations</button>
+				title="Show relations only — a view; nothing on the map changes">Relations</button>
 			<button class="btn-mode" class:active={displayMode === 'full'}
 				onclick={() => onsetdisplaymode('full')}
 				title="Full view: entities + relations + connections">Full</button>

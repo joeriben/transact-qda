@@ -5,6 +5,7 @@
 <script lang="ts">
 	import { untrack, type Snippet } from 'svelte';
 	import { page } from '$app/stores';
+	import { invalidateAll } from '$app/navigation';
 	import CoachPanel from '$lib/coach/CoachPanel.svelte';
 	import Rueckweg from '$lib/components/Rueckweg.svelte';
 	import { createCoachState, setCoachState } from '$lib/coach/coachState.svelte.js';
@@ -17,6 +18,21 @@
 	const mapsByType = $derived(data.mapsByType as Record<string, { id: string; label: string; isPrimary?: boolean }[]>);
 	const documents = $derived(data.documents as { id: string; label: string }[]);
 	const pathname = $derived($page.url.pathname);
+
+	// Kehrt man nach einer Weile in diesen Tab zurück, holt er nach, was
+	// inzwischen in einem anderen Tab oder von einer Kollegin geschah
+	// (Testlauf 12: nach einem Merge stand hier noch das aufgenommene Naming).
+	// Eingaben auf der Seite bleiben stehen; neu geladen werden die Daten.
+	$effect(() => {
+		let hiddenAt = 0;
+		const onVisibility = () => {
+			if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
+			if (hiddenAt && Date.now() - hiddenAt > 3000) void invalidateAll();
+			hiddenAt = 0;
+		};
+		document.addEventListener('visibilitychange', onVisibility);
+		return () => document.removeEventListener('visibilitychange', onVisibility);
+	});
 
 	// Sidebar: einklappbar und in der Breite ziehbar, beides persistent. Sie ist
 	// Navigation, nicht Material — auf einem schmalen Bildschirm muss sie dem

@@ -85,6 +85,69 @@ export function labelThenNowSql(alias: string, ts: string): string {
 	           FROM (SELECT ${namingLabelAtSql(alias, ts)} AS at_, ${namingLabelSql(alias)} AS now_) x_)`;
 }
 
+/** Steht ein Naming zum Zeitpunkt `ts` als Relation oder als Entität? Aus den
+ *  Moduswechsel-Akten; ohne solche aus seiner heutigen Erscheinung. */
+function modeAtSql(alias: string, ts: string): string {
+	return `COALESCE(
+	  (SELECT ma_.mode FROM naming_acts ma_ WHERE ma_.naming_id = ${alias}.id
+	      AND ma_.mode IN ('entity', 'relation') AND ma_.created_at <= ${ts}
+	    ORDER BY ma_.seq DESC LIMIT 1),
+	  (SELECT CASE ma_.mode WHEN 'relation' THEN 'entity' ELSE 'relation' END FROM naming_acts ma_
+	    WHERE ma_.naming_id = ${alias}.id AND ma_.mode IN ('entity', 'relation') AND ma_.created_at > ${ts}
+	    ORDER BY ma_.seq ASC LIMIT 1),
+	  ${modeNowSql(alias)})`;
+}
+
+function modeNowSql(alias: string): string {
+	return `(CASE WHEN EXISTS (SELECT 1 FROM appearances mn_ WHERE mn_.naming_id = ${alias}.id AND mn_.mode = 'relation')
+	              THEN 'relation' ELSE 'entity' END)`;
+}
+
+/** Die Teile dazu als Zeile w_(mode_then, mode_now, then_, now_): Beschriftung
+ *  samt Enden, wenn es eine benannte Relation ist — einmal zum Zeitpunkt `ts`,
+ *  einmal heute. */
+function labelWithEndsPartsSql(alias: string, ts: string): string {
+	const endsAt = `(SELECT ' (' || ${inscriptionAtSql('sx_', ts)} || ' – ' || ${inscriptionAtSql('tx_', ts)} || ')'
+	                   FROM participations px_ JOIN namings sx_ ON sx_.id = px_.naming_id
+	                   JOIN namings tx_ ON tx_.id = px_.participant_id WHERE px_.id = ${alias}.id LIMIT 1)`;
+	const endsNow = `(SELECT ' (' || ${namingLabelSql('sy_')} || ' – ' || ${namingLabelSql('ty_')} || ')'
+	                    FROM participations py_ JOIN namings sy_ ON sy_.id = py_.naming_id
+	                    JOIN namings ty_ ON ty_.id = py_.participant_id WHERE py_.id = ${alias}.id LIMIT 1)`;
+	return `(SELECT v_.mode_then, v_.mode_now,
+	                 v_.label_then || CASE WHEN v_.mode_then = 'relation' AND v_.own_then THEN COALESCE(${endsAt}, '') ELSE '' END AS then_,
+	                 v_.label_now || CASE WHEN v_.mode_now = 'relation' AND v_.own_now THEN COALESCE(${endsNow}, '') ELSE '' END AS now_
+	            FROM (SELECT ${modeAtSql(alias, ts)} AS mode_then, ${modeNowSql(alias)} AS mode_now,
+	                         ${namingLabelAtSql(alias, ts)} AS label_then, ${namingLabelSql(alias)} AS label_now,
+	                         EXISTS (SELECT 1 FROM naming_acts oa_ WHERE oa_.naming_id = ${alias}.id AND oa_.created_at <= ${ts}
+	                                   AND NULLIF(btrim(oa_.inscription), '') IS NOT NULL)
+	                           OR (NULLIF(btrim(${alias}.inscription), '') IS NOT NULL
+	                               AND NOT EXISTS (SELECT 1 FROM naming_acts ob_ WHERE ob_.naming_id = ${alias}.id
+	                                                 AND NULLIF(btrim(ob_.inscription), '') IS NOT NULL)) AS own_then,
+	                         NULLIF(btrim(${alias}.inscription), '') IS NOT NULL AS own_now) v_)`;
+}
+
+/** Beschriftung samt Enden zum Zeitpunkt `ts`; weicht der heutige Stand ab
+ *  (Name, Enden oder Modus), steht er dahinter. */
+export function labelWithEndsThenNowSql(alias: string, ts: string): string {
+	return `(SELECT CASE
+	           -- Entstand das Naming erst danach, gibt es keinen damaligen Stand.
+	           WHEN ${alias}.created_at > ${ts} OR (w_.then_ = w_.now_ AND w_.mode_then = w_.mode_now) THEN w_.now_
+	           WHEN w_.mode_then <> w_.mode_now
+	             THEN w_.then_ || ' (now ' || CASE w_.mode_now WHEN 'relation' THEN 'a relation' ELSE 'an entity' END || ': “' || w_.now_ || '”)'
+	           ELSE w_.then_ || ' (now “' || w_.now_ || '”)'
+	         END
+	    FROM ${labelWithEndsPartsSql(alias, ts)} w_)`;
+}
+
+/** Dasselbe als JSON {then, now, mode_then, mode_now} — für Ansichten, die den
+ *  heutigen Stand selbst setzen und den damaligen nur bei Abweichung zeigen. */
+export function labelWithEndsThenNowPartsSql(alias: string, ts: string): string {
+	return `(SELECT json_build_object('then', CASE WHEN ${alias}.created_at > ${ts} THEN w_.now_ ELSE w_.then_ END, 'now', w_.now_,
+	                                  'mode_then', CASE WHEN ${alias}.created_at > ${ts} THEN w_.mode_now ELSE w_.mode_then END,
+	                                  'mode_now', w_.mode_now)
+	    FROM ${labelWithEndsPartsSql(alias, ts)} w_)`;
+}
+
 // ---- Primary Situational Map ----
 
 /**
@@ -1238,15 +1301,13 @@ export async function getNamingStack(
 				await query<{ id: string; label: string }>(
 					// Eine benannte Relation trägt ihre Enden mit, sonst stand im Muster
 					// nur „fordert Aufsicht" ohne die beiden, zwischen denen sie läuft.
-					`SELECT DISTINCT o.id,
-					        ${namingLabelSql('o')}
-					        || COALESCE((SELECT ' (' || sx.inscription || ' – ' || tx.inscription || ')'
-					                       FROM participations px
-					                       JOIN namings sx ON sx.id = px.naming_id
-					                       JOIN namings tx ON tx.id = px.participant_id
-					                      WHERE px.id = o.id AND NULLIF(btrim(o.inscription), '') IS NOT NULL
-					                      LIMIT 1), '') AS label
+					// Name, Modus und Enden wie zur Zeit der Stille; heißt oder steht es
+					// heute anders, folgt der heutige Stand (Testlauf 13: „Ruhezone
+					// (Lesesaal – Gruppenarbeitsraum)" war längst Entität, der Raum
+					// hieß „Gruppenraum").
+					`SELECT DISTINCT o.id, ${labelWithEndsThenNowSql('o', 'sn.created_at')} AS label
 					   FROM participations p
+					   CROSS JOIN (SELECT created_at FROM namings WHERE id = $1) sn
 					   JOIN namings pn ON pn.id = p.id AND pn.deleted_at IS NULL
 					   JOIN namings o ON o.id = CASE WHEN p.naming_id = $1 THEN p.participant_id ELSE p.naming_id END
 					    AND o.deleted_at IS NULL AND o.id <> $1

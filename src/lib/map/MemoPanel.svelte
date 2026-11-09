@@ -28,28 +28,41 @@
 	const BASE_BOTTOM = 54; // über der Zoom-Leiste
 	const GAP = 12;
 
-	// Neben oder über den Coach, wenn er dort liegt, wo die Karte stünde.
+	// Was die Karte nicht verdecken soll: den Coach und die offene Halde
+	// (Unplaced) — Testlauf 13: die Karte lag über der Halde.
+	const OBSTACLES = '.coach-panel, .unplaced-panel:not(.collapsed)';
+
+	// Neben oder über das, was dort liegt, wo die Karte stünde.
 	function place() {
 		const card = cardEl;
 		const stage = card?.offsetParent as HTMLElement | null;
 		if (!card || !stage) return;
-		const coach = document.querySelector<HTMLElement>('.coach-panel');
 		const s = stage.getBoundingClientRect();
 		const w = card.offsetWidth;
 		const h = card.offsetHeight;
-		if (!coach) { offset = null; return; }
-		const c = coach.getBoundingClientRect();
-		// Die Karte an ihrer Grundlage (Bildschirmkoordinaten)
-		const box = { left: s.right - BASE_RIGHT - w, right: s.right - BASE_RIGHT, top: s.bottom - BASE_BOTTOM - h, bottom: s.bottom - BASE_BOTTOM };
-		const overlaps = box.left < c.right && box.right > c.left && box.top < c.bottom && box.bottom > c.top;
-		if (!overlaps) { offset = null; return; }
-		// Links daneben, wenn dort Platz ist …
-		const rightBeside = s.right - c.left + GAP;
-		if (s.right - rightBeside - w >= s.left + GAP) { offset = { right: rightBeside, bottom: BASE_BOTTOM }; return; }
-		// … sonst darüber.
-		const bottomAbove = s.bottom - c.top + GAP;
-		if (s.bottom - bottomAbove - h >= s.top + GAP) { offset = { right: BASE_RIGHT, bottom: bottomAbove }; return; }
-		offset = null; // kein Platz: die Karte liegt über dem Coach
+		const obstacles = [...document.querySelectorAll<HTMLElement>(OBSTACLES)]
+			.map((el) => el.getBoundingClientRect())
+			.filter((r) => r.width > 0 && r.height > 0);
+		const boxAt = (o: { right: number; bottom: number }) => ({
+			left: s.right - o.right - w, right: s.right - o.right, top: s.bottom - o.bottom - h, bottom: s.bottom - o.bottom
+		});
+		const hits = (b: ReturnType<typeof boxAt>) =>
+			obstacles.filter((c) => b.left < c.right && b.right > c.left && b.top < c.bottom && b.bottom > c.top);
+		const fits = (b: ReturnType<typeof boxAt>) => b.left >= s.left + GAP && b.top >= s.top + GAP;
+		const base = { right: BASE_RIGHT, bottom: BASE_BOTTOM };
+		const inTheWay = hits(boxAt(base));
+		if (inTheWay.length === 0) { offset = null; return; }
+		// Links daneben, sonst darüber — je Hindernis, das im Weg liegt.
+		const candidates: Array<{ right: number; bottom: number }> = [];
+		for (const c of inTheWay) {
+			candidates.push({ right: s.right - c.left + GAP, bottom: BASE_BOTTOM });
+			candidates.push({ right: BASE_RIGHT, bottom: s.bottom - c.top + GAP });
+		}
+		for (const o of candidates) {
+			const b = boxAt(o);
+			if (fits(b) && hits(b).length === 0) { offset = o; return; }
+		}
+		offset = null; // kein Platz: die Karte liegt darüber
 	}
 
 	$effect(() => {
@@ -60,26 +73,32 @@
 			raf = requestAnimationFrame(() => { raf = 0; place(); });
 		};
 		schedule();
-		// Der Coach erscheint und verschwindet (eigenes Bauteil im Layout) und
-		// lässt sich in der Größe ziehen.
-		let coachEl: Element | null = null;
+		// Coach und Halde erscheinen, verschwinden, lassen sich ziehen und in
+		// der Größe ändern.
+		let watched: Element[] = [];
 		const ro = new ResizeObserver(schedule);
 		ro.observe(cardEl);
-		const watchCoach = () => {
-			const c = document.querySelector('.coach-panel');
-			if (c === coachEl) return;
-			if (coachEl) ro.unobserve(coachEl);
-			coachEl = c;
-			if (c) ro.observe(c);
+		const moved = new MutationObserver(schedule);
+		const watch = () => {
+			const now = [...document.querySelectorAll(OBSTACLES)];
+			if (now.length === watched.length && now.every((el, i) => el === watched[i])) return;
+			for (const el of watched) ro.unobserve(el);
+			moved.disconnect();
+			watched = now;
+			for (const el of now) {
+				ro.observe(el);
+				moved.observe(el, { attributes: true, attributeFilter: ['style', 'class'] });
+			}
 			schedule();
 		};
-		watchCoach();
-		const mo = new MutationObserver(watchCoach);
-		mo.observe(document.body, { childList: true, subtree: true });
+		watch();
+		const mo = new MutationObserver(watch);
+		mo.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
 		window.addEventListener('resize', schedule);
 		return () => {
 			if (raf) cancelAnimationFrame(raf);
 			ro.disconnect();
+			moved.disconnect();
 			mo.disconnect();
 			window.removeEventListener('resize', schedule);
 		};

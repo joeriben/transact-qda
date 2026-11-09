@@ -65,10 +65,13 @@
 	// Memo-Seite). Satz IV: ack ist ein Verdikt, promote holt es herein.
 	let judging = $state(false);
 	let judgeNote = $state<string | null>(null);
+	// Nach promote: der Weg zum neuen Naming (dort lässt es sich auch zurückziehen).
+	let judgeNamingId = $state<string | null>(null);
 	async function judge(status: 'acknowledged' | 'dismissed' | 'promoted' | 'presented') {
 		if (judging) return;
 		judging = true;
 		judgeNote = null;
+		judgeNamingId = null;
 		try {
 			const res = await fetch(`/api/projects/${data.projectId}/memos/${data.memo.id}/status`, {
 				method: 'PUT',
@@ -78,7 +81,8 @@
 			const body = await res.json().catch(() => ({}));
 			if (!res.ok) { judgeNote = body.error || `Not changed (${res.status})`; return; }
 			if (status === 'promoted') {
-				judgeNote = `${quoted(body.inscription || data.memo.label)} is now a naming of its own, unplaced on the situational map. The memo stays here.`;
+				judgeNote = `${quoted(body.inscription || data.memo.label)} is now a naming of your own, unplaced on the situational map. The memo stays here. Changed your mind? Withdraw the new naming — nothing is deleted.`;
+				judgeNamingId = typeof body.namingId === 'string' ? body.namingId : null;
 			}
 			await invalidateAll();
 		} finally {
@@ -187,8 +191,9 @@
 	{#if data.memo.is_ai}
 		<p class="ai-note">
 			{#if data.memo.status === 'promoted'}
-				Written by Cowork (AI) — promoted: you made it a naming of your own. The text stays Cowork's and is
-				not edited here; write a memo of your own to the new naming.
+				Written by Cowork (AI) — promoted: you made it a naming of your own (under Linked namings). The text
+				stays Cowork's and is not edited here; write a memo of your own to the new naming. To take the
+				promotion back, withdraw that naming — nothing is deleted.
 			{:else}
 				Written by Cowork (AI){data.memo.status ? ` — ${data.memo.status}` : ''}. It stays Cowork's text and is
 				not edited here: judge it, or write a memo of your own.
@@ -211,7 +216,8 @@
 				<button class="mk-btn mk-quiet" onclick={() => judge('presented')} disabled={judging}
 					title="Restore it as an open hint">restore</button>
 			{/if}
-			{#if judgeNote}<p class="mk-note" role="status">{judgeNote} <a href="/projects/{data.projectId}/namings">Naming list</a></p>{/if}
+			{#if judgeNote}<p class="mk-note" role="status">{judgeNote}
+				{#if judgeNamingId}<a href="/projects/{data.projectId}/namings/{judgeNamingId}">Open the new naming</a>{:else}<a href="/projects/{data.projectId}/namings">Naming list</a>{/if}</p>{/if}
 		</div>
 	{/if}
 	<div class="editor-container">

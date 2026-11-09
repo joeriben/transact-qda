@@ -94,7 +94,9 @@
 		background: rgba(22, 24, 34, 0.6);
 	}
 	.map-node.absent .node-label { color: #a0a4b0; font-style: italic; }
-	.map-node.ai-suggested { border-style: dashed; border-color: rgba(139, 156, 247, 0.5); background: rgba(139, 156, 247, 0.04); }
+	/* Getönt, aber deckend: Linien dahinter schienen durch die Karte und sahen
+	   aus, als liefen sie durch sie hindurch. */
+	.map-node.ai-suggested { border-style: dashed; border-color: rgba(139, 156, 247, 0.5); background: linear-gradient(rgba(139, 156, 247, 0.06), rgba(139, 156, 247, 0.06)), #161822; }
 	.map-node.ai-withdrawn { opacity: 0.3; border-color: rgba(139, 156, 247, 0.2); }
 	/* ai-eval: dein Urteil über den Cue. Durchstrich statt bloßer Blässe, damit es
 	   nicht mit 'withdrawn' (Absage an diese Karte) verwechselt wird. */

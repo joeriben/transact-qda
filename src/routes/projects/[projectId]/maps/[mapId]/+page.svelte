@@ -756,6 +756,20 @@
 		'ai:memo-revised': 'Cowork revised a memo.'
 	};
 
+	// Zurück in diesem Tab: die Karte holt nach, was anderswo geschah (siehe
+	// Projekt-Layout). Nicht mitten im Umbenennen oder in einem offenen Akt.
+	$effect(() => {
+		let hiddenAt = 0;
+		const onVisibility = () => {
+			if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
+			const away = hiddenAt ? Date.now() - hiddenAt : 0;
+			hiddenAt = 0;
+			if (away > 3000 && !ms.editingId && !ms.actTarget) void ms.reload().then(() => cp.layoutNewNodes());
+		};
+		document.addEventListener('visibilitychange', onVisibility);
+		return () => document.removeEventListener('visibilitychange', onVisibility);
+	});
+
 	$effect(() => {
 		const evtSource = new EventSource(`/api/projects/${data.projectId}/maps/${data.map.id}/events`);
 		evtSource.addEventListener('message', (e) => {

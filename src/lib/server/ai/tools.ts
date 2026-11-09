@@ -112,7 +112,7 @@ export const AI_TOOLS: ToolDef[] = [
 	{
 		name: 'create_phase',
 		description:
-			'Suggest a phase (thematic grouping) for elements on the map. Phases are sub-perspectives that organize related cues into characterizations.',
+			'Suggest a phase (thematic grouping) for elements on the map. A phase is a sub-perspective that groups related namings; the phase itself is a naming, while the namings in it keep their own designation.',
 		input_schema: {
 			type: 'object' as const,
 			properties: {

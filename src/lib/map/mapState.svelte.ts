@@ -789,7 +789,7 @@ export function createMapState(
 			cancelRelation();
 			stackHint = {
 				id: taken.naming_id,
-				text: `${quoted(s)} and ${quoted(t)} are already related in this direction. This is that relation: rename, re-designate or memo it here.`
+				text: `${quoted(s)} and ${quoted(t)} are already related${taken.directed_from && taken.directed_to ? ' in this direction' : ''}. This is that relation: rename, re-designate or memo it here.`
 			};
 			revealNaming(taken.naming_id, { stack: true });
 			return;
@@ -875,7 +875,10 @@ export function createMapState(
 	// bevor man klicken konnte).
 	function holdNotice(id: number) {
 		const n = notices.find((x) => x.id === id);
-		if (n?.kind === 'info') clearNoticeTimer(id);
+		if (n?.kind !== 'info') return;
+		// Anhalten, aber nicht unbegrenzt (erscheint er unter einem ruhenden Zeiger).
+		clearNoticeTimer(id);
+		noticeTimers.set(id, setTimeout(() => dismissNotice(id), 20000));
 	}
 	function releaseNotice(id: number) {
 		const n = notices.find((x) => x.id === id);
@@ -894,11 +897,15 @@ export function createMapState(
 			return same.id;
 		}
 		const n: Notice = { id: ++noticeSeq, text, kind, ...(link ? { link } : {}), ...(action ? { action } : {}) };
-		// Zugleich höchstens drei Fehlermeldungen und ein Hinweis.
+		// Zugleich höchstens drei Fehlermeldungen, ein Hinweis und ein Hinweis
+		// mit Rückweg („restore"). Den verdrängt nur ein neuer mit Rückweg —
+		// Testlauf 13: Meldungen eines laufenden Cowork nahmen „restore" nach
+		// wenigen Sekunden weg.
 		const all = [...notices, n];
 		const keep = new Set([
 			...all.filter((x) => x.kind === 'error').slice(-3).map((x) => x.id),
-			...all.filter((x) => x.kind === 'info').slice(-1).map((x) => x.id)
+			...all.filter((x) => x.kind === 'info' && !x.action).slice(-1).map((x) => x.id),
+			...all.filter((x) => x.kind === 'info' && x.action).slice(-1).map((x) => x.id)
 		]);
 		for (const x of notices) if (!keep.has(x.id)) clearNoticeTimer(x.id);
 		notices = all.filter((x) => keep.has(x.id));

@@ -56,7 +56,7 @@
 {:else}
 <aside class="sidebar">
 	<div class="sidebar-header">
-		<h3 title="Phase (Dewey/Bentley, Knowing and the Known, 1949): a developmental grouping of namings within the situation. Forming a phase IS characterizing — the designation gradient (cue → characterization → specification) collapsed into analytical wholes. Not a computed cluster. Phases belong to the project; the counts show their namings on this map.">Phases</h3>
+		<h3 title="Phase (after Dewey/Bentley, Knowing and the Known, 1949): a developmental grouping of namings within the situation. The phase is itself a naming and starts as a characterization (this platform’s choice); the namings you put in it keep their own designation — assigning them does not lift them. Not a computed cluster. Phases belong to the project; the counts show their namings on this map.">Phases</h3>
 		<div class="sidebar-header-actions">
 			<button class="btn-sm" onclick={() => ms.showPhaseForm = !ms.showPhaseForm}
 				title={ms.showPhaseForm ? 'Close' : 'New phase'} aria-label={ms.showPhaseForm ? 'Close new phase form' : 'New phase'}>

@@ -373,9 +373,16 @@
 	});
 	function showActionError(res: any): boolean {
 		if (res?.error) {
+			// Schon verbunden: kein Fehler — die vorhandene Relation öffnet sich.
+			if (res.alreadyRelated && typeof res.id === 'string') {
+				actionError = null;
+				actionErrorOpen = null;
+				showInfo(String(res.error).replace(/ Open that relation to rename or re-designate it\.$/, ' This is that relation: rename, re-designate or memo it here.'));
+				void openExisting(res.id);
+				return true;
+			}
 			actionError = String(res.error);
-			// Schon verbunden: die vorhandene Relation ist einen Klick entfernt.
-			actionErrorOpen = res.alreadyRelated && typeof res.id === 'string' ? res.id : null;
+			actionErrorOpen = null;
 			actionErrorOpenLabel = 'Open that relation';
 			return true;
 		}
@@ -401,9 +408,11 @@
 		infoUndo = undo;
 		armInfoTimer(undo ? 15000 : 5000);
 	}
+	// Unter dem Zeiger hält die Meldung an, aber nicht unbegrenzt: erscheint sie
+	// unter einem ruhenden Zeiger, stand sie sonst, bis man sie schloss
+	// (Testlauf 13: Leisten verdeckten Zeilen).
 	function holdInfo() {
-		if (infoTimer) clearTimeout(infoTimer);
-		infoTimer = null;
+		armInfoTimer(20000);
 	}
 	function releaseInfo() {
 		if (infoNotice) armInfoTimer(infoUndo ? 6000 : 3000);
@@ -502,11 +511,17 @@
 			// Valenz getippt sind (Testlauf 09.11.: Eingaben gingen verloren).
 			const taken = (namings as NamingRow[]).find((n) => n.part_source_id === relateSource && n.part_target_id === namingId);
 			if (taken) {
-				actionError = `${quoted(labelOf(findNaming(relateSource)))} and ${quoted(labelOf(findNaming(namingId)))} are already related in this direction.`;
-				actionErrorOpen = taken.naming_id;
-				actionErrorOpenLabel = 'Open that relation';
+				// Kein Fehler, sondern der Weg zur vorhandenen Relation — wie auf der
+				// Map; „in dieser Richtung" nur, wenn sie gerichtet ist (Testlauf 13).
+				const s = quoted(labelOf(findNaming(relateSource)));
+				const t = quoted(labelOf(findNaming(namingId)));
+				const directed = !!(taken.directed_from && taken.directed_to);
 				relateSource = null;
 				relateTarget = null;
+				actionError = null;
+				actionErrorOpen = null;
+				showInfo(`${s} and ${t} are already related${directed ? ' in this direction' : ''}. This is that relation: rename, re-designate or memo it here.`);
+				void openExisting(taken.naming_id);
 				return;
 			}
 			// Second click: stage target for confirmation
@@ -1045,8 +1060,10 @@
 						</div>
 					{/if}
 					<div class="act-bottom">
-						<button class="btn-link-toggle" onclick={() => showActLinks = !showActLinks}>
-							{showActLinks ? 'hide links' : 'link namings...'}
+						<!-- Dieselbe Beschriftung wie im Akt-Dialog der Map (Session 05:
+						     „Namings I have in mind writing this memo"). -->
+						<button class="btn-link-toggle" onclick={() => showActLinks = !showActLinks} aria-expanded={showActLinks}>
+							<span aria-hidden="true">{showActLinks ? '▾' : '▸'}</span> namings I have in mind ({actLinkedIds.length})
 						</button>
 						<div class="act-actions">
 							<button class="btn-primary btn-sm-primary" onclick={submitAct} disabled={!actMemo.trim()}
@@ -1508,10 +1525,10 @@
 	.relate-banner {
 		position: fixed;
 		bottom: 1rem;
-		left: 50%;
+		left: calc(var(--content-left, 0px) + (100vw - var(--content-left, 0px)) / 2);
 		transform: translateX(-50%);
 		width: max-content;
-		max-width: min(760px, calc(100vw - 2rem));
+		max-width: min(760px, calc(100vw - var(--content-left, 0px) - 2rem));
 		flex-wrap: wrap;
 		z-index: 60;
 		background: #241d14;
@@ -1548,12 +1565,17 @@
 	}
 
 	/* Act-prompt bar */
+	/* Bleibt im Blick, auch wenn der Akt weit unten in der Liste begann
+	   (Testlauf 13: der Dialog stand oben außer Sicht, Enter schien nichts
+	   zu tun). */
 	.act-prompt-bar {
 		background: #161822;
 		border: 1px solid #f59e0b;
 		border-radius: 8px;
 		padding: 0.75rem 1rem;
 		margin-bottom: 0.75rem;
+		position: sticky; top: 0.5rem; z-index: 60;
+		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
 	}
 	.act-header {
 		font-size: 0.85rem;
@@ -1776,18 +1798,21 @@
 		padding: 0.5rem 0.75rem; margin-bottom: 0.75rem; color: #f5d08a; font-size: 0.85rem;
 	}
 	/* Unten im Fenster wie die Relate-Leiste: wer weit unten handelt, sah die
-	   Meldung oben in der Seite nicht. */
+	   Meldung oben in der Seite nicht. Mittig über dem Inhalt, nicht über der
+	   Seitenleiste mit dem Cowork-Kasten (Testlauf 13). */
 	.action-error {
-		position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%); z-index: 61;
-		width: max-content; max-width: min(760px, calc(100vw - 2rem)); flex-wrap: wrap;
+		position: fixed; bottom: 1rem; z-index: 61;
+		left: calc(var(--content-left, 0px) + (100vw - var(--content-left, 0px)) / 2); transform: translateX(-50%);
+		width: max-content; max-width: min(760px, calc(100vw - var(--content-left, 0px) - 2rem)); flex-wrap: wrap;
 		display: flex; align-items: center; justify-content: space-between; gap: 0.6rem;
 		padding: 0.45rem 0.7rem; border: 1px solid #7f1d1d; border-radius: 6px;
 		background: #2a1416; color: #fca5a5; font-size: 0.82rem;
 		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
 	}
 	.action-info {
-		position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%); z-index: 61;
-		width: max-content; max-width: min(760px, calc(100vw - 2rem)); flex-wrap: wrap;
+		position: fixed; bottom: 1rem; z-index: 61;
+		left: calc(var(--content-left, 0px) + (100vw - var(--content-left, 0px)) / 2); transform: translateX(-50%);
+		width: max-content; max-width: min(760px, calc(100vw - var(--content-left, 0px) - 2rem)); flex-wrap: wrap;
 		display: flex; align-items: center; justify-content: space-between; gap: 0.6rem;
 		padding: 0.45rem 0.7rem; border: 1px solid #1e3a5f; border-radius: 6px;
 		background: #111c2b; color: #bcd3f0; font-size: 0.82rem;

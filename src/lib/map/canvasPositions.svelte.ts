@@ -516,6 +516,110 @@ export function createCanvasPositions(
 		}
 	}
 
+	// Linien und ihre Beschriftungen laufen nicht unter fremden Karten durch
+	// (Testläufe 9 und 11: „Linien laufen durch Namings", „Beschriftungen
+	// überlappen Karten"). Eine Karte, die eine fremde Linie oder deren
+	// Beschriftung überdeckt, rückt quer von ihr weg; `separate` trennt danach neu.
+	function clearLines(items: Array<{ id: string; p: Pt; box: Box; formation: boolean }>): boolean {
+		type Item = (typeof items)[number];
+		const byId = new Map(items.map((it) => [it.id, it]));
+		const lines: Array<{ s: Item; t: Item; label: Box; at: LabelAt | null }> = [];
+		for (const rel of ms.relations as any[]) {
+			if (rel.properties?.spatiallyDerived) continue;
+			const [sid, tid] = ms.endpointsOf(rel);
+			const s = sid ? byId.get(sid) : undefined;
+			const t = tid ? byId.get(tid) : undefined;
+			if (s && t && s !== t && !s.formation && !t.formation) lines.push({ s, t, label: relationBox(rel), at: labelAtOf(rel) });
+		}
+		if (lines.length === 0) return false;
+		const M = 14;
+		// Ausdehnung eines Kastens in Richtung (ux, uy).
+		const ext = (b: Box, ux: number, uy: number) => (Math.abs(ux) * b.width + Math.abs(uy) * b.height) / 2;
+		let any = false;
+		for (let pass = 0; pass < 40; pass++) {
+			let moved = false;
+			for (const { s, t, label, at } of lines) {
+				// So, wie die Linie gezeichnet wird: gebogen; mit gesetzter Raute
+				// geknickt durch sie (Testlauf 13: eine solche lief unter einer Karte).
+				const pin = at ? labelAtToPoint(s.p, t.p, at) : null;
+				const mid = pin ?? connectionMidpoint(s.p.x, s.p.y, t.p.x, t.p.y);
+				const samples: Array<{ q: Pt; dx: number; dy: number }> = [];
+				if (pin) {
+					for (const [a, b] of [[s.p, pin], [pin, t.p]] as Array<[Pt, Pt]>) {
+						for (let k = 1; k < 12; k++) {
+							samples.push({ q: { x: a.x + ((b.x - a.x) * k) / 12, y: a.y + ((b.y - a.y) * k) / 12 }, dx: b.x - a.x, dy: b.y - a.y });
+						}
+					}
+				} else {
+					for (let k = 1; k < 24; k++) {
+						const q = connectionPoint(s.p.x, s.p.y, t.p.x, t.p.y, k / 24);
+						const q2 = connectionPoint(s.p.x, s.p.y, t.p.x, t.p.y, (k + 0.5) / 24);
+						samples.push({ q, dx: q2.x - q.x, dy: q2.y - q.y });
+					}
+					// Die eigene Beschriftung braucht zwischen den Enden Platz: sonst
+					// liegt sie auf ihnen. Die Enden rücken entlang der Linie auseinander.
+					const dx = t.p.x - s.p.x;
+					const dy = t.p.y - s.p.y;
+					const len = Math.hypot(dx, dy) || 1;
+					const ux = dx / len;
+					const uy = dy / len;
+					const need = ext(s.box, ux, uy) + ext(t.box, ux, uy) + ext(label, ux, uy) + 2 * 8;
+					if (len < need) {
+						const d = (need - len) / 2;
+						s.p.x -= ux * d; s.p.y -= uy * d;
+						t.p.x += ux * d; t.p.y += uy * d;
+						moved = true;
+					}
+				}
+				for (const it of items) {
+					if (it === s || it === t || it.formation) continue;
+					const hw = it.box.width / 2 + M;
+					const hh = it.box.height / 2 + M;
+					// Beschriftung: Kasten gegen Kasten.
+					const lx = label.width / 2 + hw - Math.abs(it.p.x - mid.x);
+					const ly = label.height / 2 + hh - Math.abs(it.p.y - mid.y);
+					if (lx > 0 && ly > 0) {
+						if (lx <= ly) it.p.x += lx * (it.p.x >= mid.x ? 1 : -1);
+						else it.p.y += ly * (it.p.y >= mid.y ? 1 : -1);
+						moved = true;
+						continue;
+					}
+					// Linie: liegt ein Stück von ihr unter der Karte? Dann das der
+					// Kartenmitte nächste.
+					let hit: { q: Pt; dx: number; dy: number } | null = null;
+					let bd = Infinity;
+					for (const smp of samples) {
+						if (Math.abs(smp.q.x - it.p.x) >= hw || Math.abs(smp.q.y - it.p.y) >= hh) continue;
+						const d = Math.hypot(smp.q.x - it.p.x, smp.q.y - it.p.y);
+						if (d < bd) { bd = d; hit = smp; }
+					}
+					if (!hit) continue;
+					// Quer zur Linie weg, zu der Seite, auf der die Karte schon liegt.
+					const sl = Math.hypot(hit.dx, hit.dy) || 1;
+					let nx = -hit.dy / sl;
+					let ny = hit.dx / sl;
+					const side = (it.p.x - hit.q.x) * nx + (it.p.y - hit.q.y) * ny;
+					if (side < 0) { nx = -nx; ny = -ny; }
+					const push = Math.abs(nx) * hw + Math.abs(ny) * hh - Math.abs(side);
+					if (push <= 0) continue;
+					// Karte und Linie weichen einander: die Karte den größeren Teil,
+					// die Enden der Linie den Rest — sonst schob `separate` eine
+					// eingekeilte Karte immer wieder zurück unter die Linie.
+					it.p.x += nx * push * 0.65;
+					it.p.y += ny * push * 0.65;
+					for (const e of [s, t]) {
+						e.p.x -= nx * push * 0.35;
+						e.p.y -= ny * push * 0.35;
+					}
+					moved = true;
+				}
+			}
+			if (!moved) break;
+			any = true;
+		}
+		return any;
+	}
+
 	function tidyLayout(pos: Map<string, Pt>) {
 		// Formationen dürfen sich überlagern und enthalten (das ist auf der
 		// SW/A-Karte Aussage, nicht Unordnung); auseinandergeschoben wird bei
@@ -550,6 +654,10 @@ export function createCanvasPositions(
 			it.p.y = cy + (it.p.y - cy) * s / fx;
 		}
 		separate(items);
+		for (let round = 0; round < 12; round++) {
+			if (!clearLines(items)) break;
+			separate(items);
+		}
 		for (const it of items) pos.set(it.id, { x: Math.round(it.p.x), y: Math.round(it.p.y) });
 	}
 

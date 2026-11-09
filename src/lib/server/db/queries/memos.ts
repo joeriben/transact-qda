@@ -4,6 +4,7 @@
 import { query, queryOne, transaction } from '../index.js';
 import { createNaming, setAppearance, getOrCreateResearcherNaming, mergedIntoSql } from './namings.js';
 import { namingLabel, hasOwnInscription, relationLabel, type RelationEnds } from '$lib/shared/namingLabel.js';
+import { labelWithEndsThenNowPartsSql } from './maps.js';
 
 // Was die Memo-Seite zeigt und die Projektübersicht zählt — eine Definition
 // für beide (n = Naming, na = Akt; $1 = Projekt):
@@ -251,6 +252,8 @@ export async function getNamingMemosByProject(projectId: string): Promise<Naming
 			merged_from: string | null;
 			act_inscription: string | null;
 			act_designation: string | null;
+			act_mode: string | null;
+			act_valence: string | null;
 			prev_inscription: string | null;
 			prev_designation: string | null;
 			naming_inscription: string | null;
@@ -262,6 +265,7 @@ export async function getNamingMemosByProject(projectId: string): Promise<Naming
 			`SELECT h.id AS naming_id, na.seq, na.created_at, na.memo_text,
 			        CASE WHEN h.id <> n.id THEN ${currentInscriptionSql('n')} END AS merged_from,
 			        na.inscription AS act_inscription, na.designation AS act_designation,
+			        na.mode AS act_mode, na.valence AS act_valence,
 			        (SELECT p.inscription FROM naming_acts p
 			          WHERE p.naming_id = na.naming_id AND p.seq < na.seq AND p.inscription IS NOT NULL
 			          ORDER BY p.seq DESC LIMIT 1) AS prev_inscription,
@@ -317,14 +321,21 @@ export async function getNamingMemosByProject(projectId: string): Promise<Naming
 	}));
 }
 
-/** „renamed from “X”" und/oder „cue → characterization" — was der Akt setzt, zu dem das Memo gehört. */
+/** „renamed from “X”", „cue → characterization", „shown as a relation",
+ *  „valence “X”" — was der Akt setzt, zu dem das Memo gehört. */
 function describeAct(r: {
 	act_inscription: string | null;
 	act_designation: string | null;
+	act_mode?: string | null;
+	act_valence?: string | null;
 	prev_inscription: string | null;
 	prev_designation: string | null;
 }): string | null {
 	const parts: string[] = [];
+	// Moduswechsel (Testlauf 13: beim Memo dazu stand kein Akt-Kontext).
+	if (r.act_mode === 'relation') parts.push('shown as a relation');
+	else if (r.act_mode === 'entity') parts.push('shown as an entity');
+	if (r.act_valence != null) parts.push(r.act_valence.trim() ? `valence “${r.act_valence.trim()}”` : 'valence removed');
 	if (r.act_inscription && r.prev_inscription && r.act_inscription !== r.prev_inscription) {
 		parts.push(`renamed from “${r.prev_inscription}”`);
 	}
@@ -459,10 +470,12 @@ export async function getMemo(memoId: string, projectId: string) {
 		target_inscription: string | null;
 		target_relation: RelationEnds | null;
 		target_mode: string;
+		then_now: { then: string; now: string; mode_then: string; mode_now: string } | null;
 	}>(
 		`SELECT p.id, t.id as target_id,
 		        ${currentInscriptionSql('t')} as target_inscription,
 		        ${relationEndsSql('t')} as target_relation,
+		        ${labelWithEndsThenNowPartsSql('t', '(SELECT created_at FROM namings WHERE id = $1)')} as then_now,
 		        COALESCE((SELECT a.mode FROM appearances a WHERE a.naming_id = t.id
 		                  ORDER BY (a.mode = 'perspective') LIMIT 1), 'entity') as target_mode
 		 FROM participations p
@@ -475,17 +488,35 @@ export async function getMemo(memoId: string, projectId: string) {
 
 	return {
 		...memo,
-		links: links.rows.map((r) => ({
-			id: r.id,
-			target_id: r.target_id,
-			target_label: namingLabel(r.target_inscription, r.target_relation),
-			// Eine benannte Relation nennt ihre Enden mit (sonst stand nur „fordert Aufsicht").
-			target_ends:
-				r.target_relation && hasOwnInscription(r.target_inscription) && (r.target_relation.source || r.target_relation.target)
-					? relationLabel({ ...r.target_relation, valence: null })
-					: null,
-			target_mode: r.target_mode
-		}))
+		links: links.rows.map((r) => {
+			// Hieß das Naming, als das Memo geschrieben wurde, anders (Name, Enden,
+			// Modus), steht der damalige Stand da und der heutige dahinter — wie im Stack.
+			const tn = r.then_now;
+			if (tn && (tn.then !== tn.now || tn.mode_then !== tn.mode_now)) {
+				const nowPart =
+					tn.mode_then !== tn.mode_now
+						? `now ${tn.mode_now === 'relation' ? 'a relation' : 'an entity'}: “${tn.now}”`
+						: `now “${tn.now}”`;
+				return {
+					id: r.id,
+					target_id: r.target_id,
+					target_label: tn.then,
+					target_ends: nowPart,
+					target_mode: r.target_mode
+				};
+			}
+			return {
+				id: r.id,
+				target_id: r.target_id,
+				target_label: namingLabel(r.target_inscription, r.target_relation),
+				// Eine benannte Relation nennt ihre Enden mit (sonst stand nur „fordert Aufsicht").
+				target_ends:
+					r.target_relation && hasOwnInscription(r.target_inscription) && (r.target_relation.source || r.target_relation.target)
+						? relationLabel({ ...r.target_relation, valence: null })
+						: null,
+				target_mode: r.target_mode
+			};
+		})
 	};
 }
 
