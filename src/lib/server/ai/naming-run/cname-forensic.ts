@@ -65,10 +65,11 @@ export interface ActantCall {
 }
 
 /**
- * Ausgang ohne Commit. Das Literal steht so im Lauf-Protokoll (SequenceTrace
- * in index.ts, Trace-Feld der Läufe, ai_interactions) und bleibt deshalb.
+ * Ausgang ohne Commit. Bis 09.11.2026 lautete der Wert 'no-code'; ältere
+ * Lauf-Protokolle (ai_interactions, .tmp-forensic-trace) tragen ihn noch.
+ * Gelesen wird er nur im laufenden Prozess.
  */
-const NOTHING_COMMITTED = 'no-code';
+const NOTHING_COMMITTED = 'no-naming';
 
 export type ForensicOutcome =
 	| 'commit-new'
@@ -84,7 +85,7 @@ export interface ForensicSequenceResult {
 	outcome: ForensicOutcome;
 	commitResult: CommitResult | null;
 	commitForm: CommitForm | null;
-	noCodeReason: string | null;
+	noNamingReason: string | null;
 	calls: ActantCall[];
 	totalTokens: {
 		input: number;
@@ -149,7 +150,7 @@ function writeSequenceTrace(
 			raws,
 			result: {
 				outcome: result.outcome,
-				noCodeReason: result.noCodeReason,
+				noNamingReason: result.noNamingReason,
 				abduktion: result.abduktion,
 				triage: result.triage,
 				advocacy: result.advocacy,
@@ -444,7 +445,7 @@ export async function runCnameForensicForSequence(
 			outcome: 'no-abduktion',
 			commitResult: null,
 			commitForm: null,
-			noCodeReason: 'A threw non-fatally — treated as no-abduktion'
+			noNamingReason: 'A threw non-fatally — treated as no-abduktion'
 		});
 	}
 	recordCall(calls, 'A', aResp);
@@ -461,7 +462,7 @@ export async function runCnameForensicForSequence(
 			outcome: 'no-abduktion',
 			commitResult: null,
 			commitForm: null,
-			noCodeReason: aResp.text.trim()
+			noNamingReason: aResp.text.trim()
 				? 'A produced no parseable abduction (no commit block found)'
 				: 'A produced KEINE ABDUKTION'
 		});
@@ -591,7 +592,7 @@ async function continueAtCDE(
 			outcome: NOTHING_COMMITTED,
 			commitResult: null,
 			commitForm: null,
-			noCodeReason: 'C-1 failed non-fatally — no advocacy possible'
+			noNamingReason: 'C-1 failed non-fatally — no advocacy possible'
 		});
 	}
 	recordCall(calls, 'C-1', c1Resp);
@@ -611,7 +612,7 @@ async function continueAtCDE(
 			outcome: NOTHING_COMMITTED,
 			commitResult: null,
 			commitForm: null,
-			noCodeReason: 'C-1 produced no parseable advocacy tag'
+			noNamingReason: 'C-1 produced no parseable advocacy tag'
 		});
 	}
 
@@ -705,7 +706,7 @@ async function continueAtCDE(
 			outcome: NOTHING_COMMITTED,
 			commitResult: null,
 			commitForm: null,
-			noCodeReason: 'D-1 failed non-fatally — judgment unavailable'
+			noNamingReason: 'D-1 failed non-fatally — judgment unavailable'
 		});
 	}
 	recordCall(calls, 'D-1', d1Resp);
@@ -780,7 +781,7 @@ async function continueAtCDE(
 			outcome: NOTHING_COMMITTED,
 			commitResult: null,
 			commitForm: null,
-			noCodeReason: judgment.prose || 'verdict unplausibel'
+			noNamingReason: judgment.prose || 'verdict unplausibel'
 		});
 	}
 
@@ -833,7 +834,7 @@ async function runEAndFinish(
 			outcome: NOTHING_COMMITTED,
 			commitResult: null,
 			commitForm,
-			noCodeReason: 'ANKER quote not byte-for-byte in sequence'
+			noNamingReason: 'ANKER quote not byte-for-byte in sequence'
 		});
 	}
 
@@ -848,7 +849,7 @@ async function runEAndFinish(
 			outcome: NOTHING_COMMITTED,
 			commitResult: null,
 			commitForm,
-			noCodeReason: 'NAMING empty after normalization'
+			noNamingReason: 'NAMING empty after normalization'
 		});
 	}
 	const normalizedMemo = commitForm.memo.trim();
@@ -861,7 +862,7 @@ async function runEAndFinish(
 			outcome: NOTHING_COMMITTED,
 			commitResult: null,
 			commitForm,
-			noCodeReason: 'MEMO empty — no characterization to anchor the naming'
+			noNamingReason: 'MEMO empty — no characterization to anchor the naming'
 		});
 	}
 	if (normalizedMemo.toLowerCase() === normalizedLabel.toLowerCase()) {
@@ -873,7 +874,7 @@ async function runEAndFinish(
 			outcome: NOTHING_COMMITTED,
 			commitResult: null,
 			commitForm,
-			noCodeReason: 'MEMO duplicates NAMING — no characterization'
+			noNamingReason: 'MEMO duplicates NAMING — no characterization'
 		});
 	}
 
@@ -889,10 +890,10 @@ async function runEAndFinish(
 			projectId: opts.projectId,
 			bearbeiterNamingId: opts.bearbeiterNamingId,
 			documentId: opts.documentId,
-			codeLabel: normalizedLabel,
+			namingLabel: normalizedLabel,
 			anchor: { pos0, pos1, text: quote },
 			reasoning: normalizedMemo,
-			codeMemo: normalizedMemo,
+			namingMemo: normalizedMemo,
 			prov: opts.prov
 		});
 	} catch (err) {
@@ -905,18 +906,18 @@ async function runEAndFinish(
 			outcome: NOTHING_COMMITTED,
 			commitResult: null,
 			commitForm,
-			noCodeReason: `commit failed: ${err instanceof Error ? err.message : String(err)}`
+			noNamingReason: `commit failed: ${err instanceof Error ? err.message : String(err)}`
 		});
 	}
 
 	// 5. Mutable Pools aktualisieren — spätere Sequenzen sehen das neue Naming/Memo
-	if (!opts.existingCNameLabelsLowerSet.has(commitResult.codeLabel.toLowerCase())) {
-		opts.existingCNameLabelsLowerSet.add(commitResult.codeLabel.toLowerCase());
-		opts.existingCNameLabels.push(commitResult.codeLabel);
+	if (!opts.existingCNameLabelsLowerSet.has(commitResult.namingLabel.toLowerCase())) {
+		opts.existingCNameLabelsLowerSet.add(commitResult.namingLabel.toLowerCase());
+		opts.existingCNameLabels.push(commitResult.namingLabel);
 	}
 	opts.documentMemos.push({
 		source: 'cname',
-		label: commitResult.codeLabel,
+		label: commitResult.namingLabel,
 		memo: normalizedMemo
 	});
 
@@ -928,6 +929,6 @@ async function runEAndFinish(
 		outcome: isReuse ? 'commit-reuse' : 'commit-new',
 		commitResult,
 		commitForm,
-		noCodeReason: null
+		noNamingReason: null
 	});
 }

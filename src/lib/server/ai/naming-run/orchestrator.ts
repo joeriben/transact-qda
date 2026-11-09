@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Orchestrator — Run-Management für den Per-Dokument-Coding-Run.
+// Orchestrator — Run-Management für den Per-Dokument-Naming-Run.
 //
 // Die Run-Lifecycle-Schicht stammt aus einem älteren Pipeline-Orchestrator
 // und ist auf die einfachere Topologie hier angepasst:
@@ -36,7 +36,7 @@
 //     leere/unparseable Antwort → eine zweite Primary-Probe → wenn auch
 //     diese leer ist, einmal Eskalation auf resolveFallback(tier) (Ziel
 //     je Tier in model-tiers.ts). Adressiert den MiMo-Token-Meltdown auf langen Sequenzen
-//     (Lab-Befund 2026-05-24, v1-DE seg 2/3 produzierten je 0 Codes;
+//     (Lab-Befund 2026-05-24, v1-DE seg 2/3 produzierten je 0 Namings;
 //     Methode hielt, aber das Dokument verlor Sequenzen). Eskalations-
 //     Modell und ob überhaupt eskaliert wird sind tier-konfigurierbar.
 
@@ -503,13 +503,13 @@ export async function runNamingRunLoop(
 		if (checkpoint.sequenceStatus[seqKey] === 'done') {
 			// Skip — diese Sequenz war ein früherer Lauf erledigt. Wir
 			// emittieren trotzdem ein sequence-done für die UI-Konsistenz,
-			// markieren codesCommitted: 0 (die Codes stehen schon in der DB).
+			// markieren namingsCommitted: 0 (die Namings stehen schon in der DB).
 			emit({
 				type: 'sequence-done',
 				index: i + 1,
 				total: sequences.length,
 				seq: sequence.seq,
-				codesCommitted: 0,
+				namingsCommitted: 0,
 				tokens: 0,
 				cumulativeTokens: tokensInThisLoop
 			});
@@ -542,7 +542,7 @@ export async function runNamingRunLoop(
 			const h1Proposed = parseJsonArray<H1Naming>(h1Resp.text).filter((c) => c && c.code_label);
 			if (h1Proposed.length === 0 && h1Resp.text.trim().length > 0) {
 				console.warn(
-					`[coding-run ${runId}] seq ${i + 1}/${sequences.length} H1 propose parsed 0 codes from ${h1Resp.text.length} chars. raw=${JSON.stringify(h1Resp.text.slice(0, 800))}`
+					`[naming-run ${runId}] seq ${i + 1}/${sequences.length} H1 propose parsed 0 namings from ${h1Resp.text.length} chars. raw=${JSON.stringify(h1Resp.text.slice(0, 800))}`
 				);
 			}
 
@@ -571,7 +571,7 @@ export async function runNamingRunLoop(
 			h2Comprehension = h2ReadResp.text.trim();
 			comprehensionLine.push(h2Comprehension);
 
-			// ── 3. H2 confronts H1's codes ─────────────────────────
+			// ── 3. H2 confronts H1's namings ─────────────────────────
 			if (h1Proposed.length > 0) {
 				const h2ConfrontResp = await chatWithEmptyRetry({
 					system: h2ConfrontSystem(),
@@ -596,7 +596,7 @@ export async function runNamingRunLoop(
 				h2Verdicts = parseJsonArray<H2Verdict>(h2ConfrontResp.text).filter((v) => v && v.code_label);
 				if (h2Verdicts.length === 0 && h2ConfrontResp.text.trim().length > 0) {
 					console.warn(
-						`[coding-run ${runId}] seq ${i + 1}/${sequences.length} H2 confront parsed 0 verdicts from ${h2ConfrontResp.text.length} chars (h1 had ${h1Proposed.length} codes). raw=${JSON.stringify(h2ConfrontResp.text.slice(0, 800))}`
+						`[naming-run ${runId}] seq ${i + 1}/${sequences.length} H2 confront parsed 0 verdicts from ${h2ConfrontResp.text.length} chars (h1 had ${h1Proposed.length} namings). raw=${JSON.stringify(h2ConfrontResp.text.slice(0, 800))}`
 					);
 				}
 			}
@@ -625,7 +625,7 @@ export async function runNamingRunLoop(
 				h1Reactions = parseJsonArray<H1Reaction>(h1ReactResp.text).filter((r) => r && r.code_label);
 				if (h1Reactions.length === 0 && h1ReactResp.text.trim().length > 0) {
 					console.warn(
-						`[coding-run ${runId}] seq ${i + 1}/${sequences.length} H1 react parsed 0 reactions from ${h1ReactResp.text.length} chars. raw=${JSON.stringify(h1ReactResp.text.slice(0, 800))}`
+						`[naming-run ${runId}] seq ${i + 1}/${sequences.length} H1 react parsed 0 reactions from ${h1ReactResp.text.length} chars. raw=${JSON.stringify(h1ReactResp.text.slice(0, 800))}`
 					);
 				}
 			}
@@ -633,7 +633,7 @@ export async function runNamingRunLoop(
 			const survivors = resolveSurvivors(h1Proposed, h2Verdicts, h1Reactions);
 			if (h1Proposed.length > 0 && survivors.length === 0) {
 				console.warn(
-					`[coding-run ${runId}] seq ${i + 1}/${sequences.length} 0 survivors out of ${h1Proposed.length} H1 codes after H2 confront (${h2Verdicts.length} verdicts) / H1 react (${h1Reactions.length} reactions). verdicts=${JSON.stringify(h2Verdicts)} reactions=${JSON.stringify(h1Reactions)}`
+					`[naming-run ${runId}] seq ${i + 1}/${sequences.length} 0 survivors out of ${h1Proposed.length} H1 namings after H2 confront (${h2Verdicts.length} verdicts) / H1 react (${h1Reactions.length} reactions). verdicts=${JSON.stringify(h2Verdicts)} reactions=${JSON.stringify(h1Reactions)}`
 				);
 			}
 
@@ -643,7 +643,7 @@ export async function runNamingRunLoop(
 			// Dokument als „Inhaltsverzeichnis" erschließen. Anker = ganze
 			// Sequenz-Spanne; landen NICHT auf der Situational Map, sondern
 			// als TOC-Klasse links neben dem Dokument (Migration 032 +
-			// design-mother-map-and-coding-flow.md). Die D/B-Operation
+			// design-mother-map-and-naming-flow.md). Die D/B-Operation
 			// dahinter ist „Forming a phase" — Cues → Characterization auf
 			// Absatz-Granularität. Strauss-Open-Coding (CNames) ist ein
 			// SEPARATER zweiter Pass auf Inzident-Granularität, siehe unten.
@@ -656,18 +656,18 @@ export async function runNamingRunLoop(
 						projectId: run.project_id,
 						bearbeiterNamingId: bearbeiter,
 						documentId: run.document_id,
-						codeLabel: s.label.trim(),
+						namingLabel: s.label.trim(),
 						anchor: { pos0: sequence.charStart, pos1: sequence.charEnd, text: sequence.text },
 						reasoning: s.reasoning,
-						codeMemo: s.codeMemo,
+						namingMemo: s.namingMemo,
 						prov,
 						sequenceMeta: { seq: sequence.seq, sentenceCount: sequence.sentenceCount }
 					});
 					committed.push(res);
 					namingsCommitted++;
-					if (!seenLower.has(res.codeLabel.toLowerCase())) {
-						seenLower.add(res.codeLabel.toLowerCase());
-						namingLabels.push(res.codeLabel);
+					if (!seenLower.has(res.namingLabel.toLowerCase())) {
+						seenLower.add(res.namingLabel.toLowerCase());
+						namingLabels.push(res.namingLabel);
 					}
 				} catch (err) {
 					commitErrors.push(`SName ${s.label}: ${err instanceof Error ? err.message : String(err)}`);
@@ -679,7 +679,7 @@ export async function runNamingRunLoop(
 			// {C Anwalt → D Richter | bypass} → E Operativ. Die Pipeline
 			// trägt die Hermeneutik in die STRUKTUR (Aktantenwechsel +
 			// strukturell erzwungenes Nicht-Wissen pro Pass), nicht in
-			// einen einzelnen Prompt. CName-Codes landen via
+			// einen einzelnen Prompt. CName-Namings landen via
 			// commitCodedPassage auf der primären Situational Map und
 			// erscheinen unresolved in der Namings-Spalte rechts neben
 			// dem Dokument. Modell-Tier: H2 — Reasoning-Klasse, dieselbe
@@ -724,7 +724,7 @@ export async function runNamingRunLoop(
 
 			if (forensicResult.errors.length > 0) {
 				console.warn(
-					`[coding-run ${runId}] seq ${i + 1}/${sequences.length} CName forensic errors: ${forensicResult.errors.join(' | ')}`
+					`[naming-run ${runId}] seq ${i + 1}/${sequences.length} CName forensic errors: ${forensicResult.errors.join(' | ')}`
 				);
 			}
 
@@ -761,7 +761,7 @@ export async function runNamingRunLoop(
 								}
 						: null,
 				outcome: forensicResult.outcome,
-				noCodeReason: forensicResult.noCodeReason,
+				noNamingReason: forensicResult.noNamingReason,
 				llmCalls: forensicResult.calls.length,
 				errors: forensicResult.errors
 			};
@@ -784,7 +784,7 @@ export async function runNamingRunLoop(
 
 			// Sequenz fertig: sequence_status[i]='done' setzen. Damit ist die
 			// Idempotenz-Grenze überschritten — ein Resume würde diese
-			// Sequenz skippen. codesCommittedDelta = SName + CName.
+			// Sequenz skippen. namingsCommittedDelta = SName + CName.
 			await updateProgress(
 				runId,
 				i + 1,
@@ -799,7 +799,7 @@ export async function runNamingRunLoop(
 				index: i + 1,
 				total: sequences.length,
 				seq: sequence.seq,
-				codesCommitted: committed.length + cnameCommitted.length,
+				namingsCommitted: committed.length + cnameCommitted.length,
 				tokens: tokensInThisLoop - tokensAtStart,
 				cumulativeTokens: tokensInThisLoop
 			});
@@ -833,7 +833,7 @@ export async function runNamingRunLoop(
 		h2Model,
 		segmentationMethod,
 		sequencesProcessed: sequences.length,
-		codesCommitted: namingsCommitted,
+		namingsCommitted: namingsCommitted,
 		tokensUsed: tokensInThisLoop,
 		comprehensionLine,
 		sequences: trace

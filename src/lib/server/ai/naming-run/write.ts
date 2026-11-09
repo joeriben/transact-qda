@@ -87,12 +87,13 @@ export async function getOrCreateNamingRunActor(projectId: string): Promise<stri
 	});
 }
 
-// Feldnamen und die Parameter-Keys codeLabel/codeMemo der commit*-Funktionen
-// sind Schnittstelle zum eingefrorenen orchestrator.ts und bleiben, wie sie sind.
+// Ergebnis eines Commits. Die Felder hießen bis 09.11.2026 codeId/codeLabel/
+// isNewCode; sie werden nur im Prozess gelesen (Lauf-Protokolle schreiben sie
+// nur mit), deshalb ließen sie sich ausfallsicher umbenennen.
 export interface CommitResult {
-	codeId: string;
-	codeLabel: string;
-	isNewCode: boolean;
+	namingId: string;
+	namingLabel: string;
+	isNewNaming: boolean;
 	isNewAnnotation: boolean;
 	annotationId: string;
 }
@@ -150,10 +151,10 @@ export async function commitNamedPassage(opts: {
 	projectId: string;
 	bearbeiterNamingId: string;
 	documentId: string;
-	codeLabel: string;
+	namingLabel: string;
 	anchor: { pos0: number; pos1: number; text: string; elementId?: string };
 	reasoning: string;
-	codeMemo: string;
+	namingMemo: string;
 	prov: WriteProvenance;
 }): Promise<CommitResult> {
 	return commitNamingPassage({ ...opts, kind: 'cname' });
@@ -174,10 +175,10 @@ export async function commitSequenceNaming(opts: {
 	projectId: string;
 	bearbeiterNamingId: string;
 	documentId: string;
-	codeLabel: string;
+	namingLabel: string;
 	anchor: { pos0: number; pos1: number; text: string; elementId?: string };
 	reasoning: string;
-	codeMemo: string;
+	namingMemo: string;
 	prov: WriteProvenance;
 	sequenceMeta?: Record<string, unknown>;
 }): Promise<CommitResult> {
@@ -188,10 +189,10 @@ async function commitNamingPassage(opts: {
 	projectId: string;
 	bearbeiterNamingId: string;
 	documentId: string;
-	codeLabel: string;
+	namingLabel: string;
 	anchor: { pos0: number; pos1: number; text: string; elementId?: string };
 	reasoning: string;
-	codeMemo: string;
+	namingMemo: string;
 	prov: WriteProvenance;
 	kind: CommitKind;
 	sequenceMeta?: Record<string, unknown>;
@@ -200,10 +201,10 @@ async function commitNamingPassage(opts: {
 		projectId,
 		bearbeiterNamingId,
 		documentId,
-		codeLabel: label,
+		namingLabel: label,
 		anchor,
 		reasoning,
-		codeMemo: memo,
+		namingMemo: memo,
 		prov,
 		kind,
 		sequenceMeta
@@ -271,5 +272,5 @@ async function commitNamingPassage(opts: {
 		}
 	}
 
-	return { codeId: namingId, codeLabel: label, isNewCode: isNewNaming, isNewAnnotation, annotationId };
+	return { namingId: namingId, namingLabel: label, isNewNaming: isNewNaming, isNewAnnotation, annotationId };
 }

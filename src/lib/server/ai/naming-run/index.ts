@@ -58,7 +58,7 @@ export interface H1Reaction {
 export interface Survivor {
 	label: string;
 	reasoning: string;
-	codeMemo: string;
+	namingMemo: string;
 }
 
 // ── Result / Trace ─────────────────────────────────────────────────────────
@@ -94,8 +94,8 @@ export interface CNameForensicTraceFragment {
 		/** Bei `praezisiert`: D's geschärftes Memo. Sonst undefined. */
 		correctedMemo?: string;
 	} | null;
-	outcome: 'commit-new' | 'commit-reuse' | 'no-code' | 'no-abduktion';
-	noCodeReason: string | null;
+	outcome: 'commit-new' | 'commit-reuse' | 'no-naming' | 'no-abduktion';
+	noNamingReason: string | null;
 	/** Anzahl der LLM-Calls für diese Sequenz (1-6). */
 	llmCalls: number;
 	errors: string[];
@@ -136,7 +136,7 @@ export interface NamingRunResult {
 	 *  (sentence embeddings) or 'char-window' (fallback). */
 	segmentationMethod: Sequence['method'];
 	sequencesProcessed: number;
-	codesCommitted: number;
+	namingsCommitted: number;
 	tokensUsed: number;
 	/** The hidden Verständnislinie: H2's cumulative comprehension. Not a naming. */
 	comprehensionLine: string[];
@@ -159,7 +159,7 @@ export type NamingRunEvent =
 			index: number;
 			total: number;
 			seq: number;
-			codesCommitted: number;
+			namingsCommitted: number;
 			tokens: number;
 			cumulativeTokens: number;
 	  }
@@ -245,7 +245,7 @@ export function resolveSurvivors(h1: H1Naming[], verdicts: H2Verdict[], reaction
 			out.push({
 				label: c.code_label,
 				reasoning: c.reasoning || '',
-				codeMemo: (v?.code_memo || '').trim() || c.reasoning || ''
+				namingMemo: (v?.code_memo || '').trim() || c.reasoning || ''
 			});
 			continue;
 		}
@@ -258,7 +258,7 @@ export function resolveSurvivors(h1: H1Naming[], verdicts: H2Verdict[], reaction
 			out.push({
 				label,
 				reasoning: (r?.final_reasoning || '').trim() || c.reasoning || '',
-				codeMemo: (v.code_memo || '').trim() || c.reasoning || ''
+				namingMemo: (v.code_memo || '').trim() || c.reasoning || ''
 			});
 			continue;
 		}
@@ -267,14 +267,14 @@ export function resolveSurvivors(h1: H1Naming[], verdicts: H2Verdict[], reaction
 				out.push({
 					label: c.code_label,
 					reasoning: (r.final_reasoning || '').trim() || c.reasoning || '',
-					codeMemo: (v.code_memo || '').trim() || c.reasoning || ''
+					namingMemo: (v.code_memo || '').trim() || c.reasoning || ''
 				});
 			}
 			// withdrawn / no reaction → excluded
 			continue;
 		}
 		// Unknown verdict → keep, conservative toward H1.
-		out.push({ label: c.code_label, reasoning: c.reasoning || '', codeMemo: c.reasoning || '' });
+		out.push({ label: c.code_label, reasoning: c.reasoning || '', namingMemo: c.reasoning || '' });
 	}
 	return out;
 }

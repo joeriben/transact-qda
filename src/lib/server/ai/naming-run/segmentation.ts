@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
-// Thematic segmentation for the per-document coding run.
+// Thematic segmentation for the per-document naming run.
 //
-// The coding run must walk the document in units. A transcript has no
+// The naming run must walk the document in units. A transcript has no
 // reliable paragraph structure — blank lines are an artifact of how the
 // transcript happened to be typed, not of where its themes turn. Walking
-// `paragraph` elements therefore couples the coding unit to a
+// `paragraph` elements therefore couples the naming unit to a
 // transcription accident.
 //
 // This module computes the walk units algorithmically: thematic
@@ -27,10 +27,10 @@
 //      ones.
 //   4. A size guard merges sequences that came out too short and splits
 //      ones that came out too long, so every walk unit is a workable
-//      coding unit.
+//      naming unit.
 //
 // Ephemeral by design (Variante A): segmentation is recomputed at the
-// start of each coding run and never persisted. No schema change, no new
+// start of each naming run and never persisted. No schema change, no new
 // element_type. When the method improves, the next run just picks it up.
 //
 // Fallback: if some sentences have no embedding (embedding failed, or the
@@ -253,13 +253,13 @@ function rangeChars(sentences: LoadedSentence[], r: Range): number {
 
 /**
  * Merge sub-MIN sequences, split super-MAX ones — so every walk unit is
- * a workable coding unit. Operates on the boundary list and returns the
+ * a workable naming unit. Operates on the boundary list and returns the
  * adjusted one. Both passes carry a loop guard: each merge removes a
  * boundary and each split adds one, so neither can run past n.
  *
  * Merge before split: splitting a long range at its weakest gap yields
  * roughly even halves (MAX/MIN = 6×), so a split rarely creates a fresh
- * sub-MIN piece — and a marginally short tail is an acceptable coding
+ * sub-MIN piece — and a marginally short tail is an acceptable naming
  * unit, a super-MAX one is not.
  */
 function sizeGuard(
@@ -366,7 +366,7 @@ function charWindowRanges(sentences: LoadedSentence[]): Range[] {
 // ── Entry point ───────────────────────────────────────────────────
 
 /**
- * Compute the thematic sequences of a document — the coding run's walk
+ * Compute the thematic sequences of a document — the naming run's walk
  * units. Ephemeral: recomputed on every call, never persisted.
  *
  * @param documentId  the document's naming id.
@@ -391,7 +391,7 @@ export async function segmentDocument(
 	const sentences = await loadSentences(documentId);
 	if (sentences.length === 0) {
 		throw new Error(
-			'Document has no sentence elements — parse the document before running a coding run'
+			'Document has no sentence elements — parse the document before running a naming run'
 		);
 	}
 

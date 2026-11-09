@@ -29,8 +29,9 @@
   sind im app-weiten Layout hartcodiert: #161822/#1e2030/#2a2d3a/#8b9cf7).
 -->
 <script lang="ts">
-	// Spiegelt die SSE-Ereignisse aus naming-run/orchestrator.ts (NamingRunEvent);
-	// deren Feldnamen, auch codesCommitted, sind Schnittstelle und bleiben.
+	// Spiegelt die SSE-Ereignisse aus naming-run/orchestrator.ts (NamingRunEvent).
+	// namingsCommitted hieß bis 09.11.2026 codesCommitted; ein Server mit dem
+	// alten Stand sendet noch den alten Namen, deshalb wird er mitgelesen.
 	type NamingRunEvent =
 		| { type: 'run-init'; runId: string }
 		| { type: 'segmented'; total: number; method: 'cohesion' | 'char-window' }
@@ -40,7 +41,8 @@
 				index: number;
 				total: number;
 				seq: number;
-				codesCommitted: number;
+				namingsCommitted?: number;
+				codesCommitted?: number;
 				tokens: number;
 				cumulativeTokens: number;
 		  }
@@ -263,18 +265,20 @@
 				progress.total = e.total;
 				progress.stepLabel = `Sequenz ${e.index}/${e.total} startet (seq ${e.seq})`;
 				break;
-			case 'sequence-done':
+			case 'sequence-done': {
+				const added = Number(e.namingsCommitted ?? e.codesCommitted ?? 0);
 				progress.index = e.index;
 				progress.total = e.total;
-				progress.anchorsCommitted += e.codesCommitted;
+				progress.anchorsCommitted += added;
 				progress.cumulativeTokens = e.cumulativeTokens;
-				progress.stepLabel = e.codesCommitted > 0
-					? `Sequenz ${e.index}/${e.total} fertig (+${e.codesCommitted} Verankerungen)`
+				progress.stepLabel = added > 0
+					? `Sequenz ${e.index}/${e.total} fertig (+${added} Verankerungen)`
 					: `Sequenz ${e.index}/${e.total} fertig`;
-				if (e.codesCommitted > 0 && onsequencedone) {
-					onsequencedone({ newAnchors: e.codesCommitted, totalAnchors: progress.anchorsCommitted });
+				if (added > 0 && onsequencedone) {
+					onsequencedone({ newAnchors: added, totalAnchors: progress.anchorsCommitted });
 				}
 				break;
+			}
 			case 'alive':
 				lastAliveAt = e.at;
 				break;
