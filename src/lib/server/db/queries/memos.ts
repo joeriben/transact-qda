@@ -419,9 +419,13 @@ export async function getMemo(memoId: string, projectId: string) {
 		created_at: string;
 		content: string;
 		format: string;
+		is_ai: boolean;
+		status: string | null;
 	}>(
 		`SELECT n.id, n.inscription as label, n.created_at,
-		        mc.content, mc.format
+		        mc.content, mc.format,
+		        n.created_by = '00000000-0000-0000-0000-000000000000' AS is_ai,
+		        mc.status
 		 FROM namings n
 		 JOIN memo_content mc ON mc.naming_id = n.id
 		 WHERE n.id = $1 AND n.project_id = $2 AND n.deleted_at IS NULL`,

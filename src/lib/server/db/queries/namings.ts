@@ -666,7 +666,13 @@ export async function getAggregatedNaming(namingId: string, projectId: string) {
 
 	// Grounding status
 	const hasDocumentAnchor = (stack.annotations?.length ?? 0) > 0;
-	const hasMemoLink = (stack.memos?.length ?? 0) > 0;
+	// Memo: ein Memo einer Forscherin im Stack (Akt mit memo_text) oder ein
+	// verweisendes Memo-Naming — wie auf Map und in der Liste. KI-Memos zählen
+	// erst, wenn die Forscherin sie hereinholt (Satz IV). Ein Memo ist
+	// Reflexion, kein Grounding (S08); es wird nur getrennt ausgewiesen.
+	const hasMemoLink =
+		(stack.memos ?? []).some((m: any) => !m.isAiAuthored || m.status === 'promoted') ||
+		(stack.acts ?? []).some((a: any) => (a.kind ?? 'act') === 'act' && a.by_researcher && !!a.memo_text?.trim());
 
 	// Mode (from any appearance)
 	const primaryMode = appearances.rows.find(a => ['entity', 'relation', 'silence'].includes(a.mode))?.mode || 'entity';
@@ -725,8 +731,13 @@ export async function getAllProjectNamings(projectId: string) {
 			is_withdrawn: boolean;
 			ai_persona: string | null;
 			appears_on_maps: { id: string; label: string }[] | null;
+			part_source_id: string | null;
+			part_target_id: string | null;
 		}>(
 			`SELECT n.id as naming_id, n.inscription, n.created_at, n.seq,
+			   -- Endpunkte, falls das Naming eine Relation ist (je Richtung eine).
+			   (SELECT p.naming_id FROM participations p WHERE p.id = n.id) AS part_source_id,
+			   (SELECT p.participant_id FROM participations p WHERE p.id = n.id) AS part_target_id,
 			   -- Current designation (latest non-NULL in stack)
 			   (SELECT na.designation FROM naming_acts na
 			    WHERE na.naming_id = n.id AND na.designation IS NOT NULL ORDER BY na.seq DESC LIMIT 1) as designation,
@@ -859,45 +870,24 @@ export async function mergeNamings(
 			throw new Error('Both namings must exist');
 		}
 
-		// Reject if merged naming IS a relation (participations.id = mergedId)
-		const isRelation = await client.query(
-			`SELECT 1 FROM participations WHERE id = $1`, [mergedId]
+		// Nur Entitäten werden zusammengeführt. Maßgeblich ist, wie ein Naming
+		// gerade auf einer Map steht: Wer eine Relation zur Entität zurückstellt,
+		// behält ihre Endpunkte (participations.id) — die Sperre griff sonst bei
+		// jeder Entität, die einmal Relation war (Testlauf 09.11.).
+		const asRelation = await client.query(
+			`SELECT n.inscription FROM appearances a
+			   JOIN namings n ON n.id = a.naming_id
+			   JOIN namings p ON p.id = a.perspective_id AND p.deleted_at IS NULL
+			  WHERE a.naming_id = ANY($1::uuid[]) AND a.mode = 'relation'
+			  LIMIT 1`,
+			[[survivorId, mergedId]]
 		);
-		if (isRelation.rows.length > 0) {
-			throw new Error('Cannot merge relation namings — only entity namings');
+		if (asRelation.rows.length > 0) {
+			throw new Error(`“${asRelation.rows[0].inscription ?? 'This naming'}” stands as a relation on a map — only entities can be merged.`);
 		}
 
 		const mergedInscription = merged.rows[0].inscription;
 		const survivorInscription = survivor.rows[0].inscription;
-
-		// Collect details about the merged naming BEFORE surgery
-		const mergedDesignation = await client.query(
-			`SELECT designation FROM naming_acts
-			 WHERE naming_id = $1 AND designation IS NOT NULL
-			 ORDER BY seq DESC LIMIT 1`,
-			[mergedId]
-		);
-		const mergedParts = await client.query(
-			`SELECT n.inscription as partner_inscription
-			 FROM participations p
-			 JOIN namings n ON n.id = CASE
-			   WHEN p.naming_id = $1 THEN p.participant_id
-			   ELSE p.naming_id END
-			 JOIN namings pn ON pn.id = p.id AND pn.deleted_at IS NULL
-			 WHERE (p.naming_id = $1 OR p.participant_id = $1)
-			   AND n.deleted_at IS NULL AND n.id != $1`,
-			[mergedId]
-		);
-		const mergedMaps = await client.query(
-			`SELECT m.inscription as map_label
-			 FROM appearances a
-			 JOIN namings m ON m.id = a.perspective_id AND m.deleted_at IS NULL
-			 WHERE a.naming_id = $1 AND a.naming_id != a.perspective_id
-			   AND EXISTS (SELECT 1 FROM appearances self
-			     WHERE self.naming_id = m.id AND self.perspective_id = m.id
-			       AND self.mode = 'perspective' AND self.properties ? 'mapType')`,
-			[mergedId]
-		);
 
 		// 1. Transfer participations (as endpoint)
 		// Update naming_id where merged is the first endpoint
@@ -962,28 +952,59 @@ export async function mergeNamings(
 			[survivorId, mergedId]
 		);
 
-		// 5. Der Merge ist ein Akt im Stack des überlebenden Namings — mit
-		// allem, was über das aufgenommene Naming zu sagen ist. Kein eigenes
-		// Memo-Naming daneben (ein Memo ZU einem Naming ist kein eigenes Naming).
-		const desig = mergedDesignation.rows[0]?.designation || 'cue';
-		const partners = mergedParts.rows.map((r: any) => r.partner_inscription).join(', ');
-		const maps = mergedMaps.rows.map((r: any) => r.map_label).join(', ');
-		const memoLines = [
-			`Merged "${mergedInscription}" into "${survivorInscription}".`,
-			``,
-			`Absorbed naming:`,
-			`- Inscription: ${mergedInscription}`,
-			`- Designation: ${desig}`,
-			partners ? `- Participations with: ${partners}` : `- No participations`,
-			maps ? `- Appeared on: ${maps}` : `- Not on any map`,
-		];
+		// 5. Der Merge ist ein Akt im Stack des überlebenden Namings: nur der
+		// Verweis auf das aufgenommene Naming (linked_naming_ids), kein
+		// Memo-Text — ein Merge ist kein Memo der Forscherin und kein eigenes
+		// Memo-Naming. Der Stack erkennt ihn daran, dass er nichts setzt und
+		// nur auf ein soft-gelöschtes Naming verweist (getNamingStack,
+		// merged_from).
 		await client.query(
-			`INSERT INTO naming_acts (naming_id, by, memo_text, linked_naming_ids)
-			 VALUES ($1, $2, $3, $4)`,
-			[survivorId, researcherNamingId, memoLines.join('\n'), [mergedId]]
+			`INSERT INTO naming_acts (naming_id, by, linked_naming_ids)
+			 VALUES ($1, $2, $3)`,
+			[survivorId, researcherNamingId, [mergedId]]
 		);
 
-		// 6. Soft-delete the merged naming
+		// 6. Die Memos im Stack des aufgenommenen Namings kommen mit (Testlauf
+		// 09.11.: das Memo von „Lesecafé (geplant)" war nach dem Merge
+		// verschwunden). Append-only: Sie bleiben im Stack des aufgenommenen
+		// Namings stehen und werden im Stack des Überlebenden als neue Akte
+		// angehängt — mit der Autorin des Originals, im Zeitpunkt des Merge
+		// (der Stack zeigt sie direkt nach „merged in …"), und mit dem
+		// aufgenommenen Naming unter den verknüpften. Steht der Überlebende
+		// auf cue, trägt das erste Memo einer Forscherin die Characterization
+		// („MEMOS ADVANCEN EINE ENTITÄT VOM CUE ZUR CHARACTERIZATION", BJ
+		// 09.11.; noteLiftsCue).
+		const carried = await client.query<{
+			by: string;
+			memo_text: string;
+			linked_naming_ids: string[] | null;
+			by_researcher: boolean;
+		}>(
+			`SELECT na.by, na.memo_text, na.linked_naming_ids,
+			        EXISTS (SELECT 1 FROM researcher_namings rn WHERE rn.naming_id = na.by) AS by_researcher
+			   FROM naming_acts na
+			  WHERE na.naming_id = $1 AND na.memo_text IS NOT NULL AND btrim(na.memo_text) <> ''
+			  ORDER BY na.seq`,
+			[mergedId]
+		);
+		const survivorDesig = await client.query<{ designation: string }>(
+			`SELECT designation FROM naming_acts
+			  WHERE naming_id = $1 AND designation IS NOT NULL ORDER BY seq DESC LIMIT 1`,
+			[survivorId]
+		);
+		let lift = (survivorDesig.rows[0]?.designation ?? 'cue') === 'cue';
+		for (const m of carried.rows) {
+			const links = [...new Set([...(m.linked_naming_ids ?? []), mergedId])].filter((id) => id !== survivorId);
+			const liftHere = lift && m.by_researcher;
+			if (liftHere) lift = false;
+			await client.query(
+				`INSERT INTO naming_acts (naming_id, by, memo_text, linked_naming_ids, designation)
+				 VALUES ($1, $2, $3, $4, $5)`,
+				[survivorId, m.by, m.memo_text, links, liftHere ? 'characterization' : null]
+			);
+		}
+
+		// 7. Soft-delete the merged naming
 		await client.query(
 			`UPDATE namings SET deleted_at = now() WHERE id = $1`,
 			[mergedId]

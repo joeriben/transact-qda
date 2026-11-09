@@ -95,6 +95,12 @@
 	}
 
 	const withdrawn = $derived(!!actions.isWithdrawn?.(namingId, item.properties));
+	// Relation, deren eines Ende zurückgezogen ist: bleibt stehen, wird aber
+	// gekennzeichnet (Testlauf 09.11.: sie wirkte unverändert aktiv).
+	const endWithdrawn = $derived(
+		!withdrawn &&
+			[item.part_source_id, item.part_target_id].some((id: string | null | undefined) => !!id && !!actions.isWithdrawn?.(id, null))
+	);
 	const isRelateTarget = $derived(!!relatingFrom && relatingFrom !== namingId && !relatingTo && !withdrawn);
 	const isMergeTarget = $derived(!!mergeSurvivorId && mergeSurvivorId !== namingId && !isResearcher && !withdrawn);
 	const isMergeSurvivor = $derived(mergeSurvivorId === namingId);
@@ -148,9 +154,9 @@
 			{#if item.has_document_anchor}
 				<img class="provenance-indicator" src="/icons/text_snippet.svg" alt="empirical" title="Empirically grounded" />
 			{:else if item.has_memo_link}
-				<img class="provenance-indicator" src="/icons/stylus_note.svg" alt="analytical" title="Memo linked" />
+				<img class="provenance-indicator" src="/icons/stylus_note.svg" alt="memo" title="Memo — reflected, not grounded in a document" />
 			{:else}
-				<img class="provenance-indicator" src="/icons/question_mark.svg" alt="ungrounded" title="No grounding yet" />
+				<img class="provenance-indicator" src="/icons/question_mark.svg" alt="ungrounded" title="No document anchor, no memo yet" />
 			{/if}
 			{#if item.memo_previews?.length > 0}
 				<span class="memo-count" title={plural(item.memo_previews.length, 'memo')}>{item.memo_previews.length}</span>
@@ -241,9 +247,9 @@
 			{#if item.has_document_anchor}
 				<img class="provenance-indicator" src="/icons/text_snippet.svg" alt="empirical" title="Empirically grounded" />
 			{:else if item.has_memo_link}
-				<img class="provenance-indicator" src="/icons/stylus_note.svg" alt="analytical" title="Memo linked" />
+				<img class="provenance-indicator" src="/icons/stylus_note.svg" alt="memo" title="Memo — reflected, not grounded in a document" />
 			{:else}
-				<img class="provenance-indicator" src="/icons/question_mark.svg" alt="ungrounded" title="No grounding yet" />
+				<img class="provenance-indicator" src="/icons/question_mark.svg" alt="ungrounded" title="No document anchor, no memo yet" />
 			{/if}
 			{#if item.memo_previews?.length > 0}
 				<span class="memo-count" title={plural(item.memo_previews.length, 'memo')}>{item.memo_previews.length}</span>
@@ -325,9 +331,9 @@
 			{#if item.has_document_anchor}
 				<img class="provenance-indicator" src="/icons/text_snippet.svg" alt="empirical" title="Empirically grounded" />
 			{:else if item.has_memo_link}
-				<img class="provenance-indicator" src="/icons/stylus_note.svg" alt="analytical" title="Memo linked" />
+				<img class="provenance-indicator" src="/icons/stylus_note.svg" alt="memo" title="Memo — reflected, not grounded in a document" />
 			{:else}
-				<img class="provenance-indicator" src="/icons/question_mark.svg" alt="ungrounded" title="No grounding yet" />
+				<img class="provenance-indicator" src="/icons/question_mark.svg" alt="ungrounded" title="No document anchor, no memo yet" />
 			{/if}
 			{#if item.memo_previews?.length > 0}
 				<span class="memo-count" title={plural(item.memo_previews.length, 'memo')}>{item.memo_previews.length}</span>
@@ -361,6 +367,7 @@
 			{/if}
 			{#if axis}<span class="tag tag-axis" title={axis.title}>{axis.text}</span>{/if}
 			{#if withdrawn}<span class="tag tag-withdrawn" title="Withdrawn — restore brings it back">withdrawn</span>{/if}
+			{#if endWithdrawn}<span class="tag tag-withdrawn" title="One of its ends is withdrawn; the relation itself still stands">end withdrawn</span>{/if}
 		</div>
 		{#if !isCompact}
 			<!-- svelte-ignore a11y_click_events_have_key_events -->

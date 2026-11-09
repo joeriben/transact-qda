@@ -295,7 +295,7 @@ export async function buildMapDetail(
 			parts.push('\nELEMENTS:');
 			for (const el of structure.elements.slice(0, maxElements)) {
 				const desig = el.designation || 'cue';
-				const prov = el.has_document_anchor ? ' 📄' : el.has_memo_link ? ' 📝' : ' ∅';
+				const prov = el.has_document_anchor ? ' [doc-anchored]' : el.has_memo_link ? ' [memo, no doc anchor]' : ' [no doc anchor]';
 				const role = el.sw_role ? ` [${el.sw_role}]` : '';
 				const aiTags = provenanceTag(el);
 				parts.push(`  [${desig}]${prov}${aiTags}${role} "${el.inscription}" (id: ${el.naming_id})`);
@@ -323,7 +323,7 @@ export async function buildMapDetail(
 				const arrow = symmetric ? '↔' : '→';
 				const val = rel.valence ? ` [${rel.valence}]` : '';
 				const desig = rel.designation || 'cue';
-				const prov = rel.has_document_anchor ? ' 📄' : rel.has_memo_link ? ' 📝' : ' ∅';
+				const prov = rel.has_document_anchor ? ' [doc-anchored]' : rel.has_memo_link ? ' [memo, no doc anchor]' : ' [no doc anchor]';
 				const aiTags = provenanceTag(rel);
 				parts.push(`  [${desig}]${prov}${aiTags} "${srcName}" ${arrow} "${tgtName}"${label}${val} (id: ${rel.naming_id})`);
 				if (includeAiMetadata) {

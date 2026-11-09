@@ -12,7 +12,7 @@
 	function onKeydown(e: KeyboardEvent) {
 		if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
 			e.preventDefault();
-			ms.submitAct();
+			if (ms.actMemo.trim()) ms.submitAct();
 		}
 	}
 </script>
@@ -73,7 +73,8 @@
 			</div>
 		{/if}
 		<div class="act-actions">
-			<button class="btn-primary btn-sm-primary" onclick={ms.submitAct}>{ms.actType === 'relate' ? 'Save memo' : 'Apply + memo'}</button>
+			<button class="btn-primary btn-sm-primary" onclick={ms.submitAct} disabled={!ms.actMemo.trim()}
+				title={ms.actMemo.trim() ? 'Ctrl/⌘+Enter' : ms.actType === 'relate' ? 'Write a memo first' : 'Write a memo first — or apply without one'}>{ms.actType === 'relate' ? 'Save memo' : 'Apply + memo'}</button>
 			<button class="btn-link" onclick={ms.skipAct} title="Apply without a memo (Esc)">skip memo</button>
 			{#if ms.actType !== 'relate'}<button class="btn-link" onclick={ms.cancelAct} title="Discard this {ms.actType === 'rename' ? 'rename' : ms.actType === 'designate' ? 'designation' : 'change'}">cancel</button>{/if}
 		</div>
@@ -130,5 +131,6 @@
 	.btn-xs:hover { border-color: #8b9cf7; }
 	.btn-primary { background: #8b9cf7; color: #0f1117; border: none; border-radius: 6px; padding: 0.4rem 0.75rem; font-size: 0.8rem; font-weight: 600; cursor: pointer; }
 	.btn-sm-primary { background: #8b9cf7; color: #0f1117; border: none; border-radius: 5px; padding: 0.35rem 0.75rem; font-size: 0.8rem; font-weight: 600; cursor: pointer; }
+	.btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
 	.btn-link { background: none; border: none; color: #8b9cf7; cursor: pointer; font-size: 0.8rem; text-decoration: underline; }
 </style>

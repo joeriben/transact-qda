@@ -49,9 +49,9 @@
 		{#if el.has_document_anchor}
 			<img class="prov-icon" src="/icons/text_snippet.svg" alt="empirical" title="Empirically grounded" />
 		{:else if el.has_memo_link}
-			<img class="prov-icon" src="/icons/stylus_note.svg" alt="analytical" title="Analytically grounded" />
+			<img class="prov-icon" src="/icons/stylus_note.svg" alt="memo" title="Memo — reflected, not grounded in a document" />
 		{:else}
-			<img class="prov-icon" src="/icons/question_mark.svg" alt="ungrounded" title="No grounding" />
+			<img class="prov-icon" src="/icons/question_mark.svg" alt="ungrounded" title="No document anchor, no memo yet" />
 		{/if}
 		<span class="node-designation">{ms.designationLabel(el.designation)}</span>
 		{#if el.memo_previews?.length > 0}

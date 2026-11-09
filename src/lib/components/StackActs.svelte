@@ -33,6 +33,8 @@
 		sw_role?: string | null;
 		/** Erster Akt einer Relation: womit sie gezogen wurde (begründet ihre Anfangsstufe). */
 		basis?: string | null;
+		/** Merge: Inschrift des aufgenommenen Namings; die Memos, die es mitbrachte, folgen. */
+		merged_from?: string | null;
 	};
 
 	let {
@@ -106,6 +108,7 @@
 					<span class="sa-dot sa-dot-none"></span>
 				{/if}
 				<span class="sa-what">
+					{#if a.merged_from}<span class="sa-sit">merged in {quoted(a.merged_from)} — its memos follow</span>{/if}
 					{#if a.inscription}<span class="sa-ins">{quoted(a.inscription)}</span>{/if}
 					{#if renamedFrom.has(String(a.seq))}<span class="sa-tag">renamed from {quoted(renamedFrom.get(String(a.seq)) ?? '')}</span>{/if}
 					{#if a.designation}<span class="sa-des" style="color: {color(a.designation)}">{a.designation}</span>{/if}

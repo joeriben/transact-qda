@@ -145,6 +145,16 @@
 		{/if}
 		<div class="history-section">
 			<span class="history-label">Stack</span>
+			{#if (ms.stackData.silencePattern ?? []).length > 0}
+				<!-- Stille = Participations ohne Appearances: aus welchem Muster sie folgt. -->
+				<div class="derived-note silence-pattern">
+					Absent from the pattern of:
+					{#each ms.stackData.silencePattern as p (p.id)}
+						<button class="sp-chip" onclick={() => { if (ms.findNode(p.id)) ms.revealNaming(p.id, { stack: true }); }}
+							title={ms.findNode(p.id) ? 'Show it on this map' : 'Not on this map'} disabled={!ms.findNode(p.id)}>{p.label}</button>
+					{/each}
+				</div>
+			{/if}
 			{#if derivedFrom.length > 0}
 				<div class="derived-note" title="Derived automatically from containment and overlap of formations on the map">
 					Derived from the placement on {derivedFrom.join(', ')} — moving the formations updates it.
@@ -189,6 +199,11 @@
 						<div class="memo-actions">
 							{#if memo.status === 'presented' || memo.status === 'discussed'}
 								<button class="btn-xs" onclick={() => ms.updateMemoStatus(memo.id, 'acknowledged')}>ack</button>
+								<button class="btn-xs" onclick={() => ms.updateMemoStatus(memo.id, 'dismissed')}>dismiss</button>
+								<button class="btn-xs btn-promote" onclick={() => ms.promoteMemo(memo.id)}>promote</button>
+							{/if}
+							{#if memo.status === 'acknowledged'}
+								<!-- „ack" ist ein Verdikt, kein Hereinholen: promote bleibt möglich (Testlauf 09.11.). -->
 								<button class="btn-xs" onclick={() => ms.updateMemoStatus(memo.id, 'dismissed')}>dismiss</button>
 								<button class="btn-xs btn-promote" onclick={() => ms.promoteMemo(memo.id)}>promote</button>
 							{/if}
@@ -327,7 +342,9 @@
 				<div class="history-section analytical-questions">
 					<details>
 						<summary class="history-label">
-							Analytical Questions ({SW_ROLE_LABELS[swRole] ?? swRole})
+							<!-- Clarke hat Fragen für soziale Welten und für Arenen; für
+							     Organisationen und Diskurse gelten die zu sozialen Welten. -->
+							Analytical questions — {swRole === 'arena' ? 'arenas' : 'social worlds'}{swRole !== 'arena' && swRole !== 'social-world' ? `, applied to this ${(SW_ROLE_LABELS[swRole] ?? swRole).toLowerCase()}` : ''}
 							{#if ms.stackData.memos?.length}
 								<span class="aq-depth">{ms.stackData.memos.length} memo{ms.stackData.memos.length !== 1 ? 's' : ''}</span>
 							{/if}
@@ -610,7 +627,7 @@
 	.analytical-questions details[open] summary::before { content: '▾ '; }
 	.aq-depth { margin-left: 0.3rem; color: #8b9cf7; font-size: 0.6rem; }
 	.aq-list {
-		margin: 0.3rem 0 0 0; padding-left: 1.2rem;
+		margin: 0.3rem 0 0 0; padding-left: 1.7rem;
 		font-size: 0.72rem; color: #c9cdd5; line-height: 1.5;
 	}
 	.aq-item { margin-bottom: 0.15rem; }
@@ -656,5 +673,12 @@
 		background: rgba(56, 189, 248, 0.08); color: #c9cdd5; font-size: 0.75rem; line-height: 1.4;
 		display: flex; gap: 0.4rem; align-items: flex-start; justify-content: space-between;
 	}
+	.silence-pattern { display: flex; flex-wrap: wrap; gap: 0.25rem; align-items: center; }
+	.sp-chip {
+		font-size: 0.68rem; color: #c9cdd5; background: #1e2030; border: 1px solid #2a2d3a;
+		border-radius: 10px; padding: 0 0.45rem; cursor: pointer;
+	}
+	.sp-chip:hover:not(:disabled) { border-color: #8b9cf7; color: #e1e4e8; }
+	.sp-chip:disabled { cursor: default; opacity: 0.6; }
 	.ai-outside-hint { font-size: 0.7rem; color: #6b7280; margin: 0.1rem 0 0.35rem; line-height: 1.35; }
 </style>

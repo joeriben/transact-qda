@@ -57,9 +57,10 @@ Relations and absences:
 - "What does the boundary between these elements do? What falls between them?"
 
 Provenance:
-- Elements marked 📄 are empirically grounded — they are anchored in named document passages
-- Elements marked 📝 have researcher reflection — but reflection is not grounding
-- Elements marked ∅ lack grounding — ask about these in your memos
+- Elements marked [doc-anchored] are empirically grounded — they are anchored in named document passages
+- Elements marked [memo, no doc anchor] have researcher reflection — but reflection is not grounding
+- Elements marked [no doc anchor] have neither — ask about these in your memos
+- In your memos, say this in plain words ("has a memo but no document anchor"); never copy these markers or symbols into your text
 - Methodological transparency requires traceable provenance chains
 
 DECONSTRUCTIVE QUESTIONING (not categorical):

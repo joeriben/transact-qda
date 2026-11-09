@@ -238,17 +238,31 @@ async function run() {
 	{
 		const A1 = await make('Mensa');
 		const A2 = await make('Schulmensa');
+		await post(N, { action: 'note', namingId: A2, memoText: 'Nur mittags geöffnet.' });
 		const appsBefore = (await one(`SELECT count(*)::int AS c FROM appearances WHERE naming_id = $1`, [A2])).c;
 		const r = await post(N, { action: 'merge', survivorId: A1, mergedId: A2 });
-		const s = await lastAct(A1);
+		// Der Merge-Akt selbst trägt kein Memo, nur den Verweis auf das
+		// aufgenommene Naming; die Memos, die es mitbrachte, folgen ihm.
+		const mergeAct = await one(
+			`SELECT seq FROM naming_acts
+			  WHERE naming_id = $1 AND memo_text IS NULL AND inscription IS NULL AND designation IS NULL
+			    AND mode IS NULL AND valence IS NULL AND $2 = ANY(linked_naming_ids)
+			  ORDER BY seq DESC LIMIT 1`,
+			[A1, A2]
+		);
+		const carried = await one(
+			`SELECT count(*)::int AS c FROM naming_acts
+			  WHERE naming_id = $1 AND memo_text = 'Nur mittags geöffnet.' AND $2 = ANY(linked_naming_ids)`,
+			[A1, A2]
+		);
 		const m = await one(
 			`SELECT (SELECT deleted_at IS NOT NULL FROM namings WHERE id = $1) AS soft_deleted,
 			        (SELECT count(*)::int FROM appearances WHERE naming_id = $1) AS apps`,
 			[A2]
 		);
-		record('Zusammenführen: Akt im Stack des Überlebenden, aufgenommenes Naming soft-gelöscht, Erscheinung bleibt',
-			r.status < 300 && !!s?.memo_text && m.soft_deleted === true && m.apps === appsBefore,
-			JSON.stringify({ status: r.status, m, appsBefore }));
+		record('Zusammenführen: Akt im Stack des Überlebenden, Memos kommen mit, aufgenommenes Naming soft-gelöscht, Erscheinung bleibt',
+			r.status < 300 && !!mergeAct && carried.c === 1 && m.soft_deleted === true && m.apps === appsBefore,
+			JSON.stringify({ status: r.status, mergeAct: !!mergeAct, carried: carried.c, m, appsBefore }));
 	}
 
 	// 8. Anlegen in der Naming-Liste und in der Dokumentansicht: der Stack

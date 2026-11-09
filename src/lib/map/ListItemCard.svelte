@@ -8,6 +8,7 @@
 	import InlineRename from '$lib/canvas/InlineRename.svelte';
 	import { hasOwnInscription } from '$lib/shared/namingLabel.js';
 	import { plural } from '$lib/shared/plural.js';
+	import { SW_ROLE_LABELS } from '$lib/shared/constants.js';
 	import { POS_AXIS_LEN } from './canvasPositions.svelte.js';
 
 	let {
@@ -80,9 +81,9 @@
 			{#if item.has_document_anchor}
 				<img class="provenance-indicator" src="/icons/text_snippet.svg" alt="empirical" title="Empirically grounded" />
 			{:else if item.has_memo_link}
-				<img class="provenance-indicator" src="/icons/stylus_note.svg" alt="analytical" title="Analytically grounded" />
+				<img class="provenance-indicator" src="/icons/stylus_note.svg" alt="memo" title="Memo — reflected, not grounded in a document" />
 			{:else}
-				<img class="provenance-indicator" src="/icons/question_mark.svg" alt="ungrounded" title="No grounding yet" />
+				<img class="provenance-indicator" src="/icons/question_mark.svg" alt="ungrounded" title="No document anchor, no memo yet" />
 			{/if}
 			{#if item.memo_previews?.length > 0}
 				<span class="memo-count" title={plural(item.memo_previews.length, 'memo')}>{item.memo_previews.length}</span>
@@ -156,9 +157,9 @@
 			{#if item.has_document_anchor}
 				<img class="provenance-indicator" src="/icons/text_snippet.svg" alt="empirical" title="Empirically grounded" />
 			{:else if item.has_memo_link}
-				<img class="provenance-indicator" src="/icons/stylus_note.svg" alt="analytical" title="Analytically grounded" />
+				<img class="provenance-indicator" src="/icons/stylus_note.svg" alt="memo" title="Memo — reflected, not grounded in a document" />
 			{:else}
-				<img class="provenance-indicator" src="/icons/question_mark.svg" alt="ungrounded" title="No grounding yet" />
+				<img class="provenance-indicator" src="/icons/question_mark.svg" alt="ungrounded" title="No document anchor, no memo yet" />
 			{/if}
 			{#if item.memo_previews?.length > 0}
 				<span class="memo-count" title={plural(item.memo_previews.length, 'memo')}>{item.memo_previews.length}</span>
@@ -210,9 +211,9 @@
 			{#if item.has_document_anchor}
 				<img class="provenance-indicator" src="/icons/text_snippet.svg" alt="empirical" title="Empirically grounded" />
 			{:else if item.has_memo_link}
-				<img class="provenance-indicator" src="/icons/stylus_note.svg" alt="analytical" title="Analytically grounded" />
+				<img class="provenance-indicator" src="/icons/stylus_note.svg" alt="memo" title="Memo — reflected, not grounded in a document" />
 			{:else}
-				<img class="provenance-indicator" src="/icons/question_mark.svg" alt="ungrounded" title="No grounding yet" />
+				<img class="provenance-indicator" src="/icons/question_mark.svg" alt="ungrounded" title="No document anchor, no memo yet" />
 			{/if}
 			{#if item.memo_previews?.length > 0}
 				<span class="memo-count" title={plural(item.memo_previews.length, 'memo')}>{item.memo_previews.length}</span>
@@ -222,6 +223,10 @@
 			{/if}
 			{#if ms.mapType === 'positional' && item.properties?.absent}
 				<span class="pos-absent-badge">absent</span>
+			{/if}
+			{#if ms.mapType === 'social-worlds' && item.sw_role}
+				<!-- Formationstyp auch in der Listenansicht (Testlauf 09.11.). -->
+				<span class="pos-axis-badge" title="Formation type on this map">{SW_ROLE_LABELS[item.sw_role] ?? item.sw_role}</span>
 			{/if}
 			{#if item.outside_participation_count > 0}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->

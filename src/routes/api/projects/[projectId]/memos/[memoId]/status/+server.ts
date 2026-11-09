@@ -5,6 +5,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { updateMemoStatus, promoteMemoToNaming } from '$lib/server/db/queries/memos.js';
 import { namingInProject } from '$lib/server/auth/authz.js';
+import { getOrCreatePrimarySitMap } from '$lib/server/db/queries/maps.js';
 
 export const PUT: RequestHandler = async ({ params, request, locals }) => {
 	const { status } = await request.json();
@@ -17,10 +18,13 @@ export const PUT: RequestHandler = async ({ params, request, locals }) => {
 		return json({ error: 'Not found' }, { status: 404 });
 	}
 	// „promoted" heißt: das Memo wird zu einem Naming gemacht — hier wie auf
-	// der Map (dort mit Platzierung, hier ohne).
+	// der Map. Von der Liste oder der Memo-Seite aus steht es danach, wie jedes
+	// dort angelegte Naming, unplatziert auf der Situations-Map (S26); ohne
+	// Erscheinung tauchte es nirgends auf (Testlauf 09.11.).
 	if (status === 'promoted') {
 		try {
-			const naming = await promoteMemoToNaming(params.projectId, locals.user!.id, params.memoId, null);
+			const primaryMapId = await getOrCreatePrimarySitMap(params.projectId, locals.user!.id);
+			const naming = await promoteMemoToNaming(params.projectId, locals.user!.id, params.memoId, primaryMapId);
 			return json({ ok: true, status, namingId: naming.id });
 		} catch (error) {
 			return json({ error: error instanceof Error ? error.message : String(error) }, { status: 409 });

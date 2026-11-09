@@ -19,6 +19,16 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		if (!(await namingInProject(params.memoId, params.projectId))) {
 			return json({ error: 'Not found' }, { status: 404 });
 		}
+		// Ein Memo von Cowork bleibt sein Text: Unter KI-Autorschaft
+		// umgeschrieben, wäre der Akt nicht mehr ausweisbar. Die Forscherin
+		// urteilt darüber (ack, dismiss, promote) oder schreibt ein eigenes.
+		const memo = await getMemo(params.memoId, params.projectId);
+		if (memo?.is_ai) {
+			return json(
+				{ error: "Cowork's memos are not edited in place. Judge it (ack, dismiss, promote) or write a memo of your own." },
+				{ status: 403 }
+			);
+		}
 		await updateMemoContent(params.memoId, content);
 	}
 	return json({ ok: true });

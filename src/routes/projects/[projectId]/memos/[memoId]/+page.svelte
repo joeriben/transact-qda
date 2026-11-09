@@ -97,6 +97,18 @@
 		</div>
 	</div>
 
+	{#if data.memo.is_ai}
+		<p class="ai-note">
+			{#if data.memo.status === 'promoted'}
+				Written by Cowork (AI) — promoted: you made it a naming of your own. The text stays Cowork's and is
+				not edited here; write a memo of your own to the new naming.
+			{:else}
+				Written by Cowork (AI){data.memo.status ? ` — ${data.memo.status}` : ''}. It stays Cowork's text and is
+				not edited here: judge it on the <a href="/projects/{data.projectId}/memos">Memos page</a> or on the map
+				(ack, dismiss, promote), or write a memo of your own.
+			{/if}
+		</p>
+	{/if}
 	<div class="editor-container">
 		<div class="editor-main">
 			<textarea
@@ -105,6 +117,7 @@
 				bind:value={content}
 				oninput={onInput}
 				onblur={save}
+				readonly={data.memo.is_ai}
 			></textarea>
 		</div>
 
@@ -138,6 +151,10 @@
 	h1 { font-size: 1.2rem; margin-bottom: 0.25rem; }
 	.save-status { font-size: 0.75rem; color: #6b7280; min-height: 1.1em; }
 	.save-status.error { color: #f87171; }
+	.ai-note {
+		font-size: 0.8rem; color: #c4b5fd; background: rgba(139, 92, 246, 0.08);
+		border: 1px solid rgba(139, 92, 246, 0.3); border-radius: 6px; padding: 0.45rem 0.6rem; margin: 0 0 0.75rem;
+	}
 	.retry {
 		background: none; border: 1px solid #f87171; border-radius: 4px; color: #f87171;
 		font-size: 0.7rem; padding: 0 0.4rem; cursor: pointer; margin-left: 0.3rem;

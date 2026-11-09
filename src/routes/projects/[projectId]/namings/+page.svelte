@@ -8,12 +8,13 @@
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import FilterBar, { type FilterGroup, type Toggle } from '$lib/components/FilterBar.svelte';
 	import { page } from '$app/stores';
-	import { tick } from 'svelte';
+	import { tick, onMount } from 'svelte';
 	import { viewHref, scrollIntoViewStable } from '$lib/shared/rueckweg.js';
 	import { memoText } from '$lib/shared/memoText.js';
 	import { namingLabel, quoted } from '$lib/shared/namingLabel.js';
 	import NamingMemoForm from '$lib/components/NamingMemoForm.svelte';
 	import StackActs from '$lib/components/StackActs.svelte';
+	import { focusSelect } from '$lib/canvas/dom.js';
 	import ReferringNotes from '$lib/components/ReferringNotes.svelte';
 
 	let { data } = $props();
@@ -37,6 +38,8 @@
 		appears_on_maps: { id: string; label: string }[] | null;
 		created_at: string;
 		seq: string;
+		part_source_id?: string | null;
+		part_target_id?: string | null;
 	};
 
 	type StackData = {
@@ -56,6 +59,11 @@
 	// ---- State ----
 	let namings = $derived<NamingRow[]>(data.namings);
 	let phases = $derived<any[]>(data.phases ?? []);
+	// Schmales Fenster: Phasen-Leiste eingeklappt, die Liste behält ihre Breite.
+	let phasesCollapsed = $state(false);
+	// Erst im Browser entscheidbar: der Server kennt die Fensterbreite nicht,
+	// und der beim Laden gerenderte Zustand bliebe sonst stehen (Testlauf 09.11.).
+	onMount(() => { if (window.innerWidth < 1100) phasesCollapsed = true; });
 
 	// Forscher-Namings: Die Forscherin ist selbst ein Naming dieses Projekts.
 	const researcherIds = $derived(new Set<string>(data.researcherNamingIds ?? []));
@@ -450,6 +458,17 @@
 	// ---- Relate ----
 	function startRelate(namingId: string) {
 		if (relateSource && relateSource !== namingId) {
+			// Schon verbunden (dieselbe Richtung): gleich sagen, bevor Name und
+			// Valenz getippt sind (Testlauf 09.11.: Eingaben gingen verloren).
+			const taken = (namings as NamingRow[]).find((n) => n.part_source_id === relateSource && n.part_target_id === namingId);
+			if (taken) {
+				actionError = `${quoted(labelOf(findNaming(relateSource)))} and ${quoted(labelOf(findNaming(namingId)))} are already related in this direction.`;
+				actionErrorOpen = taken.naming_id;
+				actionErrorOpenLabel = 'Open that relation';
+				relateSource = null;
+				relateTarget = null;
+				return;
+			}
 			// Second click: stage target for confirmation
 			relateTarget = namingId;
 		} else if (relateSource === namingId) {
@@ -469,6 +488,7 @@
 		if (!relateSource || !relateTarget) return;
 		const srcId = relateSource;
 		const tgtId = relateTarget;
+		const said = `Related ${quoted(labelOf(findNaming(srcId)))} ${relDirected ? '→' : '↔'} ${quoted(labelOf(findNaming(tgtId)))}${relName.trim() ? ` as ${quoted(relName.trim())}` : ''} — the relation is now in this list.`;
 		const result = await apiAction('relate', {
 			sourceId: srcId,
 			targetId: tgtId,
@@ -486,7 +506,8 @@
 			markTouched(srcId);
 			markTouched(tgtId);
 			const module = await import('$app/navigation');
-			module.invalidateAll();
+			await module.invalidateAll();
+			showInfo(said);
 		}
 	}
 
@@ -535,6 +556,8 @@
 		markTouched(touchedId);
 		const module = await import('$app/navigation');
 		module.invalidateAll();
+		// Offener Stack desselben Namings zeigt den neuen Akt gleich.
+		if (stackId === touchedId) stackData = await apiAction('getStack', { namingId: touchedId });
 	}
 
 	async function skipAct() {
@@ -555,6 +578,8 @@
 		markTouched(touchedId);
 		const module = await import('$app/navigation');
 		module.invalidateAll();
+		// Offener Stack desselben Namings zeigt den neuen Akt gleich.
+		if (stackId === touchedId) stackData = await apiAction('getStack', { namingId: touchedId });
 	}
 
 	function cancelAct() {
@@ -569,11 +594,18 @@
 	const isAiPending = (m: any) => m.isAiAuthored && m.status !== 'promoted';
 
 	async function setMemoStatus(memoId: string, status: string) {
-		await fetch(`/api/projects/${data.projectId}/memos/${memoId}/status`, {
+		const res = await fetch(`/api/projects/${data.projectId}/memos/${memoId}/status`, {
 			method: 'PUT',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ status })
 		});
+		const body = await res.json().catch(() => ({}));
+		if (!res.ok) showActionError({ error: body?.error || `Status not saved (${res.status})` });
+		else if (status === 'promoted') {
+			showInfo('Promoted: Cowork’s memo is now a naming of your own in this list.');
+			const module = await import('$app/navigation');
+			await module.invalidateAll();
+		}
 		// Refresh the stack to show updated status
 		if (stackId) {
 			stackData = await apiAction('getStack', { namingId: stackId });
@@ -823,7 +855,7 @@
 		{#snippet afterHeader()}
 			{#if hiddenNotice}
 				<div class="hidden-notice" role="status">
-					<span>The naming is hidden as a technical error. Nothing was deleted; its stack records the act.</span>
+					<span>The naming is hidden as a technical error. Nothing was deleted: it stays in the database, with this act on record.</span>
 					<button class="btn-xs" onclick={() => (hiddenNotice = false)} aria-label="Dismiss message">×</button>
 				</div>
 			{/if}
@@ -872,8 +904,8 @@
 				{@const survLabel = quoted(labelOf(findNaming(mergeSurvivorId)))}
 				<div class="relate-banner merge-banner">
 					{#if mergeTargetId}
-						Merge <strong>{quoted(labelOf(findNaming(mergeTargetId)))}</strong> into <strong>{survLabel}</strong>?
-						All participations, appearances, and annotations transfer to the survivor.
+						Merge <strong>{quoted(labelOf(findNaming(mergeTargetId)))}</strong> into <strong>{survLabel}</strong>? —
+						its relations, map placements, passages and memos go to {survLabel}.
 						<button class="btn-xs btn-confirm" onclick={confirmMerge}>merge</button>
 						<button class="btn-xs" onclick={cancelMerge}>cancel</button>
 					{:else}
@@ -897,11 +929,19 @@
 							<span style="color: {designationColor(actNewValue)}">{actNewValue}</span>
 						{/if}
 					</div>
+					<!-- Fokus ins Feld wie auf der Map: sonst geht eine getippte
+					     Begründung ins Leere (Testlauf 09.11.). Esc übernimmt ohne
+					     Memo, Strg/⌘+Enter mit. -->
 					<textarea
 						placeholder="What influenced this act? What changed in your understanding?"
 						aria-label="Memo on this act"
 						bind:value={actMemo}
 						rows="2"
+						use:focusSelect
+						onkeydown={(e) => {
+							if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); void skipAct(); }
+							else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (actMemo.trim()) void submitAct(); }
+						}}
 					></textarea>
 					{#if showActLinks}
 						<div class="act-links">
@@ -928,9 +968,10 @@
 							{showActLinks ? 'hide links' : 'link namings...'}
 						</button>
 						<div class="act-actions">
-							<button class="btn-primary btn-sm-primary" onclick={submitAct}>Apply + memo</button>
-							<button class="btn-link" onclick={skipAct}>skip memo</button>
-							<button class="btn-link" onclick={cancelAct}>cancel</button>
+							<button class="btn-primary btn-sm-primary" onclick={submitAct} disabled={!actMemo.trim()}
+								title={actMemo.trim() ? 'Apply with this memo (Ctrl/⌘+Enter)' : 'Write a memo first — or apply without one'}>Apply + memo</button>
+							<button class="btn-link" onclick={skipAct} title="Apply without a memo (Esc)">skip memo</button>
+							<button class="btn-link" onclick={cancelAct} title="Discard this {actType === 'rename' ? 'rename' : 'designation'}">cancel</button>
 						</div>
 					</div>
 				</div>
@@ -1015,9 +1056,11 @@
 										{#if memo.status === 'active' || memo.status === 'presented' || memo.status === 'discussed'}
 											<button class="btn-xs" onclick={() => setMemoStatus(memo.id, 'dismissed')}>dismiss</button>
 											<button class="btn-xs" onclick={() => setMemoStatus(memo.id, 'acknowledged')}>ack</button>
+											<button class="btn-xs btn-promote" onclick={() => setMemoStatus(memo.id, 'promoted')}>promote</button>
 										{/if}
 										{#if memo.status === 'acknowledged'}
 											<button class="btn-xs" onclick={() => setMemoStatus(memo.id, 'dismissed')}>dismiss</button>
+											<button class="btn-xs btn-promote" onclick={() => setMemoStatus(memo.id, 'promoted')} title="Acknowledged is not taken in — promote takes it in">promote</button>
 										{/if}
 										{#if memo.status === 'dismissed'}
 											<button class="btn-xs" onclick={() => setMemoStatus(memo.id, 'presented')}>restore</button>
@@ -1025,7 +1068,7 @@
 									{:else if memo.status === 'dismissed'}
 										<button class="btn-xs" onclick={() => setMemoStatus(memo.id, 'active')}>restore</button>
 									{/if}
-									<a class="btn-xs" href="/projects/{data.projectId}/memos/{memo.id}">edit</a>
+									<a class="btn-xs" href="/projects/{data.projectId}/memos/{memo.id}">{memo.isAiAuthored ? 'open' : 'edit'}</a>
 								</div>
 							</div>
 				{/snippet}
@@ -1137,13 +1180,22 @@
 	{/if}
 </div>
 
-<!-- Phase Panel (right sidebar) -->
+<!-- Phase Panel (right sidebar). Bei schmalem Fenster eingeklappt zu einem
+     Reiter wie auf der Map; sonst nahm es die halbe Breite (Testlauf 09.11.). -->
+{#if phasesCollapsed}
+<button class="phase-tab" onclick={() => (phasesCollapsed = false)} title="Show phases" aria-expanded="false">
+	<span>Phases ({phases.length})</span>
+</button>
+{:else}
 <div class="phase-panel">
 	<div class="phase-panel-header">
 		<h3>Phases</h3>
-		<button class="btn-xs" onclick={() => showPhaseForm = !showPhaseForm}>
-			{showPhaseForm ? '×' : '+'}
-		</button>
+		<span class="phase-head-actions">
+			<button class="btn-xs" onclick={() => showPhaseForm = !showPhaseForm} title={showPhaseForm ? 'Close' : 'New phase'}>
+				{showPhaseForm ? '×' : '+'}
+			</button>
+			<button class="btn-xs" onclick={() => (phasesCollapsed = true)} title="Hide phases" aria-expanded="true">›</button>
+		</span>
 	</div>
 
 	{#if showPhaseForm}
@@ -1230,6 +1282,7 @@
 		<p class="phase-empty">Loading...</p>
 	{/if}
 </div>
+{/if}
 </div><!-- .namings-layout -->
 
 <style>
@@ -1250,8 +1303,16 @@
 	}
 
 	/* Phase Panel */
+	.phase-tab {
+		flex-shrink: 0; width: 28px; height: 100%;
+		background: #13151e; border: none; border-left: 1px solid #2a2d3a;
+		color: #8b8fa3; cursor: pointer; padding: 0.75rem 0;
+		writing-mode: vertical-rl; font-size: 0.75rem; letter-spacing: 0.03em;
+	}
+	.phase-tab:hover { color: #e1e4e8; background: #1a1d29; }
+	.phase-head-actions { display: inline-flex; gap: 0.25rem; }
 	.phase-panel {
-		width: 320px;
+		width: clamp(220px, 26vw, 320px);
 		flex-shrink: 0;
 		border-left: 1px solid #2a2d3a;
 		padding: 1rem;
@@ -1441,7 +1502,8 @@
 	}
 	.btn-primary { background: #8b9cf7; color: #0f1117; border: none; font-weight: 600; cursor: pointer; }
 	.btn-sm-primary { padding: 0.3rem 0.7rem; border-radius: 5px; font-size: 0.8rem; }
-	.btn-primary:hover { background: #a0aff9; }
+	.btn-primary:hover:not(:disabled) { background: #a0aff9; }
+	.btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
 	.btn-link { background: none; border: none; color: #6b7280; font-size: 0.75rem; cursor: pointer; }
 	.btn-link:hover { color: #c9cdd5; }
 	.btn-link-toggle { background: none; border: none; color: #4b5563; font-size: 0.7rem; cursor: pointer; }
@@ -1564,6 +1626,7 @@
 	.memo-status-badge.status-presented { background: rgba(139, 156, 247, 0.15); color: #8b9cf7; }
 	.memo-status-badge.status-discussed { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
 	.memo-status-badge.status-acknowledged { background: rgba(16, 185, 129, 0.15); color: #10b981; }
+	.btn-promote { border-color: #10b981; color: #10b981; }
 	.memo-status-badge.status-promoted { background: rgba(16, 185, 129, 0.25); color: #10b981; }
 	.memo-status-badge.status-dismissed { background: rgba(107, 114, 128, 0.15); color: #6b7280; }
 	.memo-label { font-size: 0.75rem; color: #f59e0b; }

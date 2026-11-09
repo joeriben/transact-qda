@@ -98,9 +98,9 @@
 			{#if data.hasDocumentAnchor}
 				<span class="grounding-badge grounded" title="Document-grounded">&#128196;</span>
 			{:else if data.hasMemoLink}
-				<span class="grounding-badge memo" title="Memo-linked">&#128221;</span>
+				<span class="grounding-badge memo" title="Memo — reflected, not grounded in a document">&#128221;</span>
 			{:else}
-				<span class="grounding-badge ungrounded" title="Ungrounded">&#8709;</span>
+				<span class="grounding-badge ungrounded" title="No document anchor, no memo yet">&#8709;</span>
 			{/if}
 			{#if stack.aiSuggested}
 				<span class="ai-badge" class:withdrawn={stack.aiWithdrawn}>AI{stack.aiWithdrawn ? ' (withdrawn)' : ''}</span>

@@ -114,18 +114,41 @@
 		}, 250);
 	}
 
+	// Jeder mit Enter abgeschickte Name wird sofort übernommen und das Feld
+	// frei; was abgeschickt ist, während das vorige noch angelegt wird, wartet
+	// in der Reihe (Testlauf 09.11.: erst gingen Einträge verloren, dann liefen
+	// „Hausaufgabenhilfe" und das danach Getippte zu einem Namen zusammen).
+	let queue: string[] = [];
+	let draining = false;
+	let lastLabel: string | null = null;
+
 	async function submitNaming() {
 		const name = draftName.trim();
-		if (!name || adding) return;
-		if (draftOnMap) { const id = draftOnMap.id; cancelNaming(); revealOnMap(id); return; }
-		const done = await createNaming(name);
-		if (done) {
-			// Offen bleiben: mehrere Namings hintereinander benennen (Testlauf 09.11.).
-			lastAdded = name;
-			draftName = '';
-			draftExisting = null;
-			setTimeout(() => draftInputRef?.focus(), 0);
+		if (!name) return;
+		if (draftOnMap && !draining) { const id = draftOnMap.id; cancelNaming(); revealOnMap(id); return; }
+		draftName = '';
+		draftExisting = null;
+		clearTimeout(draftDebounce);
+		queue.push(name);
+		if (draining) return;
+		draining = true;
+		let failed: string | null = null;
+		try {
+			while (queue.length > 0) {
+				const next = queue.shift()!;
+				if (await createNaming(next)) {
+					// Offen bleiben: mehrere Namings hintereinander benennen (Testlauf 09.11.).
+					lastAdded = lastLabel ?? next;
+				} else if (failed === null) {
+					failed = next;
+				}
+			}
+		} finally {
+			draining = false;
 		}
+		// Nicht angelegt (Fehler oder Rückfrage): der Name kommt zurück ins Feld.
+		if (failed !== null && !draftName.trim()) draftName = failed;
+		setTimeout(() => draftInputRef?.focus(), 0);
 	}
 
 	function onDraftKeydown(e: KeyboardEvent) {
@@ -254,6 +277,7 @@
 				const label = (id && ms.findNode(id) ? ms.findInscription(id) : null) ?? name;
 				ms.showAiNotification(`${quoted(label)} is already on this map.${whereNote(id)}`);
 				lastOutcome = 'onmap';
+				lastLabel = label;
 				if (id) onreveal?.(id);
 				return true;
 			}
@@ -265,6 +289,8 @@
 				ms.showAiNotification(`${quoted(res.data.inscription || name)} already exists in this project — placed the existing naming here.`);
 			}
 			lastOutcome = res.data?.reused ? 'reused' : 'added';
+			// Der gespeicherte Name, nicht die getippte Schreibweise (Testlauf 09.11.).
+			lastLabel = res.data?.reused ? String(res.data.inscription || name) : name;
 			if (!ms.isPrimary) ms.requestReveal();
 			await ms.reload();
 			return true;
@@ -487,7 +513,7 @@
 					{/if}
 					<div class="naming-pop-row">
 						<input id="map-new-naming" type="text" placeholder="Name it…" bind:value={draftName} bind:this={draftInputRef}
-							readonly={adding} oninput={onDraftInput} onkeydown={onDraftKeydown} autocomplete="off" />
+							oninput={onDraftInput} onkeydown={onDraftKeydown} autocomplete="off" />
 						<button type="button" class="btn-primary" onclick={submitNaming} disabled={adding || !draftName.trim()}>
 							{adding ? 'Adding…' : draftOnMap ? 'Show' : 'Add'}
 						</button>

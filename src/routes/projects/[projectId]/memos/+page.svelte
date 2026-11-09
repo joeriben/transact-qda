@@ -10,6 +10,7 @@
 	import { memoText } from '$lib/shared/memoText.js';
 	import { formatWhen } from '$lib/shared/dates.js';
 	import { plural } from '$lib/shared/plural.js';
+	import { quoted } from '$lib/shared/namingLabel.js';
 
 	let { data } = $props();
 
@@ -31,13 +32,18 @@
 	// Bestätigung nach „technical error" (aus der Liste oder, über ?hidden=,
 	// von der Detailseite): ausgeblendet ist nicht gelöscht.
 	let hiddenNotice = $state<string | null>(null);
+	/** Nach „promote“: welches Memo jetzt ein Naming ist (Hinweis mit Link). */
+	let promotedNotice = $state<string | null>(null);
 	$effect(() => {
 		const what = new URL(window.location.href).searchParams.get('hidden');
 		if (what) hiddenNotice = what;
 	});
+	// Abbrechen verwirft den Entwurf — wie beim Projekt- und Map-Formular.
 	function closeCreate() {
 		showCreate = false;
 		createError = '';
+		newLabel = '';
+		newContent = '';
 	}
 	let expandedId = $state<string | null>(null);
 
@@ -129,6 +135,9 @@
 		if (!res.ok) {
 			const body = await res.json().catch(() => ({}));
 			alert(body.error || `Status not saved (${res.status})`);
+		} else if (status === 'promoted') {
+			const m = (data.memos as { id: string; label: string }[]).find((x) => x.id === memoId);
+			promotedNotice = m?.label ?? 'The memo';
 		}
 		await refreshMemos();
 	}
@@ -228,9 +237,15 @@
 			<FilterBar groups={filterGroups} />
 		{/snippet}
 		{#snippet afterHeader()}
+			{#if promotedNotice}
+				<div class="hidden-notice" role="status">
+					<span>{quoted(promotedNotice)} is now a naming of its own, unplaced on the situational map. The memo stays here. <a href="/projects/{data.projectId}/namings">Open the naming list</a></span>
+					<button class="btn-xs" onclick={() => (promotedNotice = null)} aria-label="Dismiss message">×</button>
+				</div>
+			{/if}
 			{#if hiddenNotice}
 				<div class="hidden-notice" role="status">
-					<span>The {hiddenNotice} is hidden as a technical error. Nothing was deleted; its stack records the act.</span>
+					<span>The {hiddenNotice} is hidden as a technical error. Nothing was deleted: it stays in the database, with this act on record.</span>
 					<button class="btn-xs" onclick={() => (hiddenNotice = null)} aria-label="Dismiss message">×</button>
 				</div>
 			{/if}
@@ -326,7 +341,7 @@
 						<!-- Actions. ack/dismiss/promote/discuss gehören zum Lebenszyklus
 						     eines KI-Hinweises; an eigenen Memos bleibt „edit". -->
 						<div class="memo-actions">
-							<a href="/projects/{data.projectId}/memos/{memo.id}" class="btn-xs btn-edit">edit</a>
+							<a href="/projects/{data.projectId}/memos/{memo.id}" class="btn-xs btn-edit">{memo.isAiAuthored ? 'open' : 'edit'}</a>
 							{#if memo.isAiAuthored}
 								{#if memo.status === 'active' || memo.status === 'presented' || memo.status === 'discussed'}
 									<button class="btn-xs" onclick={() => setStatus(memo.id, 'acknowledged')}>ack</button>
@@ -335,6 +350,7 @@
 								{/if}
 								{#if memo.status === 'acknowledged'}
 									<button class="btn-xs" onclick={() => setStatus(memo.id, 'dismissed')}>dismiss</button>
+									<button class="btn-xs btn-promote" onclick={() => setStatus(memo.id, 'promoted')} title="Acknowledged is not taken in — promote takes it in">promote</button>
 								{/if}
 								{#if memo.status === 'dismissed'}
 									<button class="btn-xs" onclick={() => setStatus(memo.id, 'presented')}>restore</button>
@@ -353,6 +369,11 @@
 							{:else if memo.status === 'dismissed'}
 								<!-- Altbestand: eigene Memos, die früher verworfen wurden -->
 								<button class="btn-xs" onclick={() => setStatus(memo.id, 'active')}>restore</button>
+							{:else if memo.status !== 'promoted'}
+								<!-- Ein analytisches oder Organisationsmemo ist „kein Naming, solange
+								     man sie nicht dezidiert zu einem Naming macht" (S16) — hier macht man es. -->
+								<button class="btn-xs btn-promote" onclick={() => setStatus(memo.id, 'promoted')}
+									title="Make this memo a naming of its own. The memo stays; the new naming stands unplaced on the situational map.">make naming</button>
 							{/if}
 							<TechnicalErrorButton projectId={data.projectId} namingId={memo.id} what="memo"
 								ondone={async () => { hiddenNotice = 'memo'; await refreshMemos(); }} />
@@ -370,7 +391,7 @@
 										<button class="btn-xs" onclick={() => setStatus(memo.id, 'presented')}>restore</button>
 									{/if}
 								{:else}
-									<a href="/projects/{data.projectId}/memos/{memo.id}" class="btn-xs btn-edit">edit</a>
+									<a href="/projects/{data.projectId}/memos/{memo.id}" class="btn-xs btn-edit">{memo.isAiAuthored ? 'open' : 'edit'}</a>
 									{#if memo.status === 'dismissed'}
 										<button class="btn-xs" onclick={() => setStatus(memo.id, 'active')}>restore</button>
 									{/if}

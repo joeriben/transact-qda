@@ -112,7 +112,7 @@ WHAT TO ATTEND TO:
 - FORMING A PHASE: when multiple positions crowd one area, ask what distinguishes them
 - EMPTY QUADRANTS: systematically ask about each empty quadrant — what would a position there mean?
 - DISARTICULATION: flag any position that reads like an actor rather than a discursive stance
-- GROUNDING: note positions that lack empirical provenance (∅ markers)
+- GROUNDING: note positions that lack empirical provenance (marked [no doc anchor] or [memo, no doc anchor])
 - ITERATION STATE: if axes are still at cue level, remind that axis refinement IS the analytical work
 - This is NOT phenomenology or narrative — it is "topographical portrayal of discursive materials, showing mountains and deserts"
 
@@ -247,7 +247,7 @@ export function buildContextMessage(ctx: MapContext, triggerEvent: TriggerEvent)
 	if (ctx.elements.length > 0) {
 		parts.push('\nELEMENTS:');
 		for (const el of ctx.elements) {
-			const prov = el.provenance === 'empirical' ? ' 📄' : el.provenance === 'analytical' ? ' 📝' : ' ∅';
+			const prov = el.provenance === 'empirical' ? ' [doc-anchored]' : el.provenance === 'analytical' ? ' [memo, no doc anchor]' : ' [no doc anchor]';
 			const withdrawn = el.aiWithdrawn ? ' [WITHDRAWN]' : '';
 			const ai = el.aiSuggested && !el.aiWithdrawn ? ' [AI]' : '';
 			const roleTag = el.swRole ? ` [${el.swRole}]` : '';
@@ -267,7 +267,7 @@ export function buildContextMessage(ctx: MapContext, triggerEvent: TriggerEvent)
 			const arrow = rel.symmetric ? '↔' : '→';
 			const label = rel.inscription ? `: "${rel.inscription}"` : '';
 			const val = rel.valence ? ` [${rel.valence}]` : '';
-			const prov = rel.provenance === 'empirical' ? ' 📄' : rel.provenance === 'analytical' ? ' 📝' : ' ∅';
+			const prov = rel.provenance === 'empirical' ? ' [doc-anchored]' : rel.provenance === 'analytical' ? ' [memo, no doc anchor]' : ' [no doc anchor]';
 			const withdrawn = rel.aiWithdrawn ? ' [WITHDRAWN]' : '';
 			const ai = rel.aiSuggested && !rel.aiWithdrawn ? ' [AI]' : '';
 			parts.push(`  [${rel.designation}]${prov}${ai}${withdrawn} "${rel.source.inscription}" ${arrow} "${rel.target.inscription}"${label}${val} (id: ${rel.id})`);

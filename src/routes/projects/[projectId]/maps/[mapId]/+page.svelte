@@ -668,8 +668,8 @@
 			case 'provenance':
 				return [
 					{ label: 'Empirically grounded', items: items.filter((n: any) => n.has_document_anchor) },
-					{ label: 'Memo-linked', items: items.filter((n: any) => !n.has_document_anchor && n.has_memo_link) },
-					{ label: 'Ungrounded', items: items.filter((n: any) => !n.has_document_anchor && !n.has_memo_link) }
+					{ label: 'Memo, no document anchor', items: items.filter((n: any) => !n.has_document_anchor && n.has_memo_link) },
+					{ label: 'No document anchor, no memo', items: items.filter((n: any) => !n.has_document_anchor && !n.has_memo_link) }
 				].filter(g => g.items.length > 0);
 			case 'flat':
 			default:

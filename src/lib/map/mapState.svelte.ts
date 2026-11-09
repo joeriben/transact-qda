@@ -4,7 +4,7 @@
 import { getContext, setContext, untrack } from 'svelte';
 import { regionColor } from '$lib/canvas/regions.js';
 import { CCS_CUE, CCS_CHAR, CCS_SPEC } from '$lib/shared/tokens.js';
-import { namingLabel } from '$lib/shared/namingLabel.js';
+import { namingLabel, quoted } from '$lib/shared/namingLabel.js';
 import { formatWhen } from '$lib/shared/dates.js';
 import { viewHref } from '$lib/shared/rueckweg.js';
 
@@ -41,6 +41,8 @@ export type StackData = {
 	 *  designation history (see migrations/034_situating_acts.sql). */
 	situating?: any[];
 	discussion?: any[];
+	/** Stille: die Namings, aus deren Muster sie folgt (Participations ohne Appearances). */
+	silencePattern?: { id: string; label: string }[];
 	aiReasoning?: string | null;
 	aiSuggested?: boolean;
 	aiWithdrawn?: boolean;
@@ -708,7 +710,7 @@ export function createMapState(
 	// Relation auf dieser Karte, wird sie gezeigt und ihr Stack geöffnet — dort
 	// wird sie umbenannt oder neu designiert. Sonst sagt die Meldung, dass sie
 	// nicht hier steht, und führt in die Naming-Liste.
-	function showRelateError(res: MapResponse, fallback: string) {
+	function showRelateError(res: MapResponse, fallback: string, typedValence = '') {
 		const msg = responseError(res, fallback);
 		const existing = res.data?.alreadyRelated && typeof res.data.id === 'string' ? (res.data.id as string) : null;
 		if (existing && findNode(existing)) {
@@ -717,7 +719,8 @@ export function createMapState(
 			// Der Satz steht im Stack selbst; eine Meldung über der Karte
 			// verdeckte dessen Kopf. Das Formular stünde sonst davor.
 			cancelRelation();
-			stackHint = { id: existing, text: msg.replace(/ Open that relation to rename or re-designate it\.$/, ' This is that relation: rename or re-designate it here.') };
+			const kept = typedValence ? ` The valence you typed (${quoted(typedValence)}) was not applied — set it here.` : '';
+			stackHint = { id: existing, text: msg.replace(/ Open that relation to rename or re-designate it\.$/, ' This is that relation: rename or re-designate it here.') + kept };
 			revealNaming(existing, { stack: true });
 		} else if (existing) {
 			showError(`${msg} That relation is not on this map.`, { href: namingsHref(existing), label: 'Open it in Namings' });
@@ -731,6 +734,21 @@ export function createMapState(
 		// Zurückgezogenes steht nicht mehr zur Verfügung — erst wiederherstellen.
 		if (isWithdrawn(findNode(toId)?.properties)) {
 			showError('Withdrawn on this map — restore it first to relate it.');
+			return;
+		}
+		// Schon verbunden (dieselbe Richtung; der Server lässt je Richtung eine
+		// Relation zu): gleich sagen und die vorhandene zeigen, statt erst
+		// nach dem Ausfüllen abzulehnen (Testlauf 09.11.: getippte Valenz weg).
+		const taken = relations.find((r: any) => r.part_source_id === relatingFrom && r.part_target_id === toId);
+		if (taken) {
+			const s = findInscription(relatingFrom);
+			const t = findInscription(toId);
+			cancelRelation();
+			stackHint = {
+				id: taken.naming_id,
+				text: `${quoted(s)} and ${quoted(t)} are already related in this direction. This is that relation: rename, re-designate or memo it here.`
+			};
+			revealNaming(taken.naming_id, { stack: true });
 			return;
 		}
 		relatingTo = toId;
@@ -748,7 +766,7 @@ export function createMapState(
 			symmetric: !relDirected
 		});
 		if (!res.ok) {
-			showRelateError(res, 'Relation not created (server error)');
+			showRelateError(res, 'Relation not created (server error)', relValence.trim());
 			return false;
 		}
 		relatingFrom = null;

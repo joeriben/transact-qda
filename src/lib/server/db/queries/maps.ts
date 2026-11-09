@@ -895,9 +895,18 @@ export async function getNamingStack(namingId: string, projectId?: string) {
 			by_researcher: boolean;
 			linked: { id: string; label: string }[];
 			inferred_cause: { id: string; label: string }[] | null;
+			merged_from: string | null;
 		}>(
 			`SELECT na.seq, na.created_at, na.inscription, na.designation, na.mode, na.valence,
 			        na.memo_text, na.linked_naming_ids,
+			        -- Merge (mergeNamings): ein Akt, der nichts setzt und nur auf das
+			        -- aufgenommene, soft-gelöschte Naming verweist.
+			        CASE WHEN na.memo_text IS NULL AND na.inscription IS NULL AND na.designation IS NULL
+			                  AND na.mode IS NULL AND na.valence IS NULL
+			                  AND cardinality(na.linked_naming_ids) > 0
+			                  AND NOT EXISTS (SELECT 1 FROM namings l WHERE l.id = ANY(na.linked_naming_ids) AND l.deleted_at IS NULL)
+			             THEN (SELECT string_agg(${namingLabelSql('l')}, ', ') FROM namings l WHERE l.id = ANY(na.linked_naming_ids))
+			        END AS merged_from,
 			        b.inscription AS by_inscription,
 			        EXISTS (SELECT 1 FROM researcher_namings rn WHERE rn.naming_id = na.by) AS by_researcher,
 			        COALESCE((SELECT json_agg(json_build_object('id', l.id, 'label', ${namingLabelSql('l')}) ORDER BY l.inscription)
@@ -1080,11 +1089,33 @@ export async function getNamingStack(namingId: string, projectId?: string) {
 		...phaseEntries
 	].sort((x, y) => new Date(x.created_at).getTime() - new Date(y.created_at).getTime());
 
+	// Eine Stille ist ein Muster der Nicht-Präsenz: Participations ohne
+	// Appearances (S11: „Participations suffice"). Der Stack nennt die
+	// Namings, aus deren Muster sie folgt — sonst standen sie nur im
+	// Begründungstext (Testlauf 09.11.). Verweise von Memo-Namings zählen nicht.
+	const isSilence = !!(await queryOne(`SELECT 1 FROM appearances WHERE naming_id = $1 AND mode = 'silence'`, [namingId]));
+	const silencePattern = isSilence
+		? (
+				await query<{ id: string; label: string }>(
+					`SELECT DISTINCT o.id, ${namingLabelSql('o')} AS label
+					   FROM participations p
+					   JOIN namings pn ON pn.id = p.id AND pn.deleted_at IS NULL
+					   JOIN namings o ON o.id = CASE WHEN p.naming_id = $1 THEN p.participant_id ELSE p.naming_id END
+					    AND o.deleted_at IS NULL AND o.id <> $1
+					  WHERE (p.naming_id = $1 OR p.participant_id = $1)
+					    AND NOT EXISTS (SELECT 1 FROM memo_content mc WHERE mc.naming_id = o.id)
+					  ORDER BY 2`,
+					[namingId]
+				)
+			).rows
+		: [];
+
 	return {
 		inscriptions: inscriptions.rows,
 		designations: designations.rows,
 		acts: history,
 		derivedFrom,
+		silencePattern,
 		memos: enrichedMemos,
 		referringNotes,
 		annotations,
