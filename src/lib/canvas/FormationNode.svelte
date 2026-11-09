@@ -4,7 +4,7 @@
 -->
 <script lang="ts">
 	import type { SwRole } from '$lib/shared/types/index.js';
-	import { SW_ROLE_STYLES } from '$lib/shared/constants.js';
+	import { SW_ROLE_STYLES, SW_ROLE_LABELS } from '$lib/shared/constants.js';
 	import { plural } from '$lib/shared/plural.js';
 
 	let {
@@ -268,7 +268,7 @@
 				font-weight="500"
 				opacity="0.7"
 				style="text-transform: uppercase; letter-spacing: 0.05em;"
-			>{swRole}</text>
+			>{SW_ROLE_LABELS[swRole] ?? swRole}</text>
 
 			<!-- Main label: Greiffläche + Text -->
 			<!-- svelte-ignore a11y_no_static_element_interactions -->

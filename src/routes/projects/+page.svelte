@@ -160,6 +160,15 @@
 		syncing = false;
 	}
 
+	// Abbrechen verwirft den Entwurf: Beim nächsten Öffnen hing sonst der neue
+	// Name an den alten an (Testlauf 09.11.), und ein Projekt lässt sich nicht
+	// umbenennen (sein Ordner heißt nach dem Namen).
+	function closeCreate() {
+		showCreate = false;
+		name = '';
+		description = '';
+	}
+
 	async function createProject() {
 		if (!name.trim()) return;
 		creating = true;
@@ -262,7 +271,7 @@
 </script>
 
 <!-- Escape schließt das Formular, wo immer der Fokus gerade steht. -->
-<svelte:window onkeydown={(e) => { if (e.key === 'Escape' && showCreate) showCreate = false; }} />
+<svelte:window onkeydown={(e) => { if (e.key === 'Escape' && showCreate) closeCreate(); }} />
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -278,7 +287,7 @@
 				{importing ? 'Importing...' : 'Import .qdpx'}
 				<input type="file" accept=".qdpx" onchange={importQdpx} hidden disabled={importing} />
 			</label>
-			<button class="btn-primary" onclick={() => showCreate = !showCreate}>
+			<button class="btn-primary" onclick={() => (showCreate ? closeCreate() : (showCreate = true))}>
 				{showCreate ? 'Cancel' : 'New project'}
 			</button>
 		</div>
@@ -299,7 +308,7 @@
 	{#if showCreate}
 		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 		<form class="create-form" onsubmit={e => { e.preventDefault(); createProject(); }}
-			onkeydown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); showCreate = false; } }}>
+			onkeydown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); closeCreate(); } }}>
 			<input type="text" placeholder="Project name" aria-label="Project name" bind:value={name} required use:focusSelect />
 			<textarea placeholder="Description (optional)" bind:value={description} rows="2"></textarea>
 			<button type="submit" class="btn-primary" disabled={creating}>Create</button>

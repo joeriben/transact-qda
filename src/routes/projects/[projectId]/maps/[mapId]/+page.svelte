@@ -713,6 +713,11 @@
 				|| ms.memoCreateOpen || ms.memoPanel || ms.editingId || ms.assigningToPhase
 				|| ctxMenuId || canvasCtxMenu || layoutAsk || showTopoPanel);
 			if (!transientOpen && ms.stackId) { ms.stackId = null; ms.stackData = null; return; }
+			// Im Memo-Dialog nach Umbenennen, Designieren oder Moduswechsel heißt
+			// Escape „skip memo": der Akt gilt, nur ohne Memo — wie nach dem
+			// Verbinden. Vorher verwarf Escape die eingetippte Umbenennung still
+			// (Testlauf 09.11.). Verwerfen bleibt der Knopf „cancel".
+			if (ms.actTarget && ms.actType !== 'relate') { void ms.skipAct(); return; }
 			ms.cancelMapReify();
 			ms.cancelRelation();
 			ms.cancelAct();

@@ -651,9 +651,9 @@ async function addElementToAiMap(
 		);
 
 		await client.query(
-			`INSERT INTO naming_acts (naming_id, designation, by)
-			 VALUES ($1, 'cue', $2)`,
-			[naming.id, aiNamingId]
+			`INSERT INTO naming_acts (naming_id, inscription, designation, by)
+			 VALUES ($1, $2, 'cue', $3)`,
+			[naming.id, inscription, aiNamingId]
 		);
 
 		return naming;
@@ -699,10 +699,14 @@ async function relateElementsAsAi(
 			[partNaming.id, mapId, dirFrom, dirTo, opts?.valence || null, JSON.stringify({ ...opts?.properties, aiSuggested: true, ...provenanceProps(prov) })]
 		);
 
+		// Der erste Akt trägt, was die Relation setzt (wie bei der Forscherin):
+		// ohne Inschrift und Valenz meldete der Stack „drawn without name or
+		// valence", obwohl beides gesetzt war (Testlauf 09.11.). Die Stufe
+		// bleibt Cue — die KI schreibt nur Cues.
 		await client.query(
-			`INSERT INTO naming_acts (naming_id, designation, by)
-			 VALUES ($1, 'cue', $2)`,
-			[partNaming.id, aiNamingId]
+			`INSERT INTO naming_acts (naming_id, inscription, valence, designation, by)
+			 VALUES ($1, $2, $3, 'cue', $4)`,
+			[partNaming.id, opts?.inscription?.trim() || null, opts?.valence?.trim() || null, aiNamingId]
 		);
 
 		return { id: partNaming.id, sourceId, targetId, valence: opts?.valence };
@@ -751,9 +755,9 @@ async function addSilenceToMap(
 		);
 
 		await client.query(
-			`INSERT INTO naming_acts (naming_id, designation, by)
-			 VALUES ($1, 'cue', $2)`,
-			[naming.id, aiNamingId]
+			`INSERT INTO naming_acts (naming_id, inscription, designation, by)
+			 VALUES ($1, $2, 'cue', $3)`,
+			[naming.id, inscription, aiNamingId]
 		);
 
 		// Die Participations, aus denen die Stille besteht: je eine zu den
@@ -821,9 +825,9 @@ async function createPhaseAsAi(
 		// Eine Phase zu bilden heißt charakterisieren (D/B) — für den Menschen.
 		// Die KI schreibt nur Cues; ihre vorgeschlagene Phase hebt der Mensch.
 		await client.query(
-			`INSERT INTO naming_acts (naming_id, designation, by)
-			 VALUES ($1, 'cue', $2)`,
-			[phase.id, aiNamingId]
+			`INSERT INTO naming_acts (naming_id, inscription, designation, by)
+			 VALUES ($1, $2, 'cue', $3)`,
+			[phase.id, inscription, aiNamingId]
 		);
 
 		return phase;

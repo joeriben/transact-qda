@@ -347,6 +347,7 @@
 			actionError = String(res.error);
 			// Schon verbunden: die vorhandene Relation ist einen Klick entfernt.
 			actionErrorOpen = res.alreadyRelated && typeof res.id === 'string' ? res.id : null;
+			actionErrorOpenLabel = 'Open that relation';
 			return true;
 		}
 		actionError = null;
@@ -354,6 +355,15 @@
 		return false;
 	}
 	let actionErrorOpen = $state<string | null>(null);
+	let actionErrorOpenLabel = $state('Open that relation');
+	// Kurze Bestätigung unten im Fenster (z. B. nach dem Zusammenführen).
+	let infoNotice = $state<string | null>(null);
+	let infoTimer: ReturnType<typeof setTimeout> | null = null;
+	function showInfo(text: string) {
+		infoNotice = text;
+		if (infoTimer) clearTimeout(infoTimer);
+		infoTimer = setTimeout(() => (infoNotice = null), 5000);
+	}
 	async function openExisting(id: string) {
 		actionError = null;
 		actionErrorOpen = null;
@@ -367,6 +377,19 @@
 	// ---- Create ----
 	async function createNaming() {
 		if (!newNamingValue.trim() || creatingNaming) return;
+		// Gleicher Name (ohne Groß-/Kleinschreibung): wie auf der Map kein
+		// zweites Naming, sondern der Weg zum vorhandenen — ein zweites
+		// gleichen Namens spaltete seine Geschichte (Testlauf 09.11.).
+		const wanted = newNamingValue.trim().toLocaleLowerCase();
+		const same = namings.find(
+			(n) => !researcherIds.has(n.naming_id) && (n.current_inscription || n.inscription || '').trim().toLocaleLowerCase() === wanted
+		);
+		if (same) {
+			actionError = `“${labelOf(same)}” already exists in this project. Nothing was created.`;
+			actionErrorOpen = same.naming_id;
+			actionErrorOpenLabel = 'Open it';
+			return;
+		}
 		creatingNaming = true;
 		await apiAction('create', { inscription: newNamingValue.trim() });
 		newNamingValue = '';
@@ -436,6 +459,9 @@
 		} else {
 			relateSource = namingId;
 			relateTarget = null;
+			// Eine alte Meldung lag sonst unter der Relate-Leiste (beide unten).
+			actionError = null;
+			actionErrorOpen = null;
 		}
 	}
 
@@ -538,10 +564,9 @@
 	}
 
 	// ---- Memo Status ----
-	// Satz IV: ein KI-Memo, das der Mensch noch nicht bewertet hat (oder
-	// verworfen hat), gehört nicht zu den Memos des Namings — wie im Map-Stack.
-	const isAiPending = (m: any) =>
-		m.isAiAuthored && (m.status === 'presented' || m.status === 'discussed' || m.status === 'dismissed');
+	// Satz IV: ein KI-Memo gehört erst zu den Memos des Namings, wenn der
+	// Mensch es hereinholt (promote); „ack" ist ein Verdikt — wie im Map-Stack.
+	const isAiPending = (m: any) => m.isAiAuthored && m.status !== 'promoted';
 
 	async function setMemoStatus(memoId: string, status: string) {
 		await fetch(`/api/projects/${data.projectId}/memos/${memoId}/status`, {
@@ -571,6 +596,8 @@
 			showActionError(res);
 		} else {
 			actionError = null;
+			// Ein offener Stack zeigt den neuen Akt gleich (Testlauf 09.11.).
+			if (stackId === namingId) stackData = await apiAction('getStack', { namingId });
 		}
 	}
 
@@ -581,6 +608,8 @@
 		if (researcherIds.has(survivorId)) return;
 		mergeSurvivorId = survivorId;
 		mergeTargetId = null;
+		actionError = null;
+		actionErrorOpen = null;
 	}
 
 	function selectMergeTarget(mergedId: string) {
@@ -593,8 +622,13 @@
 	async function confirmMerge() {
 		if (!mergeSurvivorId || !mergeTargetId) return;
 		const survivorId = mergeSurvivorId;
+		const mergedLabel = labelOf(namings.find((x) => x.naming_id === mergeTargetId));
+		const survivorLabel = labelOf(namings.find((x) => x.naming_id === survivorId));
 		const result = await apiAction('merge', { survivorId, mergedId: mergeTargetId });
-		if (!showActionError(result)) markTouched(survivorId);
+		if (!showActionError(result)) {
+			markTouched(survivorId);
+			showInfo(`Merged “${mergedLabel}” into “${survivorLabel}”. The merge is an act in its stack; “${mergedLabel}” is marked as merged, not deleted.`);
+		}
 		mergeSurvivorId = null;
 		mergeTargetId = null;
 		const module = await import('$app/navigation');
@@ -793,12 +827,18 @@
 					<button class="btn-xs" onclick={() => (hiddenNotice = false)} aria-label="Dismiss message">×</button>
 				</div>
 			{/if}
+			{#if infoNotice}
+				<div class="action-info" role="status">
+					<span>{infoNotice}</span>
+					<button class="btn-xs" onclick={() => (infoNotice = null)} aria-label="Dismiss message">×</button>
+				</div>
+			{/if}
 			{#if actionError}
 				<div class="action-error" role="alert">
 					<span>{actionError}</span>
 					{#if actionErrorOpen}
 						{@const openId = actionErrorOpen}
-						<button class="btn-xs" onclick={() => openExisting(openId)}>Open that relation</button>
+						<button class="btn-xs" onclick={() => openExisting(openId)}>{actionErrorOpenLabel}</button>
 					{/if}
 					<button class="btn-xs" onclick={() => { actionError = null; actionErrorOpen = null; }} aria-label="Dismiss message">×</button>
 				</div>
@@ -949,8 +989,9 @@
 				{#if includeMemos && aiPendingMemos.length > 0}
 					<div class="stack-section">
 						<!-- Satz IV: KI-Hinweise stehen außerhalb des Datenraums, bis der
-						     Mensch sie bewertet; deshalb nicht unter den Memos dieses Namings. -->
-						<h4>From Cowork, not yet judged</h4>
+						     Mensch sie hereinholt; deshalb nicht unter den Memos dieses Namings. -->
+						<h4>From Cowork</h4>
+						<p class="ai-outside-hint">Cowork’s notes stay outside your data — judging them (ack, dismiss) does not make them memos of this naming.</p>
 						{#each aiPendingMemos as memo}
 							{@render memoEntry(memo)}
 						{/each}
@@ -1571,4 +1612,13 @@
 		background: #2a1416; color: #fca5a5; font-size: 0.82rem;
 		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
 	}
+	.action-info {
+		position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%); z-index: 61;
+		width: max-content; max-width: min(760px, calc(100vw - 2rem)); flex-wrap: wrap;
+		display: flex; align-items: center; justify-content: space-between; gap: 0.6rem;
+		padding: 0.45rem 0.7rem; border: 1px solid #1e3a5f; border-radius: 6px;
+		background: #111c2b; color: #bcd3f0; font-size: 0.82rem;
+		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+	}
+	.ai-outside-hint { font-size: 0.72rem; color: #6b7280; margin: 0 0 0.4rem; line-height: 1.35; }
 </style>

@@ -114,6 +114,17 @@
 	}
 </script>
 
+<!-- Escape schließt den Coach auch, wenn der Fokus nicht mehr im Panel steht
+     (nach einem Klick in die Antwort lag er auf der Seite; Testlauf 09.11.).
+     Ein Eingabefeld außerhalb behält sein eigenes Escape. -->
+<svelte:window onkeydown={(e) => {
+	if (e.key !== 'Escape' || !coach.isOpen || e.defaultPrevented) return;
+	const el = document.activeElement as HTMLElement | null;
+	const typingElsewhere = !!el && el !== document.body && !el.closest('.coach-panel')
+		&& (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName));
+	if (!typingElsewhere) coach.isOpen = false;
+}} />
+
 {#if coach.isOpen}
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div

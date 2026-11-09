@@ -930,7 +930,7 @@ export function createMapState(
 		if (!res) { showError('Status not saved'); return false; }
 		// Refresh stack to show updated status
 		await refreshStack();
-		// Beurteilt (auch aus dem Stack): fällt aus „From Cowork, not yet judged".
+		// Beurteilt (auch aus dem Stack): die Cowork-Karte zeigt nur noch Unbewertete.
 		void loadPresentedMemos();
 		return true;
 	}

@@ -785,6 +785,34 @@ export function createCanvasPositions(
 
 	// ─── Spatial relation sync (SW/A maps) ───
 
+	function spatialNotice(
+		added: Array<{ sourceId: string; targetId: string; valence: string }>,
+		removed: string[],
+		counts: { added?: number; removed?: number; restored?: number } | undefined
+	): string | null {
+		const name = (id: string) => `“${ms.findInscription(id)}”`;
+		const phrase = (r: { sourceId: string; targetId: string; valence: string }) =>
+			r.valence === 'contains' ? `${name(r.sourceId)} contains ${name(r.targetId)}` : `${name(r.sourceId)} overlaps ${name(r.targetId)}`;
+		const parts: string[] = [];
+		const nAdded = counts?.added ?? 0;
+		const nRestored = counts?.restored ?? 0;
+		if (added.length > 0 && nAdded + nRestored > 0) {
+			// Kehrt ein früher abgeleitetes Verhältnis zurück, ist es dieselbe
+			// Relation, wiederhergestellt — kein neues Naming.
+			const verb = nAdded > 0 && nRestored > 0 ? 'Recorded or restored' : nRestored > 0 ? 'Restored' : 'Recorded';
+			parts.push(`${verb} from the placement: ${added.map(phrase).join('; ')} (relation, cue).`);
+		}
+		if (removed.length > 0 && (counts?.removed ?? 0) > 0) {
+			const names = removed.map((id) => ms.findInscription(id)).filter((l) => l && l !== '?');
+			parts.push(
+				names.length === removed.length
+					? `Withdrawn, as the placement no longer shows it: ${names.map((l) => `“${l}”`).join('; ')} (restorable).`
+					: `${removed.length === 1 ? 'A relation' : `${removed.length} relations`} from the earlier placement withdrawn (restorable).`
+			);
+		}
+		return parts.length > 0 ? parts.join(' ') : null;
+	}
+
 	async function syncSpatialRelations() {
 		if (ms.mapType !== 'social-worlds' || centeredId) return;
 		if (spatialSyncPending) { spatialSyncQueued = true; return; }
@@ -831,8 +859,12 @@ export function createCanvasPositions(
 			for (const [key, relId] of existingContains) { if (!computedContains.has(key)) toRemove.push(relId); }
 			for (const [key, relId] of existingOverlaps) { if (!computedOverlaps.has(key)) toRemove.push(relId); }
 			if (toAdd.length > 0 || toRemove.length > 0) {
-				await ms.mapAction('syncSpatialRelations', { add: toAdd, remove: toRemove });
+				const res = await ms.mapAction('syncSpatialRelations', { add: toAdd, remove: toRemove });
 				await ms.reload();
+				// Die Lage legt Relationen an und zieht sie zurück (Sitzung 15); das
+				// geschieht sichtbar, nicht still (Testlauf 09.11.).
+				const said = spatialNotice(toAdd, toRemove, res);
+				if (said) ms.showAiNotification(said);
 			}
 		} finally {
 			spatialSyncPending = false;

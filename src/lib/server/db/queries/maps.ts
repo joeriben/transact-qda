@@ -947,9 +947,20 @@ export async function getNamingStack(namingId: string, projectId?: string) {
 	// sind die Regel des Assistenten, die BJ mit „commit" übernahm). Der Stack
 	// nennt den Grund, statt die Stufe kommentarlos hinzustellen.
 	const isRelation = !!(await queryOne(`SELECT 1 FROM participations WHERE id = $1`, [namingId]));
+	const spatial =
+		isRelation &&
+		!!(await queryOne(
+			`SELECT 1 FROM appearances WHERE naming_id = $1 AND (properties->>'spatiallyDerived')::boolean IS TRUE`,
+			[namingId]
+		));
 	const firstDesignationSeq = actRows.find((a) => !!a.designation)?.seq ?? null;
 	const relationBasis = (a: (typeof actRows)[number]): string | null => {
 		if (!isRelation || a.seq !== firstDesignationSeq) return null;
+		// Die Stufenregel gilt für die Forscherin; ein KI-Akt bleibt Cue, was
+		// er auch setzt (Testlauf 09.11.: „drawn without name or valence" an
+		// einer KI-Relation mit Namen und Valenz).
+		if (!a.by_researcher) return 'proposed by the AI — the AI writes cues only';
+		if (spatial) return 'recorded from the placement on the social worlds/arenas map';
 		const named = !!a.inscription?.trim();
 		const typed = !!a.valence?.trim();
 		if (named && typed) return 'drawn with a name and a valence';
@@ -1164,8 +1175,8 @@ export async function getMapAppearances(mapId: string, projectId: string) {
 			     JOIN memo_content mc ON mc.naming_id = CASE
 			       WHEN mp.naming_id = a.naming_id THEN mp.participant_id
 			       ELSE mp.naming_id END
-			     JOIN namings mn ON mn.id = mc.naming_id AND mn.deleted_at IS NULL AND NOT (mn.created_by = '00000000-0000-0000-0000-000000000000' AND mc.status IN ('presented','discussed','dismissed'))
-			     -- unbewertete KI-Memos verankern nichts (Satz IV: Hinweise leben außerhalb des Datenraums)
+			     JOIN namings mn ON mn.id = mc.naming_id AND mn.deleted_at IS NULL AND NOT (mn.created_by = '00000000-0000-0000-0000-000000000000' AND mc.status IS DISTINCT FROM 'promoted')
+			     -- KI-Memos verankern nichts, bis die Forscherin sie hereinholt (promote); ack ist ein Verdikt, kein Hereinholen (Satz IV)
 			     WHERE mp.naming_id = a.naming_id OR mp.participant_id = a.naming_id
 			   ) as has_memo_link,
 			   -- Memo previews (all memos incl. AI, for hover tooltips + badges)
@@ -1185,10 +1196,10 @@ export async function getMapAppearances(mapId: string, projectId: string) {
 			        AND msub.deleted_at IS NULL AND msub.id != a.naming_id
 			      JOIN memo_content mcsub ON mcsub.naming_id = msub.id
 			      WHERE (psub.naming_id = a.naming_id OR psub.participant_id = a.naming_id)
-			        -- Satz IV: unbewertete oder verworfene KI-Hinweise zählen
-			        -- nicht am Knoten, bis der Mensch sie hereinholt.
+			        -- Satz IV: KI-Hinweise zählen nicht am Knoten, bis der Mensch
+			        -- sie hereinholt (promote); auch nicht nach „ack".
 			        AND NOT (msub.created_by = '00000000-0000-0000-0000-000000000000'
-			                 AND mcsub.status IN ('presented', 'discussed', 'dismissed'))
+			                 AND mcsub.status IS DISTINCT FROM 'promoted')
 			      UNION ALL
 			      SELECT json_build_object(
 			        'label', NULL,

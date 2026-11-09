@@ -154,8 +154,14 @@ export async function buildProjectContext(projectId: string): Promise<string> {
 // ── Map detail context ────────────────────────────────────────────
 // Detailed map structure for personas working on a specific map.
 
+function provenanceTag(a: any): string {
+	const withdrawn = a.properties?.aiWithdrawn || a.properties?.withdrawn;
+	const ai = a.properties?.aiSuggested;
+	return withdrawn ? (ai ? ' [AI][WITHDRAWN]' : ' [WITHDRAWN]') : ai ? ' [AI]' : '';
+}
+
 export interface MapDetailOptions {
-	/** Include AI metadata (aiSuggested, aiWithdrawn, discussionSummary). Default: false. */
+	/** Include discussion summaries of AI entries. Default: false. ([AI]/[WITHDRAWN] marks are always included.) */
 	includeAiMetadata?: boolean;
 	/** Include cross-map participations for SW/A maps. Default: true. */
 	includeCrossMap?: boolean;
@@ -185,6 +191,10 @@ export async function buildMapDetail(
 		const mapType = map?.properties?.mapType || 'situational';
 
 		parts.push(`MAP: "${map?.label || ''}" (${mapType})`);
+		// Herkunft für jeden Aktanten, nicht nur für schreibende: Ohne die
+		// Marke schrieb der Coach eine KI-Stille der Forscherin zu (Testlauf
+		// 09.11.; Satz II: Gesprochenes ist in der Akte-Geschichte verankert).
+		parts.push('MARKS: [AI] = written by Cowork (the AI), not by the researcher; [WITHDRAWN] = withdrawn from this map. Never attribute an [AI] entry to the researcher.');
 
 		// Build element inscription map for relation display
 		const elementMap = endpointNames(structure);
@@ -287,12 +297,7 @@ export async function buildMapDetail(
 				const desig = el.designation || 'cue';
 				const prov = el.has_document_anchor ? ' 📄' : el.has_memo_link ? ' 📝' : ' ∅';
 				const role = el.sw_role ? ` [${el.sw_role}]` : '';
-				let aiTags = '';
-				if (includeAiMetadata) {
-					const withdrawn = el.properties?.aiWithdrawn || el.properties?.withdrawn;
-					const aiSuggested = el.properties?.aiSuggested;
-					aiTags = withdrawn ? ' [WITHDRAWN]' : aiSuggested ? ' [AI]' : '';
-				}
+				const aiTags = provenanceTag(el);
 				parts.push(`  [${desig}]${prov}${aiTags}${role} "${el.inscription}" (id: ${el.naming_id})`);
 				if (includeAiMetadata) {
 					const summary = discussionMap.get(el.naming_id);
@@ -319,12 +324,7 @@ export async function buildMapDetail(
 				const val = rel.valence ? ` [${rel.valence}]` : '';
 				const desig = rel.designation || 'cue';
 				const prov = rel.has_document_anchor ? ' 📄' : rel.has_memo_link ? ' 📝' : ' ∅';
-				let aiTags = '';
-				if (includeAiMetadata) {
-					const withdrawn = rel.properties?.aiWithdrawn || rel.properties?.withdrawn;
-					const aiSuggested = rel.properties?.aiSuggested;
-					aiTags = withdrawn ? ' [WITHDRAWN]' : aiSuggested ? ' [AI]' : '';
-				}
+				const aiTags = provenanceTag(rel);
 				parts.push(`  [${desig}]${prov}${aiTags} "${srcName}" ${arrow} "${tgtName}"${label}${val} (id: ${rel.naming_id})`);
 				if (includeAiMetadata) {
 					const summary = discussionMap.get(rel.naming_id);
@@ -340,13 +340,8 @@ export async function buildMapDetail(
 		if (structure.silences.length > 0) {
 			parts.push('\nIDENTIFIED SILENCES:');
 			for (const s of structure.silences) {
-				let aiTags = '';
-				if (includeAiMetadata) {
-					const withdrawn = s.properties?.aiWithdrawn || s.properties?.withdrawn;
-					const aiSuggested = s.properties?.aiSuggested;
-					aiTags = withdrawn ? ' [WITHDRAWN]' : aiSuggested ? ' [AI]' : '';
-				}
-				parts.push(`  ${aiTags}"${s.inscription}" (id: ${s.naming_id})`);
+				const aiTags = provenanceTag(s);
+				parts.push(`  ${aiTags ? aiTags.trim() + ' ' : ''}"${s.inscription}" (id: ${s.naming_id})`);
 				if (includeAiMetadata) {
 					const summary = discussionMap.get(s.naming_id);
 					if (summary) parts.push(`    Discussion: ${summary}`);

@@ -11,6 +11,11 @@
 	let { data } = $props();
 	let showCreate = $state(false);
 	let newLabel = $state('');
+	// Abbrechen verwirft den Entwurf (wie beim Anlegen eines Projekts).
+	function closeCreate() {
+		showCreate = false;
+		newLabel = '';
+	}
 	let newType = $state<string>('situational');
 	let creating = $state(false);
 
@@ -62,14 +67,14 @@
 </script>
 
 <!-- Escape schließt das Formular, wo immer der Fokus gerade steht. -->
-<svelte:window onkeydown={(e) => { if (e.key === 'Escape' && showCreate) showCreate = false; }} />
+<svelte:window onkeydown={(e) => { if (e.key === 'Escape' && showCreate) closeCreate(); }} />
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="maps-page" onclick={() => { ctxMenuId = null; }}>
 	<PageHeader title="Maps">
 		{#snippet actions()}
-			<button class="btn-primary" onclick={() => showCreate = !showCreate}>
+			<button class="btn-primary" onclick={() => (showCreate ? closeCreate() : (showCreate = true))}>
 				{showCreate ? 'Cancel' : 'New map'}
 			</button>
 		{/snippet}
@@ -77,7 +82,7 @@
 			{#if showCreate}
 				<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 				<form class="create-form" onsubmit={e => { e.preventDefault(); createMap(); }}
-					onkeydown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); showCreate = false; } }}>
+					onkeydown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); closeCreate(); } }}>
 					<input type="text" placeholder="Map name" aria-label="Map name" bind:value={newLabel} required use:focusSelect />
 					<select bind:value={newType} aria-label="Map type">
 						<option value="situational">Situational Map</option>

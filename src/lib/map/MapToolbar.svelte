@@ -56,7 +56,22 @@
 	let draftInputRef = $state<HTMLInputElement | null>(null);
 	let draftExisting = $state<{ id: string; inscription: string } | null>(null);
 	let draftDebounce: ReturnType<typeof setTimeout> | undefined;
+	const MAP_TYPE_BADGE: Record<string, string> = {
+		situational: 'Situational',
+		'social-worlds': 'Social worlds / arenas',
+		positional: 'Positional'
+	};
 	let lastAdded = $state<string | null>(null);
+	// Was der letzte Anlege-Versuch tat: neu angelegt, vorhandenes Naming
+	// hierher geholt, oder es stand schon da (Testlauf 09.11.: das Popover
+	// sagte „Added", während das vorhandene Naming platziert wurde).
+	let lastOutcome = $state<'added' | 'reused' | 'onmap'>('added');
+
+	/** Wo ein Naming dieser Karte steht, wenn es nicht auf der Fläche liegt. */
+	function whereNote(id: string | undefined): string {
+		const node = id ? ms.findNode(id) : null;
+		return node && !ms.isPlaced(node) ? ' It waits in Unplaced — place it from there.' : '';
+	}
 	const draftOnMap = $derived.by(() => {
 		const q = norm(draftName);
 		if (!q) return null;
@@ -161,7 +176,7 @@
 		closePlacementDropdown();
 		newInscription = '';
 		const label = ms.findInscription(id);
-		ms.showAiNotification(`${quoted(label)} is already on this map.`);
+		ms.showAiNotification(`${quoted(label)} is already on this map.${whereNote(id)}`);
 		onreveal?.(id);
 	}
 
@@ -237,7 +252,8 @@
 				newInscription = '';
 				const id = res.data.id as string | undefined;
 				const label = (id && ms.findNode(id) ? ms.findInscription(id) : null) ?? name;
-				ms.showAiNotification(`${quoted(label)} is already on this map.`);
+				ms.showAiNotification(`${quoted(label)} is already on this map.${whereNote(id)}`);
+				lastOutcome = 'onmap';
 				if (id) onreveal?.(id);
 				return true;
 			}
@@ -248,6 +264,7 @@
 			if (res.data?.reused) {
 				ms.showAiNotification(`${quoted(res.data.inscription || name)} already exists in this project — placed the existing naming here.`);
 			}
+			lastOutcome = res.data?.reused ? 'reused' : 'added';
 			if (!ms.isPrimary) ms.requestReveal();
 			await ms.reload();
 			return true;
@@ -306,7 +323,7 @@
 						: undefined;
 			const res = await ms.mapRequest('placeExisting', { namingId, ...(properties ? { properties } : {}) });
 			if (res.status === 409) {
-				ms.showAiNotification('Already on this map.');
+				ms.showAiNotification(`Already on this map.${whereNote(namingId)}`);
 				onreveal?.(namingId);
 				return;
 			}
@@ -384,7 +401,7 @@
 <div class="map-toolbar">
 	<a href="/projects/{ms.projectId}/maps" class="back">&larr; Maps</a>
 	<h2 title={ms.mapLabel}>{ms.mapLabel}</h2>
-	<span class="map-type-badge">{ms.mapType}</span>
+	<span class="map-type-badge">{MAP_TYPE_BADGE[ms.mapType] ?? ms.mapType}</span>
 
 	<!-- Ohne Zurückgezogenes (Withdraw); auf der Primary Map zählen die
 	     unplatzierten Namings mit (sie gehören zur Situation). -->
@@ -421,7 +438,10 @@
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div class="add-form-wrapper" bind:this={addWrapperEl} onclick={(e) => e.stopPropagation()} onfocusout={onAddFocusOut}>
-			<form class="add-form" onsubmit={e => { e.preventDefault(); addElement(); }}>
+			<!-- Enter im Suchfeld legt nichts still an (Prüfung 09.11.: „Eigen" +
+			     Enter wurde ein neues Naming): ein Treffer auf der Karte wird
+			     gezeigt, sonst geht der Text an „+ Add", wo man das Anlegen bestätigt. -->
+			<form class="add-form" onsubmit={e => { e.preventDefault(); if (exactOnMap) revealOnMap(exactOnMap.id); else if (newInscription.trim()) openNaming(); }}>
 				{#if ms.mapType === 'social-worlds'}
 					<select class="sw-role-select" bind:value={newSwRole} onchange={onRoleChange}
 						aria-label="Type of the new formation" title="Type of the new formation">
@@ -478,7 +498,12 @@
 					{:else if draftExisting}
 						<p class="naming-pop-note">{quoted(draftExisting.inscription)} exists in this project — the existing naming is placed here, no second one.</p>
 					{:else if lastAdded}
-						<p class="naming-pop-hint">Added {quoted(lastAdded)}{ms.isPrimary ? ' (in Unplaced)' : ''}. Name the next one, or Esc to close.</p>
+						<p class="naming-pop-hint">
+							{#if lastOutcome === 'reused'}Placed the existing {quoted(lastAdded)} here{ms.isPrimary ? ' (in Unplaced)' : ''} — no second naming.
+							{:else if lastOutcome === 'onmap'}{quoted(lastAdded)} was already on this map.
+							{:else}Added {quoted(lastAdded)}{ms.isPrimary ? ' (in Unplaced)' : ''}.{/if}
+							Name the next one, or Esc to close.
+						</p>
 					{:else}
 						<p class="naming-pop-hint">Enter adds · Esc cancels{ms.isPrimary ? ' · it waits in Unplaced until you place it' : ''}</p>
 					{/if}

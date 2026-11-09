@@ -74,8 +74,8 @@
 		{/if}
 		<div class="act-actions">
 			<button class="btn-primary btn-sm-primary" onclick={ms.submitAct}>{ms.actType === 'relate' ? 'Save memo' : 'Apply + memo'}</button>
-			<button class="btn-link" onclick={ms.skipAct}>skip memo</button>
-			{#if ms.actType !== 'relate'}<button class="btn-link" onclick={ms.cancelAct}>cancel</button>{/if}
+			<button class="btn-link" onclick={ms.skipAct} title="Apply without a memo (Esc)">skip memo</button>
+			{#if ms.actType !== 'relate'}<button class="btn-link" onclick={ms.cancelAct} title="Discard this {ms.actType === 'rename' ? 'rename' : ms.actType === 'designate' ? 'designation' : 'change'}">cancel</button>{/if}
 		</div>
 	</div>
 {/if}

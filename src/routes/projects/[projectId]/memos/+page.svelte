@@ -274,7 +274,11 @@
 							<span class="discussion-count" title={plural(memo.discussion.length, 'discussion turn')}>{memo.discussion.length}</span>
 						{/if}
 						{#if memo.links?.length > 0}
-							<span class="link-count">{memo.links.length} link{memo.links.length === 1 ? '' : 's'}</span>
+							<!-- Wenige Bezüge beim Namen (ein Map-Memo nennt seine Map; vorher
+							     nur „1 link", Testlauf 09.11.), viele als Zahl. -->
+							<span class="link-count" title={memo.links.map((l: any) => l.label).join(', ')}>
+								{memo.links.length <= 2 ? `on ${memo.links.map((l: any) => `“${l.label}”`).join(', ')}` : `${memo.links.length} links`}
+							</span>
 						{/if}
 						<span class="memo-date">{formatWhen(memo.created_at)}</span>
 						<span class="expand-indicator">{expandedId === memo.id ? '▾' : '▸'}</span>
@@ -298,7 +302,7 @@
 								<div class="link-chips">
 									{#each memo.links as link}
 										<span class="link-chip" title={link.mode}>
-											<span class="link-chip-mode">{link.mode === 'relation' ? '↔' : link.mode === 'silence' ? '∅' : '●'}</span>
+											<span class="link-chip-mode">{link.mode === 'relation' ? '↔' : link.mode === 'silence' ? '∅' : link.mode === 'perspective' ? 'map' : '●'}</span>
 											{link.label}
 										</span>
 									{/each}

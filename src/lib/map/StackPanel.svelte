@@ -42,10 +42,11 @@
 	// Memos in anderen Stacks, die auf dieses Naming verweisen (Bezug in beide Richtungen).
 	const referringNotes = $derived(((ms.stackData as { referringNotes?: any[] } | null)?.referringNotes) ?? []);
 	// Satz IV: Hinweise der KI leben außerhalb des Datenraums, bis der Mensch
-	// sie durch einen eigenen Akt hereinholt. Unbewertete (und verworfene)
-	// KI-Memos zählen daher nicht zu den Memos dieses Namings, sondern stehen
-	// gesondert, mit den Knöpfen zum Bewerten.
-	const isAiPending = (m: any) => m.isAiAuthored && (m.status === 'presented' || m.status === 'discussed' || m.status === 'dismissed');
+	// sie durch einen eigenen Akt hereinholt (promote). „ack" ist ein Verdikt,
+	// kein Hereinholen: Auch quittierte KI-Memos zählen nicht zu den Memos
+	// dieses Namings (Testlauf 09.11.: nach „ack" verankerte ein KI-Memo still
+	// fünf Namings), sondern stehen gesondert, mit den Knöpfen zum Bewerten.
+	const isAiPending = (m: any) => m.isAiAuthored && m.status !== 'promoted';
 	const dataMemos = $derived((ms.stackData?.memos ?? []).filter((m: any) => !isAiPending(m)));
 	const aiPendingMemos = $derived((ms.stackData?.memos ?? []).filter(isAiPending));
 
@@ -243,7 +244,8 @@
 		{/if}
 		{#if aiPendingMemos.length > 0}
 		<div class="history-section">
-			<span class="history-label">From Cowork, not yet judged ({aiPendingMemos.length})</span>
+			<span class="history-label">From Cowork ({aiPendingMemos.length})</span>
+			<p class="ai-outside-hint">Cowork’s notes stay outside your data — judging them (ack, dismiss) does not make them memos of this naming.</p>
 			{#each aiPendingMemos as memo (memo.id)}
 				{@render memoEntry(memo)}
 			{/each}
@@ -654,4 +656,5 @@
 		background: rgba(56, 189, 248, 0.08); color: #c9cdd5; font-size: 0.75rem; line-height: 1.4;
 		display: flex; gap: 0.4rem; align-items: flex-start; justify-content: space-between;
 	}
+	.ai-outside-hint { font-size: 0.7rem; color: #6b7280; margin: 0.1rem 0 0.35rem; line-height: 1.35; }
 </style>
