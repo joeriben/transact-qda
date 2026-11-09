@@ -7,12 +7,8 @@
   Ein Naming IST diese Schichtung (Session 01: „jedes Naming IST diese Geschichte als Datenobjekt, also seine eigenen Blockchain";
   Session 03: „das ELement IST diese Schichtung seiner Veränderungen").
 -->
-<script lang="ts">
-	import { CCS_CUE, CCS_CHAR, CCS_SPEC } from '$lib/shared/tokens.js';
-	import { formatWhen } from '$lib/shared/dates.js';
-	import { quoted } from '$lib/shared/namingLabel.js';
-
-	type Act = {
+<script lang="ts" module>
+	export type Act = {
 		seq: string | number;
 		created_at: string;
 		inscription: string | null;
@@ -33,16 +29,27 @@
 		sw_role?: string | null;
 		/** Erster Akt einer Relation: womit sie gezogen wurde (begründet ihre Anfangsstufe). */
 		basis?: string | null;
-		/** Merge: Inschrift des aufgenommenen Namings; die Memos, die es mitbrachte, folgen. */
+		/** Merge: Inschrift des aufgenommenen Namings. */
 		merged_from?: string | null;
+		/** Merge: der Stack des aufgenommenen Namings, unverändert (Zeiten, Autorinnen, Kontexte). */
+		absorbed?: Act[];
 	};
+</script>
+
+<script lang="ts">
+	import { CCS_CUE, CCS_CHAR, CCS_SPEC } from '$lib/shared/tokens.js';
+	import { formatWhen } from '$lib/shared/dates.js';
+	import { quoted } from '$lib/shared/namingLabel.js';
+	import StackActs from './StackActs.svelte';
+
 
 	let {
 		acts,
 		pinnedSeq = null,
 		currentMap = null,
 		onpin,
-		onlinked
+		onlinked,
+		ends = null
 	}: {
 		acts: Act[];
 		/** Auf dieser Schicht ist die Perspektive kollabiert (collapseAt). */
@@ -53,6 +60,8 @@
 		onpin?: (seq: number) => void;
 		/** Klick auf ein verknüpftes Naming. */
 		onlinked?: (id: string) => void;
+		/** Endpunkte, falls das Naming eine Relation ist (für „as relation"). */
+		ends?: { source: string; target: string; directed: boolean } | null;
 	} = $props();
 
 	function color(d: string | null) {
@@ -108,11 +117,11 @@
 					<span class="sa-dot sa-dot-none"></span>
 				{/if}
 				<span class="sa-what">
-					{#if a.merged_from}<span class="sa-sit">merged in {quoted(a.merged_from)} — its memos follow</span>{/if}
+					{#if a.merged_from}<span class="sa-sit">merged in {quoted(a.merged_from)}</span>{/if}
 					{#if a.inscription}<span class="sa-ins">{quoted(a.inscription)}</span>{/if}
 					{#if renamedFrom.has(String(a.seq))}<span class="sa-tag">renamed from {quoted(renamedFrom.get(String(a.seq)) ?? '')}</span>{/if}
 					{#if a.designation}<span class="sa-des" style="color: {color(a.designation)}">{a.designation}</span>{/if}
-					{#if a.mode}<span class="sa-tag">as {a.mode}</span>{/if}
+					{#if a.mode}<span class="sa-tag">as {a.mode}{a.mode === 'relation' && ends ? `: ${ends.source} ${ends.directed ? '→' : '↔'} ${ends.target}` : ''}</span>{/if}
 					{#if a.valence}<span class="sa-tag">valence: {a.valence}</span>{:else if a.valence === ''}<span class="sa-tag">valence removed</span>{/if}
 					{#if !a.inscription && !a.designation && !a.mode && !a.valence && a.memo_text}<span class="sa-tag">memo</span>{/if}
 				</span>
@@ -124,6 +133,12 @@
 			</div>
 			{#if a.basis}
 				<div class="sa-basis">{a.basis}</div>
+			{/if}
+			{#if a.absorbed && a.absorbed.length > 0}
+				<details class="sa-absorbed" open>
+					<summary>stack of {quoted(a.merged_from ?? '')} until the merge ({a.absorbed.length})</summary>
+					<StackActs acts={a.absorbed} {currentMap} {onlinked} />
+				</details>
 			{/if}
 			{#if a.memo_text}
 				<div class="sa-memo">{a.memo_text}</div>
@@ -174,6 +189,8 @@
 		border-radius: 10px; padding: 0 0.4rem; cursor: default;
 	}
 	button.sa-chip { cursor: pointer; }
+	.sa-absorbed { margin: 0.25rem 0 0.1rem; padding-left: 0.35rem; border-left: 1px dotted #3a3d4a; }
+	.sa-absorbed > summary { font-size: 0.68rem; color: #6b7280; cursor: pointer; margin-bottom: 0.2rem; }
 	.sa-situating { border-left-style: dashed; }
 	.sa-sit { color: #8b8fa3; font-size: 0.72rem; }
 	.sa-out .sa-sit { color: #6b7280; }

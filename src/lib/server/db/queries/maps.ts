@@ -3,7 +3,7 @@
 
 import { query, queryOne, transaction } from '../index.js';
 import type { MapType, DesignationStage } from '$lib/shared/types/index.js';
-import { getOrCreateResearcherNaming } from './namings.js';
+import { getOrCreateResearcherNaming, mergeActSql, mergedIntoSql } from './namings.js';
 import { getAnnotationsByNaming } from './annotations.js';
 import { getSituatingActs } from './situating.js';
 
@@ -742,15 +742,20 @@ export async function setCollapse(
 
 // Get the full stack of a naming: all inscription and designation layers.
 // This is not "history" — it IS the naming's constitution.
-export async function getNamingStack(namingId: string, projectId?: string) {
+export async function getNamingStack(
+	namingId: string,
+	projectId?: string,
+	/** absorbed: der Stack eines aufgenommenen (soft-gelöschten) Namings, gezeigt unter dem Merge-Akt. */
+	opts?: { absorbed?: boolean; depth?: number }
+) {
 	// Project-scope the body UUID: a member of one project must not read the
 	// stack (inscriptions/designations/memos) of a naming in another project.
 	// When projectId is given, the naming must belong to it; otherwise return
 	// an empty stack instead of foreign data.
 	if (projectId) {
 		const owns = await queryOne(
-			`SELECT 1 FROM namings WHERE id = $1 AND project_id = $2 AND deleted_at IS NULL`,
-			[namingId, projectId]
+			`SELECT 1 FROM namings WHERE id = $1 AND project_id = $2 AND (deleted_at IS NULL OR $3)`,
+			[namingId, projectId, !!opts?.absorbed]
 		);
 		if (!owns) {
 			return {
@@ -896,22 +901,38 @@ export async function getNamingStack(namingId: string, projectId?: string) {
 			linked: { id: string; label: string }[];
 			inferred_cause: { id: string; label: string }[] | null;
 			merged_from: string | null;
+			absorbed_id: string | null;
+			from_memo: string | null;
 		}>(
 			`SELECT na.seq, na.created_at, na.inscription, na.designation, na.mode, na.valence,
 			        na.memo_text, na.linked_naming_ids,
 			        -- Merge (mergeNamings): ein Akt, der nichts setzt und nur auf das
 			        -- aufgenommene, soft-gelöschte Naming verweist.
-			        CASE WHEN na.memo_text IS NULL AND na.inscription IS NULL AND na.designation IS NULL
-			                  AND na.mode IS NULL AND na.valence IS NULL
-			                  AND cardinality(na.linked_naming_ids) > 0
+			        CASE WHEN ${mergeActSql('na')}
 			                  AND NOT EXISTS (SELECT 1 FROM namings l WHERE l.id = ANY(na.linked_naming_ids) AND l.deleted_at IS NULL)
 			             THEN (SELECT string_agg(${namingLabelSql('l')}, ', ') FROM namings l WHERE l.id = ANY(na.linked_naming_ids))
 			        END AS merged_from,
+			        CASE WHEN ${mergeActSql('na')} THEN na.linked_naming_ids[1] END AS absorbed_id,
+			        -- Aus einem Memo gemacht (promoteMemoToNaming): der erste Akt
+			        -- verweist auf das übernommene Memo.
+			        CASE WHEN na.inscription IS NOT NULL
+			             THEN (SELECT string_agg(l.inscription, ', ') FROM namings l
+			                     JOIN memo_content mc ON mc.naming_id = l.id AND mc.status = 'promoted'
+			                    WHERE l.id = ANY(na.linked_naming_ids))
+			        END AS from_memo,
 			        b.inscription AS by_inscription,
 			        EXISTS (SELECT 1 FROM researcher_namings rn WHERE rn.naming_id = na.by) AS by_researcher,
-			        COALESCE((SELECT json_agg(json_build_object('id', l.id, 'label', ${namingLabelSql('l')}) ORDER BY l.inscription)
-			                  FROM namings l
-			                  WHERE l.id = ANY(na.linked_naming_ids) AND l.deleted_at IS NULL), '[]'::json) AS linked,
+			        -- Verweise auf ein aufgenommenes Naming zeigen auf das, in das
+			        -- es aufgenommen wurde (nicht für den Merge-Akt selbst).
+			        COALESCE((SELECT json_agg(DISTINCT jsonb_build_object('id', t.id, 'label', t.label))
+			                  FROM (SELECT l.id, ${namingLabelSql('l')} AS label
+			                          FROM namings l
+			                         WHERE l.id = ANY(na.linked_naming_ids) AND l.deleted_at IS NULL
+			                        UNION
+			                        SELECT sv.id, ${namingLabelSql('sv')} AS label
+			                          FROM namings l
+			                          JOIN namings sv ON sv.id = ${mergedIntoSql('l')}
+			                         WHERE l.id = ANY(na.linked_naming_ids) AND sv.id <> na.naming_id) t), '[]'::json) AS linked,
 			        -- Ältere Hebungen durch eine Relation (vor dem 09.11.2026) tragen
 			        -- ihre Ursache nicht: Sie entstanden in derselben Transaktion wie
 			        -- die Relation, also mit demselben Zeitstempel wie deren erster Akt.
@@ -977,13 +998,35 @@ export async function getNamingStack(namingId: string, projectId?: string) {
 		if (typed) return 'drawn with a valence, without a name of its own';
 		return 'drawn without name or valence';
 	};
+	// Hebung durch einen Merge: ein Designations-Akt, der nur auf ein
+	// aufgenommenes Naming verweist (mergeNamings, Schritt 6).
+	const absorbedLabels = new Map(
+		actRows.filter((a) => a.absorbed_id && a.merged_from).map((a) => [a.absorbed_id as string, a.merged_from as string])
+	);
+	const mergeBasis = (a: (typeof actRows)[number]): string | null => {
+		if (!a.designation || a.inscription || a.memo_text?.trim()) return null;
+		const from = (a.linked_naming_ids ?? []).map((id) => absorbedLabels.get(id)).filter(Boolean);
+		return from.length > 0 ? `lifted by the merge: “${from.join('”, “')}” brought its memos — a memo lifts a cue` : null;
+	};
 	const acts = actRows
 		.filter((a) => !isReasoning(a))
 		.map((a) => ({
 			...a,
 			linked: (a.linked ?? []).filter((l) => !passageIds.has(l.id)),
-			basis: relationBasis(a)
+			basis: relationBasis(a) ?? mergeBasis(a) ?? (a.from_memo ? `made a naming from the memo “${a.from_memo}”` : null)
 		}));
+
+	// Der Stack eines aufgenommenen Namings steht unter dem Merge-Akt, mit
+	// seinen eigenen Zeiten, Autorinnen und Kontexten (Testlauf 09.11.:
+	// Kopien trugen die Zeit des Merge und verloren „as relation").
+	const depth = opts?.depth ?? 0;
+	const absorbedStacks = new Map<string, any[]>();
+	if (projectId && depth < 4) {
+		for (const id of absorbedLabels.keys()) {
+			const sub = await getNamingStack(id, projectId, { absorbed: true, depth: depth + 1 });
+			absorbedStacks.set(id, sub.acts);
+		}
+	}
 
 	// Notizen in den Stacks ANDERER Namings, die auf dieses verweisen
 	// (noteOnNaming und Akt-Notizen mit linked_naming_ids). Ein Bezug ist in
@@ -1006,10 +1049,10 @@ export async function getNamingStack(namingId: string, projectId?: string) {
 					   FROM naming_acts na
 					   JOIN namings o ON o.id = na.naming_id AND o.project_id = $2 AND o.deleted_at IS NULL
 					   JOIN namings b ON b.id = na.by
-					  WHERE $1 = ANY(na.linked_naming_ids) AND na.naming_id <> $1
+					  WHERE na.linked_naming_ids && $3::uuid[] AND na.naming_id <> $1
 					    AND na.memo_text IS NOT NULL AND btrim(na.memo_text) <> ''
 					  ORDER BY na.created_at`,
-					[namingId, projectId]
+					[namingId, projectId, [namingId, ...absorbedLabels.keys()]]
 				)
 			).rows
 		: [];
@@ -1084,7 +1127,14 @@ export async function getNamingStack(namingId: string, projectId?: string) {
 		sw_role: (sa.sw_role ?? null) as string | null
 	}));
 	const history = [
-		...acts.map((a) => ({ ...a, kind: 'act' as const, map_inscription: null as string | null, phase_label: null as string | null, sw_role: null as string | null })),
+		...acts.map((a) => ({
+			...a,
+			kind: 'act' as const,
+			map_inscription: null as string | null,
+			phase_label: null as string | null,
+			sw_role: null as string | null,
+			absorbed: (a.absorbed_id && a.merged_from ? absorbedStacks.get(a.absorbed_id) : undefined) as any[] | undefined
+		})),
 		...situatingEntries,
 		...phaseEntries
 	].sort((x, y) => new Date(x.created_at).getTime() - new Date(y.created_at).getTime());
@@ -1110,12 +1160,31 @@ export async function getNamingStack(namingId: string, projectId?: string) {
 			).rows
 		: [];
 
+	// Zwischen welchen Namings eine Relation läuft — für „as relation" und den
+	// Kopf ihres Stacks (Testlauf 09.11.: die Endpunkte standen nirgends).
+	const relationEnds = (
+		await query<{ source: string; target: string; directed: boolean; current: boolean }>(
+			`SELECT ${namingLabelSql('s')} AS source, ${namingLabelSql('t')} AS target,
+			        EXISTS (SELECT 1 FROM appearances a WHERE a.naming_id = p.id AND a.mode = 'relation'
+			                  AND a.directed_from IS NOT NULL AND a.directed_to IS NOT NULL) AS directed,
+			        -- Steht es gerade als Relation (sonst: Endpunkte aus einer früheren Phase als Relation)
+			        EXISTS (SELECT 1 FROM appearances a WHERE a.naming_id = p.id AND a.mode = 'relation') AS current
+			   FROM participations p
+			   JOIN namings s ON s.id = p.naming_id
+			   JOIN namings t ON t.id = p.participant_id
+			  WHERE p.id = $1
+			  LIMIT 1`,
+			[namingId]
+		)
+	).rows[0] ?? null;
+
 	return {
 		inscriptions: inscriptions.rows,
 		designations: designations.rows,
 		acts: history,
 		derivedFrom,
 		silencePattern,
+		relationEnds,
 		memos: enrichedMemos,
 		referringNotes,
 		annotations,

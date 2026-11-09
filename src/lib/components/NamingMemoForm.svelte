@@ -48,9 +48,13 @@
 	// Das Feld bekommt den Fokus, sobald es erscheint — auch wenn es in einem
 	// Panel steht, das erst nach dem Laden des Stacks gerendert wird
 	// (autofocus greift dort nicht).
+	// Sofort und noch einmal im nächsten Frame: Was man gleich nach dem Klick
+	// tippt, ging sonst verloren (Testlauf 09.11.).
 	function focusOnMount(el: HTMLTextAreaElement) {
-		const t = setTimeout(() => el.focus({ preventScroll: false }), 0);
-		return { destroy: () => clearTimeout(t) };
+		el.focus({ preventScroll: false });
+		const raf = requestAnimationFrame(() => { if (document.activeElement !== el) el.focus({ preventScroll: false }); });
+		const t = setTimeout(() => { if (document.activeElement !== el) el.focus({ preventScroll: false }); }, 60);
+		return { destroy: () => { cancelAnimationFrame(raf); clearTimeout(t); } };
 	}
 
 	function reset() {

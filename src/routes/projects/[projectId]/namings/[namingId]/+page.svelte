@@ -124,7 +124,19 @@
 				{#if (stack.derivedFrom?.length ?? 0) > 0}
 					<div class="derived-note">Derived from the placement on {stack.derivedFrom.join(', ')} — moving the formations there updates it.</div>
 				{/if}
-				<StackActs acts={stack.acts ?? []}
+				{#if (stack.silencePattern ?? []).length > 0}
+					<!-- Stille = Participations ohne Appearances: aus welchem Muster sie folgt. -->
+					<div class="silence-pattern">
+						Absent from the pattern of:
+						{#each stack.silencePattern as p (p.id)}
+							<a class="sp-chip" href="/projects/{data.projectId}/namings/{p.id}">{p.label}</a>
+						{/each}
+					</div>
+				{/if}
+				{#if stack.relationEnds?.current}
+					<div class="rel-ends">Relation: {stack.relationEnds.source} {stack.relationEnds.directed ? '→' : '↔'} {stack.relationEnds.target}</div>
+				{/if}
+				<StackActs acts={stack.acts ?? []} ends={stack.relationEnds ?? null}
 					onlinked={(id) => goto(`/projects/${data.projectId}/namings/${id}`)} />
 				<NamingMemoForm projectId={data.projectId} namingId={n.id}
 					candidates={data.memoCandidates ?? []}
@@ -161,7 +173,7 @@
 								</div>
 							{/if}
 							<div class="memo-actions">
-								<a href="/projects/{data.projectId}/memos/{memo.id}" class="btn-xs btn-edit">edit</a>
+								<a href="/projects/{data.projectId}/memos/{memo.id}" class="btn-xs btn-edit">{memo.isAiAuthored ? 'open' : 'edit'}</a>
 								{#if memo.status === 'active' || memo.status === 'presented' || memo.status === 'discussed'}
 									<button class="btn-xs" onclick={() => setMemoStatus(memo.id, 'acknowledged')}>ack</button>
 									<button class="btn-xs" onclick={() => setMemoStatus(memo.id, 'dismissed')}>dismiss</button>
@@ -514,4 +526,11 @@
 		font-size: 0.65rem; color: #6b7280; text-transform: uppercase;
 		display: block; margin-bottom: 0.1rem;
 	}
+	.silence-pattern { display: flex; flex-wrap: wrap; gap: 0.25rem; align-items: center; font-size: 0.74rem; color: #8b8fa3; margin-bottom: 0.4rem; }
+	.sp-chip {
+		font-size: 0.7rem; color: #a0a4b0; background: #1e2030; border: 1px solid #2a2d3a;
+		border-radius: 10px; padding: 0 0.45rem; cursor: pointer; text-decoration: none;
+	}
+	.sp-chip:hover { border-color: #8b9cf7; color: #e1e4e8; }
+	.rel-ends { font-size: 0.78rem; color: #8b8fa3; margin-bottom: 0.4rem; }
 </style>

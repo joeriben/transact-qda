@@ -54,7 +54,7 @@
 {:else}
 	<button class="btn-xs te-btn" onclick={() => (asking = true)}
 		title="For entries a software error produced: hides it and its links from every view, for good. Nothing is deleted from the database; the act is kept on record.">
-		technical error
+		hide as technical error…
 	</button>
 {/if}
 

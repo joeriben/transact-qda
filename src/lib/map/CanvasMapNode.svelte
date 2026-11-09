@@ -88,11 +88,12 @@
 		   which the ELK layout uses to pack non-overlapping boxes. */
 		padding: 0.4rem 0.6rem; width: 200px;
 	}
+	/* Abwesend, aber lesbar (Testlauf 09.11.: zu kontrastarm). */
 	.map-node.absent {
-		border-style: dashed; border-color: #4b5563;
-		background: rgba(22, 24, 34, 0.6); opacity: 0.7;
+		border-style: dashed; border-color: #6b7280;
+		background: rgba(22, 24, 34, 0.6);
 	}
-	.map-node.absent .node-label { color: #6b7280; font-style: italic; }
+	.map-node.absent .node-label { color: #a0a4b0; font-style: italic; }
 	.map-node.ai-suggested { border-style: dashed; border-color: rgba(139, 156, 247, 0.5); background: rgba(139, 156, 247, 0.04); }
 	.map-node.ai-withdrawn { opacity: 0.3; border-color: rgba(139, 156, 247, 0.2); }
 	/* ai-eval: dein Urteil über den Cue. Durchstrich statt bloßer Blässe, damit es

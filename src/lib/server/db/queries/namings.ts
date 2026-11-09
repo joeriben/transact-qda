@@ -5,6 +5,24 @@ import { query, queryOne, transaction } from '../index.js';
 import type { CollapseMode } from '$lib/shared/types/index.js';
 import { createMemo } from './memos.js';
 
+/**
+ * Der Merge-Akt (mergeNamings): Er setzt nichts und verweist nur auf das
+ * aufgenommene Naming. Kein anderer Pfad schreibt einen solchen Akt.
+ */
+export function mergeActSql(a: string): string {
+	return `(${a}.memo_text IS NULL AND ${a}.inscription IS NULL AND ${a}.designation IS NULL
+	         AND ${a}.mode IS NULL AND ${a}.valence IS NULL AND cardinality(${a}.linked_naming_ids) > 0)`;
+}
+
+/** Das Naming, in das ein (soft-gelöschtes) Naming aufgenommen wurde, sonst NULL. */
+export function mergedIntoSql(alias: string): string {
+	return `(SELECT mi_.naming_id FROM naming_acts mi_
+	           JOIN namings ms_ ON ms_.id = mi_.naming_id AND ms_.deleted_at IS NULL
+	          WHERE ${alias}.deleted_at IS NOT NULL AND ${alias}.id = ANY(mi_.linked_naming_ids)
+	            AND ${mergeActSql('mi_')}
+	          ORDER BY mi_.seq DESC LIMIT 1)`;
+}
+
 // ---- Researcher-naming: the user as naming in the data space ----
 
 export async function getOrCreateResearcherNaming(
@@ -670,9 +688,15 @@ export async function getAggregatedNaming(namingId: string, projectId: string) {
 	// verweisendes Memo-Naming — wie auf Map und in der Liste. KI-Memos zählen
 	// erst, wenn die Forscherin sie hereinholt (Satz IV). Ein Memo ist
 	// Reflexion, kein Grounding (S08); es wird nur getrennt ausgewiesen.
+	// Memos im Stack eines aufgenommenen Namings (unter dem Merge-Akt) zählen mit.
+	const hasNoteAct = (acts: any[]): boolean =>
+		acts.some(
+			(a) =>
+				((a.kind ?? 'act') === 'act' && a.by_researcher && !!a.memo_text?.trim()) ||
+				(Array.isArray(a.absorbed) && hasNoteAct(a.absorbed))
+		);
 	const hasMemoLink =
-		(stack.memos ?? []).some((m: any) => !m.isAiAuthored || m.status === 'promoted') ||
-		(stack.acts ?? []).some((a: any) => (a.kind ?? 'act') === 'act' && a.by_researcher && !!a.memo_text?.trim());
+		(stack.memos ?? []).some((m: any) => !m.isAiAuthored || m.status === 'promoted') || hasNoteAct(stack.acts ?? []);
 
 	// Mode (from any appearance)
 	const primaryMode = appearances.rows.find(a => ['entity', 'relation', 'silence'].includes(a.mode))?.mode || 'entity';
@@ -891,9 +915,12 @@ export async function mergeNamings(
 
 		// 1. Transfer participations (as endpoint)
 		// Update naming_id where merged is the first endpoint
+		// Eine Relation zwischen den beiden würde zur Relation des Überlebenden
+		// mit sich selbst; sie wird nicht übertragen, sondern bleibt wie die
+		// kollidierenden unten beim aufgenommenen Naming (soft-gelöscht).
 		await client.query(
 			`UPDATE participations SET naming_id = $1
-			 WHERE naming_id = $2
+			 WHERE naming_id = $2 AND participant_id <> $1
 			   AND NOT EXISTS (
 			     SELECT 1 FROM participations p2
 			     WHERE p2.naming_id = $1 AND p2.participant_id = participations.participant_id
@@ -903,7 +930,7 @@ export async function mergeNamings(
 		// Update participant_id where merged is the second endpoint
 		await client.query(
 			`UPDATE participations SET participant_id = $1
-			 WHERE participant_id = $2
+			 WHERE participant_id = $2 AND naming_id <> $1
 			   AND NOT EXISTS (
 			     SELECT 1 FROM participations p2
 			     WHERE p2.naming_id = participations.naming_id AND p2.participant_id = $1
@@ -955,36 +982,27 @@ export async function mergeNamings(
 		// 5. Der Merge ist ein Akt im Stack des überlebenden Namings: nur der
 		// Verweis auf das aufgenommene Naming (linked_naming_ids), kein
 		// Memo-Text — ein Merge ist kein Memo der Forscherin und kein eigenes
-		// Memo-Naming. Der Stack erkennt ihn daran, dass er nichts setzt und
-		// nur auf ein soft-gelöschtes Naming verweist (getNamingStack,
-		// merged_from).
+		// Memo-Naming. Nur dieser Akt setzt nichts und verweist nur (mergeActSql).
 		await client.query(
 			`INSERT INTO naming_acts (naming_id, by, linked_naming_ids)
 			 VALUES ($1, $2, $3)`,
 			[survivorId, researcherNamingId, [mergedId]]
 		);
 
-		// 6. Die Memos im Stack des aufgenommenen Namings kommen mit (Testlauf
-		// 09.11.: das Memo von „Lesecafé (geplant)" war nach dem Merge
-		// verschwunden). Append-only: Sie bleiben im Stack des aufgenommenen
-		// Namings stehen und werden im Stack des Überlebenden als neue Akte
-		// angehängt — mit der Autorin des Originals, im Zeitpunkt des Merge
-		// (der Stack zeigt sie direkt nach „merged in …"), und mit dem
-		// aufgenommenen Naming unter den verknüpften. Steht der Überlebende
-		// auf cue, trägt das erste Memo einer Forscherin die Characterization
-		// („MEMOS ADVANCEN EINE ENTITÄT VOM CUE ZUR CHARACTERIZATION", BJ
-		// 09.11.; noteLiftsCue).
-		const carried = await client.query<{
-			by: string;
-			memo_text: string;
-			linked_naming_ids: string[] | null;
-			by_researcher: boolean;
-		}>(
-			`SELECT na.by, na.memo_text, na.linked_naming_ids,
-			        EXISTS (SELECT 1 FROM researcher_namings rn WHERE rn.naming_id = na.by) AS by_researcher
-			   FROM naming_acts na
+		// 6. Der Stack des aufgenommenen Namings bleibt, wie er ist — mit Zeit,
+		// Autorin und Kontext jedes Akts; der Stack des Überlebenden zeigt ihn
+		// unter dem Merge-Akt (getNamingStack, absorbed), Verweise auf das
+		// aufgenommene Naming zeigen auf den Überlebenden (mergedIntoSql).
+		// Kopien in den Überlebenden trugen die Zeit des Merge und verloren
+		// ihren Kontext (Testlauf 09.11.). Brachte das aufgenommene Naming ein
+		// Memo einer Forscherin mit und steht der Überlebende auf cue, hebt ihn
+		// ein eigener Akt mit Verweis auf das aufgenommene auf characterization
+		// („MEMOS ADVANCEN EINE ENTITÄT VOM CUE ZUR CHARACTERIZATION", BJ 09.11.).
+		const brought = await client.query(
+			`SELECT 1 FROM naming_acts na
 			  WHERE na.naming_id = $1 AND na.memo_text IS NOT NULL AND btrim(na.memo_text) <> ''
-			  ORDER BY na.seq`,
+			    AND EXISTS (SELECT 1 FROM researcher_namings rn WHERE rn.naming_id = na.by)
+			  LIMIT 1`,
 			[mergedId]
 		);
 		const survivorDesig = await client.query<{ designation: string }>(
@@ -992,15 +1010,11 @@ export async function mergeNamings(
 			  WHERE naming_id = $1 AND designation IS NOT NULL ORDER BY seq DESC LIMIT 1`,
 			[survivorId]
 		);
-		let lift = (survivorDesig.rows[0]?.designation ?? 'cue') === 'cue';
-		for (const m of carried.rows) {
-			const links = [...new Set([...(m.linked_naming_ids ?? []), mergedId])].filter((id) => id !== survivorId);
-			const liftHere = lift && m.by_researcher;
-			if (liftHere) lift = false;
+		if (brought.rows.length > 0 && (survivorDesig.rows[0]?.designation ?? 'cue') === 'cue') {
 			await client.query(
-				`INSERT INTO naming_acts (naming_id, by, memo_text, linked_naming_ids, designation)
-				 VALUES ($1, $2, $3, $4, $5)`,
-				[survivorId, m.by, m.memo_text, links, liftHere ? 'characterization' : null]
+				`INSERT INTO naming_acts (naming_id, by, designation, linked_naming_ids)
+				 VALUES ($1, $2, 'characterization', $3)`,
+				[survivorId, researcherNamingId, [mergedId]]
 			);
 		}
 

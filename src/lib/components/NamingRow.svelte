@@ -27,6 +27,7 @@
 </script>
 
 <script lang="ts">
+	import { focusSelect } from '$lib/canvas/dom.js';
 	import type { Snippet } from 'svelte';
 	import { CCS_CUE, CCS_CHAR, CCS_SPEC } from '$lib/shared/tokens.js';
 	import { hasOwnInscription } from '$lib/shared/namingLabel.js';
@@ -172,7 +173,8 @@
 						class="inline-rename"
 						onsubmit={(e) => { e.preventDefault(); actions.onSubmitInlineEdit?.(namingId, 'valence', editingValenceValue); }}
 					>
-						<input type="text" bind:value={editingValenceValue} placeholder="valence" />
+						<input type="text" bind:value={editingValenceValue} placeholder="valence" use:focusSelect aria-label="Valence"
+							onkeydown={(e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); actions.onCancelInlineEdit?.(); } }} />
 						<button type="submit" class="btn-xs">ok</button>
 						<button type="button" class="btn-xs" onclick={() => actions.onCancelInlineEdit?.()}>x</button>
 					</form>
@@ -197,7 +199,8 @@
 						class="inline-rename"
 						onsubmit={(e) => { e.preventDefault(); actions.onSubmitInlineEdit?.(namingId, 'rename', editingValue); }}
 					>
-						<input type="text" bind:value={editingValue} />
+						<input type="text" bind:value={editingValue} use:focusSelect aria-label="New name"
+						onkeydown={(e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); actions.onCancelInlineEdit?.(); } }} />
 						<button type="submit" class="btn-xs">ok</button>
 						<button type="button" class="btn-xs" onclick={() => actions.onCancelInlineEdit?.()}>x</button>
 					</form>
@@ -228,12 +231,12 @@
 						<option value="specification">specification</option>
 					</select>
 				{/if}
-				<button class="btn-xs" onclick={() => actions.onShowStack?.(namingId)}>stack</button>
+				<button class="btn-xs" aria-label="Stack of {displayLabel}" onclick={() => actions.onShowStack?.(namingId)}>stack</button>
 				{#if detailHref}
 					<a class="btn-xs btn-detail" href={detailHref}>detail</a>
 				{/if}
 				{#if actions.onWithdraw}
-					<button class="btn-xs btn-withdraw" onclick={() => actions.onWithdraw?.(namingId, withdrawn)}>
+					<button class="btn-xs btn-withdraw" aria-label="{withdrawn ? 'Restore' : 'Withdraw'} {displayLabel}" onclick={() => actions.onWithdraw?.(namingId, withdrawn)}>
 						{withdrawn ? 'restore' : 'withdraw'}
 					</button>
 				{/if}
@@ -262,7 +265,8 @@
 					class="inline-rename"
 					onsubmit={(e) => { e.preventDefault(); actions.onSubmitInlineEdit?.(namingId, 'rename', editingValue); }}
 				>
-					<input type="text" bind:value={editingValue} />
+					<input type="text" bind:value={editingValue} use:focusSelect aria-label="New name"
+						onkeydown={(e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); actions.onCancelInlineEdit?.(); } }} />
 					<button type="submit" class="btn-xs">ok</button>
 					<button type="button" class="btn-xs" onclick={() => actions.onCancelInlineEdit?.()}>x</button>
 				</form>
@@ -296,12 +300,12 @@
 						<option value="specification">specification</option>
 					</select>
 				{/if}
-				<button class="btn-xs" onclick={() => actions.onShowStack?.(namingId)}>stack</button>
+				<button class="btn-xs" aria-label="Stack of {displayLabel}" onclick={() => actions.onShowStack?.(namingId)}>stack</button>
 				{#if detailHref}
 					<a class="btn-xs btn-detail" href={detailHref}>detail</a>
 				{/if}
 				{#if actions.onWithdraw}
-					<button class="btn-xs btn-withdraw" onclick={() => actions.onWithdraw?.(namingId, withdrawn)}>
+					<button class="btn-xs btn-withdraw" aria-label="{withdrawn ? 'Restore' : 'Withdraw'} {displayLabel}" onclick={() => actions.onWithdraw?.(namingId, withdrawn)}>
 						{withdrawn ? 'restore' : 'withdraw'}
 					</button>
 				{/if}
@@ -346,7 +350,8 @@
 					class="inline-rename"
 					onsubmit={(e) => { e.preventDefault(); actions.onSubmitInlineEdit?.(namingId, 'rename', editingValue); }}
 				>
-					<input type="text" bind:value={editingValue} />
+					<input type="text" bind:value={editingValue} use:focusSelect aria-label="New name"
+						onkeydown={(e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); actions.onCancelInlineEdit?.(); } }} />
 					<button type="submit" class="btn-xs">ok</button>
 					<button type="button" class="btn-xs" onclick={() => actions.onCancelInlineEdit?.()}>x</button>
 				</form>
@@ -385,19 +390,19 @@
 						<option value="specification">specification</option>
 					</select>
 				{/if}
-				<button class="btn-xs" onclick={() => actions.onShowStack?.(namingId)}>stack</button>
+				<button class="btn-xs" aria-label="Stack of {displayLabel}" onclick={() => actions.onShowStack?.(namingId)}>stack</button>
 				{#if detailHref}
 					<a class="btn-xs btn-detail" href={detailHref}>detail</a>
 				{/if}
 				{#if actions.onStartRelate && !withdrawn}
-					<button class="btn-xs" onclick={() => actions.onStartRelate?.(namingId)}>relate</button>
+					<button class="btn-xs" aria-label="Relate {displayLabel}" onclick={() => actions.onStartRelate?.(namingId)}>relate</button>
 				{/if}
 				{#if actions.onMerge && !isResearcher && !withdrawn}
-					<button class="btn-xs btn-merge" onclick={(e) => { e.stopPropagation(); actions.onMerge?.(namingId); }}>merge</button>
+					<button class="btn-xs btn-merge" aria-label="Merge into {displayLabel}" onclick={(e) => { e.stopPropagation(); actions.onMerge?.(namingId); }}>merge</button>
 				{/if}
 				<!-- Ein Forscher-Naming lässt sich nicht zurückziehen; war es (früher) zurückgezogen, bleibt „restore". -->
 				{#if actions.onWithdraw && (!isResearcher || withdrawn)}
-					<button class="btn-xs btn-withdraw" onclick={() => actions.onWithdraw?.(namingId, withdrawn)}>
+					<button class="btn-xs btn-withdraw" aria-label="{withdrawn ? 'Restore' : 'Withdraw'} {displayLabel}" onclick={() => actions.onWithdraw?.(namingId, withdrawn)}>
 						{withdrawn ? 'restore' : 'withdraw'}
 					</button>
 				{/if}

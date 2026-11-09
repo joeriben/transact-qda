@@ -64,7 +64,7 @@ export const AI_TOOLS: ToolDef[] = [
 	{
 		name: 'identify_silence',
 		description:
-			'Point out a notable absence — something or someone missing from the situational map. A silence arises from the pattern of relations among namings that ARE on the map; it is connected to exactly those namings. Your reasoning may rest only on namings and relations that exist on the map.',
+			'Point out a notable absence — something or someone missing from the situational map. A silence arises from the pattern of relations among namings that ARE on the map; it is connected to exactly those namings. Your reasoning may rest only on namings and relations that exist on the map. The silence is written as a cue and stands unplaced on the map until the researcher places it; say so, do not claim you placed it on the canvas.',
 		input_schema: {
 			type: 'object' as const,
 			properties: {

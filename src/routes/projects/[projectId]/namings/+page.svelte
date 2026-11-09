@@ -54,6 +54,9 @@
 		aiReasoning?: string | null;
 		aiSuggested?: boolean;
 		aiWithdrawn?: boolean;
+		/** Stille: die Namings, aus deren Muster sie folgt. */
+		silencePattern?: { id: string; label: string }[];
+		relationEnds?: { source: string; target: string; directed: boolean; current?: boolean } | null;
 	};
 
 	// ---- State ----
@@ -63,7 +66,15 @@
 	let phasesCollapsed = $state(false);
 	// Erst im Browser entscheidbar: der Server kennt die Fensterbreite nicht,
 	// und der beim Laden gerenderte Zustand bliebe sonst stehen (Testlauf 09.11.).
-	onMount(() => { if (window.innerWidth < 1100) phasesCollapsed = true; });
+	// Auch beim Verkleinern des Fensters: bei schmaler Breite eingeklappt
+	// (Testlauf 09.11.: nach dem Verkleinern verdeckte sie „merge" und „withdraw").
+	onMount(() => {
+		const narrow = window.matchMedia('(max-width: 1099px)');
+		phasesCollapsed = narrow.matches;
+		const onChange = (e: MediaQueryListEvent) => (phasesCollapsed = e.matches);
+		narrow.addEventListener('change', onChange);
+		return () => narrow.removeEventListener('change', onChange);
+	});
 
 	// Forscher-Namings: Die Forscherin ist selbst ein Naming dieses Projekts.
 	const researcherIds = $derived(new Set<string>(data.researcherNamingIds ?? []));
@@ -602,7 +613,7 @@
 		const body = await res.json().catch(() => ({}));
 		if (!res.ok) showActionError({ error: body?.error || `Status not saved (${res.status})` });
 		else if (status === 'promoted') {
-			showInfo('Promoted: Cowork’s memo is now a naming of your own in this list.');
+			showInfo('Promoted: Cowork’s memo is now a naming of your own — in this list and unplaced on the situational map.');
 			const module = await import('$app/navigation');
 			await module.invalidateAll();
 		}
@@ -628,6 +639,11 @@
 			showActionError(res);
 		} else {
 			actionError = null;
+			// Es bleibt ausgegraut mit „restore" stehen, statt unter dem Zeiger zu
+			// verschwinden — das sagen, damit „Hide withdrawn" nicht kaputt wirkt.
+			const label = labelOf(findNaming(namingId));
+			if (next && hideWithdrawn) showInfo(`Withdrawn ${quoted(label)} — it stays here greyed out with “restore” until you reload or switch “Hide withdrawn”. Nothing was deleted.`);
+			else if (!next) showInfo(`Restored ${quoted(label)}.`);
 			// Ein offener Stack zeigt den neuen Akt gleich (Testlauf 09.11.).
 			if (stackId === namingId) stackData = await apiAction('getStack', { namingId });
 		}
@@ -659,12 +675,12 @@
 		const result = await apiAction('merge', { survivorId, mergedId: mergeTargetId });
 		if (!showActionError(result)) {
 			markTouched(survivorId);
-			showInfo(`Merged “${mergedLabel}” into “${survivorLabel}”. The merge is an act in its stack; “${mergedLabel}” is marked as merged, not deleted.`);
+			showInfo(`Merged “${mergedLabel}” into “${survivorLabel}”. The merge is an act in its stack, with the stack of “${mergedLabel}” under it; nothing was deleted.`);
 		}
 		mergeSurvivorId = null;
 		mergeTargetId = null;
 		const module = await import('$app/navigation');
-		module.invalidateAll();
+		await module.invalidateAll();
 	}
 
 	function cancelMerge() {
@@ -750,12 +766,14 @@
 		{
 			key: 'grounding',
 			label: 'Grounding',
+			// S08: nur ein Dokumentanker erdet; ein Memo ist Reflexion, keine Erdung.
+			title: 'Grounding is a document anchor. A memo is reflection, not grounding.',
 			value: filterGrounding,
 			options: [
 				{ value: 'all', label: 'All' },
-				{ value: 'grounded', label: 'Doc', icon: '/icons/text_snippet.svg' },
-				{ value: 'memo', label: 'Memo', icon: '/icons/stylus_note.svg' },
-				{ value: 'ungrounded', label: 'None', icon: '/icons/question_mark.svg' }
+				{ value: 'grounded', label: 'Doc anchor', icon: '/icons/text_snippet.svg', title: 'Grounded: anchored in a document passage' },
+				{ value: 'memo', label: 'Memo, no anchor', icon: '/icons/stylus_note.svg', title: 'Not grounded: has a memo, no document anchor' },
+				{ value: 'ungrounded', label: 'No anchor', icon: '/icons/question_mark.svg', title: 'Not grounded: no document anchor, no memo yet' }
 			],
 			onchange: (v: string) => filterGrounding = v as typeof filterGrounding
 		},
@@ -904,8 +922,9 @@
 				{@const survLabel = quoted(labelOf(findNaming(mergeSurvivorId)))}
 				<div class="relate-banner merge-banner">
 					{#if mergeTargetId}
-						Merge <strong>{quoted(labelOf(findNaming(mergeTargetId)))}</strong> into <strong>{survLabel}</strong>? —
-						its relations, map placements, passages and memos go to {survLabel}.
+						<span class="banner-text">Merge <strong>{quoted(labelOf(findNaming(mergeTargetId)))}</strong> into <strong>{survLabel}</strong>?
+						Its relations, map placements and passages go to {survLabel}; its stack, memos included, stays readable
+						in the stack of {survLabel}. If it brings a memo, a cue {survLabel} becomes a characterization.</span>
 						<button class="btn-xs btn-confirm" onclick={confirmMerge}>merge</button>
 						<button class="btn-xs" onclick={cancelMerge}>cancel</button>
 					{:else}
@@ -1005,7 +1024,19 @@
 			<div class="stack-panel">
 				<div class="stack-section">
 					<h4>Stack</h4>
-					<StackActs acts={stackData.acts ?? []} onlinked={(id) => showStack(id)} />
+					{#if (stackData.silencePattern ?? []).length > 0}
+						<!-- Stille = Participations ohne Appearances: aus welchem Muster sie folgt. -->
+						<div class="silence-pattern">
+							Absent from the pattern of:
+							{#each stackData.silencePattern as p (p.id)}
+								<button class="sp-chip" onclick={() => showStack(p.id)} title="Open its stack">{p.label}</button>
+							{/each}
+						</div>
+					{/if}
+					{#if stackData.relationEnds?.current}
+						<div class="rel-ends">Relation: {stackData.relationEnds.source} {stackData.relationEnds.directed ? '→' : '↔'} {stackData.relationEnds.target}</div>
+					{/if}
+					<StackActs acts={stackData.acts ?? []} ends={stackData.relationEnds ?? null} onlinked={(id) => showStack(id)} />
 					<NamingMemoForm projectId={data.projectId} namingId={n.naming_id}
 						candidates={memoCandidates}
 						oncreated={async () => {
@@ -1166,6 +1197,7 @@
 							actions={namingsActions}
 						>
 							{#snippet after()}
+								{@render mapLinksFor(n)}
 								{@render stackPanelFor(n, false)}
 							{/snippet}
 						</NamingRow>
@@ -1555,6 +1587,14 @@
 	.btn-confirm { border-color: #8b9cf7; color: #8b9cf7; font-weight: 600; }
 	.btn-confirm:hover { background: rgba(139, 156, 247, 0.12); color: #e1e4e8; }
 	.merge-banner { border-color: #e8a54b; }
+	.banner-text { flex: 1 1 22rem; line-height: 1.4; }
+	.rel-ends { font-size: 0.74rem; color: #8b8fa3; margin-bottom: 0.35rem; }
+	.silence-pattern { display: flex; flex-wrap: wrap; gap: 0.25rem; align-items: center; font-size: 0.74rem; color: #8b8fa3; margin-bottom: 0.4rem; }
+	.sp-chip {
+		font-size: 0.7rem; color: #a0a4b0; background: #1e2030; border: 1px solid #2a2d3a;
+		border-radius: 10px; padding: 0 0.45rem; cursor: pointer; text-decoration: none;
+	}
+	.sp-chip:hover { border-color: #8b9cf7; color: #e1e4e8; }
 
 	/* designation-dot reused in the phase-member sidebar. */
 	.designation-dot {

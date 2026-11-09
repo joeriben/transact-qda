@@ -43,6 +43,7 @@ export type StackData = {
 	discussion?: any[];
 	/** Stille: die Namings, aus deren Muster sie folgt (Participations ohne Appearances). */
 	silencePattern?: { id: string; label: string }[];
+	relationEnds?: { source: string; target: string; directed: boolean; current?: boolean } | null;
 	aiReasoning?: string | null;
 	aiSuggested?: boolean;
 	aiWithdrawn?: boolean;

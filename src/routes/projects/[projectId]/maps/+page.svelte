@@ -102,7 +102,7 @@
 			<!-- Karten sind Links: sie tragen ihren Namen, lassen sich in einem neuen
 			     Tab öffnen und per Tastatur erreichen. -->
 			{#each data.maps as map (map.id)}
-				<a class="map-card" href="/projects/{data.projectId}/maps/{map.id}"
+				<a class="map-card" href="/projects/{data.projectId}/maps/{map.id}" aria-label="{map.label} — {mapTypeLabels[map.properties?.mapType] || map.properties?.mapType}"
 					oncontextmenu={(e) => onCardContext(map.id, e)}>
 					<div class="map-type">{mapTypeLabels[map.properties?.mapType] || map.properties?.mapType}</div>
 					<h3>{map.label}</h3>

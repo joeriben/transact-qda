@@ -7,6 +7,7 @@
 	import { SW_ROLES, SW_ROLE_DEFAULTS, SW_ROLE_LABELS } from '$lib/shared/constants.js';
 	import type { SwRole } from '$lib/shared/types/index.js';
 	import { quoted } from '$lib/shared/namingLabel.js';
+	import { focusSelect } from '$lib/canvas/dom.js';
 	import { plural } from '$lib/shared/plural.js';
 
 	let {
@@ -512,7 +513,7 @@
 						</div>
 					{/if}
 					<div class="naming-pop-row">
-						<input id="map-new-naming" type="text" placeholder="Name it…" bind:value={draftName} bind:this={draftInputRef}
+						<input id="map-new-naming" type="text" placeholder="Name it…" bind:value={draftName} bind:this={draftInputRef} use:focusSelect
 							oninput={onDraftInput} onkeydown={onDraftKeydown} autocomplete="off" />
 						<button type="button" class="btn-primary" onclick={submitNaming} disabled={adding || !draftName.trim()}>
 							{adding ? 'Adding…' : draftOnMap ? 'Show' : 'Add'}

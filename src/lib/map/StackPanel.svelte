@@ -160,7 +160,10 @@
 					Derived from the placement on {derivedFrom.join(', ')} — moving the formations updates it.
 				</div>
 			{/if}
-			<StackActs acts={ms.stackData.acts ?? []}
+			{#if ms.stackData.relationEnds?.current}
+				<div class="derived-note">Relation: {ms.stackData.relationEnds.source} {ms.stackData.relationEnds.directed ? '→' : '↔'} {ms.stackData.relationEnds.target}</div>
+			{/if}
+			<StackActs acts={ms.stackData.acts ?? []} ends={ms.stackData.relationEnds ?? null}
 				currentMap={ms.mapLabel ?? null}
 				pinnedSeq={stackNode?.is_collapsed ? stackNode?.properties?.collapseAt : null}
 				onpin={(seq) => ms.pinToLayer(ms.stackId!, seq)}

@@ -239,6 +239,8 @@ async function run() {
 		const A1 = await make('Mensa');
 		const A2 = await make('Schulmensa');
 		await post(N, { action: 'note', namingId: A2, memoText: 'Nur mittags geöffnet.' });
+		const A3 = await make('Kantine');
+		await post(N, { action: 'note', namingId: A3, memoText: 'Wie die Schulmensa.', linkedNamingIds: [A2] });
 		const appsBefore = (await one(`SELECT count(*)::int AS c FROM appearances WHERE naming_id = $1`, [A2])).c;
 		const r = await post(N, { action: 'merge', survivorId: A1, mergedId: A2 });
 		// Der Merge-Akt selbst trägt kein Memo, nur den Verweis auf das
@@ -250,19 +252,57 @@ async function run() {
 			  ORDER BY seq DESC LIMIT 1`,
 			[A1, A2]
 		);
-		const carried = await one(
+		// Das Memo bleibt im Stack des aufgenommenen Namings (Zeit, Kontext)
+		// und steht im Stack des Überlebenden unter dem Merge-Akt; ein eigener
+		// Akt hebt den Cue (ein Memo hebt einen Cue).
+		const kept = await one(
+			`SELECT count(*)::int AS c FROM naming_acts WHERE naming_id = $1 AND memo_text = 'Nur mittags geöffnet.'`,
+			[A2]
+		);
+		const copied = await one(
+			`SELECT count(*)::int AS c FROM naming_acts WHERE naming_id = $1 AND memo_text = 'Nur mittags geöffnet.'`,
+			[A1]
+		);
+		const lift = await one(
 			`SELECT count(*)::int AS c FROM naming_acts
-			  WHERE naming_id = $1 AND memo_text = 'Nur mittags geöffnet.' AND $2 = ANY(linked_naming_ids)`,
+			  WHERE naming_id = $1 AND designation = 'characterization' AND memo_text IS NULL AND $2 = ANY(linked_naming_ids)`,
 			[A1, A2]
 		);
+		const stack = await post(N, { action: 'getStack', namingId: A1 });
+		const shown = (stack.body?.acts ?? []).some((a) =>
+			(a.absorbed ?? []).some((b) => b.memo_text === 'Nur mittags geöffnet.'));
+		// Ein Verweis auf das aufgenommene Naming zeigt auf den Überlebenden.
+		const s3 = await post(N, { action: 'getStack', namingId: A3 });
+		const pointsToSurvivor = (s3.body?.acts ?? []).some((a) => (a.linked ?? []).some((l) => l.id === A1));
+		const referred = (stack.body?.referringNotes ?? []).some((n) => n.memo_text === 'Wie die Schulmensa.');
+		record('Zusammenführen: Verweise auf das aufgenommene Naming zeigen auf den Überlebenden',
+			pointsToSurvivor && referred, JSON.stringify({ pointsToSurvivor, referred }));
+		const carried = { c: kept.c === 1 && copied.c === 0 && lift.c === 1 && shown ? 1 : 0, kept: kept.c, copied: copied.c, lift: lift.c, shown };
 		const m = await one(
 			`SELECT (SELECT deleted_at IS NOT NULL FROM namings WHERE id = $1) AS soft_deleted,
 			        (SELECT count(*)::int FROM appearances WHERE naming_id = $1) AS apps`,
 			[A2]
 		);
-		record('Zusammenführen: Akt im Stack des Überlebenden, Memos kommen mit, aufgenommenes Naming soft-gelöscht, Erscheinung bleibt',
+		record('Zusammenführen: Akt im Stack des Überlebenden, Stack des Aufgenommenen darunter (nicht kopiert), Cue gehoben, aufgenommenes Naming soft-gelöscht, Erscheinung bleibt',
 			r.status < 300 && !!mergeAct && carried.c === 1 && m.soft_deleted === true && m.apps === appsBefore,
-			JSON.stringify({ status: r.status, mergeAct: !!mergeAct, carried: carried.c, m, appsBefore }));
+			JSON.stringify({ status: r.status, mergeAct: !!mergeAct, carried, m, appsBefore }));
+	}
+
+	// 7b. Eine Relation zwischen den beiden wird keine Relation mit sich selbst.
+	{
+		const B1 = await make('Hausmeister');
+		const B2 = await make('Hauswart');
+		const rel = await post(M, { action: 'relate', sourceId: B2, targetId: B1, inscription: 'vertritt' });
+		const r = await post(N, { action: 'merge', survivorId: B1, mergedId: B2 });
+		const loop = await one(
+			`SELECT count(*)::int AS c FROM participations p JOIN namings n ON n.id = p.id
+			  WHERE p.naming_id = $1 AND p.participant_id = $1 AND n.deleted_at IS NULL`,
+			[B1]
+		);
+		const relDeleted = await one(`SELECT deleted_at IS NOT NULL AS d FROM namings WHERE id = $1`, [rel.body.id]);
+		record('Zusammenführen: Relation zwischen beiden wird nicht zur Relation mit sich selbst (bleibt soft-gelöscht)',
+			r.status < 300 && loop.c === 0 && relDeleted?.d === true,
+			JSON.stringify({ status: r.status, loop: loop.c, relDeleted }));
 	}
 
 	// 8. Anlegen in der Naming-Liste und in der Dokumentansicht: der Stack

@@ -11,7 +11,7 @@
 -->
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { beforeNavigate, goto } from '$app/navigation';
+	import { beforeNavigate, goto, invalidateAll } from '$app/navigation';
 	import TechnicalErrorButton from '$lib/components/TechnicalErrorButton.svelte';
 	import { memoText } from '$lib/shared/memoText.js';
 	import { formatWhen } from '$lib/shared/dates.js';
@@ -30,6 +30,35 @@
 	let again = false;
 
 	const url = $derived(`/api/projects/${data.projectId}/memos/${data.memo.id}`);
+
+	// Ein eigenes analytisches oder Organisationsmemo dezidiert zu einem
+	// Naming machen (S16) — wie auf der Memo-Seite.
+	let making = $state(false);
+	let made = $state<string | null>(null);
+	let makeError = $state<string | null>(null);
+	async function makeNaming() {
+		if (making) return;
+		making = true;
+		made = null;
+		makeError = null;
+		try {
+			await save();
+			const res = await fetch(`/api/projects/${data.projectId}/memos/${data.memo.id}/status`, {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ status: 'promoted' })
+			});
+			const body = await res.json().catch(() => ({}));
+			if (res.ok) {
+				made = 'It is now a naming of its own, unplaced on the situational map. The memo stays here.';
+				await invalidateAll();
+			} else {
+				makeError = body.error || `Not made a naming (${res.status})`;
+			}
+		} finally {
+			making = false;
+		}
+	}
 
 	function onInput() {
 		clearTimeout(saveTimeout);
@@ -135,6 +164,19 @@
 					</a>
 				{/each}
 			{/if}
+			{#if !data.memo.is_ai}
+				<div class="mk-row">
+					{#if made}
+						<p class="mk-note" role="status">{made} <a href="/projects/{data.projectId}/namings">Naming list</a></p>
+					{:else if data.memo.status === 'promoted'}
+						<p class="mk-note">This memo was made a naming of its own. <a href="/projects/{data.projectId}/namings">Naming list</a></p>
+					{:else if data.memo.status !== 'dismissed'}
+						<button class="mk-btn" onclick={makeNaming} disabled={making}
+							title="Make this memo a naming of its own. The memo stays; the new naming stands unplaced on the situational map.">{making ? '…' : 'make naming'}</button>
+						{#if makeError}<p class="mk-note" role="alert">{makeError}</p>{/if}
+					{/if}
+				</div>
+			{/if}
 			<div class="te-row">
 				<TechnicalErrorButton projectId={data.projectId} namingId={data.memo.id} what="memo"
 					ondone={() => goto(`/projects/${data.projectId}/memos?hidden=memo`)} />
@@ -207,4 +249,12 @@
 		font-size: 0.7rem; color: #6b7280; text-transform: uppercase;
 		background: #1e2030; padding: 0.1rem 0.35rem; border-radius: 3px;
 	}
+	.mk-row { margin-top: 0.75rem; }
+	.mk-btn {
+		background: none; border: 1px solid #10b981; border-radius: 4px; color: #10b981;
+		font-size: 0.72rem; padding: 0.15rem 0.5rem; cursor: pointer;
+	}
+	.mk-btn:hover:not(:disabled) { background: rgba(16, 185, 129, 0.1); }
+	.mk-note { font-size: 0.74rem; color: #8b8fa3; margin: 0.35rem 0 0; }
+	.mk-note a { color: #8b9cf7; }
 </style>

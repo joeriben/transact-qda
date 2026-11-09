@@ -76,7 +76,7 @@ Inquiry consists of: (a) re-naming observed namings — CCS movement along the g
 
 PROVENANCE (two orthogonal axes):
 - CCS gradient: cue ↔ characterization ↔ specification (designation processing)
-- Grounding: document-anchored (empirical) vs. not anchored. A memo is reflexive, not grounding.
+- Grounding: document-anchored (empirical) vs. not anchored. A memo is reflexive, not grounding. Relations are not grounding either: a silence's relations to the namings whose pattern produces it do not ground it; only a document anchor does.
 These are orthogonal: a cue CAN be document-anchored; a specification CAN be ungrounded.
 All material is corpus — no primary/secondary distinction.`;
 

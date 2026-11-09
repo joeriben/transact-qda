@@ -423,6 +423,7 @@
 							<a class="memo-title note-naming" href="/projects/{data.projectId}/namings/{nm.naming_id}"
 								title="Open this naming" onclick={(e) => e.stopPropagation()}>{nm.naming_label}</a>
 							{#if nm.passage_document}<span class="note-passage" title="Memo on a passage of this naming">passage · {nm.passage_document}</span>{/if}
+							{#if nm.merged_from}<span class="note-passage" title="Written on a naming that was later merged into this one">from merged {quoted(nm.merged_from)}</span>{/if}
 							{#if nm.act}<span class="note-passage" title="The act this memo belongs to">{nm.act}</span>{/if}
 							<span class="memo-date">{formatWhen(nm.created_at)}</span>
 							<span class="expand-indicator">{expandedNote === key ? '▾' : '▸'}</span>

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { query, queryOne, transaction } from '../index.js';
-import { createNaming, setAppearance, getOrCreateResearcherNaming } from './namings.js';
+import { createNaming, setAppearance, getOrCreateResearcherNaming, mergedIntoSql } from './namings.js';
 import { namingLabel, type RelationEnds } from '$lib/shared/namingLabel.js';
 
 // Was die Memo-Seite zeigt und die Projektübersicht zählt — eine Definition
@@ -13,8 +13,10 @@ const ANALYTIC_MEMO_FILTER = `n.project_id = $1 AND n.deleted_at IS NULL
 	AND n.inscription NOT LIKE 'MemoDiscussion:%'
 	AND n.inscription NOT LIKE 'Discussion:%'`;
 // Memos ZU einem Naming sind Akte einer Forscherin mit Memo-Text im Stack
-// eines Namings dieses Projekts (keine KI-Begründungen).
-const NAMING_MEMO_FILTER = `n.project_id = $1 AND n.deleted_at IS NULL
+// eines Namings dieses Projekts (keine KI-Begründungen) — auch eines
+// Namings, das in ein anderes aufgenommen wurde (Merge): Sie stehen dann
+// bei dem, in das es aufging.
+const NAMING_MEMO_FILTER = `n.project_id = $1 AND (n.deleted_at IS NULL OR ${mergedIntoSql('n')} IS NOT NULL)
 	AND na.memo_text IS NOT NULL AND btrim(na.memo_text) <> ''
 	AND EXISTS (SELECT 1 FROM researcher_namings rn WHERE rn.naming_id = na.by)`;
 
@@ -227,6 +229,8 @@ export type NamingMemo = {
 	memo_text: string;
 	/** Titel des Namings; bei einer unbenannten Relation „Quelle —valenz→ Ziel". */
 	naming_label: string;
+	/** Das Memo stand im Stack eines Namings, das in dieses aufgenommen wurde. */
+	merged_from: string | null;
 	by_label: string;
 	/** Das Memo gilt einer Passage dieses Namings (Dokumentansicht). */
 	passage_document: string | null;
@@ -244,6 +248,7 @@ export async function getNamingMemosByProject(projectId: string): Promise<Naming
 			seq: string;
 			created_at: string;
 			memo_text: string;
+			merged_from: string | null;
 			act_inscription: string | null;
 			act_designation: string | null;
 			prev_inscription: string | null;
@@ -254,7 +259,8 @@ export async function getNamingMemosByProject(projectId: string): Promise<Naming
 			passage_document: string | null;
 			linked: { id: string; inscription: string | null; relation: RelationEnds | null }[];
 		}>(
-			`SELECT na.naming_id, na.seq, na.created_at, na.memo_text,
+			`SELECT h.id AS naming_id, na.seq, na.created_at, na.memo_text,
+			        CASE WHEN h.id <> n.id THEN ${currentInscriptionSql('n')} END AS merged_from,
 			        na.inscription AS act_inscription, na.designation AS act_designation,
 			        (SELECT p.inscription FROM naming_acts p
 			          WHERE p.naming_id = na.naming_id AND p.seq < na.seq AND p.inscription IS NOT NULL
@@ -262,8 +268,8 @@ export async function getNamingMemosByProject(projectId: string): Promise<Naming
 			        (SELECT p.designation FROM naming_acts p
 			          WHERE p.naming_id = na.naming_id AND p.seq < na.seq AND p.designation IS NOT NULL
 			          ORDER BY p.seq DESC LIMIT 1) AS prev_designation,
-			        ${currentInscriptionSql('n')} AS naming_inscription,
-			        ${relationEndsSql('n')} AS naming_relation,
+			        ${currentInscriptionSql('h')} AS naming_inscription,
+			        ${relationEndsSql('h')} AS naming_relation,
 			        b.inscription AS by_label,
 			        (SELECT doc.inscription
 			           FROM appearances pa
@@ -277,7 +283,11 @@ export async function getNamingMemosByProject(projectId: string): Promise<Naming
 			                                                    'relation', ${relationEndsSql('l')})
 			                                  ORDER BY l.inscription)
 			                    FROM namings l
-			                   WHERE l.id = ANY(na.linked_naming_ids) AND l.deleted_at IS NULL
+			                   -- ein aufgenommenes Naming: das, in das es aufging
+			                   WHERE l.id IN (SELECT COALESCE(${mergedIntoSql('l0')}, l0.id)
+			                                    FROM namings l0 WHERE l0.id = ANY(na.linked_naming_ids))
+			                     AND l.id <> h.id
+			                     AND l.deleted_at IS NULL
 			                     AND l.project_id = $1
 			                     AND NOT EXISTS (SELECT 1 FROM appearances pa
 			                                      WHERE pa.naming_id = l.id AND pa.directed_from = na.naming_id
@@ -285,6 +295,7 @@ export async function getNamingMemosByProject(projectId: string): Promise<Naming
 			                 '[]'::json) AS linked
 			   FROM naming_acts na
 			   JOIN namings n ON n.id = na.naming_id
+			   JOIN namings h ON h.id = COALESCE(${mergedIntoSql('n')}, n.id)
 			   JOIN namings b ON b.id = na.by
 			  WHERE ${NAMING_MEMO_FILTER}
 			  ORDER BY na.created_at DESC, na.seq DESC`,
@@ -298,6 +309,7 @@ export async function getNamingMemosByProject(projectId: string): Promise<Naming
 		created_at: r.created_at,
 		memo_text: r.memo_text,
 		naming_label: namingLabel(r.naming_inscription, r.naming_relation),
+		merged_from: r.merged_from,
 		by_label: r.by_label,
 		passage_document: r.passage_document,
 		linked: (r.linked ?? []).map((l) => ({ id: l.id, label: namingLabel(l.inscription, l.relation) })),
@@ -357,7 +369,9 @@ export async function promoteMemoToNaming(
 	return transaction(async (client) => {
 		// Get memo content
 		const memo = await client.query(
-			`SELECT n.inscription, mc.content, mc.status FROM namings n
+			`SELECT n.inscription, mc.content, mc.status,
+			        n.created_by = '00000000-0000-0000-0000-000000000000' AS is_ai
+			   FROM namings n
 			 JOIN memo_content mc ON mc.naming_id = n.id
 			 WHERE n.id = $1 AND n.project_id = $2 AND n.deleted_at IS NULL`,
 			[memoId, projectId]
@@ -365,11 +379,15 @@ export async function promoteMemoToNaming(
 		if (memo.rows.length === 0) throw new Error('Memo not found');
 		if (memo.rows[0].status === 'promoted') throw new Error('This memo has already been made a naming.');
 
-		// Create a new naming from the memo title
+		// Das Naming gehört der Forscherin, die es macht: Der Autor-Präfix eines
+		// KI-Memos („Cowork: …") gehört nicht in seinen Namen (Testlauf 09.11.:
+		// der Coach schrieb das übernommene Naming danach Cowork zu).
+		const raw = String(memo.rows[0].inscription ?? '').trim();
+		const name = (memo.rows[0].is_ai ? raw.replace(/^[\p{L}-]+:\s+/u, '') : raw) || raw;
 		const namingRes = await client.query(
 			`INSERT INTO namings (project_id, inscription, created_by)
 			 VALUES ($1, $2, $3) RETURNING *`,
-			[projectId, memo.rows[0].inscription, userId]
+			[projectId, name, userId]
 		);
 		const naming = namingRes.rows[0];
 
@@ -382,12 +400,13 @@ export async function promoteMemoToNaming(
 			);
 		}
 
-		// Initial designation act: cue
+		// Erster Akt: Inschrift als Cue, mit Verweis auf das Memo, aus dem das
+		// Naming hervorgeht — der Stack sagt, woher es kommt.
 		const researcherNamingId = await getOrCreateResearcherNaming(projectId, userId);
 		await client.query(
-			`INSERT INTO naming_acts (naming_id, designation, by)
-			 VALUES ($1, 'cue', $2)`,
-			[naming.id, researcherNamingId]
+			`INSERT INTO naming_acts (naming_id, by, inscription, designation, linked_naming_ids)
+			 VALUES ($1, $2, $3, 'cue', $4)`,
+			[naming.id, researcherNamingId, name, [memoId]]
 		);
 
 		// Link the original memo to the new naming via participation
