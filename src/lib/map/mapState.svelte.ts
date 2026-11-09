@@ -400,7 +400,21 @@ export function createMapState(
 		if (hideWithdrawn && isWithdrawn(rel.properties)) return 0;
 		if (hideWithdrawn && (isWithdrawn(srcNode?.properties) || isWithdrawn(tgtNode?.properties))) return 0;
 		if (isWithdrawn(rel.properties)) return 0.2;
+		if (isWithdrawn(srcNode?.properties) || isWithdrawn(tgtNode?.properties)) return 0.35;
 		return 1;
+	}
+
+	/** Endpunkte einer nicht zurückgezogenen Relation, die zurückgezogen sind.
+	 *  Die Relation bleibt (sie ist ein eigenes Naming), hängt aber: Die Karte
+	 *  zeigt das, statt sie wie jede andere stehen zu lassen (Testlauf 8). */
+	function withdrawnEndpoints(rel: any): string[] {
+		if (!rel || rel.mode !== 'relation' || isWithdrawn(rel.properties)) return [];
+		const out: string[] = [];
+		for (const id of endpointsOf(rel)) {
+			const n = id ? findNode(id) : null;
+			if (n && isWithdrawn(n.properties)) out.push(n.inscription ?? findInscription(id!));
+		}
+		return out;
 	}
 
 	function designationColor(d: string | undefined) {
@@ -1291,6 +1305,7 @@ export function createMapState(
 		get stackLoading() { return stackId !== null && stackData === null; },
 		get memoTip() { return memoTip; },
 		get flashId() { return flashId; },
+		withdrawnEndpoints,
 		flash,
 		get editingId() { return editingId; },
 		set editingId(v) { editingId = v; },

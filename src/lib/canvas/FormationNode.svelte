@@ -440,7 +440,7 @@
 	}
 	@keyframes formation-flash {
 		0%, 100% { filter: none; }
-		50% { filter: drop-shadow(0 0 8px #8b9cf7) drop-shadow(0 0 3px #8b9cf7); }
+		50% { filter: drop-shadow(0 0 calc(8px * var(--inv-zoom, 1)) #8b9cf7) drop-shadow(0 0 calc(3px * var(--inv-zoom, 1)) #8b9cf7); }
 	}
 
 	.formation-node.selected :global(ellipse),

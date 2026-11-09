@@ -178,7 +178,7 @@
 >
 	<div
 		class="canvas-layer"
-		style="transform: scale({viewport.zoom}) translate({viewport.x}px, {viewport.y}px); transform-origin: 0 0;"
+		style="transform: scale({viewport.zoom}) translate({viewport.x}px, {viewport.y}px); transform-origin: 0 0; --inv-zoom: {Math.max(1, 1 / viewport.zoom)};"
 	>
 		{@render children()}
 	</div>

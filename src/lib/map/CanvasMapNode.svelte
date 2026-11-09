@@ -131,6 +131,7 @@
 	.map-node.flash { animation: node-flash 0.8s ease-in-out 3; }
 	@keyframes node-flash {
 		0%, 100% { box-shadow: none; }
-		50% { box-shadow: 0 0 0 3px #8b9cf7, 0 0 18px rgba(139, 156, 247, 0.6); }
+		/* Auch bei kleinem Zoom sichtbar: Ring und Schein wachsen mit 1/Zoom. */
+		50% { box-shadow: 0 0 0 calc(3px * var(--inv-zoom, 1)) #8b9cf7, 0 0 calc(18px * var(--inv-zoom, 1)) rgba(139, 156, 247, 0.6); }
 	}
 </style>

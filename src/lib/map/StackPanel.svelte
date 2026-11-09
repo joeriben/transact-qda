@@ -167,7 +167,7 @@
 				currentMap={ms.mapLabel ?? null}
 				pinnedSeq={stackNode?.is_collapsed ? stackNode?.properties?.collapseAt : null}
 				onpin={(seq) => ms.pinToLayer(ms.stackId!, seq)}
-				onlinked={(id) => { if (ms.findNode(id)) ms.showStack(id); }} />
+				onlinked={(id) => { if (ms.findNode(id)) ms.revealNaming(id, { stack: true }); }} />
 			{#key ms.stackId + ':' + (ms.noteOpenFor === ms.stackId)}
 				<NamingMemoForm projectId={ms.projectId} namingId={ms.stackId!}
 					candidates={memoCandidates}

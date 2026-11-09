@@ -16,7 +16,9 @@
 	const panel = createFloatingPanel({
 		key: `${ms.mapId}:unplaced`,
 		width: 280,
-		height: 360,
+		// Nach Inhalt hoch (max-height greift): drei unplatzierte Namings
+		// brauchen keine 360 px leere Fläche über der Karte (Testlauf 8).
+		height: null,
 		anchor: 'top-right',
 		minWidth: 200,
 		minHeight: 140,

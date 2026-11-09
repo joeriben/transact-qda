@@ -17,11 +17,12 @@
 
 	// Einklappbar: bei schmalem Fenster nahm die Spalte der Karte den Platz
 	// (bei 800 px rund ein Drittel, und das Unplaced-Panel samt seinen
-	// place-Knöpfen lag halb hinter ihr). Unter 1000 px startet sie deshalb
+	// place-Knöpfen lag halb hinter ihr). Unter 1280 px startet sie deshalb
 	// immer eingeklappt und klappt auch zu, wenn das Fenster schmaler wird;
-	// darüber gilt die gemerkte Wahl.
+	// darüber gilt die gemerkte Wahl. (Bei 1024 px nahm die offene Spalte gut
+	// ein Viertel der Karte, auch ohne eine einzige Phase — Testlauf 8.)
 	const COLLAPSE_KEY = 'tqda:map-sidebar-collapsed';
-	const NARROW = '(max-width: 999px)';
+	const NARROW = '(max-width: 1279px)';
 	let collapsed = $state(false);
 	$effect(() => {
 		const narrow = window.matchMedia(NARROW);

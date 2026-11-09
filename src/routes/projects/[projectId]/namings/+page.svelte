@@ -160,8 +160,6 @@
 	// Zurückziehen/Wiederherstellen lokal sofort sichtbar; der Server hält das
 	// Flag (properties.withdrawn) an allen Erscheinungen des Namings.
 	let localWithdrawn = $state<Map<string, boolean>>(new Map());
-	// In dieser Ansicht zurückgezogen: bleibt sichtbar, bis „Hide withdrawn" umgeschaltet wird.
-	let withdrawnInView = $state<Set<string>>(new Set());
 
 	// 8-second persistence after any filter-mutating action so the user can
 	// see the result of their click before the item leaves the filtered view.
@@ -294,15 +292,11 @@
 			});
 		}
 		if (hideWithdrawn) {
-			// Was man hier eben zurückgezogen hat, bleibt ausgegraut mit „restore"
-			// stehen, bis „Hide withdrawn" umgeschaltet wird — sonst rutscht die
-			// nächste Zeile unter den Zeiger. Ein schon beim Laden zurückgezogenes,
-			// per ?focus= aufgeschlagenes Naming bleibt ebenfalls sichtbar.
-			result = result.filter(n => {
-				if (!isWithdrawn(n.naming_id, n.properties)) return true;
-				if (withdrawnInView.has(n.naming_id)) return true;
-				return keepTouched(n);
-			});
+			// Was man hier eben zurückgezogen hat, bleibt ein paar Sekunden
+			// ausgegraut mit „restore" stehen (keepTouched), wie nach jedem Akt,
+			// der aus dem Filter fällt. Ein schon beim Laden zurückgezogenes, per
+			// ?focus= aufgeschlagenes Naming bleibt sichtbar.
+			result = result.filter(n => !isWithdrawn(n.naming_id, n.properties) || keepTouched(n));
 		}
 		if (searchQuery.trim()) {
 			const q = searchQuery.toLowerCase();
@@ -378,10 +372,12 @@
 	// Kurze Bestätigung unten im Fenster (z. B. nach dem Zusammenführen).
 	let infoNotice = $state<string | null>(null);
 	let infoTimer: ReturnType<typeof setTimeout> | null = null;
-	function showInfo(text: string) {
+	let infoUndo = $state<{ label: string; run: () => void } | null>(null);
+	function showInfo(text: string, undo: { label: string; run: () => void } | null = null) {
 		infoNotice = text;
+		infoUndo = undo;
 		if (infoTimer) clearTimeout(infoTimer);
-		infoTimer = setTimeout(() => (infoNotice = null), 5000);
+		infoTimer = setTimeout(() => { infoNotice = null; infoUndo = null; }, undo ? 9000 : 5000);
 	}
 	async function openExisting(id: string) {
 		actionError = null;
@@ -629,7 +625,9 @@
 		// und lässt sich wiederherstellen.
 		const next = !currentlyWithdrawn;
 		localWithdrawn = new Map(localWithdrawn).set(namingId, next);
-		if (next) withdrawnInView = new Set(withdrawnInView).add(namingId);
+		// Wie nach jedem Akt, der aus dem Filter fällt: ein paar Sekunden noch
+		// ausgegraut mit „restore" sichtbar, dann greift „Hide withdrawn"
+		// (Testlauf 8: es blieb stehen, bis man den Schalter neu betätigte).
 		markTouched(namingId);
 		const res = await apiAction('withdraw', { namingId, withdrawn: next });
 		if (res?.error) {
@@ -642,8 +640,13 @@
 			// Es bleibt ausgegraut mit „restore" stehen, statt unter dem Zeiger zu
 			// verschwinden — das sagen, damit „Hide withdrawn" nicht kaputt wirkt.
 			const label = labelOf(findNaming(namingId));
-			if (next && hideWithdrawn) showInfo(`Withdrawn ${quoted(label)} — it stays here greyed out with “restore” until you reload or switch “Hide withdrawn”. Nothing was deleted.`);
-			else if (!next) showInfo(`Restored ${quoted(label)}.`);
+			if (next) showInfo(
+				hideWithdrawn
+					? `Withdrawn ${quoted(label)}. “Hide withdrawn” takes it out of the list in a moment. Nothing was deleted.`
+					: `Withdrawn ${quoted(label)}. Nothing was deleted.`,
+				{ label: 'restore', run: () => withdraw(namingId, true) }
+			);
+			else showInfo(`Restored ${quoted(label)}.`);
 			// Ein offener Stack zeigt den neuen Akt gleich (Testlauf 09.11.).
 			if (stackId === namingId) stackData = await apiAction('getStack', { namingId });
 		}
@@ -796,7 +799,7 @@
 	const hasAutonomaNamings = $derived((namings as NamingRow[]).some(n => n.ai_persona === 'autonoma'));
 
 	const filterToggles: Toggle[] = $derived([
-		{ label: 'Hide withdrawn', value: hideWithdrawn, onchange: (v: boolean) => { hideWithdrawn = v; withdrawnInView = new Set(); } },
+		{ label: 'Hide withdrawn', value: hideWithdrawn, onchange: (v: boolean) => { hideWithdrawn = v; } },
 		{ label: 'Hide Cowork', value: hideCowork, onchange: (v: boolean) => hideCowork = v },
 		...(hasAutonomaNamings || hideAutonoma
 			? [{
@@ -880,7 +883,11 @@
 			{#if infoNotice}
 				<div class="action-info" role="status">
 					<span>{infoNotice}</span>
-					<button class="btn-xs" onclick={() => (infoNotice = null)} aria-label="Dismiss message">×</button>
+					{#if infoUndo}
+						{@const undo = infoUndo}
+						<button class="btn-xs" onclick={() => { infoNotice = null; infoUndo = null; undo.run(); }}>{undo.label}</button>
+					{/if}
+					<button class="btn-xs" onclick={() => { infoNotice = null; infoUndo = null; }} aria-label="Dismiss message">×</button>
 				</div>
 			{/if}
 			{#if actionError}

@@ -21,6 +21,7 @@
 	let nodeEl: HTMLDivElement | undefined = $state();
 	const memoCount = $derived<number>(rel.memo_previews?.length ?? 0);
 	const own = $derived(hasOwnInscription(rel.inscription));
+	const goneEnds = $derived<string[]>(ms.withdrawnEndpoints(rel));
 
 	// Memo-Vorschau wie bei den Karten: beim Überfahren, verschwindet beim Verlassen.
 	function enter() {
@@ -40,12 +41,14 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="relation-diamond" bind:this={nodeEl} onmouseenter={enter} onmouseleave={leave}
-	class:relating-source={ms.relatingFrom === rel.naming_id} class:ai-suggested={rel.properties?.aiSuggested} class:ai-withdrawn={ms.isWithdrawn(rel.properties)} class:phase-member={ms.highlightedPhase && ms.isPhaseHighlighted(rel)} class:phase-dimmed={ms.highlightedPhase && !ms.isPhaseHighlighted(rel)} class:centered-dim={cp.centeredConnections && !cp.centeredConnections.has(rel.naming_id)} class:centered-anchor={cp.centeredId === rel.naming_id} class:flash={ms.flashId === rel.naming_id}
+	class:relating-source={ms.relatingFrom === rel.naming_id} class:ai-suggested={rel.properties?.aiSuggested} class:ai-withdrawn={ms.isWithdrawn(rel.properties)} class:phase-member={ms.highlightedPhase && ms.isPhaseHighlighted(rel)} class:phase-dimmed={ms.highlightedPhase && !ms.isPhaseHighlighted(rel)} class:centered-dim={cp.centeredConnections && !cp.centeredConnections.has(rel.naming_id)} class:centered-anchor={cp.centeredId === rel.naming_id} class:flash={ms.flashId === rel.naming_id} class:dangling={goneEnds.length > 0}
+	title={goneEnds.length > 0 ? `Withdrawn endpoint: ${goneEnds.join(', ')}. The relation itself is not withdrawn.` : undefined}
 	style="{ms.highlightedPhase && ms.isPhaseHighlighted(rel) ? `--phase-color: ${ms.phaseColorMap.get(ms.highlightedPhase)};` : ''}">
 	<svg class="diamond-bg" viewBox="0 0 100 100" preserveAspectRatio="none">
 		<polygon points="12,0 88,0 100,50 88,100 12,100 0,50" fill="#161822" stroke="#2a2d3a" stroke-width="1.5"/>
 	</svg>
 	<div class="diamond-content">
+		{#if goneEnds.length > 0}<span class="rd-dangling">endpoint withdrawn</span>{/if}
 		{#if own && rel.valence}<span class="rd-valence">{rel.valence}</span>{/if}
 		{#if own}
 			<span class="rd-text">{rel.inscription}</span>
@@ -81,10 +84,13 @@
 	.relation-diamond.phase-dimmed { opacity: 0.25; }
 	.relation-diamond.centered-dim { opacity: 0.15; }
 	.relation-diamond.centered-anchor .diamond-bg polygon { stroke: #f59e0b; }
+	.relation-diamond.dangling { opacity: 0.6; }
+	.relation-diamond.dangling .diamond-bg polygon { stroke: #f87171; stroke-dasharray: 4 3; }
+	.rd-dangling { display: block; font-size: 0.6rem; color: #f87171; }
 	.relation-diamond.flash { animation: rd-flash 0.8s ease-in-out 3; }
 	@keyframes rd-flash {
 		0%, 100% { filter: none; }
-		50% { filter: drop-shadow(0 0 8px #8b9cf7) drop-shadow(0 0 2px #8b9cf7); }
+		50% { filter: drop-shadow(0 0 calc(8px * var(--inv-zoom, 1)) #8b9cf7) drop-shadow(0 0 calc(2px * var(--inv-zoom, 1)) #8b9cf7); }
 	}
 	.rd-valence { font-size: 0.65rem; color: #8b8fa3; font-style: italic; }
 	.rd-text { color: #c9cdd5; font-size: 0.75rem; }

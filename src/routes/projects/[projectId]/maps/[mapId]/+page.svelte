@@ -65,24 +65,48 @@
 	// Pixeln vom jeweiligen Rand der Canvas-Fläche. Einpassen und Platzieren
 	// rechnen mit der Fläche daneben — sonst lag der Inhalt unter der Halde.
 	function overlayInsets(): ViewInsets {
-		const ins: ViewInsets = { left: 0, right: 0, top: 0, bottom: 0 };
 		const el = canvasContainerEl;
-		if (!el) return ins;
+		const none: ViewInsets = { left: 0, right: 0, top: 0, bottom: 0 };
+		if (!el) return none;
 		const c = el.getBoundingClientRect();
-		if (c.width <= 0 || c.height <= 0) return ins;
-		for (const p of el.querySelectorAll<HTMLElement>('.unplaced-panel:not(.collapsed), .canvas-stack-panel')) {
-			const r = p.getBoundingClientRect();
-			if (r.width <= 0 || r.right <= c.left || r.left >= c.right) continue;
-			if ((r.left + r.right) / 2 > c.left + c.width / 2) ins.right = Math.max(ins.right, c.right - r.left);
-			else ins.left = Math.max(ins.left, r.right - c.left);
-		}
+		if (c.width <= 0 || c.height <= 0) return none;
 		const ov = overlaysEl?.getBoundingClientRect();
-		if (ov && ov.height > 0) ins.top = Math.max(0, ov.bottom - c.top);
+		let top0 = ov && ov.height > 0 ? Math.max(0, ov.bottom - c.top) : 0;
+		// Das offene Feld „New naming/formation" hängt aus der Werkzeugleiste in
+		// die Karte: Neues landete darunter (Testlauf 8, SW/A).
+		const pop = document.querySelector<HTMLElement>('.naming-pop')?.getBoundingClientRect();
+		if (pop && pop.height > 0 && pop.bottom > c.top && pop.top < c.bottom) top0 = Math.max(top0, pop.bottom - c.top);
+		const panels = [...el.querySelectorAll<HTMLElement>('.unplaced-panel:not(.collapsed), .canvas-stack-panel')]
+			.map((p) => ({ r: p.getBoundingClientRect(), stack: p.matches('.canvas-stack-panel') }))
+			.filter(({ r }) => r.width > 0 && r.right > c.left && r.left < c.right);
+		const measure = (list: typeof panels): ViewInsets => {
+			const ins: ViewInsets = { left: 0, right: 0, top: top0, bottom: 0 };
+			for (const { r } of list) {
+				// Ein niedriges Panel oben (Unplaced mit drei Namings) nimmt nicht die
+				// ganze Spalte darunter: dann zählt es als Streifen oben, sofern das
+				// weniger Fläche kostet als die Spalte (Testlauf 8: 19 % beim Öffnen).
+				const sideLoss = Math.min(r.right, c.right) - Math.max(r.left, c.left);
+				const topLoss = r.bottom - c.top;
+				if (r.top - c.top < 48 && topLoss / c.height < sideLoss / c.width) {
+					ins.top = Math.max(ins.top, topLoss);
+					continue;
+				}
+				if ((r.left + r.right) / 2 > c.left + c.width / 2) ins.right = Math.max(ins.right, c.right - r.left);
+				else ins.left = Math.max(ins.left, r.right - c.left);
+			}
+			return ins;
+		};
+		const tooWide = (i: ViewInsets) => i.left + i.right > c.width * 0.6;
+		let ins = measure(panels);
+		// Stack und Unplaced zusammen lassen kaum Fläche: dann zählt der Stack —
+		// er ist, was die Forscherin gerade ansieht —, die Halde liegt darüber.
+		// Vorher fielen beide weg, und das Eingerahmte lag unter dem Stack.
+		if (tooWide(ins)) ins = measure(panels.filter((p) => p.stack));
+		if (tooWide(ins)) { ins.left = 0; ins.right = 0; }
 		// Die Zoom-Leiste unten: Eingerahmtes endet mit Abstand über ihr.
 		const hud = el.querySelector<HTMLElement>('.canvas-hud')?.getBoundingClientRect();
 		if (hud && hud.height > 0) ins.bottom = Math.max(0, c.bottom - hud.top);
 		// Bleibt daneben kaum Fläche, zählt der ganze Ausschnitt.
-		if (ins.left + ins.right > c.width * 0.6) { ins.left = 0; ins.right = 0; }
 		if (ins.top > c.height * 0.5) ins.top = 0;
 		if (ins.bottom > c.height * 0.3) ins.bottom = 0;
 		return ins;
