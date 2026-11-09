@@ -13,7 +13,7 @@
 //   * untilAborted — ein Abbruch befreit den Aufrufer auch dann, wenn das
 //     SDK das AbortSignal nicht respektiert (Hänger beobachtet 2026-05-17).
 //   * Run-Cancel-Signal-Threading — via AsyncLocalStorage aus
-//     coding-run/activity-tracker.ts; `chat()` kombiniert es mit dem
+//     naming-run/activity-tracker.ts; `chat()` kombiniert es mit dem
 //     Caller-Signal via AbortSignal.any(). Mid-Call-Cancel wird wirksam,
 //     nicht erst zwischen Atomen.
 //   * Keine Zeitgrenze für Modellaufrufe. Mit hoher Reasoning-Stärke
@@ -38,7 +38,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { getAiSettingsFile, getApiKeyFile } from '../paths.js';
-import { startLlmCall, endLlmCall, getRunAbortSignal } from './coding-run/activity-tracker.js';
+import { startLlmCall, endLlmCall, getRunAbortSignal } from './naming-run/activity-tracker.js';
 import { openRouterRequestParams, reasoningEffortFor, REGION_SUBSTITUTES, type ReasoningEffort } from './model-policy.js';
 
 // ── Abbruch gegen SDK-Hänger ─────────────────────────────────────────
@@ -277,7 +277,7 @@ export interface AiSettings {
 	/**
 	 * Per-tier model routing. Keyed by tier ID
 	 * (e.g. 'coding-run.h1'); each entry overrides that tier's registry
-	 * recommendation. See coding-run/model-tiers.ts.
+	 * recommendation. See naming-run/model-tiers.ts.
 	 */
 	tiers?: Partial<Record<string, { provider: Provider; model: string }>>;
 }

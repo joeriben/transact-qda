@@ -49,7 +49,7 @@ import { segmentDocument, type Sequence } from './segmentation.js';
 import { resolveTierRoute, resolveFallbackRoute } from './model-tiers.js';
 import { chatWithEmptyRetry } from './chat-with-retry.js';
 import {
-	getOrCreateCodingRunNaming,
+	getOrCreateNamingRunActor,
 	commitSequenceNaming,
 	type CommitResult
 } from './write.js';
@@ -65,13 +65,13 @@ import {
 	parseJsonArray,
 	resolveSurvivors,
 	loadDocumentTitle,
-	loadExistingCodeLabels,
+	loadExistingNamingLabels,
 	loadExistingCNameLabels,
 	loadDocumentMemos,
-	type CodingRunEvent,
-	type CodingRunResult,
+	type NamingRunEvent,
+	type NamingRunResult,
 	type SequenceTrace,
-	type H1Code,
+	type H1Naming,
 	type H2Verdict,
 	type H1Reaction,
 	type DocumentMemo
@@ -79,9 +79,9 @@ import {
 
 // Run-Options-Slot — aktuell leer, reserviert für zukünftige pfad-relevante
 // Felder. Wird beim Resume defensiv durchgereicht (mergeOptions).
-export type CodingRunOptions = Record<string, never>;
+export type NamingRunOptions = Record<string, never>;
 
-export interface CodingRunRow {
+export interface NamingRunRow {
 	id: string;
 	project_id: string;
 	document_id: string;
@@ -90,7 +90,7 @@ export interface CodingRunRow {
 	current_index: number;
 	total_sequences: number | null;
 	last_step_label: string | null;
-	options: CodingRunOptions;
+	options: NamingRunOptions;
 	segmentation_snapshot: Sequence[];
 	segmentation_method: Sequence['method'] | null;
 	sequence_status: Record<string, 'done'>;
@@ -118,8 +118,8 @@ export interface CodingRunRow {
 export async function getActiveRun(
 	projectId: string,
 	documentId: string
-): Promise<CodingRunRow | null> {
-	return queryOne<CodingRunRow>(
+): Promise<NamingRunRow | null> {
+	return queryOne<NamingRunRow>(
 		`SELECT * FROM coding_runs
 		 WHERE project_id = $1 AND document_id = $2
 		   AND status IN ('running', 'paused')
@@ -135,8 +135,8 @@ export async function getActiveRun(
 export async function getLatestRun(
 	projectId: string,
 	documentId: string
-): Promise<CodingRunRow | null> {
-	return queryOne<CodingRunRow>(
+): Promise<NamingRunRow | null> {
+	return queryOne<NamingRunRow>(
 		`SELECT * FROM coding_runs
 		 WHERE project_id = $1 AND document_id = $2
 		 ORDER BY started_at DESC
@@ -145,8 +145,8 @@ export async function getLatestRun(
 	);
 }
 
-export async function getRun(runId: string): Promise<CodingRunRow | null> {
-	return queryOne<CodingRunRow>(`SELECT * FROM coding_runs WHERE id = $1`, [runId]);
+export async function getRun(runId: string): Promise<NamingRunRow | null> {
+	return queryOne<NamingRunRow>(`SELECT * FROM coding_runs WHERE id = $1`, [runId]);
 }
 
 /**
@@ -166,10 +166,10 @@ export async function startOrResumeRun(
 	projectId: string,
 	documentId: string,
 	userId: string
-): Promise<{ run: CodingRunRow; resumed: boolean }> {
+): Promise<{ run: NamingRunRow; resumed: boolean }> {
 	const existing = await getActiveRun(projectId, documentId);
 	if (existing) {
-		const updated = await queryOne<CodingRunRow>(
+		const updated = await queryOne<NamingRunRow>(
 			`UPDATE coding_runs
 			 SET status = 'running',
 			     cancel_requested = false,
@@ -199,7 +199,7 @@ export async function startOrResumeRun(
 	}
 	const segmentationMethod = sequences[0].method;
 
-	const created = await queryOne<CodingRunRow>(
+	const created = await queryOne<NamingRunRow>(
 		`INSERT INTO coding_runs
 		   (project_id, document_id, started_by_user_id, status,
 		    segmentation_snapshot, segmentation_method, total_sequences)
@@ -353,7 +353,7 @@ async function updateProgress(
 	label: string,
 	tokenDelta: { input: number; output: number; cacheRead: number },
 	sequenceStatusPatch?: Record<string, 'done'>,
-	codesCommittedDelta = 0
+	namingsCommittedDelta = 0
 ): Promise<void> {
 	setStepLabel(label);
 	if (sequenceStatusPatch) {
@@ -376,7 +376,7 @@ async function updateProgress(
 				tokenDelta.output,
 				tokenDelta.cacheRead,
 				JSON.stringify(sequenceStatusPatch),
-				codesCommittedDelta
+				namingsCommittedDelta
 			]
 		);
 	} else {
@@ -397,7 +397,7 @@ async function updateProgress(
 				tokenDelta.input,
 				tokenDelta.output,
 				tokenDelta.cacheRead,
-				codesCommittedDelta
+				namingsCommittedDelta
 			]
 		);
 	}
@@ -439,9 +439,9 @@ async function loadRunCheckpoint(
  * (write.ts) — Doppel-Linie für den Fall, dass ein Crash zwischen
  * commitCodedPassage und sequence_status-Update liegt.
  */
-export async function runCodingRunLoop(
+export async function runNamingRunLoop(
 	runId: string,
-	emit: (e: CodingRunEvent) => void
+	emit: (e: NamingRunEvent) => void
 ): Promise<void> {
 	const run = await getRun(runId);
 	if (!run) throw new Error(`Run ${runId} not found`);
@@ -457,7 +457,7 @@ export async function runCodingRunLoop(
 	const h1Model = `${h1Tier.provider}/${h1Tier.model}`;
 	const h2Model = `${h2Tier.provider}/${h2Tier.model}`;
 
-	const bearbeiter = await getOrCreateCodingRunNaming(run.project_id);
+	const bearbeiter = await getOrCreateNamingRunActor(run.project_id);
 	const { title } = await loadDocumentTitle(run.project_id, run.document_id);
 
 	// Snapshot lesen, nicht re-segmentieren — Header-Begründung siehe oben.
@@ -467,8 +467,8 @@ export async function runCodingRunLoop(
 	emit({ type: 'run-init', runId });
 	emit({ type: 'segmented', total: sequences.length, method: segmentationMethod });
 
-	const codeLabels = await loadExistingCodeLabels(run.project_id);
-	const seenLower = new Set(codeLabels.map((l) => l.toLowerCase()));
+	const namingLabels = await loadExistingNamingLabels(run.project_id);
+	const seenLower = new Set(namingLabels.map((l) => l.toLowerCase()));
 
 	// CName-Forensic-Pipeline-Material (Pass 2). Beides dokument-scoped, kein
 	// Quer-Gedächtnis über Dokumente. Mutable: die Pipeline appendt neue
@@ -487,7 +487,7 @@ export async function runCodingRunLoop(
 	// accumulated_*_tokens den Gesamtstand kumulativ; das hier ist der Anteil
 	// dieser einen Loop-Iteration für die SSE-Events.
 	let tokensInThisLoop = 0;
-	let codesCommitted = 0;
+	let namingsCommitted = 0;
 
 	for (const [i, sequence] of sequences.entries()) {
 		// Pre-Check an der Idempotenz-Grenze: schon erledigt? Cancel-Signal
@@ -523,7 +523,7 @@ export async function runCodingRunLoop(
 			// ── 1. H1 proposes ────────────────────────────────────────
 			const h1Resp = await chatWithEmptyRetry({
 				system: h1ProposeSystem(),
-				messages: [{ role: 'user', content: buildH1ProposeMessage(sequence.seq, sequence.text, codeLabels) }],
+				messages: [{ role: 'user', content: buildH1ProposeMessage(sequence.seq, sequence.text, namingLabels) }],
 				primary: h1Tier,
 				fallback: h1Fallback,
 				emptyMode: 'json-array',
@@ -539,7 +539,7 @@ export async function runCodingRunLoop(
 				`Sequenz ${i + 1}/${sequences.length} · H1 propose`,
 				{ input: h1Resp.inputTokens, output: h1Resp.outputTokens, cacheRead: h1Resp.cacheReadTokens }
 			);
-			const h1Proposed = parseJsonArray<H1Code>(h1Resp.text).filter((c) => c && c.code_label);
+			const h1Proposed = parseJsonArray<H1Naming>(h1Resp.text).filter((c) => c && c.code_label);
 			if (h1Proposed.length === 0 && h1Resp.text.trim().length > 0) {
 				console.warn(
 					`[coding-run ${runId}] seq ${i + 1}/${sequences.length} H1 propose parsed 0 codes from ${h1Resp.text.length} chars. raw=${JSON.stringify(h1Resp.text.slice(0, 800))}`
@@ -664,10 +664,10 @@ export async function runCodingRunLoop(
 						sequenceMeta: { seq: sequence.seq, sentenceCount: sequence.sentenceCount }
 					});
 					committed.push(res);
-					codesCommitted++;
+					namingsCommitted++;
 					if (!seenLower.has(res.codeLabel.toLowerCase())) {
 						seenLower.add(res.codeLabel.toLowerCase());
-						codeLabels.push(res.codeLabel);
+						namingLabels.push(res.codeLabel);
 					}
 				} catch (err) {
 					commitErrors.push(`SName ${s.label}: ${err instanceof Error ? err.message : String(err)}`);
@@ -719,7 +719,7 @@ export async function runCodingRunLoop(
 
 			if (forensicResult.commitResult) {
 				cnameCommitted.push(forensicResult.commitResult);
-				codesCommitted++;
+				namingsCommitted++;
 			}
 
 			if (forensicResult.errors.length > 0) {
@@ -825,7 +825,7 @@ export async function runCodingRunLoop(
 	// Alle Sequenzen erledigt.
 	await markCompleted(runId);
 
-	const result: CodingRunResult = {
+	const result: NamingRunResult = {
 		runId,
 		documentId: run.document_id,
 		documentTitle: title,
@@ -833,7 +833,7 @@ export async function runCodingRunLoop(
 		h2Model,
 		segmentationMethod,
 		sequencesProcessed: sequences.length,
-		codesCommitted,
+		codesCommitted: namingsCommitted,
 		tokensUsed: tokensInThisLoop,
 		comprehensionLine,
 		sequences: trace

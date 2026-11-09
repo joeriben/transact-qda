@@ -28,7 +28,7 @@
 // objektive Methode gibt.
 
 import { query } from '../db/index.js';
-import { segmentDocument, type Sequence } from '../ai/coding-run/segmentation.js';
+import { segmentDocument, type Sequence } from '../ai/naming-run/segmentation.js';
 
 // ── Tunables ──────────────────────────────────────────────────────
 // Methodenparameter, keine Nutzereinstellungen (wie in segmentation.ts).

@@ -24,8 +24,8 @@
 
 import { query, queryOne } from '../../db/index.js';
 import { effectiveRoute } from '../client.js';
-import { chatWithEmptyRetry } from '../coding-run/chat-with-retry.js';
-import { resolveTierRoute, resolveFallbackRoute, type TierModel } from '../coding-run/model-tiers.js';
+import { chatWithEmptyRetry } from '../naming-run/chat-with-retry.js';
+import { resolveTierRoute, resolveFallbackRoute, type TierModel } from '../naming-run/model-tiers.js';
 import { retrieveComparisonMaterialForText } from '../naming-companion/retrieval.js';
 import { embed } from '../../documents/embeddings.js';
 import { getDesignationHistory } from '../../db/queries/namings.js';
@@ -536,7 +536,7 @@ export async function runComparativeDimensionalization(params: ComparativeParams
 
 /**
  * Actant E (Zug 4): persist the saturated profile as a concept-naming at CUE height.
- * Mirrors findOrCreateNaming (coding-run/write.ts): createOrphanNaming (provenance via the
+ * Mirrors findOrCreateNaming (naming-run/write.ts): createOrphanNaming (provenance via the
  * shared provenanceProps → {aiPersona,aiRunId}) → 'cue' act → one memo-act per axis carrying
  * the dimensional analysis. cue-only — NO auto-promotion to characterization: that gradient
  * step is the researcher's terminal act, not the engine's (design-begleiten.md, Satz I).
@@ -555,7 +555,7 @@ export async function persistConceptProfile(
 ): Promise<string> {
 	// Wer hier schreibt, ist die KI, nicht die Forscherin: Akte und Naming
 	// tragen das KI-Naming des Projekts (ai_namings) und den KI-Urheber, wie
-	// jeder andere KI-Akt (coding-run/write.ts). Vorher standen sie unter dem
+	// jeder andere KI-Akt (naming-run/write.ts). Vorher standen sie unter dem
 	// Forscher-Naming — die KI-Arbeit war nicht als solche ausweisbar.
 	// byUserId bleibt nur, wer den Lauf ausgelöst hat (Aufrufer).
 	void byUserId;

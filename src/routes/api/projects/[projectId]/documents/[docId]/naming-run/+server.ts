@@ -45,14 +45,14 @@ import type { RequestHandler } from './$types.js';
 import { query, queryOne } from '$lib/server/db/index.js';
 import {
 	startOrResumeRun,
-	runCodingRunLoop,
+	runNamingRunLoop,
 	requestCancel,
 	getActiveRun,
 	getLatestRun,
 	markPausedOrCancelled
-} from '$lib/server/ai/coding-run/orchestrator.js';
-import type { CodingRunEvent } from '$lib/server/ai/coding-run/index.js';
-import { withRun, endRun, getActivity } from '$lib/server/ai/coding-run/activity-tracker.js';
+} from '$lib/server/ai/naming-run/orchestrator.js';
+import type { NamingRunEvent } from '$lib/server/ai/naming-run/index.js';
+import { withRun, endRun, getActivity } from '$lib/server/ai/naming-run/activity-tracker.js';
 
 /**
  * Zugriffs-Check: Dokument existiert im Projekt UND der User ist Mitglied
@@ -93,7 +93,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		async start(controller) {
 			const encoder = new TextEncoder();
 			let closed = false;
-			const send = (e: CodingRunEvent) => {
+			const send = (e: NamingRunEvent) => {
 				if (closed) return;
 				controller.enqueue(encoder.encode(`data: ${JSON.stringify(e)}\n\n`));
 			};
@@ -225,7 +225,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 				// liest das Signal via getRunAbortSignal() und kombiniert es per
 				// AbortSignal.any() mit timeoutSignal + opts.signal. Damit reißt
 				// der in-flight fetch mid-Call ab, sobald runAbort feuert.
-				await withRun(run.id, runAbort.signal, () => runCodingRunLoop(run.id, send));
+				await withRun(run.id, runAbort.signal, () => runNamingRunLoop(run.id, send));
 			} catch (err) {
 				// Cancel-Path: AbortError vom Watcher → der Watcher hat schon
 				// gefeuert (cancelled/paused-Event und close()), wir tun nichts.

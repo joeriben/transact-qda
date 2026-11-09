@@ -18,7 +18,7 @@
 // eigenen Akt hereinholt — als Anker, als Memo, oder gar nicht.
 
 import { query } from '../../db/index.js';
-import { resolveTier } from '../coding-run/model-tiers.js';
+import { resolveTier } from '../naming-run/model-tiers.js';
 import { effectiveRoute } from '../client.js';
 import { sichten, zuegeOf, zuegeOverlapping, type Gestalt, type Zug } from './gestalt.js';
 import { ladeKriterium, speichereKriterium, neuAbleiten } from './kriterien.js';

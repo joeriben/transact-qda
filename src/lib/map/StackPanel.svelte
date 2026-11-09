@@ -66,7 +66,7 @@
 	});
 
 	// Begründung je Passage: die Akte tragen die Passagen-ID in
-	// linked_naming_ids (coding-run/write.ts). Sie stehen unter der Passage, für
+	// linked_naming_ids (naming-run/write.ts). Sie stehen unter der Passage, für
 	// die sie gelten, nicht als eigener Block — die Begründung gehört zum Zitat.
 	const reasoningByAnnotation = $derived.by(() => {
 		const out = new Map<string, any[]>();

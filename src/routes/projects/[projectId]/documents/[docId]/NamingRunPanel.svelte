@@ -29,7 +29,7 @@
   sind im app-weiten Layout hartcodiert: #161822/#1e2030/#2a2d3a/#8b9cf7).
 -->
 <script lang="ts">
-	// Spiegelt die SSE-Ereignisse aus coding-run/orchestrator.ts (CodingRunEvent);
+	// Spiegelt die SSE-Ereignisse aus naming-run/orchestrator.ts (NamingRunEvent);
 	// deren Feldnamen, auch codesCommitted, sind Schnittstelle und bleiben.
 	type NamingRunEvent =
 		| { type: 'run-init'; runId: string }

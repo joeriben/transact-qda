@@ -34,7 +34,7 @@
 // Hinweisen; ob daraus ein Anker wird, entscheidet ein Akt des Forschers.
 
 import { chat, effectiveRoute, isFatalProviderError } from '../client.js';
-import { resolveTier } from '../coding-run/model-tiers.js';
+import { resolveTier } from '../naming-run/model-tiers.js';
 import { gestaltBlock, type Gestalt, type Zug } from './gestalt.js';
 
 // ── Das Kriterium, explizit gemacht ───────────────────────────────

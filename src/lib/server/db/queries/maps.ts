@@ -872,7 +872,7 @@ export async function getNamingStack(namingId: string, projectId?: string) {
 
 	// Begründungs-Akte: naming_acts, die weder Inschrift noch Designation
 	// tragen, sondern nur memo_text — und in linked_naming_ids die Passage, für
-	// die sie gelten (so schreibt coding-run/write.ts). Sie sind die Begründung
+	// die sie gelten (so schreibt naming-run/write.ts). Sie sind die Begründung
 	// des KI-Cues. Ohne sie zeigt der Stack eines Naming-Run-Cues eine einzige
 	// Zeile ('cue') und sonst nichts, obwohl die Begründung in der Datenbank
 	// steht — die Karte wirkt tot.

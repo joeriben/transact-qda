@@ -99,9 +99,9 @@ Output ONLY a JSON array (no preamble, no Markdown fences):
 Empty array [] if the passage carries nothing codable.`;
 }
 
-export function buildH1ProposeMessage(seq: number, text: string, codeLabels: string[]): string {
-	const list = codeLabels.length > 0
-		? codeLabels.map((l) => `- ${l}`).join('\n')
+export function buildH1ProposeMessage(seq: number, text: string, namingLabels: string[]): string {
+	const list = namingLabels.length > 0
+		? namingLabels.map((l) => `- ${l}`).join('\n')
 		: '(none yet — this is the first sequence in the coding line)';
 	return `EXISTING CODES so far in this document (REUSE when the passage instances any of them again — adding a duplicate-concept code is over-coding):
 ${list}
@@ -172,7 +172,7 @@ export function buildH2ConfrontMessage(
 	comprehension: string,
 	h1Proposed: { code_label: string; reasoning: string }[]
 ): string {
-	const codes = h1Proposed.map((c, i) => `${i + 1}. "${c.code_label}" — ${c.reasoning}`).join('\n');
+	const namings = h1Proposed.map((c, i) => `${i + 1}. "${c.code_label}" — ${c.reasoning}`).join('\n');
 	return `YOUR UNDERSTANDING OF THIS PASSAGE:
 ${comprehension}
 
@@ -182,7 +182,7 @@ ${text}
 """
 
 CODES H1 EXTRACTED:
-${codes}
+${namings}
 
 Confront each code adversarially against your understanding. Drop the noise. JSON array only.`;
 }

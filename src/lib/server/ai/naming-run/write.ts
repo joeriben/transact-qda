@@ -52,7 +52,7 @@ const AI_SYSTEM_UUID = '00000000-0000-0000-0000-000000000000';
  * 09.11.2026 as 'Coding-Run' were renamed by migration 039 (a rename act in
  * their stack).
  */
-export async function getOrCreateCodingRunNaming(projectId: string): Promise<string> {
+export async function getOrCreateNamingRunActor(projectId: string): Promise<string> {
 	const existing = await queryOne<{ id: string }>(
 		`SELECT n.id FROM namings n
 		 JOIN appearances a ON a.naming_id = n.id AND a.perspective_id = n.id AND a.mode = 'perspective'

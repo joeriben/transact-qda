@@ -36,7 +36,7 @@ import type { Sequence } from './segmentation.js';
 
 // ── LLM-Exchange-Shapes (exported, damit orchestrator + Tests gleich lesen) ──
 
-export interface H1Code {
+export interface H1Naming {
 	code_label: string;
 	reasoning: string;
 }
@@ -110,7 +110,7 @@ export interface SequenceTrace {
 	/** How many sentence elements the thematic sequence spans. */
 	sentenceCount: number;
 	text: string;
-	h1Proposed: H1Code[];
+	h1Proposed: H1Naming[];
 	/** H2's independent reading — the hidden Verständnislinie increment. */
 	h2Comprehension: string | null;
 	h2Verdicts: H2Verdict[];
@@ -124,7 +124,7 @@ export interface SequenceTrace {
 	cnameCommitted: CommitResult[];
 }
 
-export interface CodingRunResult {
+export interface NamingRunResult {
 	runId: string;
 	documentId: string;
 	documentTitle: string;
@@ -150,7 +150,7 @@ export interface CodingRunResult {
  * terminalen completed / failed / paused / cancelled und feuert alive als
  * Heartbeat. Wire-Format: `data: <json>\n\n`.
  */
-export type CodingRunEvent =
+export type NamingRunEvent =
 	| { type: 'run-init'; runId: string }
 	| { type: 'segmented'; total: number; method: Sequence['method'] }
 	| { type: 'sequence-start'; index: number; total: number; seq: number }
@@ -163,7 +163,7 @@ export type CodingRunEvent =
 			tokens: number;
 			cumulativeTokens: number;
 	  }
-	| { type: 'completed'; result: CodingRunResult }
+	| { type: 'completed'; result: NamingRunResult }
 	| { type: 'failed'; message: string }
 	| { type: 'paused'; runId: string }
 	| { type: 'cancelled'; runId: string }
@@ -237,7 +237,7 @@ function norm(s: string): string {
  * - "drop"   → survives only if H1 explicitly "defend"s; missing
  *   reaction means the drop stands (conservative — fewer namings).
  */
-export function resolveSurvivors(h1: H1Code[], verdicts: H2Verdict[], reactions: H1Reaction[]): Survivor[] {
+export function resolveSurvivors(h1: H1Naming[], verdicts: H2Verdict[], reactions: H1Reaction[]): Survivor[] {
 	const out: Survivor[] = [];
 	for (const c of h1) {
 		const v = verdicts.find((x) => norm(x.code_label) === norm(c.code_label));
@@ -303,7 +303,7 @@ export async function loadDocumentTitle(
 }
 
 /** All labels that currently count as namings in the project (the running comparison list). */
-export async function loadExistingCodeLabels(projectId: string): Promise<string[]> {
+export async function loadExistingNamingLabels(projectId: string): Promise<string[]> {
 	const res = await query<{ label: string }>(
 		`SELECT DISTINCT n.inscription AS label
 		 FROM namings n

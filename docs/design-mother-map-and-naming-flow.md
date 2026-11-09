@@ -82,7 +82,7 @@ No counter frames unplaced namings as open work.
 
 ## AI-Run Cues and the Map (revision 2026-10-31)
 
-Cues of the AI run currently reach the map like the researcher's own namings (`createAnnotation`, Naming→Mapping bridge in `src/lib/server/db/queries/annotations.ts`, relied on by `coding-run/write.ts`). They belong at the map's edge only once a researcher's own act stands in their stack — the criterion the comparison in the reader already uses for "own namings". Until then they stay in the reader, attributable and hideable as before. What enters the situation is the researcher's cut; the machine may point, not draw (the assistant's formulation; `design-begleiten.md`).
+Cues of the AI run currently reach the map like the researcher's own namings (`createAnnotation`, Naming→Mapping bridge in `src/lib/server/db/queries/annotations.ts`, relied on by `naming-run/write.ts`). They belong at the map's edge only once a researcher's own act stands in their stack — the criterion the comparison in the reader already uses for "own namings". Until then they stay in the reader, attributable and hideable as before. What enters the situation is the researcher's cut; the machine may point, not draw (the assistant's formulation; `design-begleiten.md`).
 
 ### Withdrawn the same day: routing by "kind of naming"
 
