@@ -11,10 +11,11 @@
 	let { data } = $props();
 	let showCreate = $state(false);
 	let newLabel = $state('');
-	// Abbrechen verwirft den Entwurf (wie beim Anlegen eines Projekts).
+	// Esc und Cancel behalten den Entwurf wie das Memo-Formular (Testlauf 14);
+	// beim Wiederöffnen ist er markiert, Tippen ersetzt ihn (focusSelect), statt
+	// anzuhängen. Leer wird das Feld erst nach dem Anlegen.
 	function closeCreate() {
 		showCreate = false;
-		newLabel = '';
 	}
 	let newType = $state<string>('situational');
 	let creating = $state(false);
@@ -46,6 +47,8 @@
 		});
 		if (res.ok) {
 			const map = await res.json();
+			newLabel = '';
+			showCreate = false;
 			// invalidateAll: die Seitenleiste (Layout-Daten) kennt die neue Karte sonst erst nach dem Neuladen.
 			await goto(`/projects/${data.projectId}/maps/${map.id}`, { invalidateAll: true });
 		}
@@ -90,6 +93,7 @@
 						<option value="positional">Positional Map</option>
 					</select>
 					<button type="submit" class="btn-primary" disabled={creating}>Create</button>
+					<span class="create-hint">Enter creates · Esc keeps the draft</span>
 				</form>
 			{/if}
 		{/snippet}
@@ -142,6 +146,7 @@
 		padding: 0.6rem 0.75rem; color: #e1e4e8; font-size: 0.9rem;
 	}
 	.create-form input { flex: 1; }
+	.create-hint { flex-basis: 100%; font-size: 0.72rem; color: #6b7280; }
 	.create-form input:focus, .create-form select:focus { outline: none; border-color: #8b9cf7; }
 
 	.empty { color: #6b7280; font-size: 0.9rem; }

@@ -135,6 +135,8 @@ Inquiry therefore consists of two complementary operations: **(a) re-naming obse
 
 These dimensions are orthogonal: a cue CAN be document-anchored (a passage was marked but not yet named); a specification CAN be ungrounded (a theoretical construct not yet tied to empirical material).
 
+The namings list filters grounding in three steps: **Doc anchor** (grounded: anchored in a document passage or image region), **Memo, no anchor** (not grounded, but reflected: a memo of yours is on the naming, in its stack, or refers to it; Cowork memos count only once promoted) and **No anchor** (neither). The middle step is not a degree of grounding: a memo is reflection, not empirical anchoring. It only shows which ungrounded namings you have already worked on reflexively.
+
 Memos document reflexive reasoning — CCS movement, analytical process. They are NOT grounding. Only a document anchor (a link to a specific passage or image region in the corpus) constitutes empirical grounding. All material — interview transcripts, photographs, policy documents, theoretical texts, media artifacts — belongs in the corpus and is equally codeable. There is no primary/secondary distinction (a tentative position in Session 08: “ich DENKE ersteres”).
 
 ---
@@ -269,6 +271,8 @@ The fundamental shift: positions are **discursive positions**, not entities or a
 **Positions** are placed in the 2D field defined by the axes. Coordinates indicate qualitative placement, not quantitative measurement. Each position is a naming: it has an inscription, a designation, a stack of acts. The analytical questions for positions: Can you point to specific data? What makes this position distinct from nearby ones? Is this genuinely a discursive stance, or is it still tied to a specific actor?
 
 **Absences** are analytically crucial. Empty quadrants demand systematic questioning: what would a position there look like? Is this silence accidental or structural? Why might no one say this? The platform marks absent positions distinctly and supports systematic quadrant analysis.
+
+To record an absent position, tick **absent** next to the search field in the toolbar of a positional map, or **absent position** in the *New position* form, before you add it. An absent position is drawn dashed, with its name in italics. The mark is set when the position is added; it cannot yet be changed afterwards.
 
 **Multiple positional maps per project** are expected — one per contested issue. Each reveals a different dimension of the discursive field.
 

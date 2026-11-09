@@ -560,6 +560,23 @@ export async function relateElements(
 		if (prior && !prior.deleted) {
 			return { id: prior.id, sourceId, targetId, valence: opts?.valence, alreadyRelated: true, restored: false };
 		}
+		// Eine ungerichtete Relation hat keine Richtung: Besteht in Gegenrichtung
+		// schon eine ungerichtete — oder soll die neue ungerichtet sein —, ist es
+		// dieselbe Beziehung (Testlauf 14: von der Gegenseite entstand ein zweites
+		// „A ↔ B"). Gerichtet bleibt je Richtung eine Relation möglich.
+		const reverse = (
+			await client.query<{ id: string; directed: boolean }>(
+				`SELECT p.id,
+				        EXISTS (SELECT 1 FROM appearances a WHERE a.naming_id = p.id AND a.mode = 'relation'
+				                  AND a.directed_from IS NOT NULL AND a.directed_to IS NOT NULL) AS directed
+				 FROM participations p JOIN namings n ON n.id = p.id AND n.deleted_at IS NULL
+				 WHERE p.naming_id = $1 AND p.participant_id = $2`,
+				[targetId, sourceId]
+			)
+		).rows[0];
+		if (reverse && (!reverse.directed || opts?.symmetric)) {
+			return { id: reverse.id, sourceId, targetId, valence: opts?.valence, alreadyRelated: true, restored: false };
+		}
 
 		const researcherNamingId = await getOrCreateResearcherNaming(projectId, userId);
 

@@ -19,19 +19,45 @@
 	const documents = $derived(data.documents as { id: string; label: string }[]);
 	const pathname = $derived($page.url.pathname);
 
-	// Kehrt man nach einer Weile in diesen Tab zurück, holt er nach, was
-	// inzwischen in einem anderen Tab oder von einer Kollegin geschah
-	// (Testlauf 12: nach einem Merge stand hier noch das aufgenommene Naming).
-	// Eingaben auf der Seite bleiben stehen; neu geladen werden die Daten.
+	// Was anderswo geschah — in einem zweiten Tab oder bei einer Kollegin —,
+	// holt die offene Seite nach (Testläufe 12 und 14: nach Umbenennen oder
+	// Merge im anderen Tab stand hier der alte Name). Die Seite fragt nur nach
+	// dem Zeitpunkt der letzten Änderung im Projekt: regelmäßig, solange sie
+	// sichtbar ist, und sofort, wenn man zu ihr zurückkehrt. Ändert er sich,
+	// werden die Daten neu geladen (Eingaben bleiben stehen); die Map hört
+	// dafür auf „tqda:project-changed".
 	$effect(() => {
-		let hiddenAt = 0;
-		const onVisibility = () => {
-			if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
-			if (hiddenAt && Date.now() - hiddenAt > 3000) void invalidateAll();
-			hiddenAt = 0;
+		const pid = p.id;
+		let last: string | null = null;
+		let busy = false;
+		const check = async () => {
+			if (busy || document.visibilityState !== 'visible') return;
+			busy = true;
+			try {
+				const res = await fetch(`/api/projects/${pid}/changed`, { cache: 'no-store' });
+				if (!res.ok) return;
+				const at = ((await res.json()) as { at: string | null }).at;
+				if (last !== null && at !== last) {
+					window.dispatchEvent(new CustomEvent('tqda:project-changed'));
+					void invalidateAll();
+				}
+				last = at;
+			} catch {
+				/* offline o. Ä.: beim nächsten Mal */
+			} finally {
+				busy = false;
+			}
 		};
-		document.addEventListener('visibilitychange', onVisibility);
-		return () => document.removeEventListener('visibilitychange', onVisibility);
+		void check();
+		const iv = setInterval(check, 8000);
+		const onReturn = () => { if (document.visibilityState === 'visible') void check(); };
+		document.addEventListener('visibilitychange', onReturn);
+		window.addEventListener('focus', onReturn);
+		return () => {
+			clearInterval(iv);
+			document.removeEventListener('visibilitychange', onReturn);
+			window.removeEventListener('focus', onReturn);
+		};
 	});
 
 	// Sidebar: einklappbar und in der Breite ziehbar, beides persistent. Sie ist

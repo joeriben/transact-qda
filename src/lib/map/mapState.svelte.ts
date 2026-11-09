@@ -277,6 +277,11 @@ export function createMapState(
 	// Beim Moduswechsel (Entität ↔ Relation auf dieser Map) wartet der Akt auf
 	// die Notiz: der Server schreibt Wechsel und Notiz in DENSELBEN Akt.
 	let actModeEnds = $state<{ sourceId: string; targetId: string } | null>(null);
+	// Die Karte (canvasPositions) sagt, wo eine Raute sitzt, und setzt ein
+	// Naming an eine Stelle — damit eine Relation, die zur Entität wird, dort
+	// stehen bleibt statt in „Unplaced" zu fallen (Testlauf 14).
+	let placeHooks: { diamondOf: (id: string) => { x: number; y: number } | null; placeAt: (id: string, p: { x: number; y: number }) => void } | null = null;
+	function setPlaceHooks(h: typeof placeHooks) { placeHooks = h; }
 	let actNewValue = $state('');
 	let actMemo = $state('');
 	let actLinkedIds = $state<string[]>([]);
@@ -614,10 +619,13 @@ export function createMapState(
 		const namingId = actTarget;
 		const mode = actNewValue === 'relation' ? 'relation' : 'entity';
 		const memoText = withMemo ? actMemo.trim() : '';
+		const at = mode === 'entity' ? placeHooks?.diamondOf(namingId) ?? null : null;
+		const symmetric = mode === 'relation' && actModeSymmetric;
 		const res = await mapRequest('switchAppearanceMode', {
 			namingId,
 			mode,
 			...(mode === 'relation' && actModeEnds ? { sourceId: actModeEnds.sourceId, targetId: actModeEnds.targetId } : {}),
+			...(symmetric ? { symmetric: true } : {}),
 			memoText: memoText || undefined,
 			linkedNamingIds: memoText && actLinkedIds.length > 0 ? actLinkedIds : undefined
 		});
@@ -629,6 +637,7 @@ export function createMapState(
 			return;
 		}
 		await reload();
+		if (mode === 'entity' && at && placeHooks) placeHooks.placeAt(namingId, at);
 		if (res.data?.lifted) showAiNotification(`The memo lifts “${label}” from cue to characterization.`);
 		const ends = (res.data?.liftedEnds ?? []) as string[];
 		if (ends.length > 0) showAiNotification(`Relating lifts “${ends.join('” and “')}” from cue to characterization.`);
@@ -706,11 +715,13 @@ export function createMapState(
 
 	/** „Show as entity / Show as relation (this map)": fragt wie Rename und
 	 *  Designation nach einer Notiz zum Akt („skip memo" bleibt). */
-	function startModeAct(namingId: string, mode: 'entity' | 'relation', ends: { sourceId: string; targetId: string } | null = null) {
+	let actModeSymmetric = false;
+	function startModeAct(namingId: string, mode: 'entity' | 'relation', ends: { sourceId: string; targetId: string } | null = null, symmetric = false) {
 		actTarget = namingId;
 		actType = 'mode';
 		actNewValue = mode;
 		actModeEnds = ends;
+		actModeSymmetric = symmetric;
 		actMemo = '';
 		actLinkedIds = [];
 		showActLinks = false;
@@ -722,6 +733,20 @@ export function createMapState(
 	}
 
 	function startMapReify(namingId: string) {
+		// War es schon Relation, hat es seine Enden noch (die Participation
+		// bleibt): zurück zu genau dieser Relation, ohne neu zu wählen
+		// (Testlauf 14: die Enden waren „vergessen").
+		const n = findNode(namingId) as any;
+		if (n?.part_source_id && n?.part_target_id) {
+			const directed = !!(n.directed_from && n.directed_to);
+			startModeAct(
+				namingId,
+				'relation',
+				directed ? { sourceId: n.directed_from, targetId: n.directed_to } : { sourceId: n.part_source_id, targetId: n.part_target_id },
+				!directed
+			);
+			return;
+		}
 		reifyTarget = namingId;
 		reifySource = null;
 	}
@@ -782,7 +807,10 @@ export function createMapState(
 		// Schon verbunden (dieselbe Richtung; der Server lässt je Richtung eine
 		// Relation zu): gleich sagen und die vorhandene zeigen, statt erst
 		// nach dem Ausfüllen abzulehnen (Testlauf 09.11.: getippte Valenz weg).
-		const taken = relations.find((r: any) => r.part_source_id === relatingFrom && r.part_target_id === toId);
+		// Ungerichtet zählt auch die Gegenrichtung (sie hat keine Richtung).
+		const taken =
+			relations.find((r: any) => r.part_source_id === relatingFrom && r.part_target_id === toId) ??
+			relations.find((r: any) => r.part_source_id === toId && r.part_target_id === relatingFrom && !(r.directed_from && r.directed_to));
 		if (taken) {
 			const s = findInscription(relatingFrom);
 			const t = findInscription(toId);
@@ -1328,6 +1356,7 @@ export function createMapState(
 	}
 
 	return {
+		setPlaceHooks,
 		// Data (getters)
 		get axes() { return axes; },
 		get elements() { return elements; },

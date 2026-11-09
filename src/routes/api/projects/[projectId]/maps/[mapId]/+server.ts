@@ -32,7 +32,7 @@ import {
 	noteLiftsCue,
 	noteOnNaming
 } from '$lib/server/db/queries/namings.js';
-import { createMemo, getMemosForNaming, updateMemoStatus, promoteMemoToNaming } from '$lib/server/db/queries/memos.js';
+import { createMemo, getMemosForNaming, getActNotesForNaming, updateMemoStatus, promoteMemoToNaming } from '$lib/server/db/queries/memos.js';
 import { getDocNetsByProject, getDocNetGroundedNamings } from '$lib/server/db/queries/docnets.js';
 import { runMapAgent, setAiEnabled, discussCue, discussMemo } from '$lib/server/ai/runtime/index.js';
 import { saveTopologyBuffer, saveTopologySnapshot, restoreTopologySnapshot, listTopologySnapshots } from '$lib/server/db/queries/topology.js';
@@ -447,8 +447,10 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		case 'getMemosForNaming': {
 			const { namingId } = body;
 			if (!namingId) return json({ error: 'namingId required' }, { status: 400 });
-			const memos = await getMemosForNaming(namingId, projectId);
-			return json({ memos });
+			// Memo-Namings und die Memos im eigenen Stack, neueste zuerst.
+			const [memos, notes] = await Promise.all([getMemosForNaming(namingId, projectId), getActNotesForNaming(namingId, projectId)]);
+			const all = [...memos, ...notes].sort((a: any, b: any) => +new Date(b.created_at) - +new Date(a.created_at));
+			return json({ memos: all });
 		}
 
 		case 'syncSpatialRelations': {
@@ -532,7 +534,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			// re-flipping later keeps the endpoints. Der Wechsel ist ein Akt im
 			// Stack (naming_acts.mode, migrations/009: „mode/valence changes …
 			// first-class naming acts").
-			const { namingId, mode, sourceId, targetId, valence, memoText, linkedNamingIds } = body;
+			const { namingId, mode, sourceId, targetId, valence, memoText, linkedNamingIds, symmetric } = body;
 			if (!namingId) return json({ error: 'namingId required' }, { status: 400 });
 			if (mode !== 'entity' && mode !== 'relation') {
 				return json({ error: "mode must be 'entity' or 'relation'" }, { status: 400 });
@@ -606,15 +608,16 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 						[endpointId, mapId]
 					);
 				}
+				// Ungerichtet bleibt ungerichtet (zurück aus der Entität).
 				await dbQuery(
 					`UPDATE appearances
 					 SET mode = 'relation',
-					     directed_from = $3,
-					     directed_to = $4,
+					     directed_from = CASE WHEN $6 THEN NULL ELSE $3::uuid END,
+					     directed_to = CASE WHEN $6 THEN NULL ELSE $4::uuid END,
 					     valence = COALESCE($5, valence),
 					     updated_at = now()
 					 WHERE naming_id = $1 AND perspective_id = $2`,
-					[namingId, mapId, sourceId, targetId, valence || null]
+					[namingId, mapId, sourceId, targetId, valence || null, symmetric === true]
 				);
 			} else {
 				await dbQuery(

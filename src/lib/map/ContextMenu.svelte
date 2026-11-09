@@ -77,7 +77,7 @@
      bzw. rechts kein Platz ist). -->
 <div class="context-menu" use:keepInWindow={position} use:menuKeys role="menu" tabindex="-1" aria-label={label}
 	onclick={(e) => e.stopPropagation()}>
-	<div class="ctx-header" title={label}>{label}{#if withdrawn}<span class="ctx-state"> · withdrawn</span>{/if}</div>
+	<div class="ctx-header" title={label}>{label}{#if withdrawn}<span class="ctx-state">{' · withdrawn'}</span>{/if}</div>
 	{#if withdrawn}
 		<button class="ctx-item" onclick={() => { ms.showStack(namingId); onclose(); }}>Stack</button>
 		<a class="ctx-item"
@@ -121,7 +121,9 @@
 		<!-- Dieselbe Handlung in beide Richtungen: der Modus der Erscheinung auf
 		     dieser Map. Ein Akt im Stack, mit Notiz wie Rename und Designation. -->
 		<button class="ctx-item" onclick={() => { ms.startMapReify(namingId); onclose(); }}
-			title="Show this naming as a relation on this map; pick the two namings it relates next. Other maps stay as they are.">
+			title={node?.part_source_id && node?.part_target_id
+				? `Show this naming again as the relation between “${ms.findInscription(node.part_source_id)}” and “${ms.findInscription(node.part_target_id)}” on this map. Other maps stay as they are.`
+				: 'Show this naming as a relation on this map; pick the two namings it relates next. Other maps stay as they are.'}>
 			Show as relation (this map)
 		</button>
 	{:else if node?.mode === 'relation'}

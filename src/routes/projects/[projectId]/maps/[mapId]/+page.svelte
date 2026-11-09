@@ -46,6 +46,15 @@
 		() => (canvasContainerEl ? { width: canvasContainerEl.clientWidth, height: canvasContainerEl.clientHeight } : null),
 		() => overlayInsets()
 	);
+	// Wird eine Relation zur Entität, steht sie, wo ihre Raute stand.
+	ms.setPlaceHooks({
+		diamondOf: (id) => {
+			if (ms.findNode(id)?.mode !== 'relation') return null;
+			const c = cp.nodeCenter(id);
+			return c.x === 0 && c.y === 0 ? null : c;
+		},
+		placeAt: (id, p) => cp.handleNodeDragEnd(id, p.x, p.y)
+	});
 	// Ein Naming in den Blick holen (z. B. „schon auf dieser Karte"), auf Wunsch
 	// mit offenem Stack (bestehende Relation bei 409, Chips der Cowork-Karte).
 	ms.revealHandler = (id: string, opts?: RevealOptions) => void revealNode(id, opts);
@@ -371,6 +380,7 @@
 		}
 		if (ms.isHiddenByFilter(node) || !cp.isDrawable(id)) {
 			void ms.openStack(id);
+			ms.flash(id);
 			return;
 		}
 		if (opts.stack) {
@@ -576,7 +586,7 @@
 
 	function relationVia(id: string): { x: number; y: number } | null {
 		if (diamondDrag?.id === id) return diamondDrag;
-		return cp.isLabelPinned(id) ? cp.nodeCenter(id) : null;
+		return cp.isLabelPinned(id) || cp.isLabelBent(id) ? cp.nodeCenter(id) : null;
 	}
 
 	// Drop from the Unplaced panel (Halde) onto the canvas = situate the naming at
@@ -756,18 +766,26 @@
 		'ai:memo-revised': 'Cowork revised a memo.'
 	};
 
-	// Zurück in diesem Tab: die Karte holt nach, was anderswo geschah (siehe
-	// Projekt-Layout). Nicht mitten im Umbenennen oder in einem offenen Akt.
+	// Was anderswo geschah (zweiter Tab, Kollegin), holt die Karte nach — das
+	// Projekt-Layout meldet es. Nicht mitten im Umbenennen, in einem offenen
+	// Akt oder beim Verbinden; dann beim nächsten ruhigen Moment.
 	$effect(() => {
-		let hiddenAt = 0;
-		const onVisibility = () => {
-			if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
-			const away = hiddenAt ? Date.now() - hiddenAt : 0;
-			hiddenAt = 0;
-			if (away > 3000 && !ms.editingId && !ms.actTarget) void ms.reload().then(() => cp.layoutNewNodes());
+		let pending = false;
+		let timer: ReturnType<typeof setTimeout> | null = null;
+		const busy = () => !!(ms.editingId || ms.actTarget || ms.relatingFrom || ms.relatingTo || document.querySelector('.canvas-element.dragging'));
+		const tryReload = () => {
+			timer = null;
+			if (!pending) return;
+			if (busy()) { timer = setTimeout(tryReload, 2000); return; }
+			pending = false;
+			void ms.reload().then(() => cp.layoutNewNodes());
 		};
-		document.addEventListener('visibilitychange', onVisibility);
-		return () => document.removeEventListener('visibilitychange', onVisibility);
+		const onChanged = () => { pending = true; if (!timer) tryReload(); };
+		window.addEventListener('tqda:project-changed', onChanged);
+		return () => {
+			window.removeEventListener('tqda:project-changed', onChanged);
+			if (timer) clearTimeout(timer);
+		};
 	});
 
 	$effect(() => {
@@ -1016,7 +1034,7 @@
 
 		<!-- Canvas -->
 		<div class="canvas-container" bind:this={canvasContainerEl} style="{viewMode !== 'canvas' ? 'display: none;' : ''}">
-			<UnplacedPanel {cp} />
+			<UnplacedPanel {cp} onitemcontextmenu={handleNodeContextMenu} />
 			<InfiniteCanvas {viewport} oncanvasclick={handleCanvasClick} oncanvascontextmenu={handleCanvasContextMenu}
 				oncanvasdrop={handleCanvasDrop} onreset={handleCanvasReset} oninteract={noteViewTouched}
 				onpanstart={() => { ctxMenuId = null; canvasCtxMenu = null; }}>

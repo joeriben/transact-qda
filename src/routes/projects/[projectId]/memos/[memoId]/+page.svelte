@@ -239,7 +239,7 @@
 			{:else}
 				{#each data.memo.links as link}
 					<div class="link-row">
-						<a class="link-item" href="/projects/{data.projectId}/namings/{link.target_id}"
+						<a class="link-item" href="/projects/{data.projectId}/{link.target_mode === 'map' ? 'maps' : 'namings'}/{link.target_id}"
 							aria-label="{link.target_mode && link.target_mode !== 'entity' ? link.target_mode + ': ' : ''}{link.target_label}{link.target_ends ? ` (${link.target_ends})` : ''}">
 							{#if link.target_mode && link.target_mode !== 'entity'}
 								<span class="link-kind">{link.target_mode}</span>
@@ -256,7 +256,7 @@
 			{/if}
 			{#if !data.memo.is_ai}
 				<div class="link-add">
-					<input type="text" placeholder="refer to a naming…" aria-label="Refer this memo to a naming"
+					<input type="text" placeholder="refer to a naming or a map…" aria-label="Refer this memo to a naming or a map"
 						bind:value={linkQuery} disabled={linkBusy}
 						onkeydown={(e) => {
 							if (e.key === 'Enter' && linkMatches.length > 0) { e.preventDefault(); linkAction({ action: 'link', namingId: linkMatches[0].id }); }
@@ -271,7 +271,7 @@
 							{/each}
 						</div>
 					{:else if linkQuery.trim()}
-						<p class="mk-note">No naming of that name in the naming list.</p>
+						<p class="mk-note">No naming or map of that name.</p>
 					{/if}
 					{#if linkError}<p class="mk-note" role="alert">{linkError}</p>{/if}
 				</div>
@@ -353,8 +353,9 @@
 	.empty { font-size: 0.8rem; color: #6b7280; line-height: 1.5; }
 
 	.link-item {
-		display: flex; align-items: center; gap: 0.5rem;
+		display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.15rem 0.5rem;
 		padding: 0.35rem 0; font-size: 0.85rem; color: #c9cdd5; text-decoration: none;
+		overflow-wrap: anywhere;
 	}
 	.link-item:hover { color: #8b9cf7; }
 	.link-row { display: flex; align-items: center; gap: 0.4rem; }
@@ -384,7 +385,8 @@
 		font-size: 0.7rem; color: #6b7280; text-transform: uppercase;
 		background: #1e2030; padding: 0.1rem 0.35rem; border-radius: 3px;
 	}
-	.link-ends { font-size: 0.75rem; color: #8b8fa3; }
+	/* „(now …)“ und „took in …“ brechen um statt abgeschnitten zu werden (Testlauf 14). */
+	.link-ends { font-size: 0.75rem; color: #8b8fa3; min-width: 0; }
 	.judge-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin: 0 0 0.75rem; }
 	.judge-row .mk-note { flex-basis: 100%; margin: 0.25rem 0 0; }
 	.mk-btn.mk-quiet { border-color: #4b5563; color: #9ca3af; }

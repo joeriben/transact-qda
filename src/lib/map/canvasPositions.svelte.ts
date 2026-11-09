@@ -287,8 +287,17 @@ export function createCanvasPositions(
 	// ihrer Linie, bis sie weder Knoten noch andere Rauten überdeckt — sonst
 	// lagen die Beschriftungen auf der Linienmitte übereinander.
 
-	function computeDiamonds(pos: Map<string, Pt>): Map<string, Pt> {
-		const out = new Map<string, Pt>();
+	// Findet eine Raute auf ihrer Linie keinen freien Platz (kurze Linie zwischen
+	// nahen Karten, zweite Relation desselben Paars), rückt sie quer daneben, und
+	// die Linie knickt durch sie wie bei einer gezogenen Raute (`bent`).
+	// Testlauf 14: Beschriftungen lagen auf der Karte „Kita Sonnenblume".
+	const OFFLINE_T = [0.5, 0.4, 0.6, 0.3, 0.7];
+	// Quer bis gut eine Kartenbreite: zwischen zwei übereinanderstehenden Karten
+	// (200 px breit) liegt der nächste freie Platz erst neben ihnen.
+	const OFFLINE_K = [36, -36, 60, -60, 90, -90, 125, -125, 165, -165, 210, -210, 260, -260];
+
+	function computeDiamonds(pos: Map<string, Pt>): Map<string, Pt & { bent?: boolean }> {
+		const out = new Map<string, Pt & { bent?: boolean }>();
 		const obstacles: Array<Pt & Box> = [];
 		for (const [id, p] of pos) {
 			const n = ms.findNode(id);
@@ -298,23 +307,57 @@ export function createCanvasPositions(
 		}
 		const visiting = new Set<string>();
 
-		function place(rel: any, a: Pt, b: Pt): Pt {
+		// Wie oft die geknickte Linie a → p → b fremde Karten schneidet (die
+		// eigenen Endpunkte zählen nicht).
+		function segmentHits(a: Pt, p: Pt, b: Pt): number {
+			let hits = 0;
+			for (const o of obstacles) {
+				if ((o.x === a.x && o.y === a.y) || (o.x === b.x && o.y === b.y)) continue;
+				const hw = o.width / 2 + 4;
+				const hh = o.height / 2 + 4;
+				for (const [u, v] of [[a, p], [p, b]] as const) {
+					for (let i = 1; i < 12; i++) {
+						const x = u.x + ((v.x - u.x) * i) / 12;
+						const y = u.y + ((v.y - u.y) * i) / 12;
+						if (Math.abs(x - o.x) < hw && Math.abs(y - o.y) < hh) hits++;
+					}
+				}
+			}
+			return hits;
+		}
+
+		function place(rel: any, a: Pt, b: Pt): Pt & { bent?: boolean } {
 			const box = relationBox(rel);
 			const at = labelAtOf(rel);
-			let best: Pt | null = at ? labelAtToPoint(a, b, at) : null;
+			let best: (Pt & { bent?: boolean }) | null = at ? labelAtToPoint(a, b, at) : null;
 			if (!best) {
 				let bestCost = Infinity;
 				for (const t of LABEL_CANDIDATES) {
 					const c = connectionPoint(a.x, a.y, b.x, b.y, t);
 					let cost = 0;
 					for (const o of obstacles) cost += overlapArea({ ...c, ...box }, o, 6);
-					if (cost === 0) { best = c; break; }
+					if (cost === 0) { best = c; bestCost = 0; break; }
 					cost += Math.abs(t - 0.5) * 40; // bei Gleichstand näher an der Mitte
 					if (cost < bestCost) { bestCost = cost; best = c; }
 				}
+				if (bestCost > 0) {
+					const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+					const nx = (b.y - a.y) / len;
+					const ny = -(b.x - a.x) / len;
+					for (const t of OFFLINE_T) {
+						const c = connectionPoint(a.x, a.y, b.x, b.y, t);
+						for (const k of OFFLINE_K) {
+							const q = { x: c.x + k * nx, y: c.y + k * ny };
+							let cost = 30 + Math.abs(k) * 0.6 + Math.abs(t - 0.5) * 40;
+							for (const o of obstacles) cost += overlapArea({ ...q, ...box }, o, 6);
+							cost += segmentHits(a, q, b) * 80;
+							if (cost < bestCost) { bestCost = cost; best = { ...q, bent: true }; }
+						}
+					}
+				}
 			}
 			const p = best ?? connectionMidpoint(a.x, a.y, b.x, b.y);
-			obstacles.push({ ...p, ...box });
+			obstacles.push({ x: p.x, y: p.y, ...box });
 			return p;
 		}
 
@@ -348,6 +391,12 @@ export function createCanvasPositions(
 	/** Hat die Forscherin die Raute selbst gesetzt? Dann führt die Linie geknickt durch sie. */
 	function isLabelPinned(relId: string): boolean {
 		return !!labelAtOf(ms.findNode(relId));
+	}
+
+	/** Steht die Raute ohne gespeicherte Lage neben ihrer Linie (kein Platz auf
+	 *  ihr)? Dann knickt die Linie durch sie wie bei einer gezogenen. */
+	function isLabelBent(relId: string): boolean {
+		return !!diamondCenters.get(relId)?.bent;
 	}
 
 	// Was schon steht, als Kästen; Relationen an ihrer Raute.
@@ -1244,6 +1293,7 @@ export function createCanvasPositions(
 		nodeExtent,
 		isDrawable,
 		isLabelPinned,
+		isLabelBent,
 		contentBounds,
 		viewportCenter,
 		missingEndpoints,

@@ -42,7 +42,7 @@
 		<span class="val">{c.documents}</span>
 		<span class="lbl">{noun(c.documents, 'Document')}</span>
 	</div>
-	<div class="stat">
+	<div class="stat" title="As in the namings list: entities, relations, silences and the researcher naming(s). Maps and phases are not counted here.">
 		<span class="val">{c.namings}</span>
 		<span class="lbl">{noun(c.namings, 'Naming')}{#if c.withdrawnNamings > 0}<span class="lbl-sub"> + {c.withdrawnNamings} withdrawn</span>{/if}</span>
 	</div>

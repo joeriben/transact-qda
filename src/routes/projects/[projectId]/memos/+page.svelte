@@ -333,7 +333,7 @@
 								<div class="link-chips">
 									{#each memo.links as link}
 										<span class="link-chip" title={link.mode}>
-											<span class="link-chip-mode">{link.mode === 'relation' ? '↔' : link.mode === 'silence' ? '∅' : link.mode === 'perspective' ? 'map' : '●'}</span>
+											<span class="link-chip-mode">{link.mode === 'relation' ? '↔' : link.mode === 'silence' ? '∅' : link.mode === 'perspective' || link.mode === 'map' ? 'map' : '●'}</span>
 											{link.label}
 										</span>
 									{/each}

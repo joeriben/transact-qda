@@ -67,6 +67,9 @@
 	// hierher geholt, oder es stand schon da (Testlauf 09.11.: das Popover
 	// sagte „Added", während das vorhandene Naming platziert wurde).
 	let lastOutcome = $state<'added' | 'reused' | 'onmap'>('added');
+	// Ausgang und Name wechseln gemeinsam: Vorher stand der neue Ausgang schon
+	// mit dem Namen des vorigen Namings da, solange „Adding…" lief (Testlauf 14).
+	let nextOutcome: 'added' | 'reused' | 'onmap' = 'added';
 
 	/** Wo ein Naming dieser Karte steht, wenn es nicht auf der Fläche liegt. */
 	function whereNote(id: string | undefined): string {
@@ -139,6 +142,7 @@
 				const next = queue.shift()!;
 				if (await createNaming(next)) {
 					// Offen bleiben: mehrere Namings hintereinander benennen (Testlauf 09.11.).
+					lastOutcome = nextOutcome;
 					lastAdded = lastLabel ?? next;
 				} else if (failed === null) {
 					failed = next;
@@ -282,7 +286,7 @@
 				const id = res.data.id as string | undefined;
 				const label = (id && ms.findNode(id) ? ms.findInscription(id) : null) ?? name;
 				ms.showAiNotification(`${quoted(label)} is already on this map.${whereNote(id)}`);
-				lastOutcome = 'onmap';
+				nextOutcome = 'onmap';
 				lastLabel = label;
 				if (id) onreveal?.(id);
 				return true;
@@ -294,7 +298,7 @@
 			if (res.data?.reused) {
 				ms.showAiNotification(`${quoted(res.data.inscription || name)} already exists in this project — placed the existing naming here.`);
 			}
-			lastOutcome = res.data?.reused ? 'reused' : 'added';
+			nextOutcome = res.data?.reused ? 'reused' : 'added';
 			// Der gespeicherte Name, nicht die getippte Schreibweise (Testlauf 09.11.).
 			lastLabel = res.data?.reused ? String(res.data.inscription || name) : name;
 			if (!ms.isPrimary) ms.requestReveal();
@@ -494,7 +498,7 @@
 					role="combobox" aria-expanded={placementOpen} aria-controls="map-add-suggestions" aria-autocomplete="list"
 					onfocus={() => { if (newInscription.trim().length >= 2) onAddInputChange(newInscription); }}
 				/>
-				<button type="button" class="btn-primary" onclick={openNaming} disabled={adding}
+				<button type="button" class="btn-primary btn-add" onclick={openNaming} disabled={adding}
 					title="Add a new {newWhat} to this map — you name it next">{adding ? 'Adding…' : '+ Add'}</button>
 			</form>
 			{#if naming}
@@ -842,6 +846,8 @@
 		padding: 0.4rem 0.75rem; font-size: 0.8rem; font-weight: 600; cursor: pointer;
 	}
 	.btn-primary:disabled { opacity: 0.5; }
+	/* „Adding…“ ist breiter als „+ Add“: feste Breite, sonst bricht die Leiste um (Testlauf 14). */
+	.btn-add { min-width: 5.2rem; white-space: nowrap; }
 	.btn-sm {
 		background: #1e2030; border: 1px solid #2a2d3a; border-radius: 4px;
 		color: #c9cdd5; font-size: 0.75rem; padding: 0.25rem 0.5rem; cursor: pointer;

@@ -7,8 +7,11 @@
 	import { createFloatingPanel } from './floatingPanel.svelte.js';
 	import type { CanvasPositions } from './canvasPositions.svelte.js';
 	import { quoted } from '$lib/shared/namingLabel.js';
+	import { tick } from 'svelte';
 
-	let { cp }: { cp: CanvasPositions } = $props();
+	// Rechtsklick öffnet dasselbe Kontextmenü wie auf der Karte (Testlauf 14:
+	// Einträge in „Unplaced" ließen sich nur platzieren).
+	let { cp, onitemcontextmenu }: { cp: CanvasPositions; onitemcontextmenu?: (id: string, e: MouseEvent) => void } = $props();
 
 	const ms = getMapState();
 
@@ -54,6 +57,18 @@
 			? ms.allItems.filter((n: any) => ms.isUnresolved(n))
 			: []
 	);
+
+	// Gezeigt (Suche, „Show", Name schon vorhanden): Der Eintrag leuchtet auf
+	// und rückt in den Blick, auch aus dem zugeklappten Panel (Testlauf 14:
+	// „Show" meldete nur, hob nichts hervor).
+	$effect(() => {
+		const id = ms.flashId;
+		if (!id || !unplaced.some((n: any) => n.naming_id === id)) return;
+		if (collapsed) collapsed = false;
+		void tick().then(() =>
+			document.querySelector(`.unplaced-panel [data-unplaced-id="${id}"]`)?.scrollIntoView({ block: 'nearest' })
+		);
+	});
 
 	type Group = { key: string; label: string; items: any[] };
 
@@ -148,10 +163,13 @@
 							<!-- svelte-ignore a11y_no_static_element_interactions -->
 							<div
 								class="up-item"
+								data-unplaced-id={it.naming_id}
+								class:flash={ms.flashId === it.naming_id}
 								class:up-rejected={ms.isRejected(it)}
 								class:up-hidden={ms.isHidden(it)}
 								draggable={stuck ? 'false' : 'true'}
 								ondragstart={(e) => onDragStart(e, it.naming_id)}
+								oncontextmenu={(e) => { if (!onitemcontextmenu) return; e.preventDefault(); e.stopPropagation(); onitemcontextmenu(it.naming_id, e); }}
 								title={ms.isRejected(it)
 									? `${ms.rejectionLabel(it)} — shown because the hidden/rejected filter is off`
 									: ms.isHidden(it)
@@ -271,6 +289,11 @@
 		cursor: grab;
 	}
 	.up-item:hover { background: rgba(139, 156, 247, 0.08); }
+	.up-item.flash { animation: up-flash 0.8s ease-in-out 3; }
+	@keyframes up-flash {
+		0%, 100% { background: transparent; box-shadow: none; }
+		50% { background: rgba(139, 156, 247, 0.22); box-shadow: inset 0 0 0 2px #8b9cf7; }
+	}
 	.up-item:active { cursor: grabbing; }
 	/* Nur sichtbar, solange der Schalter sie hereinholt — sonst stehen sie gar
 	   nicht in der Liste. Durchstrich = dein Urteil über den Cue; blass =

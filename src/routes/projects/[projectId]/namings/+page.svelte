@@ -438,9 +438,11 @@
 			(n) => !researcherIds.has(n.naming_id) && (n.current_inscription || n.inscription || '').trim().toLocaleLowerCase() === wanted
 		);
 		if (same) {
-			actionError = `“${labelOf(same)}” already exists in this project. Nothing was created.`;
-			actionErrorOpen = same.naming_id;
-			actionErrorOpenLabel = 'Open it';
+			// Kein Fehler, sondern ein Hinweis: das vorhandene Naming wird gleich
+			// aufgeschlagen (Testlauf 14: rot wie ein Fehler, öffnen erst per Klick).
+			newNamingValue = '';
+			await openExisting(same.naming_id);
+			showInfo(`“${labelOf(same)}” already exists in this project, so nothing new was created. It is opened here with its stack.`);
 			return;
 		}
 		creatingNaming = true;
@@ -509,7 +511,10 @@
 		if (relateSource && relateSource !== namingId) {
 			// Schon verbunden (dieselbe Richtung): gleich sagen, bevor Name und
 			// Valenz getippt sind (Testlauf 09.11.: Eingaben gingen verloren).
-			const taken = (namings as NamingRow[]).find((n) => n.part_source_id === relateSource && n.part_target_id === namingId);
+			// Ungerichtet zählt auch die Gegenrichtung (sie hat keine Richtung).
+			const taken =
+				(namings as NamingRow[]).find((n) => n.part_source_id === relateSource && n.part_target_id === namingId) ??
+				(namings as NamingRow[]).find((n) => n.part_source_id === namingId && n.part_target_id === relateSource && !(n.directed_from && n.directed_to));
 			if (taken) {
 				// Kein Fehler, sondern der Weg zur vorhandenen Relation — wie auf der
 				// Map; „in dieser Richtung" nur, wenn sie gerichtet ist (Testlauf 13).
@@ -640,9 +645,17 @@
 	}
 
 	function cancelAct() {
+		const id = actTarget;
+		const wasDesignate = actType === 'designate';
 		actTarget = null;
 		actMemo = '';
 		actLinkedIds = [];
+		// Das Auswahlfeld hatte schon den verworfenen Wert (Testlauf 14) — es
+		// zeigt wieder die geltende Designation.
+		if (id && wasDesignate) {
+			const current = findNaming(id)?.designation || 'cue';
+			for (const sel of document.querySelectorAll<HTMLSelectElement>(`[data-naming-id="${id}"] select`)) sel.value = current;
+		}
 	}
 
 	/** Hat das Umschreiben designiert (Notiz auf einem Cue, erster eigener Name
@@ -706,7 +719,7 @@
 			const label = labelOf(findNaming(namingId));
 			if (next) showInfo(
 				hideWithdrawn
-					? `Withdrawn ${quoted(label)}. “Hide withdrawn” takes it out of the list in a moment. Nothing was deleted; it stays in its stack.`
+					? `Withdrawn ${quoted(label)}. “Hide withdrawn” takes it out of the list once your pointer leaves the list (so no other row slides under it). Nothing was deleted; it stays in its stack.`
 					: `Withdrawn ${quoted(label)}. Nothing was deleted; it stays in its stack.`,
 				{ label: 'restore', run: () => withdraw(namingId, true) }
 			);
@@ -916,7 +929,9 @@
 <div class="namings-page">
 	<PageHeader title="Namings">
 		{#snippet summary()}
-			{counts.total} total
+			<!-- Was gezählt wird, sagt der Tooltip (Testlauf 14: Phasen fehlten
+			     scheinbar, und die Map zählt ohne das Forscher-Naming). -->
+			<span title="Every naming in this list: entities, relations, silences and the researcher naming(s). Maps and phases are not counted here; a map's header counts only what is on that map.">{counts.total} total</span>
 			{#if counts.withdrawn > 0}<span class="sep">+</span> {counts.withdrawn} withdrawn{/if}
 			<span class="sep">|</span>
 			<span style="color: var(--ccs-cue)">{counts.cue} cue</span>
@@ -1012,7 +1027,7 @@
 			<!-- Act-prompt bar -->
 			{#if actTarget}
 				{@const targetLabel = labelOf(findNaming(actTarget))}
-				{@const allOtherNamings = (namings as NamingRow[]).filter(n => n.naming_id !== actTarget && n.mode !== 'relation')}
+				{@const allOtherNamings = (namings as NamingRow[]).filter(n => n.naming_id !== actTarget && !researcherIds.has(n.naming_id))}
 				<div class="act-prompt-bar">
 					<div class="act-header">
 						{#if actType === 'rename'}
@@ -1054,7 +1069,7 @@
 											}
 										}}
 									/>
-									{n.current_inscription || n.inscription}
+									{labelOf(n)}
 								</label>
 							{/each}
 						</div>
@@ -1568,13 +1583,18 @@
 	/* Bleibt im Blick, auch wenn der Akt weit unten in der Liste begann
 	   (Testlauf 13: der Dialog stand oben außer Sicht, Enter schien nichts
 	   zu tun). */
+	/* Fest oben über dem Inhalt: wo auch immer man in der Liste handelt, steht
+	   der Dialog im Blick (Testlauf 14: sticky blieb mit seinem Abschnitt oben
+	   im Scrollbereich zurück, der Fokus sprang ins unsichtbare Feld). */
 	.act-prompt-bar {
 		background: #161822;
 		border: 1px solid #f59e0b;
 		border-radius: 8px;
 		padding: 0.75rem 1rem;
-		margin-bottom: 0.75rem;
-		position: sticky; top: 0.5rem; z-index: 60;
+		position: fixed; top: 4rem; z-index: 60;
+		left: calc(var(--content-left, 0px) + (100vw - var(--content-left, 0px)) / 2); transform: translateX(-50%);
+		width: min(760px, calc(100vw - var(--content-left, 0px) - 2rem));
+		max-height: calc(100vh - 6rem); overflow-y: auto;
 		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
 	}
 	.act-header {
