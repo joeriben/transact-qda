@@ -26,7 +26,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 
 	if (action === 'start') {
 		// Autonoma is project-gated: opt-in via Project Settings to avoid
-		// accidentally bulk-coding a non-empty project.
+		// accidentally bulk-naming a non-empty project.
 		const proj = await queryOne<{ properties: Record<string, unknown> | null }>(
 			`SELECT properties FROM projects WHERE id = $1`,
 			[projectId]

@@ -67,7 +67,7 @@ Relevant pieces:
 - `migrations/019_embeddings.sql`
 - `src/lib/server/documents/embed-elements.ts`
 - `src/lib/server/documents/embedding-queries.ts`
-- `src/lib/server/ai/coding-companion/retrieval.ts`
+- `src/lib/server/ai/naming-companion/retrieval.ts`
 
 This covers:
 

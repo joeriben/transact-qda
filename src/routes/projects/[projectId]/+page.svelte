@@ -3,6 +3,7 @@
   SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 <script lang="ts">
+	import { noun } from '$lib/shared/plural.js';
 	let { data } = $props();
 	const p = $derived(data.project);
 	const c = $derived(data.counts);
@@ -39,29 +40,30 @@
 <div class="stats">
 	<div class="stat">
 		<span class="val">{c.documents}</span>
-		<span class="lbl">Documents</span>
+		<span class="lbl">{noun(c.documents, 'Document')}</span>
 	</div>
 	<div class="stat">
 		<span class="val">{c.namings}</span>
-		<span class="lbl">Namings</span>
+		<span class="lbl">{noun(c.namings, 'Naming')}{#if c.withdrawnNamings > 0}<span class="lbl-sub"> + {c.withdrawnNamings} withdrawn</span>{/if}</span>
 	</div>
 	<div class="stat">
 		<span class="val">{c.maps}</span>
-		<span class="lbl">Maps</span>
+		<span class="lbl">{noun(c.maps, 'Map')}</span>
 	</div>
 	<div class="stat">
 		<span class="val">{c.memos}</span>
-		<span class="lbl">Memos</span>
+		<span class="lbl">{noun(c.memos, 'Memo')}</span>
 	</div>
 </div>
 
 <h2>AI Modes {#if savedFlash}<span class="flash">{savedFlash}</span>{/if}</h2>
 <div class="settings-group">
 	<label class="setting">
-		<input type="checkbox" bind:checked={coworkReactive} onchange={onCoworkReactive} disabled={saving} />
+		<input type="checkbox" bind:checked={coworkReactive} onchange={onCoworkReactive} disabled={saving}
+			aria-label="Cowork: react automatically" aria-describedby="cowork-reactive-desc" />
 		<div class="setting-body">
 			<div class="setting-title">Cowork: react automatically</div>
-			<div class="setting-desc">
+			<div class="setting-desc" id="cowork-reactive-desc">
 				When on, Cowork answers every researcher act on a map (add element, withdraw, rename, …) with a memo or suggestion. When off, Cowork only runs when you press the <strong>Cowork</strong> button in the sidebar.
 				<span class="hint">Default: off — reactive Cowork is intrusive and can be expensive on long sessions.</span>
 			</div>
@@ -80,6 +82,7 @@
 		padding: 1.25rem 1.5rem; display: flex; flex-direction: column; min-width: 120px;
 	}
 	.val { font-size: 1.8rem; font-weight: 700; color: #a5b4fc; }
+	.lbl-sub { color: #6b7280; }
 	.lbl { font-size: 0.8rem; color: #6b7280; margin-top: 0.25rem; }
 
 	.settings-group {

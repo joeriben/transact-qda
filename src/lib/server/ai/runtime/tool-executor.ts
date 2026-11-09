@@ -8,15 +8,14 @@ import { query, transaction } from '../../db/index.js';
 import { createMemo, updateMemoContent } from '../../db/queries/memos.js';
 import { assignToPhase } from '../../db/queries/maps.js';
 import { emit } from '../sse.js';
-import { SW_ROLE_DEFAULTS } from '$lib/shared/constants.js';
-import { createAnnotation, createOrphanNaming, getOrCreateGroundingWorkspace } from '../../db/queries/codes.js';
-import { designate as designateNaming } from '../../db/queries/namings.js';
+import { SW_ROLE_DEFAULTS, SW_ROLES } from '$lib/shared/constants.js';
+import { createAnnotation, createOrphanNaming, getOrCreateGroundingWorkspace } from '../../db/queries/annotations.js';
 import type {
 	SuggestElementInput, SuggestRelationInput, IdentifySilenceInput,
 	WriteMemoInput, CreatePhaseInput, SuggestFormationInput,
 	SuggestPositionInput, SuggestAxisRefinementInput, IdentifyEmptyRegionInput,
 	RewriteCueInput, RespondInput, WithdrawCueInput, ReviseMemoInput,
-	ReadDocumentInput, CodePassageInput, DesignateInput,
+	ReadDocumentInput, NamePassageInput,
 	SemanticSearchInput, FindOutliersInput, CrossDocumentCompareInput
 } from '../tools.js';
 import {
@@ -29,14 +28,21 @@ const AI_SYSTEM_UUID = '00000000-0000-0000-0000-000000000000';
 // Every AI write tags its appearances/annotations with {aiPersona, aiRunId?}
 // so filters (hide by persona) and rollback (revert a run) can target them.
 
-export type AiPersona = 'cowork' | 'autonoma' | 'coding-run' | 'comparative';
+/**
+ * Persona-Wert der Naming-Runs. Das Literal ist gespeicherter Wert
+ * (`properties.aiPersona` an Erscheinungen, Rollback über ihn) und steht so
+ * im eingefrorenen orchestrator.ts; es bleibt deshalb unverändert.
+ */
+export const NAMING_RUN_PERSONA = 'coding-run';
+
+export type AiPersona = 'cowork' | 'autonoma' | typeof NAMING_RUN_PERSONA | 'comparative';
 export type WriteProvenance = { persona: AiPersona; runId?: string };
 
 const DEFAULT_PROV: WriteProvenance = { persona: 'cowork' };
 
 function personaLabelOf(prov: WriteProvenance): string {
 	if (prov.persona === 'autonoma') return 'Autonoma';
-	if (prov.persona === 'coding-run') return 'Coding-Run';
+	if (prov.persona === NAMING_RUN_PERSONA) return 'Naming-Run';
 	if (prov.persona === 'comparative') return 'Comparative';
 	return 'Cowork';
 }
@@ -75,10 +81,24 @@ export async function executeMapTool(
 			}
 
 			case 'identify_silence': {
-				const { inscription, reasoning } = input as unknown as IdentifySilenceInput;
-				const silence = await addSilenceToMap(projectId, aiNamingId, mapId, inscription, { aiReasoning: reasoning }, prov);
-				emit(mapId, 'ai:silence', { silence, reasoning });
-				return { success: true, result: { id: silence.id, inscription } };
+				const { inscription, related_element_ids, reasoning } = input as unknown as IdentifySilenceInput;
+				// Eine Stille entsteht aus dem Muster der Relationen zwischen
+				// vorhandenen Namings und ist über Participations an sie gebunden
+				// (S11: „arises as cue by pattern analysis of relationings";
+				// „Participations suffice"). Ohne solche Namings auf DIESER Map
+				// entsteht keine Stille.
+				const related = await namingsOnMap(projectId, mapId, related_element_ids);
+				if (related.length === 0) {
+					return {
+						success: false,
+						result:
+							'Nothing was written. identify_silence needs related_element_ids: the IDs of namings on this map whose relational pattern makes the absence notable. ' +
+							'The silence is related to them, and the reasoning may rest only on namings and relations that exist on the map.'
+					};
+				}
+				const silence = await addSilenceToMap(projectId, aiNamingId, mapId, inscription, { aiReasoning: reasoning }, prov, related);
+				emit(mapId, 'ai:silence', { silence, reasoning, relatedIds: related });
+				return { success: true, result: { id: silence.id, inscription, relatedTo: related } };
 			}
 
 			case 'write_memo': {
@@ -114,12 +134,17 @@ export async function executeMapTool(
 					return { success: false, result: 'suggest_formation is only available on social-worlds maps' };
 				}
 				const { inscription, sw_role, reasoning } = input as unknown as SuggestFormationInput;
-				const defaults = SW_ROLE_DEFAULTS[sw_role] || SW_ROLE_DEFAULTS['social-world'];
+				if (!(SW_ROLES as readonly string[]).includes(sw_role)) {
+					return { success: false, result: `sw_role must be one of: ${SW_ROLES.join(', ')}` };
+				}
+				const defaults = SW_ROLE_DEFAULTS[sw_role];
+				// Die Rolle steht an der Erscheinung auf der SW/A-Map, nicht im Memo.
 				const element = await addElementToAiMap(projectId, aiNamingId, mapId, inscription, {
-					...defaults, aiReasoning: reasoning
+					...defaults, swRole: sw_role, aiReasoning: reasoning
 				}, prov);
-				await createMemo(projectId, AI_SYSTEM_UUID,
-					`Formation: ${sw_role}`, reasoning, [element.id]);
+				// Die Begründung steht wie bei den anderen Vorschlägen als aiReasoning an
+				// der Erscheinung (Stack, Liste); ein eigenes „Formation:"-Memo
+				// verdoppelte sie als Memo-Naming samt Verknüpfung.
 				emit(mapId, 'ai:formation', { element, swRole: sw_role, reasoning });
 				return { success: true, result: { id: element.id, inscription, swRole: sw_role } };
 			}
@@ -145,7 +170,7 @@ export async function executeMapTool(
 					memo, title: 'AI: Axis refinement', content: memoContent,
 					linkedIds: [axis_id], authorId: AI_SYSTEM_UUID
 				});
-				return { success: true, result: { axisId: axis_id, suggestedLabel: new_inscription } };
+				return { success: true, result: { axisId: axis_id, suggestedLabel: new_inscription, memoId: memo.id } };
 			}
 
 			case 'identify_empty_region': {
@@ -309,8 +334,8 @@ export async function executeAutonomousTool(
 				}};
 			}
 
-			case 'code_passage': {
-				const { document_id, passage, code_label, reasoning } = input as unknown as CodePassageInput;
+			case 'name_passage': {
+				const { document_id, passage, naming_label, reasoning } = input as unknown as NamePassageInput;
 				// Strip prefix (LLM may send "S:uuid" or "P:uuid" from read_document output)
 				const element_id = (input as any).element_id?.replace(/^[A-Z]\d*:/, '') || undefined;
 
@@ -344,7 +369,7 @@ export async function executeAutonomousTool(
 					}
 
 					const anchor = { pos0: char_start, pos1: char_end, text, elementId: element_id };
-					return await createCodeAndAnnotation(projectId, mapId, aiNamingId, document_id, code_label, anchor, reasoning, prov);
+					return await createNamingAndAnnotation(projectId, mapId, aiNamingId, document_id, naming_label, anchor, reasoning, prov);
 				}
 
 				if (passage) {
@@ -371,28 +396,24 @@ export async function executeAutonomousTool(
 						const origStart = mapNormalizedPosToOriginal(fullText, normPos);
 						const origEnd = mapNormalizedPosToOriginal(fullText, normPos + normPassage.length);
 						const anchor = { pos0: origStart, pos1: origEnd, text: fullText.slice(origStart, origEnd) };
-						return await createCodeAndAnnotation(projectId, mapId, aiNamingId, document_id, code_label, anchor, reasoning, prov);
+						return await createNamingAndAnnotation(projectId, mapId, aiNamingId, document_id, naming_label, anchor, reasoning, prov);
 					}
 
 					const anchor = { pos0, pos1: pos0 + passage.length, text: passage };
-					return await createCodeAndAnnotation(projectId, mapId, aiNamingId, document_id, code_label, anchor, reasoning, prov);
+					return await createNamingAndAnnotation(projectId, mapId, aiNamingId, document_id, naming_label, anchor, reasoning, prov);
 				}
 
 				return { success: false, result: 'Either element_id or passage is required' };
 			}
 
 			case 'designate': {
-				const { naming_id, designation, reasoning } = input as unknown as DesignateInput;
-				await designateNaming(naming_id, designation, aiNamingId);
-				// Look up the naming inscription for a meaningful memo title
-				const namingRow = await query(
-					`SELECT inscription FROM namings WHERE id = $1`, [naming_id]
-				);
-				const namingLabel = namingRow.rows[0]?.inscription || naming_id;
-				await createMemo(projectId, AI_SYSTEM_UUID,
-					`${personaLabel}: "${namingLabel}" → ${designation}`, reasoning, [naming_id]);
-				emit(mapId, 'ai:designate', { namingId: naming_id, designation, reasoning });
-				return { success: true, result: { namingId: naming_id, designation } };
+				// KI schreibt nur Cues; den Designations-Gradienten bewegt der Mensch
+				// (CLAUDE.md, Harte Invarianten). Das Werkzeug stammt aus dem
+				// abgekündigten Autonoma-Lauf und schreibt nichts mehr.
+				return {
+					success: false,
+					result: 'Designations are the researcher\'s act. The AI writes cues only; nothing was written.'
+				};
 			}
 
 			case 'semantic_search': {
@@ -495,76 +516,76 @@ function formatElementsForLLM(rows: {
 	return lines.join('\n');
 }
 
-// Helper: create or reuse a code naming, create annotation, place on map
-async function createCodeAndAnnotation(
+// Helper: create or reuse a naming, create annotation, place on map
+async function createNamingAndAnnotation(
 	projectId: string,
 	mapId: string,
 	aiNamingId: string,
 	documentId: string,
-	codeLabel: string,
+	namingLabel: string,
 	anchor: { pos0: number; pos1: number; text: string; elementId?: string },
 	reasoning: string,
 	prov: WriteProvenance = DEFAULT_PROV
 ): Promise<{ success: boolean; result: unknown }> {
-	// Check if code already exists (case-insensitive)
+	// Check if a naming of that label already exists (case-insensitive)
 	const existing = await query(
 		`SELECT n.id FROM namings n
 		 JOIN appearances a ON a.naming_id = n.id AND a.mode = 'entity'
 		 WHERE n.project_id = $1 AND n.deleted_at IS NULL
 		   AND LOWER(n.inscription) = LOWER($2)
 		 LIMIT 1`,
-		[projectId, codeLabel]
+		[projectId, namingLabel]
 	);
 
-	let codeId: string;
-	let isNewCode = false;
+	let namingId: string;
+	let isNewNaming = false;
 
 	if (existing.rows.length > 0) {
-		codeId = existing.rows[0].id;
+		namingId = existing.rows[0].id;
 	} else {
-		// Create new code naming on grounding workspace
-		const code = await createOrphanNaming(projectId, AI_SYSTEM_UUID, codeLabel, {
+		// Create new naming on grounding workspace
+		const naming = await createOrphanNaming(projectId, AI_SYSTEM_UUID, namingLabel, {
 			description: reasoning,
 			provenance: provenanceProps(prov)
 		});
-		codeId = code.id;
-		isNewCode = true;
+		namingId = naming.id;
+		isNewNaming = true;
 
 		// Record designation as cue (initial)
 		await transaction(async (client) => {
 			await client.query(
 				`INSERT INTO naming_acts (naming_id, designation, by)
 				 VALUES ($1, 'cue', $2)`,
-				[codeId, aiNamingId]
+				[namingId, aiNamingId]
 			);
 		});
 	}
 
-	// Create annotation (grounded relation: code → document with passage anchor)
+	// Create annotation (grounded relation: naming → document with passage anchor)
 	await createAnnotation(
-		projectId, AI_SYSTEM_UUID, codeId, documentId,
+		projectId, AI_SYSTEM_UUID, namingId, documentId,
 		'text', anchor, reasoning, provenanceProps(prov)
 	);
 
-	// Place code on map if not already there
+	// Place naming on map if not already there
 	const onMap = await query(
 		`SELECT 1 FROM appearances WHERE naming_id = $1 AND perspective_id = $2 LIMIT 1`,
-		[codeId, mapId]
+		[namingId, mapId]
 	);
 	if (onMap.rows.length === 0) {
 		await query(
 			`INSERT INTO appearances (naming_id, perspective_id, mode, properties)
 			 VALUES ($1, $2, 'entity', $3)`,
-			[codeId, mapId, JSON.stringify({ aiSuggested: true, aiReasoning: reasoning, ...provenanceProps(prov) })]
+			[namingId, mapId, JSON.stringify({ aiSuggested: true, aiReasoning: reasoning, ...provenanceProps(prov) })]
 		);
 	}
 
-	emit(mapId, 'ai:element', { element: { id: codeId, inscription: codeLabel }, reasoning });
+	emit(mapId, 'ai:element', { element: { id: namingId, inscription: namingLabel }, reasoning });
 
 	return { success: true, result: {
-		codeId,
-		codeLabel,
-		isNewCode,
+		namingId,
+		namingLabel,
+		isNewNaming,
 		documentId,
 		passage: anchor.text.slice(0, 100),
 		pos0: anchor.pos0,
@@ -574,6 +595,38 @@ async function createCodeAndAnnotation(
 
 // ── AI-as-actor naming helpers ───────────────────────────────────
 
+/**
+ * Ein Naming ist sein Stack: Heißt im Projekt schon ein Naming so, legt die KI
+ * kein zweites an. Sie verweist im Memo darauf; auf die Map holt es der Mensch.
+ */
+async function refuseSecondNaming(projectId: string, mapId: string, inscription: string): Promise<void> {
+	const res = await query(
+		`SELECT n.id,
+		        EXISTS (SELECT 1 FROM appearances a WHERE a.naming_id = n.id AND a.perspective_id = $3) AS on_map,
+		        (SELECT string_agg(DISTINCT m.inscription, ', ')
+		           FROM appearances a JOIN namings m ON m.id = a.perspective_id
+		          WHERE a.naming_id = n.id AND a.perspective_id <> n.id) AS maps
+		   FROM namings n
+		  WHERE n.project_id = $1 AND n.deleted_at IS NULL
+		    AND LOWER(TRIM(n.inscription)) = LOWER(TRIM($2))
+		    AND NOT EXISTS (SELECT 1 FROM memo_content mc WHERE mc.naming_id = n.id)
+		    AND NOT EXISTS (SELECT 1 FROM participations p WHERE p.id = n.id)
+		    AND NOT EXISTS (SELECT 1 FROM appearances pa WHERE pa.naming_id = n.id AND pa.perspective_id = n.id)
+		  ORDER BY on_map DESC, n.created_at
+		  LIMIT 1`,
+		[projectId, inscription, mapId]
+	);
+	const hit = res.rows[0];
+	if (!hit) return;
+	throw new Error(
+		hit.on_map
+			? `"${inscription}" is already on this map (naming ${hit.id}). Nothing was written.`
+			: `A naming "${inscription}" already exists in this project (naming ${hit.id}${hit.maps ? `, on: ${hit.maps}` : ''}). ` +
+				'Nothing was written: a second naming of the same name would split its history. ' +
+				`If it belongs on this map, say so in a memo linked to ${hit.id}; the researcher places it.`
+	);
+}
+
 async function addElementToAiMap(
 	projectId: string,
 	aiNamingId: string,
@@ -582,19 +635,8 @@ async function addElementToAiMap(
 	properties?: Record<string, unknown>,
 	prov: WriteProvenance = DEFAULT_PROV
 ) {
+	await refuseSecondNaming(projectId, mapId, inscription);
 	return transaction(async (client) => {
-		// Dedup: check if a naming with the same label already exists on this map
-		const existing = await client.query(
-			`SELECT n.* FROM namings n
-			 JOIN appearances a ON a.naming_id = n.id AND a.perspective_id = $1 AND a.mode = 'entity'
-			 WHERE n.project_id = $2 AND LOWER(n.inscription) = LOWER($3) AND n.deleted_at IS NULL
-			 LIMIT 1`,
-			[mapId, projectId, inscription]
-		);
-		if (existing.rows.length > 0) {
-			return existing.rows[0];
-		}
-
 		const namingRes = await client.query(
 			`INSERT INTO namings (project_id, inscription, created_by)
 			 VALUES ($1, $2, $3) RETURNING *`,
@@ -627,6 +669,14 @@ async function relateElementsAsAi(
 	opts?: { inscription?: string; valence?: string; symmetric?: boolean; properties?: Record<string, unknown> },
 	prov: WriteProvenance = DEFAULT_PROV
 ) {
+	// Beide Endpunkte müssen Namings DIESES Projekts sein.
+	const ends = await query<{ id: string }>(
+		`SELECT id FROM namings WHERE id = ANY($1::uuid[]) AND project_id = $2 AND deleted_at IS NULL`,
+		[[sourceId, targetId].filter((id) => typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)), projectId]
+	);
+	if (sourceId === targetId || ends.rows.length !== 2) {
+		throw new Error('Both source_id and target_id must be IDs of two different namings in this project. Nothing was written.');
+	}
 	return transaction(async (client) => {
 		const partNamingRes = await client.query(
 			`INSERT INTO namings (project_id, inscription, created_by)
@@ -659,14 +709,33 @@ async function relateElementsAsAi(
 	});
 }
 
+/** Nur Namings dieses Projekts, die auf dieser Map stehen (nicht zurückgezogen). */
+async function namingsOnMap(projectId: string, mapId: string, ids: unknown): Promise<string[]> {
+	if (!Array.isArray(ids) || ids.length === 0) return [];
+	const clean = [...new Set(ids.filter((id): id is string => typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)))];
+	if (clean.length === 0) return [];
+	const res = await query<{ id: string }>(
+		`SELECT n.id FROM namings n
+		 JOIN appearances a ON a.naming_id = n.id AND a.perspective_id = $3
+		 WHERE n.id = ANY($1::uuid[]) AND n.project_id = $2 AND n.deleted_at IS NULL
+		   AND a.mode IN ('entity', 'relation', 'silence')
+		   AND NOT COALESCE((a.properties->>'withdrawn')::boolean, false)
+		   AND NOT COALESCE((a.properties->>'aiWithdrawn')::boolean, false)`,
+		[clean, projectId, mapId]
+	);
+	return res.rows.map((r) => r.id);
+}
+
 async function addSilenceToMap(
 	projectId: string,
 	aiNamingId: string,
 	mapId: string,
 	inscription: string,
 	properties?: Record<string, unknown>,
-	prov: WriteProvenance = DEFAULT_PROV
+	prov: WriteProvenance = DEFAULT_PROV,
+	relatedIds: string[] = []
 ) {
+	await refuseSecondNaming(projectId, mapId, inscription);
 	return transaction(async (client) => {
 		const namingRes = await client.query(
 			`INSERT INTO namings (project_id, inscription, created_by)
@@ -686,6 +755,30 @@ async function addSilenceToMap(
 			 VALUES ($1, 'cue', $2)`,
 			[naming.id, aiNamingId]
 		);
+
+		// Die Participations, aus denen die Stille besteht: je eine zu den
+		// Namings, deren Muster sie hervorbringt. Participations OHNE
+		// Erscheinung (S11: „Participations suffice"; ein Muster der
+		// Nicht-Präsenz, kein reifiziertes Objekt): Mit einer Relations-
+		// Erscheinung je Participation stand eine Stille als acht Namings auf
+		// der Map, in Zählern und in Unplaced (Testlauf 09.11.). Die Zeile in
+		// `namings` verlangt der Fremdschlüssel; der Cue-Akt weist die KI aus.
+		for (const relatedId of relatedIds) {
+			const rel = await client.query(
+				`INSERT INTO namings (project_id, inscription, created_by)
+				 VALUES ($1, '', $2) RETURNING id`,
+				[projectId, AI_SYSTEM_UUID]
+			);
+			const relId = rel.rows[0].id;
+			await client.query(
+				`INSERT INTO participations (id, naming_id, participant_id) VALUES ($1, $2, $3)`,
+				[relId, naming.id, relatedId]
+			);
+			await client.query(
+				`INSERT INTO naming_acts (naming_id, designation, by) VALUES ($1, 'cue', $2)`,
+				[relId, aiNamingId]
+			);
+		}
 
 		return naming;
 	});
@@ -725,10 +818,11 @@ async function createPhaseAsAi(
 			[phase.id, mapId]
 		);
 
-		// Forming a phase IS characterizing (D/B)
+		// Eine Phase zu bilden heißt charakterisieren (D/B) — für den Menschen.
+		// Die KI schreibt nur Cues; ihre vorgeschlagene Phase hebt der Mensch.
 		await client.query(
 			`INSERT INTO naming_acts (naming_id, designation, by)
-			 VALUES ($1, 'characterization', $2)`,
+			 VALUES ($1, 'cue', $2)`,
 			[phase.id, aiNamingId]
 		);
 

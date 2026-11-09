@@ -23,7 +23,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 		<ul style="margin: 0.5rem 0 0 1rem; padding: 0;">
 			<li>Alle <em>AI-erzeugten</em> Annotationen (CName + SName) werden soft-gelöscht.</li>
 			<li>Namings, die danach keine Verankerung mehr haben, werden soft-gelöscht.</li>
-			<li>Die <code>coding_runs</code>-Historie wird hart gelöscht.</li>
+			<li>Die Historie der KI-Läufe wird hart gelöscht.</li>
 			<li>Dokumente, Embeddings und von Hand angelegte Namings bleiben unangetastet.</li>
 		</ul>
 	</div>
@@ -34,7 +34,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 			<ul style="margin: 0.5rem 0 0 1rem; padding: 0;">
 				<li>Dokumente verarbeitet: {form.documentsProcessed}</li>
 				<li>Annotationen gelöscht: {form.annotationsDeleted}</li>
-				<li>Namings gelöscht: {form.codesDeleted}</li>
+				<li>Namings gelöscht: {form.namingsDeleted}</li>
 				<li>Runs gelöscht: {form.runsDeleted}</li>
 			</ul>
 		</div>
@@ -69,7 +69,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 				disabled={submitting}
 				style="background: #c62828; color: white; border: 0; padding: 0.6rem 1.2rem; border-radius: 4px; cursor: pointer; font-size: 1rem;"
 			>
-				{submitting ? 'Lösche…' : 'Coding-Daten löschen'}
+				{submitting ? 'Setze zurück…' : 'KI-Namings zurücksetzen'}
 			</button>
 		</form>
 

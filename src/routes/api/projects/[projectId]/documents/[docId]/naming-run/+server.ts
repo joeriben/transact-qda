@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
-// Coding-Run-Endpoint — Per-Dokument-Lauf der H1↔H2-Konfrontation mit Live-
+// Naming-Run-Endpoint — Per-Dokument-Lauf der H1↔H2-Konfrontation mit Live-
 // Status via Server-Sent Events. Übernommen aus der älteren Pipeline-Route
 // (mid-call Cancel via ALS-AbortSignal, Cancel-Watcher 500ms, Stuck-Watchdog
 // 30s/10min, Heartbeat 10s, run-init/paused/cancelled/completed/failed-
@@ -10,7 +10,7 @@
 //   POST   — startet einen neuen Run oder resumed den aktiven (paused/running);
 //            antwortet mit text/event-stream bis 'completed', 'paused',
 //            'cancelled' oder 'failed'. Body wird ignoriert (keine Optionen) —
-//            der Run läuft über das ganze Dokument, eine fixe Coding-Strategie.
+//            der Run läuft über das ganze Dokument, eine fixe Naming-Strategie.
 //   GET    — gibt den aktiven (oder jüngsten) Run für (projectId, docId)
 //            zurück; für Reload/Polling.
 //   DELETE — setzt das Cancel-Signal mit Intent (?mode=pause|cancel,
@@ -24,10 +24,11 @@
 //     mit WHERE status IN ('running','paused')), erneutes POST resumed denselben Run.
 //   - mode=cancel → status='cancelled'; gibt den Slot frei (cancelled ist im
 //     Index ausgeschlossen). Bereits Erledigtes ist via sequence_status +
-//     commitCodedPassage-Idempotenz vor Doppel-Schreiben geschützt — ein neuer
+//     commitNamedPassage-Idempotenz vor Doppel-Schreiben geschützt — ein neuer
 //     Run nach cancel startet sauber, der cancelled-Eintrag bleibt in der Historie.
 //
-// SSE-Events (Wire-Format: data: <json>\n\n; siehe CodingRunEvent):
+// SSE-Events (Wire-Format: data: <json>\n\n; siehe CodingRunEvent — Typ und
+// Feldnamen gehören zur Schnittstelle des eingefrorenen orchestrator.ts):
 //   { type: 'run-init', runId }
 //   { type: 'segmented', total, method }
 //   { type: 'sequence-start', index, total, seq }
@@ -82,8 +83,8 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	// Vorbedingungen (Dokument im Projekt? geparste Sätze vorhanden?) sind
 	// Aussagen an die Nutzerin, keine Server-Panne. Ungefangen macht SvelteKit
 	// daraus ein generisches „Internal Error" und die eigentliche Auskunft
-	// („parse the document before running a coding run") landet nur im
-	// Server-Log — die UI zeigt sie dann nicht mehr an.
+	// (das Dokument muss erst geparst werden) landet nur im Server-Log — die
+	// UI zeigt sie dann nicht mehr an.
 	const { run, resumed } = await startOrResumeRun(projectId, docId, userId).catch((err) => {
 		error(400, err instanceof Error ? err.message : String(err));
 	});
@@ -198,7 +199,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 					const stuckMinutes = Math.round(staleMs / 60_000);
 					const label = r.last_step_label ?? '(no current step)';
 					const msg = `Stuck-Run-Watchdog: kein Fortschritt seit ${stuckMinutes} min am Schritt „${label}". Run wurde automatisch abgebrochen.`;
-					console.warn(`[coding-run/${run.id}] ${msg}`);
+					console.warn(`[naming-run/${run.id}] ${msg}`);
 
 					// Status-Guard: nur überschreiben, wenn noch 'running' — der
 					// Cancel-Watcher könnte parallel cancelled/paused gesetzt haben.

@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
-// Projekt-weiter Cleanup: löscht *alle* Coding-Run-Outputs in *allen*
+// Projekt-weiter Cleanup: löscht *alle* Naming-Run-Outputs in *allen*
 // Dokumenten des Projekts. Iteriert über `deleteAllRunsForDocument` —
-// idempotent, Documents und hand-typed Codes bleiben unangetastet.
+// idempotent, Documents und von Hand angelegte Namings bleiben unangetastet.
 //
 // Safety-Lock: `?confirm=projectId` muss mit dem Pfad-Parameter
 // übereinstimmen, damit ein DELETE nicht versehentlich auftritt.
@@ -11,7 +11,7 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { queryOne } from '$lib/server/db/index.js';
-import { deleteAllRunsForProject } from '$lib/server/db/queries/codes.js';
+import { deleteAllRunsForProject } from '$lib/server/db/queries/annotations.js';
 
 async function ensureProjectAccess(projectId: string, userId: string): Promise<void> {
 	const member = await queryOne<{ role: string }>(

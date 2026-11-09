@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Per-document coding run — Typen + gemeinsam genutzte Helper.
+// Per-document naming run — Typen + gemeinsam genutzte Helper.
 //
 // Den Loop selbst besitzt jetzt orchestrator.ts (Run-Persistenz,
 // Pause/Resume, Cancel-Intent, Stuck-Watchdog-Anker). Diese
@@ -15,16 +15,17 @@
 //
 // Die Methode (eine einzige, fixe Strategie pro Run — keine User-Auswahl):
 //
-//   1. H1 schlägt Codes vor (code-extractive, sieht die laufende Code-Liste).
+//   1. H1 schlägt Namings vor (textnah extrahierend, sieht die laufende
+//      Naming-Liste).
 //   2. H2 liest die Sequenz UNABHÄNGIG noch einmal — H1-agnostisch — und
 //      erweitert eine kumulative „Verständnislinie" (Erkenntnismedium, kein
 //      Naming; Debug-Artefakt).
-//   3. H2 konfrontiert H1s Codes gegen diese Lesart: keep / revise / drop,
-//      mit einem verbindenden Code-Memo für die Überlebenden.
+//   3. H2 konfrontiert H1s Namings gegen diese Lesart: keep / revise / drop,
+//      mit einem verbindenden Naming-Memo für die Überlebenden.
 //   4. H1 reagiert einmal (defend / revise / withdraw). Eine Runde, dann commit.
 //
 // SA-agnostisch: kein SA-Map-Bezug, keine Positionierung. Es entstehen
-// gewöhnliche Codes (siehe write.ts).
+// gewöhnliche Namings (siehe write.ts).
 //
 // Switchbar, nicht automatisch: per Dokument über die Route getriggert. Der
 // Run läuft über das ganze Dokument; Begrenzung erfolgt über Pause/Cancel.
@@ -127,7 +128,7 @@ export interface CodingRunResult {
 	runId: string;
 	documentId: string;
 	documentTitle: string;
-	/** Resolved H1 route as "provider/model" — the coding line. */
+	/** Resolved H1 route as "provider/model" — the naming line. */
 	h1Model: string;
 	/** Resolved H2 route as "provider/model" — the comprehension line. */
 	h2Model: string;
@@ -176,11 +177,11 @@ export type CodingRunEvent =
  *   1) Sauberes `[ {…}, {…} ]` (der gewünschte Pfad) — auch wenn das Modell
  *      ein Vor- oder Nachwort drangehängt hat, dank Substring-Extraktion.
  *   2) Bare-Object `{ … }` statt Array. MiMo schickt das gelegentlich, wenn
- *      H1 nur einen Code vorschlägt. Wir packen es in `[obj]` ein, statt
- *      den Code zu verlieren — sonst verschluckt der Loop eine ganze Sequenz.
+ *      H1 nur ein Naming vorschlägt. Wir packen es in `[obj]` ein, statt
+ *      das Naming zu verlieren — sonst verschluckt der Loop eine ganze Sequenz.
  *   3) JSON-Lines-Stil `{…}\n{…}` ohne Klammerung. Ebenfalls beobachtet.
  * Bei jedem Parse-/Shape-Fehler: leeres Array, der Loop kommt damit klar
- * (eine Sequenz ohne H1-Codes ist legitim).
+ * (eine Sequenz ohne H1-Namings ist legitim).
  */
 export function parseJsonArray<T>(text: string): T[] {
 	if (!text) return [];
@@ -229,12 +230,12 @@ function norm(s: string): string {
 }
 
 /**
- * Resolve which codes survive the H1↔H2 confrontation.
- * - no verdict / "keep"  → survives (H1 label, H2 Code-Memo).
+ * Resolve which namings survive the H1↔H2 confrontation.
+ * - no verdict / "keep"  → survives (H1 label, H2 naming memo).
  * - "revise" → H1 reaction decides: "revise" adopts final_label,
  *   anything else (incl. missing) defends the original label.
  * - "drop"   → survives only if H1 explicitly "defend"s; missing
- *   reaction means the drop stands (conservative — fewer codes).
+ *   reaction means the drop stands (conservative — fewer namings).
  */
 export function resolveSurvivors(h1: H1Code[], verdicts: H2Verdict[], reactions: H1Reaction[]): Survivor[] {
 	const out: Survivor[] = [];
@@ -301,7 +302,7 @@ export async function loadDocumentTitle(
 	return { title: row.title };
 }
 
-/** All labels that currently count as codes in the project (the running comparison list). */
+/** All labels that currently count as namings in the project (the running comparison list). */
 export async function loadExistingCodeLabels(projectId: string): Promise<string[]> {
 	const res = await query<{ label: string }>(
 		`SELECT DISTINCT n.inscription AS label
@@ -319,23 +320,23 @@ export async function loadExistingCodeLabels(projectId: string): Promise<string[
 }
 
 /**
- * CName-only labels for the Strauss-Open-Coding constant-comparison list —
+ * CName-only labels for the constant-comparison list (nach Strauss' „Open Coding") —
  * **document-scoped**, NOT project-scoped.
  *
- * Filtert auf Namings mit mindestens einer code-naming-Annotation
+ * Filtert auf Namings mit mindestens einer Cue-Naming-Annotation
  * (valence='codes', annotationKind='code-naming') **am übergebenen
  * Dokument** (`appearances.directed_to = documentId`). Schließt damit
  * Sequenz-Namings (valence='thematizes') systematisch aus.
  *
  * Warum dokument-scoped (2026-05-24): projekt-weite Constant Comparison
- * kippt bei LLMs in deduktive Subsumption — sie tragen Codes aus Dok A
+ * kippt bei LLMs in deduktive Subsumption — sie tragen Namings aus Dok A
  * als Anker in Dok B, und nach n Dokumenten ist Dok n+1 nur noch ein
- * Abklatsch der Anfangs-Codes. Menschen können sich an einen vergebenen
- * Code erinnern, ohne ihn als Subsumptions-Schablone zu verwenden; LLMs
+ * Abklatsch der Anfangs-Namings. Menschen können sich an ein vergebenes
+ * Naming erinnern, ohne es als Subsumptions-Schablone zu verwenden; LLMs
  * können das nicht trennen. Deshalb: KEIN Quer-Gedächtnis pro Lauf.
- * Cross-document collapse (zu Stacks) und axiale Codierung (Phases)
- * gehören in einen separaten, manuell ausgelösten Pass — out of scope
- * für den per-Dokument-Coding-Run.
+ * Cross-document collapse (zu Stacks) und die Phasenbildung (bei Strauss:
+ * „axial coding") gehören in einen separaten, manuell ausgelösten Pass —
+ * out of scope für den per-Dokument-Naming-Run.
  */
 export async function loadExistingCNameLabels(
 	projectId: string,
@@ -377,7 +378,7 @@ export interface DocumentMemo {
  *
  * Wachstum während des Laufs: der Orchestrator hält die Rückgabe als
  * mutables Array, das die Pipeline nach jedem CName-Commit appenden
- * darf. Damit sehen spätere Sequenzen die Codes/Memos früherer Sequenzen
+ * darf. Damit sehen spätere Sequenzen die Namings/Memos früherer Sequenzen
  * desselben Laufs — die *intra-document* Constant-Comparison-Disziplin.
  */
 export async function loadDocumentMemos(

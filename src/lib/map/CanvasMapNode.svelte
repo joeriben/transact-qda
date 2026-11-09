@@ -5,6 +5,7 @@
 <script lang="ts">
 	import { getMapState } from './mapState.svelte.js';
 	import type { CanvasPositions } from './canvasPositions.svelte.js';
+	import { plural } from '$lib/shared/plural.js';
 
 	let {
 		el,
@@ -23,19 +24,24 @@
 	function enter() {
 		if (nodeEl && el.memo_previews?.length) ms.showMemoTip(el, nodeEl.getBoundingClientRect());
 	}
+	// Die Vorschau verschwindet sofort beim Verlassen — sie fängt keine Klicks
+	// ab und verdeckt keine Nachbarn länger als nötig.
 	function leave() {
-		if (ms.memoTip?.el === el) ms.hideMemoTip(150);
+		ms.hideMemoTipFor(el.naming_id);
 	}
 
 	// Verschwindet der Knoten unter der Maus (Filter, Neuladen), kommt kein
-	// mouseleave mehr — dann nimmt er seine Vorschau selbst mit.
-	$effect(() => () => {
-		if (ms.memoTip?.el === el) ms.hideMemoTip();
+	// mouseleave mehr — dann nimmt er seine Vorschau selbst mit. Verglichen
+	// wird die ID: nach einem Neuladen ist der Knoten ein neues Objekt.
+	const nid = $derived<string>(el.naming_id);
+	$effect(() => {
+		const id = nid;
+		return () => ms.hideMemoTipFor(id);
 	});
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="map-node" bind:this={nodeEl} onmouseenter={enter} onmouseleave={leave} class:absent={el.properties?.absent} class:ai-suggested={el.properties?.aiSuggested} class:ai-withdrawn={ms.isWithdrawn(el.properties)} class:ai-rejected={ms.isRejected(el)} class:phase-member={ms.highlightedPhase && ms.isPhaseHighlighted(el)} class:phase-dimmed={ms.highlightedPhase && !ms.isPhaseHighlighted(el)} class:centered-dim={cp.centeredConnections && !cp.centeredConnections.has(el.naming_id)} class:centered-anchor={cp.centeredId === el.naming_id}
+<div class="map-node" bind:this={nodeEl} onmouseenter={enter} onmouseleave={leave} class:relating-source={ms.relatingFrom === el.naming_id} class:absent={el.properties?.absent} class:ai-suggested={el.properties?.aiSuggested} class:ai-withdrawn={ms.isWithdrawn(el.properties)} class:ai-rejected={ms.isRejected(el)} class:phase-member={ms.highlightedPhase && ms.isPhaseHighlighted(el)} class:phase-dimmed={ms.highlightedPhase && !ms.isPhaseHighlighted(el)} class:centered-dim={cp.centeredConnections && !cp.centeredConnections.has(el.naming_id)} class:centered-anchor={cp.centeredId === el.naming_id} class:flash={ms.flashId === el.naming_id}
 	style="{ms.highlightedPhase && ms.isPhaseHighlighted(el) ? `--phase-color: ${ms.phaseColorMap.get(ms.highlightedPhase)};` : ''}"
 	title={ms.rejectionLabel(el) ?? undefined}>
 	<div class="node-header">
@@ -51,7 +57,7 @@
 		{#if el.memo_previews?.length > 0}
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<span class="memo-badge" title="{el.memo_previews.length} memo(s)" onclick={(e) => { e.stopPropagation(); ms.showStack(el.naming_id); }}>
+			<span class="memo-badge" title="{plural(el.memo_previews.length, 'memo')} — open stack" onclick={(e) => { e.stopPropagation(); ms.showStack(el.naming_id); }}>
 				{el.memo_previews.length}
 			</span>
 		{/if}
@@ -64,14 +70,9 @@
 			</span>
 		{/if}
 	</div>
-	{#if ms.editingId === el.naming_id}
-		<form class="inline-rename" onsubmit={e => { e.preventDefault(); ms.confirmRename(); }}>
-			<input type="text" bind:value={ms.editingValue} />
-			<button type="submit" class="btn-xs">ok</button>
-		</form>
-	{:else}
-		<span class="node-label">{el.inscription}</span>
-	{/if}
+	<!-- Umbenennen: das Feld legt die Karten-Seite über den Knoten, außerhalb
+	     der skalierten Ebene (bleibt bei jedem Zoom lesbar). -->
+	<span class="node-label" class:renaming={ms.editingId === el.naming_id}>{el.inscription}</span>
 	{#if el.is_collapsed && el.current_inscription && el.current_inscription !== el.inscription}
 		<span class="collapsed-hint">now: {el.current_inscription}</span>
 	{/if}
@@ -113,6 +114,7 @@
 	.phase-dots { display: inline-flex; gap: 2px; margin-left: auto; }
 	.phase-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
 	.node-label { font-size: 0.85rem; color: #e1e4e8; word-break: break-word; display: block; }
+	.node-label.renaming { opacity: 0.35; }
 	.collapsed-hint { font-size: 0.65rem; color: #4b5563; font-style: italic; }
 	.memo-badge {
 		font-size: 0.6rem; font-weight: 700; color: #f59e0b; background: rgba(245, 158, 11, 0.15);
@@ -121,14 +123,13 @@
 		text-align: center; cursor: pointer; flex-shrink: 0; margin-left: auto;
 	}
 	.memo-badge:hover { background: rgba(245, 158, 11, 0.25); }
-	.inline-rename { display: flex; gap: 0.3rem; align-items: center; }
-	.inline-rename input {
-		background: #0f1117; border: 1px solid #8b9cf7; border-radius: 4px;
-		padding: 0.15rem 0.35rem; color: #e1e4e8; font-size: 0.85rem; width: 140px;
+	/* Ausgangspunkt einer Relation, die gerade gezogen wird — eigene Farbe, nicht
+	   das Bernstein der Charakterisierung. */
+	.map-node.relating-source { box-shadow: 0 0 0 3px var(--relate-hl, #38bdf8), 0 0 14px rgba(56, 189, 248, 0.5); }
+	/* Eben platziert oder gesucht: kurz hervorheben. */
+	.map-node.flash { animation: node-flash 0.8s ease-in-out 3; }
+	@keyframes node-flash {
+		0%, 100% { box-shadow: none; }
+		50% { box-shadow: 0 0 0 3px #8b9cf7, 0 0 18px rgba(139, 156, 247, 0.6); }
 	}
-	.btn-xs {
-		background: none; border: 1px solid #2a2d3a; border-radius: 4px;
-		color: #8b8fa3; font-size: 0.7rem; padding: 0.15rem 0.4rem; cursor: pointer;
-	}
-	.btn-xs:hover { border-color: #8b9cf7; }
 </style>

@@ -117,6 +117,88 @@ export function formationContainsFormation(inner: Formation, outer: Formation): 
 	return boundary.every(p => pointInFormation(p, outer));
 }
 
+// ─── Verbindungslinien (Relationen auf dem Canvas) ───
+
+/** Halbe Ausdehnung eines Knotens um seinen Mittelpunkt. */
+export interface NodeExtent {
+	hw: number;
+	hh: number;
+	shape: 'rect' | 'ellipse';
+	rotation: number; // degrees
+}
+
+/** Kontrollpunkt der leicht gebogenen Linie zwischen zwei Mittelpunkten. */
+export function connectionControl(x1: number, y1: number, x2: number, y2: number): Point {
+	const midX = (x1 + x2) / 2;
+	const midY = (y1 + y2) / 2;
+	const off = Math.min(50, Math.hypot(x2 - x1, y2 - y1) * 0.15);
+	const angle = Math.atan2(y2 - y1, x2 - x1);
+	return { x: midX + Math.sin(angle) * off, y: midY - Math.cos(angle) * off };
+}
+
+/** Punkt auf der Kurvenmitte (t = 0.5). */
+export function connectionMidpoint(x1: number, y1: number, x2: number, y2: number): Point {
+	const c = connectionControl(x1, y1, x2, y2);
+	return { x: 0.25 * x1 + 0.5 * c.x + 0.25 * x2, y: 0.25 * y1 + 0.5 * c.y + 0.25 * y2 };
+}
+
+/** Punkt auf der gebogenen Linie beim Parameter t (0 = Quelle, 1 = Ziel). */
+export function connectionPoint(x1: number, y1: number, x2: number, y2: number, t: number): Point {
+	const c = connectionControl(x1, y1, x2, y2);
+	const u = 1 - t;
+	return { x: u * u * x1 + 2 * u * t * c.x + t * t * x2, y: u * u * y1 + 2 * u * t * c.y + t * t * y2 };
+}
+
+/**
+ * Lage einer gezogenen Relationsraute, bezogen auf ihre Linie: `t` ist der
+ * Anteil entlang der Sehne von der Quelle zum Ziel, `d` der Abstand quer dazu
+ * in Canvas-Pixeln (positiv zur Seite, zu der sich die Linie biegt). So folgt
+ * die Raute ihren Endpunkten, wenn diese wandern.
+ */
+export interface LabelAt {
+	t: number;
+	d: number;
+}
+
+function chordFrame(a: Point, b: Point): { dx: number; dy: number; ux: number; uy: number; len: number } {
+	const dx = b.x - a.x;
+	const dy = b.y - a.y;
+	const len = Math.hypot(dx, dy);
+	if (len < 0.5) return { dx: 1, dy: 0, ux: 1, uy: 0, len: 1 };
+	return { dx, dy, ux: dx / len, uy: dy / len, len };
+}
+
+/** Mittelpunkt der Raute für eine gespeicherte Lage. */
+export function labelAtToPoint(a: Point, b: Point, at: LabelAt): Point {
+	const f = chordFrame(a, b);
+	// Normale wie die Biegung in connectionControl: (uy, -ux).
+	return { x: a.x + at.t * f.dx + at.d * f.uy, y: a.y + at.t * f.dy - at.d * f.ux };
+}
+
+/** Gespeicherte Lage für einen Rautenmittelpunkt; t bleibt zwischen den Endpunkten. */
+export function pointToLabelAt(a: Point, b: Point, p: Point): LabelAt {
+	const f = chordFrame(a, b);
+	const px = p.x - a.x;
+	const py = p.y - a.y;
+	const t = (px * f.ux + py * f.uy) / f.len;
+	const d = px * f.uy - py * f.ux;
+	return {
+		t: Math.round(Math.min(1, Math.max(0, Number.isFinite(t) ? t : 0.5)) * 1000) / 1000,
+		d: Math.round(Number.isFinite(d) ? d : 0)
+	};
+}
+
+/** Liegt der Punkt (dx, dy), relativ zum Knotenmittelpunkt, im Knoten? */
+export function insideExtent(ext: NodeExtent, dx: number, dy: number, margin = 0): boolean {
+	const rad = -ext.rotation * Math.PI / 180;
+	const lx = dx * Math.cos(rad) - dy * Math.sin(rad);
+	const ly = dx * Math.sin(rad) + dy * Math.cos(rad);
+	const hw = ext.hw + margin;
+	const hh = ext.hh + margin;
+	if (ext.shape === 'ellipse') return (lx / hw) ** 2 + (ly / hh) ** 2 <= 1;
+	return Math.abs(lx) <= hw && Math.abs(ly) <= hh;
+}
+
 // Compute the full spatial relation state for a SW/A map.
 export function computeSpatialRelations(
 	elements: Array<{ id: string; x: number; y: number }>,

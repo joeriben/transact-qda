@@ -1,10 +1,12 @@
 # Documents, DocNets, and Comparative Analysis
 
-Design decision document. Established session 18 (2026-03-18).
+Design decision document, recorded by the assistant in session 18 (2026-03-20). BJ agreed that the decisions be recorded as a design document („ja, gute Idee. Dann commiten, Dann weiter“); he had not seen the text at that point.
+
+*Attributions to Benjamin Jörissen were checked against the session records and corrected on 2026-11-09; formulations of the assistant are marked.*
 
 ## The Problem
 
-The current architecture treats documents as importable, codeable material — which is correct. But the system lacks two capabilities that real research processes require:
+The current architecture treats documents as importable, nameable material — which is correct. But the system lacks two capabilities that real research processes require:
 
 1. **Naming → Material (top-down)**: From a naming, see all passages (Sinneinheiten) across all documents where it is grounded. This is the constant comparison operation: "show me everything I've found about this naming."
 
@@ -16,7 +18,9 @@ Additionally, there is no concept of document grouping. Documents exist as isola
 
 The tool must support reconstructive qualitative research (Bohnsack, Oevermann, Clarke, GTM) where the unit of meaning — the Sinneinheit — is NOT pre-defined by the system but **emerges from the researcher's analytical engagement**.
 
-Different methods produce different Sinneinheiten:
+Which units are of interest is decided by the research question and the structure of the research object. BJ, session 18 (2026-03-20): „welche davon perspektivisch interessant sind entscheidet NICHT die Disziplin, wie Du fälschlicherweise andeutest, sondern Forschungsfrage und Sturktur des Forschungsgegenstanden.“ (Which of them are of interest is decided NOT by the discipline, as you wrongly suggest, but by the research question and the structure of the research object.)
+
+Different methods produce different Sinneinheiten (from research by the assistant that BJ initiated):
 - **Oevermann (Objective Hermeneutics)**: The Interakt — a speech act in its sequential position
 - **Bohnsack (Documentary Method)**: The Passage — segments of high interactive density (Fokussierungsmetaphern), identified through discourse organization
 - **Grounded Theory**: Variable — line-by-line, incident-by-incident, whatever the emerging theory demands
@@ -30,11 +34,13 @@ Atomic Sinneinheiten include not only words but also pauses "(3)", micro-pauses 
 
 ## Data Format Decision
 
-**Plain text + character offsets remains the foundation.** Research data does not mutate after import; offsets are stable. The document is the import format — how material enters the system. Once inside, the analytically relevant units are the namings created by the researcher through coding.
+**Plain text + character offsets remains the foundation.** Research data does not mutate after import; offsets are stable. The document is the import format — how material enters the system. Once inside, the analytically relevant units are the namings the researcher creates on the material.
 
-The system is not replicating paper. It enables what paper cannot: non-sequential navigation through the coding structure, dynamic reorganization of material around namings, aggregation across documents, simultaneous multiple views.
+The system is not replicating paper. It enables what paper cannot: non-sequential navigation through the naming structure, dynamic reorganization of material around namings, aggregation across documents, simultaneous multiple views.
 
-**New import formats** are added as needed (SRT/VTT for video transcripts, HTML for web content). Each new format requires a text extraction path and, where applicable, a viewer component. The annotation model (arbitrary span selection → naming) remains the same.
+**New import formats** are added as needed (SRT/VTT for video transcripts). Each new format requires a text extraction path and, where applicable, a viewer component. The annotation model (arbitrary span selection → naming) remains the same.
+
+HTML is not an import format. BJ, session 18 (2026-03-20): „Html ist NOTORISCH problematisch wenn es um das Wiedergeben von dynamischen Website-Inhalten geht. … Wer Forenanalysen macht oder Streams, interessiert sich nicht für das html-Layout.“ (HTML is NOTORIOUSLY problematic for reproducing dynamic website content. … Whoever analyses forums or streams is not interested in the HTML layout.) Open, in BJ's words (session 18, 2026-03-20): „Was ist das richtige Datenformat, bevor wir das demnächst in reale Forschungsprozesse geben und an Grenzen stoßen? … Was ist z.B. mit Online-Daten Text/Bild gemischt; wie werden wir mit Videodaten umgehen (oder wir geben das an f4 ab)“ and „ich verstehe nicht wieso das nicht ein Fall für ein strukturiertes Datenformat ist.“ (What is the right data format before this goes into real research? What about mixed text/image online data, and video?)
 
 ## DocNets: Virtual, Non-Destructive Document Sets
 
@@ -46,11 +52,11 @@ A **DocNet** is a naming that participates with document namings. Nothing more.
 - Virtual: a DocNet is a relational grouping, not a container
 - Freely formed and dissolved: create, add documents, remove documents, delete the DocNet
 - A document can be in arbitrarily many DocNets simultaneously
-- No hierarchy: DocNets do not nest (if nesting is needed, a DocNet can participate with another DocNet — but this is not a structural requirement)
+- No hierarchy: DocNets do not nest (if nesting is needed, a DocNet can participate with another DocNet — but this is not a structural requirement) *(set by the assistant)*
 
 This is the OO organizing principle: objects linked by relations, not files in folders. It replaces MAXQDA's "Sets" and "Document Groups" with a mechanism consistent with the transactional ontology.
 
-A DocNet, like any naming, has its own CCS gradient: "these belong together" (cue) → "these represent the institutional discourse of X" (specification). Grouping IS analysis.
+A DocNet, like any naming, has its own CCS gradient: "these belong together" (cue) → "these represent the institutional discourse of X" (specification). Grouping IS analysis. *(Formulation of the assistant.)*
 
 ### DocNets and Phases
 
@@ -80,7 +86,7 @@ This is the **constant comparison interface**: the researcher encounters everyth
 
 From a document or DocNet, the system generates analytical views:
 
-**Comparative List View**: Which namings are grounded in DocNet A? In DocNet B? In both? What is the code frequency? Where are the gaps?
+**Comparative List View**: Which namings are grounded in DocNet A? In DocNet B? In both? What is the naming frequency? Where are the gaps?
 
 **Comparative Map View**: Two approaches, both valid:
 - **(a) Separate SitMaps**: Generate a SitMap from DocNet A's namings, another from DocNet B's. Compare the two maps side by side.
@@ -93,11 +99,11 @@ The researcher chooses the approach that fits their analytical question. Approac
 ## Implementation Sequence
 
 1. **This document** — establish the design decisions
-2. **Code → Materialsammlung (Naming → Material)** — the aggregated view. Query: all annotations where the code participates. UI: panel or page showing passages with context, grouped by document.
+2. **Naming → Material** (BJ's wording in session 18: „Code -> Materialsammlung“) — the aggregated view. Query: all annotations where the naming participates. UI: panel or page showing passages with context, grouped by document.
 3. **DocNet CRUD** — create DocNet (naming), add/remove document participations. UI in document list or dedicated page.
 4. **DocNet → SitMap generation** — "import all namings from this DocNet's documents onto a map." Extends existing import-from-document.
 5. **Comparative List View** — DocNet A vs. DocNet B: shared/unique namings, frequencies.
 6. **Comparative Map View** — compare element lists of two maps (or DocNets, documents) side by side with shared/unique marking. Implemented as extension of the /compare page with `map` as source type.
 7. **Documents/DocNets as Phases** — **Open methodological question.** Both individual documents and DocNets should be usable as phases on SitMaps, so that a map can show "these elements came from this document/DocNet." This relates Phases (grouping by analytical affinity) to Provenance (grouping by source). The methodological question is: what does it mean for a document or DocNet to function as a phase? Is provenance an analytical category in the same sense as Clarke's in-vivo categories? This needs reflection before implementation.
-8. **New import formats** — SRT/VTT, HTML — as research needs demand.
+8. **New import formats** — SRT/VTT as research needs demand. A structured format for mixed online data (forums, streams) is an open question (BJ, session 18).
 9. **Optional tokenization** — parser for transcription systems, `tokens` column, concordance queries. Deferred until empirical need.

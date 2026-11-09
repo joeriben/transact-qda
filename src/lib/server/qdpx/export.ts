@@ -20,6 +20,10 @@ import { Writable } from 'stream';
 const NS = 'urn:QDA-XML:project:1.0';
 const TQ_NS = 'urn:transact-qda:1.0';
 
+// Stored valence of an annotation appearance (naming → document passage).
+// Persisted value in appearances.valence — kept as is.
+const ANNOTATION_VALENCE = 'codes';
+
 // ---- Data fetching ----
 
 async function fetchProjectData(projectId: string) {
@@ -152,11 +156,11 @@ function isInfrastructure(appearances: any[], namingId: string): boolean {
 
 function isAnnotation(appearances: any[], namingId: string): boolean {
 	return appearances.some(
-		(a: any) => a.naming_id === namingId && a.valence === 'codes'
+		(a: any) => a.naming_id === namingId && a.valence === ANNOTATION_VALENCE
 	);
 }
 
-function isCode(appearances: any[], namingId: string): boolean {
+function isEntityNaming(appearances: any[], namingId: string): boolean {
 	return appearances.some(
 		(a: any) => a.naming_id === namingId && a.mode === 'entity'
 			&& !['perspective', 'researcher', 'grounding-workspace', 'memo-system', 'docnet'].includes(a.properties?.role || '')
@@ -187,8 +191,8 @@ function buildQDE(data: Awaited<ReturnType<typeof fetchProjectData>>): string {
 	const w = (s: string) => lines.push(s);
 
 	// Classify namings
-	const codeNamings = namings.filter((n: any) =>
-		isCode(appearances, n.id)
+	const entityNamings = namings.filter((n: any) =>
+		isEntityNaming(appearances, n.id)
 		&& !isDocument(documents, n.id)
 		&& !isMemo(memoContents, n.id)
 		&& !isMap(appearances, n.id)
@@ -212,7 +216,7 @@ function buildQDE(data: Awaited<ReturnType<typeof fetchProjectData>>): string {
 		if (!part) return false;
 		// Has a relation appearance on a map
 		return appearances.some((a: any) => a.naming_id === n.id && a.mode === 'relation'
-			&& a.valence !== 'codes' && a.valence !== 'references');
+			&& a.valence !== ANNOTATION_VALENCE && a.valence !== 'references');
 	});
 
 	// DocNets (Sets)
@@ -241,19 +245,19 @@ function buildQDE(data: Awaited<ReturnType<typeof fetchProjectData>>): string {
 	}
 	w(`  </Users>`);
 
-	// CodeBook
+	// REFI-QDA CodeBook: one <Code> element per entity naming
 	w(`  <CodeBook>`);
 	w(`    <Codes>`);
-	for (const code of codeNamings) {
-		const desig = currentDesignation(namingActs, code.id);
-		const inscription = currentInscription(namingActs, code.id, code.inscription);
-		const color = appearances.find((a: any) => a.naming_id === code.id && a.properties?.color)?.properties?.color;
+	for (const naming of entityNamings) {
+		const desig = currentDesignation(namingActs, naming.id);
+		const inscription = currentInscription(namingActs, naming.id, naming.inscription);
+		const color = appearances.find((a: any) => a.naming_id === naming.id && a.properties?.color)?.properties?.color;
 
-		w(`      <Code guid="${code.id}" name="${esc(inscription)}" isCodable="true"${color ? ` color="${esc(color)}"` : ''}>`);
+		w(`      <Code guid="${naming.id}" name="${esc(inscription)}" isCodable="true"${color ? ` color="${esc(color)}"` : ''}>`);
 		w(`        <Description>CCS: ${desig}</Description>`);
 
 		// tq: namespace — full naming_acts stack
-		const acts = namingActs.filter((a: any) => a.naming_id === code.id);
+		const acts = namingActs.filter((a: any) => a.naming_id === naming.id);
 		if (acts.length > 0) {
 			w(`        <tq:NamingActs>`);
 			for (const act of acts) {
@@ -271,12 +275,12 @@ function buildQDE(data: Awaited<ReturnType<typeof fetchProjectData>>): string {
 		}
 
 		// tq: appearances on maps
-		const codeAppearances = appearances.filter(
-			(a: any) => a.naming_id === code.id && a.perspective_id !== code.id
+		const namingAppearances = appearances.filter(
+			(a: any) => a.naming_id === naming.id && a.perspective_id !== naming.id
 		);
-		if (codeAppearances.length > 0) {
+		if (namingAppearances.length > 0) {
 			w(`        <tq:Appearances>`);
-			for (const app of codeAppearances) {
+			for (const app of namingAppearances) {
 				const aAttrs: string[] = [
 					`perspective="${app.perspective_id}"`,
 					`mode="${esc(app.mode)}"`
@@ -294,7 +298,7 @@ function buildQDE(data: Awaited<ReturnType<typeof fetchProjectData>>): string {
 
 		// tq: AI metadata
 		const aiApp = appearances.find(
-			(a: any) => a.naming_id === code.id && a.properties?.aiSuggested
+			(a: any) => a.naming_id === naming.id && a.properties?.aiSuggested
 		);
 		if (aiApp) {
 			w(`        <tq:AI suggested="true" reasoning="${esc(aiApp.properties?.aiReasoning || '')}" withdrawn="${aiApp.properties?.aiWithdrawn || false}"/>`);
@@ -324,7 +328,7 @@ function buildQDE(data: Awaited<ReturnType<typeof fetchProjectData>>): string {
 
 			// Image annotations
 			const imgAnnotations = appearances.filter(
-				(a: any) => a.valence === 'codes' && a.directed_to === doc.id
+				(a: any) => a.valence === ANNOTATION_VALENCE && a.directed_to === doc.id
 					&& a.properties?.anchorType === 'image_region'
 			);
 			for (const ann of imgAnnotations) {
@@ -333,7 +337,7 @@ function buildQDE(data: Awaited<ReturnType<typeof fetchProjectData>>): string {
 				const selGuid = ann.naming_id;
 				w(`      <PictureSelection guid="${selGuid}" name="" firstX="${anchor.x || 0}" firstY="${anchor.y || 0}" secondX="${(anchor.x || 0) + (anchor.width || 0)}" secondY="${(anchor.y || 0) + (anchor.height || 0)}">`);
 				if (ann.directed_from) {
-					w(`        <Coding guid="${selGuid}-coding"><CodeRef targetGUID="${ann.directed_from}"/></Coding>`);
+					w(`        <Coding guid="${selGuid}-naming"><CodeRef targetGUID="${ann.directed_from}"/></Coding>`);
 				}
 				w(`      </PictureSelection>`);
 			}
@@ -351,7 +355,7 @@ function buildQDE(data: Awaited<ReturnType<typeof fetchProjectData>>): string {
 				w(`      <Representation guid="${doc.id}-repr" name="Text">`);
 				// Text annotations on the PDF's text representation
 				const textAnnotations = appearances.filter(
-					(a: any) => a.valence === 'codes' && a.directed_to === doc.id
+					(a: any) => a.valence === ANNOTATION_VALENCE && a.directed_to === doc.id
 						&& a.properties?.anchorType === 'text'
 				);
 				for (const ann of textAnnotations) {
@@ -360,7 +364,7 @@ function buildQDE(data: Awaited<ReturnType<typeof fetchProjectData>>): string {
 					const selGuid = ann.naming_id;
 					w(`        <PlainTextSelection guid="${selGuid}" name="" startPosition="${anchor.pos0 || 0}" endPosition="${anchor.pos1 || 0}">`);
 					if (ann.directed_from) {
-						w(`          <Coding guid="${selGuid}-coding"><CodeRef targetGUID="${ann.directed_from}"/></Coding>`);
+						w(`          <Coding guid="${selGuid}-naming"><CodeRef targetGUID="${ann.directed_from}"/></Coding>`);
 					}
 					w(`        </PlainTextSelection>`);
 				}
@@ -374,7 +378,7 @@ function buildQDE(data: Awaited<ReturnType<typeof fetchProjectData>>): string {
 
 			// Text annotations
 			const textAnnotations = appearances.filter(
-				(a: any) => a.valence === 'codes' && a.directed_to === doc.id
+				(a: any) => a.valence === ANNOTATION_VALENCE && a.directed_to === doc.id
 					&& a.properties?.anchorType === 'text'
 			);
 			for (const ann of textAnnotations) {
@@ -383,7 +387,7 @@ function buildQDE(data: Awaited<ReturnType<typeof fetchProjectData>>): string {
 				const selGuid = ann.naming_id;
 				w(`      <PlainTextSelection guid="${selGuid}" name="" startPosition="${anchor.pos0 || 0}" endPosition="${anchor.pos1 || 0}">`);
 				if (ann.directed_from) {
-					w(`        <Coding guid="${selGuid}-coding"><CodeRef targetGUID="${ann.directed_from}"/></Coding>`);
+					w(`        <Coding guid="${selGuid}-naming"><CodeRef targetGUID="${ann.directed_from}"/></Coding>`);
 				}
 				w(`      </PlainTextSelection>`);
 			}
@@ -408,9 +412,9 @@ function buildQDE(data: Awaited<ReturnType<typeof fetchProjectData>>): string {
 	}
 	w(`  </Notes>`);
 
-	// NoteRefs: link memos to codes/elements
+	// NoteRefs: link memos to namings/elements
 	// (These are embedded via participations — memo participates with element)
-	// We add NoteRef as child of Code elements above would be cleaner,
+	// Adding NoteRef as child of the <Code> elements above would be cleaner,
 	// but QDPX also supports standalone Links for this.
 
 	// Links (Relations between namings + memo links)
@@ -511,7 +515,7 @@ function buildQDE(data: Awaited<ReturnType<typeof fetchProjectData>>): string {
 			// Relations on this map
 			const mapRelations = appearances.filter(
 				(a: any) => a.perspective_id === map.id && a.mode === 'relation'
-					&& a.valence !== 'codes' && a.valence !== 'references'
+					&& a.valence !== ANNOTATION_VALENCE && a.valence !== 'references'
 			);
 			for (const rel of mapRelations) {
 				if (!rel.directed_from || !rel.directed_to) continue;

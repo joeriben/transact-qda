@@ -5,6 +5,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { env } from '$env/dynamic/public';
+	import { navigating } from '$app/state';
 	import '$lib/shared/tokens.css';
 
 	let { data, children }: { data: { user: any; dbStatus?: { status: string; error: string | null } }; children: Snippet } = $props();
@@ -159,9 +160,22 @@
 	}
 </script>
 
+<svelte:window onkeydown={(e) => {
+	if (e.key !== 'Escape' || !overlay) return;
+	if (overlay === 'change-password' && (cpOld || cpNew || cpNew2)) return;
+	e.preventDefault();
+	e.stopImmediatePropagation();
+	overlay = null;
+}} />
+
 <svelte:head>
 	<title>transact-qda</title>
 </svelte:head>
+
+<!-- Seitenwechsel sichtbar machen: ohne Anzeige wirkt ein Klick, als sei nichts passiert. -->
+{#if navigating.to}
+	<div class="nav-progress" role="progressbar" aria-label="Loading page"></div>
+{/if}
 
 {#if data.user}
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -276,7 +290,8 @@
 			</div>
 		{/if}
 
-		<!-- Overlays -->
+		<!-- Overlays: Escape schließt sie (Handbuch, Impressum, About; die
+		     Passwort-Änderung bleibt offen, solange ein Feld etwas enthält). -->
 		{#if overlay}
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -293,7 +308,7 @@
 						if (el) el.scrollIntoView({ behavior: 'smooth' });
 					}
 				}}>
-					<button class="overlay-close" onclick={() => overlay = null}>×</button>
+					<button class="overlay-close" onclick={() => overlay = null} aria-label="Close (Esc)" title="Close (Esc)">×</button>
 					{#if overlay === 'manual'}
 						<div class="overlay-content manual-content">
 							{#if manualHtml}
@@ -357,7 +372,8 @@
 							<p>
 								<strong>transact-qda</strong> is an open-source qualitative-data-analysis
 								platform built on a transactional ontology (namings, participations,
-								appearances) with a designation-gradient model of coding.
+								appearances). A naming is the history of its acts; its designation moves
+								between cue, characterization and specification.
 							</p>
 							<p>
 								Originally developed at the
@@ -390,6 +406,24 @@
 {/if}
 
 <style>
+	.nav-progress {
+		position: fixed;
+		top: 0;
+		left: 0;
+		height: 2px;
+		width: 100%;
+		z-index: 10000;
+		background: linear-gradient(90deg, transparent 0%, var(--accent) 40%, var(--accent) 60%, transparent 100%);
+		background-size: 50% 100%;
+		background-repeat: no-repeat;
+		animation: nav-progress-slide 1s linear infinite;
+		pointer-events: none;
+	}
+	@keyframes nav-progress-slide {
+		from { background-position: -100% 0; }
+		to { background-position: 200% 0; }
+	}
+
 	:global(*, *::before, *::after) {
 		box-sizing: border-box;
 		margin: 0;

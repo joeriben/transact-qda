@@ -10,6 +10,7 @@
   Eine Kopfzeile ist genau dann weggescrollt, wenn man den Rückweg braucht.
 -->
 <script lang="ts">
+	import { quoted } from '$lib/shared/namingLabel.js';
 	import { page } from '$app/stores';
 	import { rueckwegHref, rueckwegLabel } from '$lib/shared/rueckweg.js';
 
@@ -18,7 +19,7 @@
 </script>
 
 {#if href}
-	<a class="rueckweg" {href} title="Zurück zu „{label}“ — an dieselbe Stelle">
+	<a class="rueckweg" {href} title="Zurück zu {quoted(label, 'de')} — an dieselbe Stelle">
 		&larr; {label}
 	</a>
 {/if}

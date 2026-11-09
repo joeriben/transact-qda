@@ -1,8 +1,8 @@
 # transact-qda — Manual
 
-*Version 2.0 (March 2026). Drafted with Claude Opus 4.6, edited by Benjamin Jörissen. Parts of this manual predate the current release and are being revised.*
+*Version 2.0 (March 2026). Synthesized by Claude Opus 4.6 from the session protocols; Benjamin Jörissen reviewed the version of 14 March 2026, not the additions of 24 and 29 March. On 9 November 2026 every statement attributed to him was checked against the protocols and corrected where it did not hold. Parts of this manual predate the current release and are being revised.*
 
-A qualitative data analysis platform grounded in Situational Analysis (Clarke) and transactional philosophy (Dewey/Bentley), designed for research at the intersection of Science and Technology Studies and educational theory (*Erziehungswissenschaft*, Sünkel). Open-source, self-hosted, with an AI co-researcher that operates within the same data ontology as the human analyst.
+A qualitative data analysis platform grounded in Situational Analysis (Clarke) and transactional philosophy (Dewey/Bentley), designed for research at the intersection of Science and Technology Studies and educational theory (*Erziehungswissenschaft*, Sünkel). Open-source, self-hosted, with an AI — called Cowork on maps — that operates within the same data ontology as the human analyst.
 
 ---
 
@@ -24,7 +24,7 @@ A qualitative data analysis platform grounded in Situational Analysis (Clarke) a
    - [5.4 The Grounding Layer](#54-the-grounding-layer)
    - [5.5 Phases](#55-phases)
    - [5.6 Memos](#56-memos)
-   - [5.7 The AI Co-Researcher](#57-the-ai-co-researcher)
+   - [5.7 Cowork: the AI on maps](#57-cowork-the-ai-on-maps)
    - [5.8 Collaboration](#58-collaboration)
    - [5.9 Project Management](#59-project-management)
 6. [Design Commitments Beyond Clarke](#6-design-commitments-beyond-clarke)
@@ -58,7 +58,7 @@ The basic unit in transact-qda is the **naming act** — an event, not an entity
 - **Inter-action**: Pre-given entities causally affect each other (Newtonian mechanics)
 - **Trans-action**: System-level processes where participants and outcomes are co-constituted (quantum observation, ecological systems, meaning-making)
 
-Conventional QDA operates at the inter-actional level: codes exist, documents exist, researchers apply codes to documents. transact-qda operates trans-actionally: a **naming** is neither entity nor relation intrinsically. It is a superposition that collapses into entity, relation, silence, constellation, process, or perspective only when observed from a specific analytical standpoint.
+transact-qda operates trans-actionally: a **naming** is neither entity nor relation intrinsically. It is a superposition that collapses into entity, relation, silence, constellation, process, or perspective only when observed from a specific analytical standpoint.
 
 The same naming can appear as an entity on one map ("neoliberal accountability"), as a relation on another (connecting "standardized testing" and "teacher autonomy"), and as a silence on a third (a position not taken in a discourse). These are not contradictions but perspectival collapses of the same virtual object.
 
@@ -72,7 +72,7 @@ Dewey and Bentley's naming taxonomy (*Knowing and the Known*, Chapter 10) distin
 
 This gradient is **bidirectional**: a well-specified naming can dissolve back into a cue when new evidence or a new perspective destabilizes the specification. It is also **append-only**: every designation change is recorded as a naming act, preserving the full analytical history. A naming IS its designation history — it does not *have* a history the way a file has metadata.
 
-"Messy" and "ordered" — Clarke's two phases of situational mapping — are not modes or toggles. They are the **aggregated designation state** of all elements at a given moment. A map where most elements are at cue-level is messy; a map where most have reached characterization or specification is ordered. The transition is continuous, not binary.
+"Messy" and "ordered" — Clarke's two phases of situational mapping — are not modes or toggles. They are the **aggregated designation state** of all elements at a given moment (a construction of the assistant in Session 02, not a position Benjamin Jörissen stated). A map where most elements are at cue-level is messy; a map where most have reached characterization or specification is ordered. The transition is continuous, not binary.
 
 ### 2.3 Clarke's Situational Analysis — And Its Limits
 
@@ -102,7 +102,7 @@ These limitations are not only conceptual — they are materially enforced. Clar
 
 - **On paper, a label IS a thing.** Once written in a box, it cannot transform into a relation. The entity/relation distinction is materially fixed by the medium.
 - **On paper, a line between boxes is NOT a nameable object.** It has no stack, no inscription chain, no designation history. Relations are second-class: ink connecting pre-given entities.
-- **The messy → ordered → relational sequence is medium-determined.** You cannot reorder a paper map without redrawing it. The procedure is shaped by what the material can and cannot do.
+- **The material mediality of paper is a non-reflected actor of the procedure** (Benjamin Jörissen, Session 10). You cannot reorder a paper map without redrawing it; the messy → ordered → relational sequence is shaped, among other things, by what the material can and cannot do.
 - **Iteration is materially costly.** Redrawing a paper map means starting over. This material resistance reinforces path dependency.
 
 Clarke's procedure is a method-for-paper that was theorized as method-as-such. Recognizing the material-mediality of the analytical medium is itself an SA-consistent move: attending to nonhuman actants in the research situation. A digital platform does not merely make SA more convenient — it makes a *different* SA possible.
@@ -121,9 +121,9 @@ Every naming act draws a distinction (Spencer-Brown, *Laws of Form*). Every dist
 Two observation levels must not be conflated:
 
 - **Observed unmarked**: what actors and discourses *in the researched situation* leave uncounted. A policy document naming "stakeholders" produces an unmarked space — this is in the data.
-- **Analytical unmarked**: what *our own naming efforts* leave uncounted. Second-order observation of our observation. Clarke's categories fix our counting frame, which then determines what we can observe as uncounted in the researched situation.
+- **Analytical unmarked**: what *our own naming efforts* leave uncounted. Second-order observation of our observation. (Open thesis, not settled: Clarke's categories may fix our counting frame, which would then determine what we can observe as uncounted in the researched situation.)
 
-Inquiry therefore consists of two complementary operations: **(a) re-naming observed namings** — CCS movement along the designation gradient, from cue through characterization to specification; and **(b) naming observed unnameds** — a constitutive act that brings something into countability for the first time. The unnamed cannot be derived from a single document passage because the unmarked is a structural property of the *pattern* of namings. It arises through the between of namings — a structural hole visible through the constellation (Benjamin, Adorno) of relational patterns. It is grounded not through document anchors but through its participations: the silence names the hole; its relations point to the namings whose pattern produces it.
+Inquiry therefore consists of two complementary operations: **(a) re-naming observed namings** — CCS movement along the designation gradient, from cue through characterization to specification; and **(b) naming observed unnameds** — a constitutive act that brings something into countability for the first time. The unnamed cannot be derived from a single document passage because the unmarked is a structural property of the *pattern* of namings. It arises through the between of namings — a structural hole (“of sorts, not exactly like in SNA”) visible through the constellation (Benjamin, Adorno) of relational patterns, and not necessarily only through discourse analyses. Its participations do not make it grounded (Benjamin Jörissen, Session 11: “we could not say grounded”); it appears as an unaccounted through pattern analysis. The silence names the hole; its relations point to the namings whose pattern produces it.
 
 ### 2.5 Provenance: Two Orthogonal Dimensions
 
@@ -135,7 +135,7 @@ Inquiry therefore consists of two complementary operations: **(a) re-naming obse
 
 These dimensions are orthogonal: a cue CAN be document-anchored (a passage was marked but not yet named); a specification CAN be ungrounded (a theoretical construct not yet tied to empirical material).
 
-Memos document reflexive reasoning — CCS movement, analytical process. They are NOT grounding. Only a document anchor (a link to a specific passage or image region in the corpus) constitutes empirical grounding. All material — interview transcripts, photographs, policy documents, theoretical texts, media artifacts — belongs in the corpus and is equally codeable. There is no primary/secondary distinction.
+Memos document reflexive reasoning — CCS movement, analytical process. They are NOT grounding. Only a document anchor (a link to a specific passage or image region in the corpus) constitutes empirical grounding. All material — interview transcripts, photographs, policy documents, theoretical texts, media artifacts — belongs in the corpus and is equally codeable. There is no primary/secondary distinction (a tentative position in Session 08: “ich DENKE ersteres”).
 
 ---
 
@@ -157,7 +157,7 @@ Undirected, non-qualified bonds between namings — **relating-cues**. A partici
 
 Participations form an **autonomous structural layer** — the *between*. A participation does not belong to either of its endpoints. It exists as a third thing, irreducible to the namings it connects: delete one endpoint and the participation is orphaned — not because the other lost a property, but because a bond lost a constituent. This independence means the participation layer cannot be reconstructed from the namings table alone (you would lose which things are bonded) or from the appearances table alone (the same participation may appear differently — or not at all — from different perspectives).
 
-Qualification — direction, valence, mode — is added through **appearances**. A participation that receives an appearance with `mode = 'relation'`, `directed_from`, `directed_to`, and a `valence` has moved from relating-cue toward relational characterization. The CCS gradient thus applies to bonds as well as to entities: a participation is a cue-level bond; a fully characterized relation-appearance with specified valence is a bond at specification level. The analytical determination of *what connects* follows the same designation logic as the determination of *what is*.
+Qualification — direction, valence, mode — is added through **appearances**. A valence alone does not move a relation: „EIne Relation mit Valenz aber ohne individuelle Inscription wäre für uns der Status "cue", nicht "characterization", solange wie da nicht draufgeklickt und ein neuer Stack-Index erzeugt wurde“ (Benjamin Jörissen, Session 09; in English: a relation with a valence but without an individual inscription has the status “cue”, not “characterization”, until it is clicked and a new stack index is created). A relation the researcher names with its own inscription is a characterization; inscription and valence together make it a specification (this extension was formulated by the assistant in the same session; Benjamin Jörissen's next word was “commit”). The CCS gradient thus applies to bonds as well as to entities. The analytical determination of *what connects* follows the same designation logic as the determination of *what is*.
 
 Critically, a participation IS itself a naming — its `id` exists in the `namings` table. This means a participation can itself participate in further relations. Meta-relations — Sünkel's *Eta-Beziehung*, the relation of relations — require no special mechanism; they are participations of participations.
 
@@ -187,19 +187,23 @@ The `by` field references another naming — typically a researcher-naming or an
 
 ---
 
-## 4. The Three-Layer Hierarchy
+## 4. Ground Truth, List and Maps
 
-1. **Data structure** (database tables) = **ground truth.** This is what IS. Namings, participations, appearances, naming acts.
-2. **List** (Namings page) = **privileged representation.** Complete, dimensionally non-reductive. Shows all namings with their current designation state, stack depth, provenance indicators, participation counts. No arbitrary spatial collapse. This is the primary analytical workspace.
-3. **Canvas / Maps** = **derivative projections.** Cognitively helpful (humans need spatial layout to perceive patterns) but epistemically subordinate. Trade complete coverage for intelligibility.
+Benjamin Jörissen, Session 09 (12 March 2026), in his words:
 
-Three constraints follow from this hierarchy:
+1. **Data structure and database = ground truth.** But this ground truth is “an sich” unconcrete: it consists of stacks of namings and naming relations, none of which is “the right one” (his words: „von denen keiner "der richtige ist"“). transact-qda is a QDA for a virtual or latent relational data structure in this sense.
+2. **The list is the ideal form of representation**, because it does not have to squeeze connections into two dimensions; it renders the logic best. “But we do not usually WORK in the list, because humans are cognitively overwhelmed by it.” The Namings page shows the stacks uncollapsed.
+3. **Maps are not simply secondary**, “because somewhere the superpositions have to be concretized”. Every map is a decentral tool acting on the same data space: whatever is done on a map changes namings and relation namings, and that goes onto their stacks, while each map keeps its own collapse position. The Situational Map contains all namings, with no opt-in; when it gets crowded, hiding functions help, not selective adding.
+
+(Earlier versions of this manual ranked these as a “three-layer hierarchy” with the list as “the primary analytical workspace” and maps as “epistemically subordinate”. That ranking was the assistant's; it contradicts the statements above.)
+
+Three construction rules (the assistant's formulation, approved with the plan in Session 12):
 
 - No operation may exist only on the canvas.
 - No analytically relevant state may be visible only on the canvas.
 - The list must be able to show everything the canvas shows (phase membership, provenance, designation, stack depth).
 
-A critical clarification: core operations — designate, rename, relate, withdraw, inspect stack — operate on the **naming itself**, not on its appearance on a specific map. The `naming_acts` table has no `perspective_id` column. Designation belongs to the naming; participations are global bonds; the inscription chain belongs to the naming. Appearances determine how a naming *looks* from a perspective, but the operations that constitute analytical work act on the naming directly.
+A critical clarification: core operations — designate, rename, relate, inspect stack — operate on the **naming itself**, not on its appearance on a specific map. Withdraw and restore are the exception: they mark appearances — on a map the appearance on that map, in the Namings list every appearance of the naming — and both stand as acts in the naming's stack, with time and author. The `naming_acts` table has no `perspective_id` column. Designation belongs to the naming; participations are global bonds; the inscription chain belongs to the naming. Appearances determine how a naming *looks* from a perspective, but the operations that constitute analytical work act on the naming directly.
 
 The Namings page is therefore not a derivative view of maps. It is the **least-reduced perspective** — complete, dimensionless, most faithful to the data structure itself. Maps are more reduced: they select a subset of namings, collapse them into 2D space, and filter by perspective. The Namings page is where the data structure speaks most directly.
 
@@ -213,19 +217,19 @@ A **map** is a naming that serves as a perspective. Creating a map creates a nam
 
 **Multiple maps** are both supported and expected. The Namings list (Section 4) is the complete, dimensionless representation; maps are curated perspectives on that ground truth. A project may have several situational maps (one per document explored, one for the overall situation), social worlds maps, positional maps — all sharing the same naming pool.
 
-**Adding elements** creates a naming with an initial designation of `cue` and an entity-appearance on the map. At this stage, nothing is determined — the element is a pointing gesture, a registered signal. The map's designation profile (aggregate counts per CCS stage) shows predominantly cues: the map is in its messy phase. The input searches existing project namings: you can **place an existing naming** on this map (creating an appearance without a new naming) or **create a new naming**. This prevents unintended duplication across maps.
+**Adding elements** creates a naming with an initial designation of `cue` and an entity-appearance on the map. At this stage, nothing is determined yet: “everything is a cue, and every cue is a THING” (Benjamin Jörissen, Session 10). Pre-linguistic pointing belongs to the *signal*, which precedes the cue. The map's designation profile (aggregate counts per CCS stage) shows predominantly cues: the map is in its messy phase. The input searches existing project namings: you can **place an existing naming** on this map (creating an appearance without a new naming) or **create a new naming**. This prevents unintended duplication across maps.
 
-**Relating elements** creates a participation-naming that bonds two namings. The relation itself gets an inscription ("constrains," "enables," "constitutes"), a designation, and its own stack. Because the relation is a naming, it can be related to other namings — including other relations. Clarke's relational analysis ("what is the nature of the relationship?") produces namings, not annotations on edges. **Structural integrity** is enforced: when a relation is created on a map, both endpoints are guaranteed to have appearances on that map.
+**Relating elements** creates a participation-naming that bonds two namings. The relation itself gets an inscription ("constrains," "enables," "constitutes"), a designation, and its own stack. Because the relation is a naming, it can be related to other namings — including other relations. Clarke's relational analysis ("what is the nature of the relationship?") produces namings, not annotations on edges. **Structural integrity** is enforced: when a relation is created on a map, both endpoints are guaranteed to have appearances on that map. Relating is itself a determination: a researcher's relation lifts endpoints that stand at cue to characterization, and the lifting act names the relation as its cause in the stack. Relations derived from placement or suggested by the AI lift nothing (Session 15: „eine Ausschluss einer Bestimmung/Relationierugn ist ja noch keien positive Charakterization").
 
 **Cross-boundary signaling**: when a naming on a map has participations with namings *not* on that map, an indicator shows the count. This marks what the current perspective leaves outside — without auto-expanding the map. The user decides whether to "pull" outside namings onto the map or leave them beyond the current frame.
 
-**Naming merge**: when two namings turn out to be the same entity (a collaboration or memory error), they can be merged. The survivor absorbs the merged naming's participations, appearances, and annotations. A memo documents what was absorbed. This is ground-truth surgery — irreversible by design, transparent by memo.
+**Naming merge**: when two namings turn out to be the same entity (a collaboration or memory error), they can be merged. The survivor absorbs the merged naming's participations, appearances, and annotations. The merge stands as an act in the survivor's stack, recording what was absorbed; no separate memo-naming is created. Researcher namings cannot be merged or withdrawn. That a merge cannot be undone is a known defect of the current implementation (append-only), not a design intention; Benjamin Jörissen also noted the missing confirmation step (Session 13).
 
-**Import from document**: all annotation-namings (codes) from a specific document can be batch-placed on a map. This supports the workflow: create a map → import from a document → begin relational analysis.
+**Import from document**: all namings anchored in a specific document can be batch-placed on a map. This supports the workflow: create a map → import from a document → begin relational analysis.
 
-**Phases** group related namings by analytical affinity. A phase is a naming with `mode = 'perspective'` — Dewey/Bentley: "Characterization develops out of cue through the clustering of cues and the growth of language." Forming a phase IS characterizing; accordingly, a new phase's initial designation is `characterization`, not `cue`. Phases are project-level: they appear on any map where at least one member is present, and they are managed on the Namings page independently of maps. On maps, phase membership is visualized through colored dots and highlight filtering. Phase membership is tracked in an append-only history table (`phase_memberships`) for full analytical provenance.
+**Phases** group related namings by analytical affinity. A phase is a naming with `mode = 'perspective'` — Dewey/Bentley: "Characterization develops out of cue through the clustering of cues and the growth of language." Forming a phase IS characterizing; accordingly, a new phase's initial designation is `characterization`, not `cue` (an implementation choice, not settled in the sessions). Phases are project-level: every map lists them in its sidebar together with how many of their namings appear on that map, and they are managed on the Namings page independently of maps. On maps, phase membership is visualized through colored dots and highlight filtering. Phase membership is tracked in an append-only history table (`phase_memberships`) for full analytical provenance.
 
-**Pairwise interrogation** — Clarke's procedure of centering on one element and systematically examining its relation to every other — is available as a workflow mode. A transactional extension is equally available: center on a *relation* and ask which entities it connects, which other relations it participates in, what its inscription history reveals.
+**Pairwise interrogation** — Clarke's procedure of centering on one element and systematically examining its relation to every other — is available through **Center** in the context menu (right-click) of a naming on a map: the map arranges itself radially around that naming, its relations stay in view and everything else is dimmed; the toolbar button leads back to the researcher's own layout without changing it. A transactional extension is equally available: center on a *relation* and ask which entities it connects, which other relations it participates in, what its inscription history reveals.
 
 **Topology snapshots** preserve the spatial layout of a map at a given moment. These enable temporal comparison (how did the map look before this round of analysis?) without overwriting the current state.
 
@@ -235,12 +239,12 @@ Clarke's second map type moves from "What is in the situation?" to **"How is the
 
 **Formations** are the primary analytical objects on SW/A maps. They are not groups of elements but **universes of discourse** (Strauss), **dispositif configurations** (Foucault), performatively constituted through ongoing activity. A social world exists because actors DO it — commit to shared activities, produce discourse, maintain boundaries. Formations carry four roles:
 
-- **Social world** (dashed ellipse): A universe of discourse — shared activity, commitment, identity. *What holds them together?*
-- **Arena** (long-dashed ellipse): A site of contestation where multiple worlds meet over shared issues. *What is at stake?*
-- **Discourse** (filled ellipse): A discursive formation — a system of statements that produces objects, subjects, concepts. *What does this discourse make sayable/unsayable?*
+- **Social world** (dotted ellipse): A universe of discourse — shared activity, commitment, identity. *What holds them together?*
+- **Arena** (dashed ellipse): A site of contestation where multiple worlds meet over shared issues. *What is at stake?*
+- **Discourse** (solid line, 50 % transparent or grey): A discursive formation — a system of statements that produces objects, subjects, concepts. *What does this discourse make sayable/unsayable?*
 - **Organization** (dashed rectangle): A formal organization that may host, constrain, or enable worlds and arenas. *How does organizational structure shape participation?*
 
-**Spatial semantics** on SW/A maps carry analytical meaning: containment (element inside formation) = membership/participation in that world; formation-in-formation = nesting (a discourse operating within an arena); overlap between formations = contested or shared boundary territory. This spatial meaning is distinct from the purely layout-oriented positioning on situational maps.
+**Spatial semantics** on SW/A maps carry analytical meaning: containment (element inside formation) = membership/participation in that world; formation-in-formation = nesting (a discourse operating within an arena); overlap between formations = contested or shared boundary territory. This spatial meaning is distinct from the purely layout-oriented positioning on situational maps. The system derives these relations from the placement (Benjamin Jörissen, Session 15: „Das System müsste aus den Containments und Überschneidungen relationen automatisch modellieren"; „Verschiebe ich ein ELement, geht es neue Beziehungen ein, die diesen Relation-Stack automatisch updaten müssen"). Moving a formation updates them: a relation that no longer holds is withdrawn, one that holds again is restored rather than created anew. Their stacks say that they are derived from the placement. A formation's role (arena, social world, organization, discourse) belongs to its appearance on the SW/A map; no memo is created for it.
 
 **Clarke's heuristic questions** structure the analytical work. For social worlds: 14 questions about activities, commitments, technologies, boundaries, segments, implicated actors. For arenas: 11 questions about contested issues, positions, power dynamics, boundary objects. These are sensitizing prompts, not a mandatory checklist.
 
@@ -274,31 +278,34 @@ Documents — interview transcripts, photographs, policy texts, theoretical chap
 
 **Text annotation** uses character-offset anchors (`pos0`, `pos1`) to mark passages. **Image annotation** uses rectangle regions in normalized coordinates (`[0,1]`), resolution-independent. Both produce the same analytical object: an annotation linking a naming to a specific location in the corpus. This is where empirical grounding is produced.
 
-**In-vivo coding** creates a naming inline during annotation: select a passage or image region, type a name, and in one act a naming is created and anchored to the corpus. The naming immediately appears on the active map as a cue.
+**In-vivo naming** creates a naming inline during annotation: select a passage or image region, type a name, and in one act a naming is created and anchored to the corpus. The naming immediately appears on the active map as a cue.
 
-**Codes are not a separate ontological domain.** They are namings — from any map, from any perspective — that have been used to annotate documents. The "code list" is a derived view: a query showing "namings with document anchors." This eliminates the artificial boundary between map elements and document codes that existing QDA tools enforce.
+**There are no codes as a separate domain.** A code is “the researcher's construction, i.e. naming” (Session 12): namings — from any map, from any perspective — that have been used to annotate documents. On 3 July 2026 the term “code” was dropped in favour of “naming” (“wir haben den Begriff ‚Naming‘, das ist dann ehrlicher”); the namings list with its grounding filter is the only list.
 
 **Documents are stored in project directories** (`projekte/{slug}/files/`), with relative paths in the database. This ensures portability: a project directory contains everything needed to reconstruct the project, including all media files.
 
 ### 5.5 Phases
 
-Phases are the bridge between document coding and situational mapping. Dewey/Bentley: "Characterization develops out of cue through the **clustering** of cues and the growth of language." Forming a phase IS characterization — grouping related cues and naming the group is the act that moves from cue to characterization on the CCS gradient.
+Phases are the bridge between naming in documents and situational mapping. Dewey/Bentley: "Characterization develops out of cue through the **clustering** of cues and the growth of language." Forming a phase IS characterization — grouping related cues and naming the group is the act that moves from cue to characterization on the CCS gradient.
 
 **A phase is a naming** with `mode = 'perspective'`. It has its own inscription, designation (starts at `characterization`), and stack. Phase membership is tracked in an append-only history table for full provenance.
 
-**Project-level, not map-bound.** Phases belong to the project, not to a specific map. They appear automatically on any map where at least one of their members is present. This means a researcher can create phases during coding and find them on the map when they move to relational analysis.
+**Project-level, not map-bound.** Phases belong to the project, not to a specific map. They appear automatically on any map where at least one of their members is present. This means a researcher can create phases while naming in documents and find them on the map when they move to relational analysis.
 
 **Phase management** lives on the **Namings page** — the privileged representation (Section 4). The right panel shows all phases; clicking one reveals its members and all their passages, grouped by naming and document. Namings are assigned to phases by entering assign mode and clicking. This is an analytical operation on naming-level, not a passage-level operation.
 
-**Phase filter in the Document view.** The Passages panel (right column in the document viewer) provides a phase filter dropdown. Selecting a phase narrows the passage list to codes that belong to that phase — enabling focused review of the empirical basis for a phase while coding.
+**Phase filter in the Document view.** The Passages panel (right column in the document viewer) provides a phase filter dropdown. Selecting a phase narrows the passage list to namings that belong to that phase — enabling focused review of the empirical basis for a phase while working in the document.
 
 **Recursive forming a phase** is supported: a phase can itself be a member of another phase. This enables multi-level analytical organization without imposing a fixed hierarchy.
 
 ### 5.6 Memos
 
-Memos are the **shared inquiry medium** of the analytical process. They capture observations, questions, tensions, and theoretical connections that span the research situation. In transact-qda, a memo is a first-class naming — it participates in the core data model alongside entities, relations, and documents.
+Memos are the **shared inquiry medium** of the analytical process. They capture observations, questions, tensions, and theoretical connections that span the research situation. transact-qda distinguishes kinds of memos:
 
-**Memo creation** produces a naming with content stored in a dedicated `memo_content` table. Memos can be linked to any number of namings (elements, relations, silences, other memos) via participations. The linked elements provide analytical context: a memo about a tension between two formations links to both.
+- A **memo on a naming** is that naming's description (“a description is an expanding naming”, Dewey/Bentley): an act in the naming's stack, not a naming of its own. It carries the text and, optionally, the namings one has in mind while writing it. A memo on a cue lifts it to characterization (Session 08: “ein reflected cue ist mindestens eine characeriztation”; 9 November 2026: “MEMOS ADVANCEN EINE ENTITÄT VOM CUE ZUR CHARACTERIZATION”). „Wenn ich ZU einem Naming ein MEMO anlege, dann kann das ja wohl logischerweise kein EIGENES NAMING sein“ (9 November 2026; in English: if I write a memo ON a naming, it can logically not be a naming of its own).
+- **Analytic memos** (about constellations, about a map, or free) and **organization memos** (data collection strategy, sampling, the course of the research) are the medium of inquiry. They are „kein Naming, solange man sie nicht dezidiert zu einem Naming macht“ (Session 16; in English: not a naming, as long as one does not deliberately make them one).
+
+Technically, analytic and organization memos are stored with their content in `memo_content` on a dedicated memo-system perspective and do not appear in the namings list; they can be linked to any number of namings. Memos on a naming are stored in its stack (`naming_acts.memo_text`, with the namings referred to in `linked_naming_ids`). The Memos page shows both kinds.
 
 **Status lifecycle.** Memos follow a lifecycle that tracks how the researcher engages with them:
 
@@ -309,25 +316,33 @@ Memos are the **shared inquiry medium** of the analytical process. They capture 
 - **Promoted**: Elevated to a naming on a map — the memo's insight becomes a cue-designation entity. This is the transition from reflexive observation to analytical substance.
 - **Dismissed**: Archived. Can be restored to "presented" if later relevant.
 
-**Memo discussions** use the same infrastructure as cue discussions (Section 5.7): the researcher can engage the AI in dialogue about a memo's content. Discussion turns are themselves memo-namings linked to the parent memo. The AI can respond with analytical depth or revise the memo if the discussion warrants it.
+**Memo discussions** use the same infrastructure as cue discussions (Section 5.7): the researcher can engage the AI in dialogue about a memo's content. Discussion turns are stored like memos and linked to the parent memo. The AI can respond with analytical depth or revise the memo if the discussion warrants it.
 
 **Memos are NOT grounding.** They document reflexive reasoning — CCS movement, analytical process, theoretical connections. Only document anchors constitute empirical grounding. This distinction is epistemologically important: a memo about a pattern of silences is an analytical observation, not evidence.
 
-### 5.7 The AI Co-Researcher
+### 5.7 Cowork: the AI on maps
 
-The AI is not an external tool that responds on command. It is a **naming in the data space** — it has its own researcher-naming per project, and its analytical acts (suggestions, memos, withdrawals) are naming acts attributed to this AI-naming. The AI is a co-actor in the analytical situation, not an instrument applied to it.
+On maps the AI is called **Cowork**. (The **Coach** is a different thing: the help panel that explains the platform and answers questions; it writes nothing into the project.)
 
-The AI's operational constraint: it can only produce **cues**. Every AI suggestion — a new element, a relation, a pattern observation — enters the map as a cue with `by = ai_naming_id`. Only the researcher can elevate a cue to characterization (acceptance) or leave it as a cue (implicit non-engagement). Designation authority remains with the researcher; cue production is shared.
+The AI is not an external tool that responds on command. It is a **naming in the data space**: every project has its own AI naming, and everything the AI writes — suggested namings, relations, silences, phases, memos, withdrawals — is a naming act by that naming. In a stack, the AI's acts therefore carry the name of the project's AI naming, not the name "Cowork".
 
-**Socratic posture.** The AI's fundamental posture across all map types is Socratic accompaniment:
+The AI's operational constraint: it only produces **cues**. Every AI suggestion enters the map as a cue. Only the researcher moves a cue to characterization or specification, or leaves it a cue. Designation remains with the researcher; cue production is shared. Every AI act can be identified, hidden, and taken back.
+
+**When Cowork runs.** Cowork has no input field. It runs when you press **Cowork** in the map sidebar, and — only if *Cowork: react automatically* is switched on in the project overview — after each of your acts on a map. A run can take several minutes.
+
+**What you get.** Mostly memos: questions, observations, reminders. A new memo appears as a card on the map; you can acknowledge it, dismiss it, or make it a naming of its own, and you can discuss it. The memo stays on the Memos page with its status. Cowork may also place cues (namings, relations, silences, phases); they are marked as AI cues and can be withdrawn like anything else.
+
+**Silences from Cowork.** A silence that Cowork proposes arises from the pattern of relations among namings that are on the map. It is related to exactly those namings (as cue relations), and its reasoning may rest only on them. Without such namings on the map, Cowork writes no silence. There is currently no menu entry with which a researcher draws a silence on a map; to record an absence yourself, write a memo to the namings whose pattern produces it (Memo on the naming, with the other namings referred to). A silence Cowork proposed can be designated, grounded and withdrawn like any other naming.
+
+**Socratic posture.** Cowork's posture across all map types is Socratic accompaniment:
 
 1. **Ask** — questions that help the researcher articulate their analytical choices
 2. **Remind** — of Clarke's methodological principles when relevant
 3. **Reflect** — in justified cases, prompt critical self-reflection about the researcher's decisions
 
-The AI does NOT proactively suggest elements, relations, or analytical content by default. The researcher is the epistemic authority. AI suggestions are available when explicitly requested, but the default mode is questioning, not answering.
+The researcher is the epistemic authority. Cowork's default is questioning, not answering; it is instructed not to propose analytical content unprompted.
 
-**Deconstructive questioning.** The AI does not reproduce Clarke's categories as slots to fill. It does not ask "did you consider nonhuman actors?" — which reinstates the category. Instead, it questions the distinctions the researcher has drawn:
+**Deconstructive questioning.** Cowork does not reproduce Clarke's categories as slots to fill. It does not ask "did you consider nonhuman actors?" — which reinstates the category. Instead, it questions the distinctions the researcher has drawn:
 
 - "What are the hybrid human/nonhuman moments in this element?"
 - "What is the genealogy of this categorization?"
@@ -335,15 +350,15 @@ The AI does NOT proactively suggest elements, relations, or analytical content b
 - "Which discourse constitutes this as a 'human' element?"
 - "What is the relational pattern around this absence?"
 
-**Discussion, not accept/reject.** When the AI produces a cue, the researcher does not face a binary accept/decline button. Instead, they can enter dialogue *at the cue itself*: question the AI's reasoning, request revision, challenge the framing. This discussion is a memo chain linked to the naming. A discussion can result in: the AI rewriting the cue (new inscription in the stack, old preserved), the AI withdrawing the cue (soft-delete with discussion history preserved), or the AI responding with a deepening memo (no rewrite, but richer analytical context).
+**Discussion, not accept/reject.** At a cue or a memo from Cowork you can open a discussion: question its reasoning, ask for a revision, challenge the framing. Cowork answers there; it can rewrite its cue (a new inscription in the stack, the old one preserved), withdraw it, or answer with a further memo.
 
-The AI sees the full map context — all elements, relations, designations, participations, phases, discussion histories, withdrawn cues — so its questions emerge from the actual analytical state, not from a fixed checklist.
+Cowork sees the whole map — elements, relations, designations, phases, discussions, withdrawn cues — so its questions come from the actual state of the analysis, not from a checklist.
 
-**Map-type awareness.** The AI adapts its posture and available operations to the map type:
+**Map types.**
 
-- On **situational maps**: primary tool is `write_memo` for questions and observations; `suggest_element`, `suggest_relation`, `identify_silence` available on explicit request.
-- On **SW/A maps**: uses `suggest_formation` (not `suggest_element`) for social worlds, arenas, discourses, and organizations; attends to relations between formations; draws from Clarke's 14 social world and 11 arena questions; applies the five analytical deepening moments.
-- On **positional maps**: attends to axis refinement, disarticulation (separating positions from actors), empty quadrants, forming a phase, and grounding. Does NOT proactively suggest positions.
+- On **situational maps** Cowork mainly writes memos.
+- On **SW/A maps** it attends to social worlds, arenas, discourses and organizations and the relations between them, drawing on Clarke's social-world and arena questions.
+- On **positional maps** it attends to the axes, to positions separated from actors, to empty regions, and to grounding. It does not propose positions on its own.
 
 **Provider-agnostic AI.** The AI client supports seven providers: Ollama (local, DSGVO-compliant), Mistral AI (EU), IONOS (EU, Berlin), Mammouth AI (EU), Anthropic (US), OpenAI (US), and OpenRouter (US). One model is configured for all use cases. Provider and model are selected in the settings page; API keys are stored in `.key` files (gitignored). All providers except Anthropic use the OpenAI-compatible API format.
 
@@ -377,7 +392,7 @@ QDPX is the open exchange format for qualitative data analysis projects (support
 
 **Export** uses a dual-namespace approach: a standard QDPX namespace (readable by any compliant tool) plus a custom `urn:transact-qda:1.0` namespace for lossless re-import. A **pre-export loss report dialog** shows what external tools will and will not see:
 
-- **Preserved for external tools**: All codes, documents, annotations, memos, relations, one map with positions.
+- **Preserved for external tools**: All namings (exported as QDPX codes), documents, annotations, memos, relations, one map with positions.
 - **Lost for external tools**: Naming history (collapsed to latest inscription), CCS gradient (only in description text), phases, silences, AI metadata, map snapshot history, researcher identities.
 - **Lossless**: The native format (save to directory) preserves everything.
 
@@ -399,7 +414,7 @@ Clarke's relational analysis ("center on one element, draw lines to all others")
 - Map iterations understood as superpositions, not linear progress — each version a perspective, not a superseded draft
 - Diffraction (Barad): making difference patterns visible, not reflecting the same
 
-This is architecturally supported: different `collapseAt` values on the same naming, different phases of the same map, are literally different superposition collapses placed side by side.
+(The assistant's assumption, not settled: different `collapseAt` values on the same naming, different phases of the same map, could be read as different superposition collapses placed side by side.)
 
 **3. Theories as visible namings on the map.** Theoretical commitments are placed ON the map as explicit namings — with their own inscription chains, designation histories, and provenance. This prevents hidden social theories from entering the analytical process as unexamined dogmata. From the transactional standpoint, the distinction between "empirical situation" and "research situation" does not need to be imposed a priori — it will emerge through the analytical process itself, through different phases, maps, and perspectival collapses.
 

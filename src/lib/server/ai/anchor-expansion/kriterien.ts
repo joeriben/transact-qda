@@ -4,10 +4,10 @@
 // Das Kriterium eines Namings — abgelegt, nicht bei jedem Öffnen neu erfunden.
 //
 // Die Ableitung aus Naming und Memo ist ein Vorschlag. Was zählt, ist das
-// Kriterium, das der Forscher stehen lässt oder korrigiert: „Die bloße
-// Ja/Nein-Rückfrage ist kein Fall" steht in keinem Memo und folgt aus keiner
-// Ableitung — es ist seine Entscheidung, und sie muss den Sitzungsschluss
-// überleben.
+// Kriterium, das der Forscher stehen lässt oder korrigiert: „Ja/Nein-Rückfrage
+// zählt nicht als Fall." (BJ, 05.08.2026) steht in keinem Memo und folgt aus
+// keiner Ableitung — es ist seine Entscheidung, und sie muss den
+// Sitzungsschluss überleben.
 //
 // Zwei Gründe, warum das nicht bloß Bequemlichkeit ist:
 //   * Die Ableitung schwankt. Dasselbe Naming bekam an einem Tag einen, am

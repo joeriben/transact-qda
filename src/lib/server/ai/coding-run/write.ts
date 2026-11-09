@@ -1,15 +1,15 @@
 // SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// SA-agnostic write path for the per-document coding run.
+// SA-agnostic write path for the per-document naming run.
 //
-// Der Coding-Run kennt zwei Output-Klassen:
+// Der Naming-Run kennt zwei Output-Klassen:
 //
 // 1. SName (Sequence-Naming, valence='thematizes', annotationKind='sequence-naming'):
 //    Thematische Spanne über eine Sequenz, dient als Inhaltsverzeichnis
-//    (Strauss/Clarke: "thematische Codes" als Lese-Hilfe vor dem feingliedrigen
-//    Open Coding). Bekommt KEINE SitMap-Bridge, da TOC-Klasse, keine
-//    analytische Karte.
+//    (bei Strauss/Clarke: „thematische Codes" als Lese-Hilfe vor dem
+//    feingliedrigen „Open Coding"). Bekommt KEINE SitMap-Bridge, da
+//    TOC-Klasse, keine analytische Karte.
 //
 // 2. CName (Cue-Naming, valence='codes', annotationKind='code-naming'):
 //    Das Naming, das aufmerken lässt — "hier ist etwas bemerkenswert".
@@ -27,24 +27,30 @@
 // Beide Pfade gehen über createOrphanNaming + createAnnotation, der
 // Unterschied steckt in valence/annotationKind/placeOnPrimaryMap.
 //
-// Every write is stamped with { aiPersona: 'coding-run', aiRunId } so
-// the codes are attributable to the Coding-Run Bearbeiter and can be
-// hidden/filtered/rolled back as a unit.
+// Every write is stamped with { aiPersona: 'coding-run', aiRunId } (the
+// persona key is stored data, like the literals above) so the namings are
+// attributable to the Naming-Run Bearbeiter and can be hidden/filtered/rolled
+// back as a unit.
 
 import { query, queryOne, transaction } from '../../db/index.js';
-import { createOrphanNaming, createAnnotation } from '../../db/queries/codes.js';
+import { createOrphanNaming, createAnnotation } from '../../db/queries/annotations.js';
 import { provenanceProps, type WriteProvenance } from '../runtime/tool-executor.js';
 
 const AI_SYSTEM_UUID = '00000000-0000-0000-0000-000000000000';
 
 /**
- * Find or create the Coding-Run "Bearbeiter" — the actor naming that
- * every coding-run naming_act is attributed to (Forscher-als-Naming).
+ * Find or create the Naming-Run "Bearbeiter" — the actor naming that
+ * every naming_act of the run is attributed to (Forscher-als-Naming).
  *
  * It carries a self-referential perspective appearance tagged
  * role='coding-run-agent'. That role is neither a map (no mapType) nor
- * the grounding workspace, so the Bearbeiter is invisible as a code and
- * invisible as a map — it is purely an actor.
+ * the grounding workspace, so the Bearbeiter is invisible as an anchorable
+ * naming and invisible as a map — it is purely an actor.
+ *
+ * The role 'coding-run-agent' is a stored value, and the lookup depends on
+ * it alone. Its inscription is 'Naming-Run'; actors created before
+ * 09.11.2026 as 'Coding-Run' were renamed by migration 039 (a rename act in
+ * their stack).
  */
 export async function getOrCreateCodingRunNaming(projectId: string): Promise<string> {
 	const existing = await queryOne<{ id: string }>(
@@ -60,7 +66,7 @@ export async function getOrCreateCodingRunNaming(projectId: string): Promise<str
 	return transaction(async (client) => {
 		const naming = await client.query(
 			`INSERT INTO namings (project_id, inscription, created_by)
-			 VALUES ($1, 'Coding-Run', $2) RETURNING id`,
+			 VALUES ($1, 'Naming-Run', $2) RETURNING id`,
 			[projectId, AI_SYSTEM_UUID]
 		);
 		const namingId = naming.rows[0].id;
@@ -72,8 +78,8 @@ export async function getOrCreateCodingRunNaming(projectId: string): Promise<str
 		);
 
 		await client.query(
-			`INSERT INTO naming_acts (naming_id, designation, by)
-			 VALUES ($1, 'characterization', $1)`,
+			`INSERT INTO naming_acts (naming_id, inscription, designation, by)
+			 VALUES ($1, 'Naming-Run', 'characterization', $1)`,
 			[namingId]
 		);
 
@@ -81,6 +87,8 @@ export async function getOrCreateCodingRunNaming(projectId: string): Promise<str
 	});
 }
 
+// Feldnamen und die Parameter-Keys codeLabel/codeMemo der commit*-Funktionen
+// sind Schnittstelle zum eingefrorenen orchestrator.ts und bleiben, wie sie sind.
 export interface CommitResult {
 	codeId: string;
 	codeLabel: string;
@@ -110,7 +118,7 @@ async function findOrCreateNaming(
 	);
 	if (existing.rows.length > 0) return { id: existing.rows[0].id, isNew: false };
 
-	const code = await createOrphanNaming(projectId, AI_SYSTEM_UUID, label, {
+	const naming = await createOrphanNaming(projectId, AI_SYSTEM_UUID, label, {
 		description: reasoning,
 		provenance: provenanceProps(prov),
 		placeOnPrimaryMap
@@ -118,27 +126,27 @@ async function findOrCreateNaming(
 	// Initial designation: a fresh naming enters the gradient as a cue.
 	await query(
 		`INSERT INTO naming_acts (naming_id, designation, by) VALUES ($1, 'cue', $2)`,
-		[code.id, bearbeiterNamingId]
+		[naming.id, bearbeiterNamingId]
 	);
-	return { id: code.id, isNew: true };
+	return { id: naming.id, isNew: true };
 }
 
 /**
- * Commit one coded passage: create-or-reuse the code naming, ground it
- * with an annotation relation to the document, and attach the Code-Memo
- * as a naming_act on the code (attributed to the Coding-Run Bearbeiter,
+ * Commit one named passage: create-or-reuse the naming, ground it with an
+ * annotation relation to the document, and attach the naming memo as a
+ * naming_act on the naming (attributed to the Naming-Run Bearbeiter,
  * linked to the annotation — the established passage-memo pattern).
  *
  * Idempotenz (für Resume-Sicherheit nach Pause/Stuck/Restart):
  * `createAnnotation` ist server-seitig idempotent (skip-on-existing über
- * (codeId, documentId, anchor.pos0, anchor.pos1, valence)). Wir prüfen hier
+ * (namingId, documentId, anchor.pos0, anchor.pos1, valence)). Wir prüfen hier
  * zusätzlich VOR dem Annotation-Insert, ob die identische Annotation
- * schon existiert — und wenn ja, schreiben wir auch das Code-Memo NICHT
+ * schon existiert — und wenn ja, schreiben wir auch das Naming-Memo NICHT
  * erneut (sonst entstünden Duplikat-naming_acts bei jedem Resume).
  * `isNewAnnotation: false` signalisiert dem Loop, dass die Sequenz
  * effektiv schon committet war.
  */
-export async function commitCodedPassage(opts: {
+export async function commitNamedPassage(opts: {
 	projectId: string;
 	bearbeiterNamingId: string;
 	documentId: string;
@@ -153,7 +161,7 @@ export async function commitCodedPassage(opts: {
 
 /**
  * SName-Commit-Pfad: thematischer Bogen über eine ganze Sequenz.
- * Unterscheidet sich von commitCodedPassage in genau drei Punkten:
+ * Unterscheidet sich von commitNamedPassage in genau drei Punkten:
  *   - valence='thematizes' (statt 'codes')
  *   - annotationKind='sequence-naming' (statt 'code-naming')
  *   - placeOnPrimaryMap=false beim Naming-Erzeugen (kein SitMap-Auftauchen)
@@ -192,10 +200,10 @@ async function commitNamingPassage(opts: {
 		projectId,
 		bearbeiterNamingId,
 		documentId,
-		codeLabel,
+		codeLabel: label,
 		anchor,
 		reasoning,
-		codeMemo,
+		codeMemo: memo,
 		prov,
 		kind,
 		sequenceMeta
@@ -206,18 +214,18 @@ async function commitNamingPassage(opts: {
 		kind === 'sname' ? 'sequence-naming' : 'code-naming';
 	const placeOnPrimaryMap = kind !== 'sname';
 
-	const { id: codeId, isNew: isNewCode } = await findOrCreateNaming(
+	const { id: namingId, isNew: isNewNaming } = await findOrCreateNaming(
 		projectId,
 		bearbeiterNamingId,
-		codeLabel,
+		label,
 		reasoning,
 		prov,
 		placeOnPrimaryMap
 	);
 
-	// Pre-Check: gibt es schon eine Annotation für (codeId, documentId,
+	// Pre-Check: gibt es schon eine Annotation für (namingId, documentId,
 	// anchor.pos0, anchor.pos1, valence)? Wenn ja, ist das ein Re-Commit
-	// nach Resume und das Code-Memo wurde schon geschrieben — wir
+	// nach Resume und das Naming-Memo wurde schon geschrieben — wir
 	// überspringen den Memo-Insert, um Duplikat-naming_acts zu vermeiden.
 	const annExisting = await query<{ id: string }>(
 		`SELECT a.naming_id as id FROM appearances a
@@ -228,7 +236,7 @@ async function commitNamingPassage(opts: {
 		   AND a.properties->'anchor'->>'pos0' = $4
 		   AND a.properties->'anchor'->>'pos1' = $5
 		 LIMIT 1`,
-		[codeId, documentId, projectId, String(anchor.pos0), String(anchor.pos1), valence]
+		[namingId, documentId, projectId, String(anchor.pos0), String(anchor.pos1), valence]
 	);
 
 	let annotationId: string;
@@ -243,7 +251,7 @@ async function commitNamingPassage(opts: {
 		const ann = (await createAnnotation(
 			projectId,
 			AI_SYSTEM_UUID,
-			codeId,
+			namingId,
 			documentId,
 			'text',
 			anchor,
@@ -254,14 +262,14 @@ async function commitNamingPassage(opts: {
 		annotationId = ann.id;
 		isNewAnnotation = true;
 
-		if (codeMemo && codeMemo.trim()) {
+		if (memo && memo.trim()) {
 			await query(
 				`INSERT INTO naming_acts (naming_id, by, memo_text, linked_naming_ids)
 				 VALUES ($1, $2, $3, $4)`,
-				[codeId, bearbeiterNamingId, codeMemo.trim(), [annotationId]]
+				[namingId, bearbeiterNamingId, memo.trim(), [annotationId]]
 			);
 		}
 	}
 
-	return { codeId, codeLabel, isNewCode, isNewAnnotation, annotationId };
+	return { codeId: namingId, codeLabel: label, isNewCode: isNewNaming, isNewAnnotation, annotationId };
 }

@@ -1,26 +1,27 @@
 // SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
-// Model-Tiers — per-faculty model routing for the per-document coding run.
+// Model-Tiers — per-faculty model routing for the per-document naming run.
 // The tier mechanism is adopted from an earlier routing layer, scoped here
-// to the coding run's two faculties.
+// to the naming run's two faculties.
 //
-// The coding run confronts two faculties per sequence — a thematic span
+// The naming run confronts two faculties per sequence — a thematic span
 // computed algorithmically, see segmentation.ts (and prompts.ts):
 //
-//   H1 — the CODING line: code-extractive, frictionless, high call count.
+//   H1 — the NAMING line: naming-extractive, frictionless, high call count.
 //        H1 is *designed* to over-produce; the discipline against
-//        over-coding is structural (H2's confrontation), not H1's restraint.
+//        over-naming is structural (H2's confrontation), not H1's restraint.
 //        A cheap, fast model is therefore the *correct* H1 — not a saving.
 //
 //   H2 — the COMPREHENSION line: re-reads each sequence independently,
-//        carries the cumulative Verständnislinie, and confronts H1's codes.
-//        H2's reading is the *measure* against which over-coding is tested.
+//        carries the cumulative Verständnislinie, and confronts H1's namings.
+//        H2's reading is the *measure* against which over-naming is tested.
 //        Its independence from H1 lies in separate calls and prompts; in the
 //        tests (17.10.2026) a stronger model was barely better here, so both
 //        lines run on the same model.
 //
-// Two tiers, one per faculty:
+// Two tiers, one per faculty. Their IDs are keys in ai-settings.json `tiers`
+// and are passed by the frozen orchestrator.ts, so they keep their spelling:
 //   - 'coding-run.h1' routes H1-propose + H1-react.
 //   - 'coding-run.h2' routes H2-read + H2-confront.
 //
@@ -40,7 +41,7 @@
 import { loadSettings, effectiveRoute, type Provider } from '../client.js';
 
 export type Tier =
-	| 'coding-run.h1' // H1 propose + react — code extraction, frictionless, many calls
+	| 'coding-run.h1' // H1 propose + react — naming extraction, frictionless, many calls
 	| 'coding-run.h2' // H2 read + confront — independent comprehension, the measure
 	| 'anker.geschehen' // Was geschieht an dieser Äußerung — einmal je Dokument
 	| 'anker.wiedererkennung'; // Ist das derselbe Zug — je Naming über alle Einheiten
@@ -115,19 +116,19 @@ const MISTRAL_NOTE =
 
 export const TIER_REGISTRY: Record<Tier, TierMeta> = {
 	'coding-run.h1': {
-		displayName: 'Coding-Run — H1 (Coding-Linie)',
+		displayName: 'Naming-Run — H1 (Naming-Linie)',
 		description:
-			'H1 schlägt pro Absatz Codes vor und reagiert einmal auf H2s Einwände. ' +
-			'Code-extraktiv, frictionless, hohe Call-Zahl. H1 SOLL überproduzieren — ' +
-			'die Disziplin gegen Over-Coding ist strukturell H2s Konfrontation, nicht ' +
+			'H1 schlägt pro Absatz Namings vor und reagiert einmal auf H2s Einwände. ' +
+			'Naming-extraktiv, frictionless, hohe Call-Zahl. H1 SOLL überproduzieren — ' +
+			'die Disziplin gegen Over-Naming ist strukturell H2s Konfrontation, nicht ' +
 			'H1s Zurückhaltung. Sprach-Lock ist hier kritisch: H1 generiert die ' +
-			'sichtbaren Code-Labels, ein Sprachdrift kontaminiert das ganze Projekt.',
+			'sichtbaren Naming-Labels, ein Sprachdrift kontaminiert das ganze Projekt.',
 		recommended: GLM,
 		fallback: GLM,
 		candidates: [
 			{
 				...GLM,
-				note: 'Empfehlung: günstig bei hoher Call-Zahl, Reasoning max. Für die Coding-Linie noch nicht gemessen — Sprach-Lock auf deutscher Quelle vor dem ersten Produktivlauf prüfen.'
+				note: 'Empfehlung: günstig bei hoher Call-Zahl, Reasoning max. Für die Naming-Linie noch nicht gemessen — Sprach-Lock auf deutscher Quelle vor dem ersten Produktivlauf prüfen.'
 			},
 			{ ...KIMI, note: `${KIMI_BARELY_BETTER} ${KIMI_NOT_IN_EU}` },
 			{ ...OPUS, note: 'Höchste Tiefe, Reasoning xhigh; im Input 20-, im Output 4-mal so teuer wie GLM. Für H1 nicht nötig.' },
@@ -177,11 +178,11 @@ export const TIER_REGISTRY: Record<Tier, TierMeta> = {
 		]
 	},
 	'coding-run.h2': {
-		displayName: 'Coding-Run — H2 (Comprehension-Linie)',
+		displayName: 'Naming-Run — H2 (Comprehension-Linie)',
 		description:
 			'H2 liest jeden Absatz unabhängig (H1-agnostisch), führt die kumulative ' +
-			'Verständnislinie fort und konfrontiert H1s Codes (keep/revise/drop + ' +
-			'Code-Memo). H2s Lesart IST das Maß gegen Over-Coding. Derselbe Tier ' +
+			'Verständnislinie fort und konfrontiert H1s Namings (keep/revise/drop + ' +
+			'Naming-Memo). H2s Lesart IST das Maß gegen Over-Naming. Derselbe Tier ' +
 			'trägt die CName-Forensik und die komparative Dimensionalisierung.',
 		recommended: GLM,
 		fallback: GLM,

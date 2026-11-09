@@ -200,7 +200,7 @@ async function loadFullText(documentId: string): Promise<string> {
 
 /**
  * Sequenzvektoren eines Dokuments: die Sequenzen kommen aus derselben
- * Segmentierung, die auch der Coding-Run läuft (ephemer, deterministisch
+ * Segmentierung, die auch der Naming-Run läuft (ephemer, deterministisch
  * neu gerechnet), der Vektor je Sequenz ist das normalisierte Mittel der
  * Satzvektoren, die in ihren Bereich fallen.
  *

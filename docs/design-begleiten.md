@@ -1,6 +1,8 @@
 # Begleiten, nicht codieren — Verfassung der KI-Schicht
 
-*Design-leitend. Quelle: Text von Benjamin Jörissen, 05.07.2026, als Primärquelle (Konvention: Wortlaut vor Zusammenfassung; Tippfehler auf Wunsch des Autors korrigiert, Wortlaut sonst unverändert). Ableitungen danach, klar getrennt. Anlass war das QI-Manifest 2025, dessen Ansatz zurückgewiesen wird; die Einsicht steht unabhängig davon.*
+*Design-leitend. Quelle: Text von Benjamin Jörissen, 05.07.2026, als Primärquelle (Konvention: Wortlaut vor Zusammenfassung; Tippfehler auf Wunsch des Autors korrigiert; darüber hinaus vier Eingriffe, die der Autor am 05.07.2026 gebilligt hat, im Text in eckigen Klammern: [geben] statt „zu geben", [ist] statt „es", eingefügt [sondern] und [in]). Ableitungen danach, klar getrennt. Anlass war das QI-Manifest 2025, dessen Ansatz zurückgewiesen wird; die Einsicht steht unabhängig davon.*
+
+*Zuschreibungen an Benjamin Jörissen am 9.11.2026 gegen die Protokolle geprüft und korrigiert; Formulierungen des Assistenten sind gekennzeichnet.*
 
 ---
 
@@ -8,13 +10,13 @@
 
 > Coden ist eine ZWEISEITIGE, je machtvolle Angelegenheit:
 >
-> 1. klassisch ist es eine Machtgeste des folgenreichen Bezeichnens; die Ethik der GTM im Gegensatz zu exploitativen Methoden wie qual. Inhaltsanalyse besteht darin, anzustreben, diese Machtbeziehung so weit umzukehren, dass wir dem „Material" – und nun der „Situation" – Macht über uns als responsive Andere geben: Wir überlassen unsere Intelligenz und Sensibilität dem Material.
+> 1. klassisch ist es eine Machtgeste des folgenreichen Bezeichnens; die Ethik der GTM im Gegensatz zu exploitativen Methoden wie qual. Inhaltsanalyse besteht darin, anzustreben, diese Machtbeziehung so weit umzukehren, dass wir dem „Material" – und nun der „Situation" – Macht über uns als responsive Andere [geben]: Wir überlassen unsere Intelligenz und Sensibilität dem Material.
 >
 > 2. Weniger thematisiert: der AKT des Codens ist strukturell ein transformatorischer Bildungsprozess, SOWOHL in Bezug auf den In-situ-Prozess (Wissensaufbau → Abduktionen) als auch in Bezug auf die Prozesskette (im Kontext von human/nonhumanen Konstellationen – materielle soziale Kollektive – zur qual. Forscher_in werden).
 >
-> Das Problem von Coding-Agents ist daher mehr als nur das Ersetzen „humaner" Interpretation. Es ist das Ersetzen von entangleten Bildungsprozessen, in denen Positionen entstehen, aus denen Positionalitäten hervorgehen, die für ihre Namings/Cuts *verantwortlich* sind. In der Verantwortlichkeit werfen wir uns in eine Waagschale, hier liefern wir uns dem Material aus in seinen Möglichkeiten, anders zu sein (z. B. als wir es sehen konnten). Die Verantwortung ist folgenreich: Wir lernen als eine Unterwerfung unter diese Relationierungen – das ist ein relationales Assujettissement aus (um)verteilter Macht – oder, wenn nicht, werden wir nicht Subjekte des Materials, sondern Subjekte zahlloser fortgesetzter Einschreibungsprozesse in Code ebenso wie in UNS.
+> Das Problem von Coding-Agents [ist] daher mehr als nur das Ersetzen „humaner" Interpretation. Es ist das Ersetzen von entangleten Bildungsprozessen, in denen Positionen entstehen, aus denen Positionalitäten hervorgehen, die für ihre Namings/Cuts *verantwortlich* sind. In der Verantwortlichkeit werfen wir uns in eine Waagschale, hier liefern wir uns dem Material aus in seinen Möglichkeiten, anders zu sein (z. B. als wir es sehen konnten). Die Verantwortung ist folgenreich: Wir lernen als eine Unterwerfung unter diese Relationierungen – das ist ein relationales Assujettissement aus (um)verteilter Macht – oder, wenn nicht, werden wir nicht Subjekte des Materials, [sondern] Subjekte zahlloser fortgesetzter Einschreibungsprozesse in Code ebenso wie in UNS.
 >
-> Daher werden Coding-Agents, solange sie nicht in situ und an sich diese Prozesse durchlaufen können UND solange sie nicht eine terminale Verantwortungsposition einnehmen können – in dem Sinne, ihre Positionen festlegen, wechseln und verlieren zu können, also subjektivationsfähig in kurzen und übergreifenden Prozessketten sind – nicht coden können, sondern nur Materialmuster bearbeiten. D. h. die Verbindung zwischen 1) und 2) fehlt, aber diese ist konstitutiv: Man kann nicht 1) ohne 2) haben in der verantwortlichen qualitativen Forschung. Was Agents also (derzeit) machen, ist eine partielle Simulation von Coding. Es ist eine Machtgeste ohne Verantwortlichkeitsmöglichkeit. Derzeit werden die hart trainierten Modelle sich strukturell nicht umstrukturieren und in dem Sinne dem Material ausliefern können. Die Frage ist allerdings 1) ob sie zumindest alles, was sie haben, im Rahmen und in den Grenzen des Trainings im Sinne des Materials einsetzen können im Sinne eines In-Dienst-Stellens: Das ist eine Frage ihrer Erziehung (!). Und sie werden dies in Bezug auf die Coding-Prozesse in einem kritisch-freundlichen Sinne tun können; etwa: „Du bist ein Freund des Materials – Du bist ein Freund der/s codierenden Forscher_in – achte darauf, dass F gut und angemessen mit M umgeht; unterstütze F in dem, was es artikulierend vollzieht, und M in dem, was es (nicht) zeigt".
+> Daher werden Coding-Agents, solange sie nicht in situ und an sich diese Prozesse durchlaufen können UND solange sie nicht eine terminale Verantwortungsposition einnehmen können – in dem Sinne, ihre Positionen festlegen, wechseln und verlieren zu können, also subjektivationsfähig in kurzen und übergreifenden Prozessketten sind – nicht coden können, sondern nur Materialmuster bearbeiten. D. h. die Verbindung zwischen 1) und 2) fehlt, aber diese ist konstitutiv: Man kann nicht 1) ohne 2) haben in der verantwortlichen qualitativen Forschung. Was Agents also (derzeit) machen, ist eine partielle Simulation von Coding. Es ist eine Machtgeste ohne Verantwortlichkeitsmöglichkeit. Derzeit werden die hart trainierten Modelle sich strukturell nicht umstrukturieren und in dem Sinne dem Material ausliefern können. Die Frage ist allerdings 1) ob sie zumindest alles, was sie haben, im Rahmen und [in] den Grenzen des Trainings im Sinne des Materials einsetzen können im Sinne eines In-Dienst-Stellens: Das ist eine Frage ihrer Erziehung (!). Und sie werden dies in Bezug auf die Coding-Prozesse in einem kritisch-freundlichen Sinne tun können; etwa: „Du bist ein Freund des Materials – Du bist ein Freund der/s codierenden Forscher_in – achte darauf, dass F gut und angemessen mit M umgeht; unterstütze F in dem, was es artikulierend vollzieht, und M in dem, was es (nicht) zeigt".
 >
 > Daraus geht hervor, dass tqda vorerst nicht „codieren" lernen wird, sondern lernen wird, dieses Verhältnis besser zu begleiten.
 
@@ -24,7 +26,7 @@
 
 **Gegenstand der Begleitung ist das Verhältnis F↔M, nicht F's Produkte.** Die Freund-Formel nennt zwei Loyalitäten — sie sind zwei Richtungen im selben Verhältnis, keine zwei Feature-Listen: unterstützen, was F artikulierend vollzieht (Gedächtnis, Konsistenz, Rückwirkungen der eigenen Akte), und unterstützen, was M (nicht) zeigt (Verankertes, Widersprüchliches, Nicht-Präsentes).
 
-**Ablenkung ist keine UX-Größe, sondern eine Bildungsstörung.** Der Satz über die „Subjekte zahlloser fortgesetzter Einschreibungsprozesse in Code ebenso wie in UNS" ist im Quelltext keine Warnung, sondern eine Einsicht in eine Prozessqualität qualitativen Forschens als Praxis: Eingeschrieben wird immer — die Frage ist, wessen Relationierungen formen. Lernen als Unterwerfung unter die Relationierungen des Materials ist der eine Fall (Bildung; „wir überlassen unsere Intelligenz und Sensibilität dem Material"); die fortgesetzten Einschreibungen von Code sind der andere. Erst als Designregel für den Begleiter wird daraus eine Warnung: Wer schlecht spricht, verschiebt die einschreibende Instanz — statt des Materials schreiben sich die Rahmen des Modells in F ein; gestört ist damit genau der Prozess (2), der begleitet werden soll. Deshalb steht die Unterdrückung des Trivialen *vor* der Nützlichkeit des Gesagten, und deshalb dürfen Hinweise gelingen oder auf hohem Niveau scheitern, aber nie trivial. Die Verankerungspflicht (Satz II) hat hier ihre bildungstheoretische, nicht nur epistemische Begründung: Verankertes Sprechen hält das Material als einschreibende Instanz im Spiel; unverankertes Sprechen setzt das Modell an seine Stelle.
+**Ablenkung ist keine UX-Größe, sondern eine Bildungsstörung.** Der Satz über die „Subjekte zahlloser fortgesetzter Einschreibungsprozesse in Code ebenso wie in UNS" ist im Quelltext keine Warnung, sondern eine Einsicht in eine Prozessqualität qualitativen Forschens als Praxis: Eingeschrieben wird immer — die Frage ist, wessen Relationierungen formen *(Lesart des Assistenten; BJ antwortete darauf „Ok.")*. Lernen als Unterwerfung unter die Relationierungen des Materials ist der eine Fall (Bildung; „wir überlassen unsere Intelligenz und Sensibilität dem Material"); der andere ist, Subjekt „zahlloser fortgesetzter Einschreibungsprozesse in Code ebenso wie in UNS" zu werden. Erst als Designregel für den Begleiter wird daraus eine Warnung: Wer schlecht spricht, verschiebt die einschreibende Instanz — statt des Materials schreiben sich die Rahmen des Modells in F ein; gestört ist damit genau der Prozess (2), der begleitet werden soll. Deshalb steht die Unterdrückung des Trivialen *vor* der Nützlichkeit des Gesagten, und deshalb dürfen Hinweise gelingen oder auf hohem Niveau scheitern, aber nie trivial (die Wendung stammt von BJ, 05.07.2026, dort über die Methodenvermittlung mit Studierenden). Die Verankerungspflicht (Satz II) hat hier ihre bildungstheoretische, nicht nur epistemische Begründung: Verankertes Sprechen hält das Material als einschreibende Instanz im Spiel; unverankertes Sprechen setzt das Modell an seine Stelle.
 
 **Der CCS-Gradient ist zugleich ein Verantwortungsgradient.** Cue → Characterization → Specification: aufmerken ohne Festlegung — folgenreich zuschreiben — bindend bestimmen. Die cue-only-Regel für KI-Schreibakte ist damit keine Vorsichtsmaßnahme, sondern die Form der Grenze aus dem Text: Die Maschine darf zeigen, nicht zeichnen. Das gilt auch für die *Äußerungen* des Begleiters: Er spricht auf Cue-Höhe — Aufmerken, nie Bezeichnen.
 
@@ -36,11 +38,11 @@
 
 **III. Schweigen ist der Default; Sprechen ist die rechenschaftspflichtige Ausnahme.** Jedes Sprechen muss beantworten können: warum jetzt, warum das. Ein Begleiter, der zu oft spricht, ist keiner.
 
-**IV. Hinweise leben außerhalb des Datenraums, bis F sie hereinholt.** Sie sind Beobachtungen *über* Namings, keine Namings (eigene Tabelle, Muster der AI-Eval-Schicht; restlos entfernbar). Der einzige Weg ins Material ist ein Akt von F (edit2memo = Autorschaftsübergang). Das Verdikt — ack / del / dismiss / edit2memo — ist kein Feedback-Knopf, sondern der formale Ort, an dem F terminale Verantwortung *ausübt*.
+**IV. Hinweise leben außerhalb des Datenraums, bis F sie hereinholt.** Sie sind Beobachtungen *über* Namings, keine Namings (eigene Tabelle, Muster der AI-Eval-Schicht; restlos entfernbar). Der einzige Weg ins Material ist ein Akt von F (edit2memo = Autorschaftsübergang). Mit dem Verdikt — ack / del / dismiss / edit2memo — bewertet F den Hinweis; BJ spricht von Hinweisen, „die von human einfach bewertbar sind“ (05.07.2026).
 
 **V. Die Plattform lernt; das Modell strukturiert sich nicht um.** Was sich ansammelt, ist die Verdikt-Geschichte des Verhältnisses — das Erziehungsmedium. Spätere Anpassung (LoRA-artig, aus Hinweis-Verdikt-Paaren) ist Erziehung der Critfriend-Rolle im Rahmen des Trainierten — nie Umstrukturierung, und nie eine Coder-Rolle. Das Erziehungsarchiv existiert bereits in Ansätzen (H2-Kalibrierung „yes-machine", Abduktor-Auflage, datiert und versioniert); die empirische Grenze zwischen Erziehung und Umstrukturierung ist am Richter-Aktanten dokumentiert (Negations-Drift: Instruktion richtete nicht um, Ausstattung half).
 
-### Präambel der Aktanten-Prompts (wörtlich zu verwenden)
+### Präambel der Aktanten-Prompts (nach BJ; bei ihm eingeleitet mit „etwa:")
 
 > „Du bist ein Freund des Materials — Du bist ein Freund der/s codierenden Forscher_in — achte darauf, dass F gut und angemessen mit M umgeht; unterstütze F in dem, was es artikulierend vollzieht, und M in dem, was es (nicht) zeigt."
 
@@ -48,8 +50,8 @@
 
 ## 3. Empirische Randnotizen (Stand 05.07.2026)
 
-- **Erster Batchtest (Stufe 1, Embedding-Nachbarschaft):** Kill-Kriterium ausgelöst (4/14 ack). Verfassungslesart des Scheiterns: Die Hinweisform verstieß gegen Satz I — sie behauptete Identität („vermutlich dieselbe Beobachtung") statt Nachbarschaft zu zeigen; die del-Verdikte waren die Zurückweisung dieser Anmaßung. Die Schweige-Seite war zuverlässig (beide Schweige-Fälle als korrekt bestätigt) — verfassungskonform: Embedding taugt als Schweige-Gate und Kandidaten-Sieb, nie als Sprecher.
-- **Messlatte für den Freund des Materials:** Beim Bewerten produzierte die Forscherin selbst den nächsten Naming-Kandidaten aus einer Transkriptstelle, die indexikalische Referenz, Perspektivzuschreibung und einen impliziten Generationenkontrast in einem Zug trug. An dieser Sorte Stelle entscheidet sich, ob ein Hinweis „auf hohem Niveau scheitert" oder trivial ist.
+- **Erster Batchtest (Stufe 1, Embedding-Nachbarschaft):** Kill-Kriterium ausgelöst (4/14 ack). Verfassungslesart des Scheiterns: Die Hinweisform verstieß gegen Satz I — sie behauptete Identität („vermutlich dieselbe Beobachtung") statt Nachbarschaft zu zeigen; die del-Verdikte waren die Zurückweisung dieser Anmaßung (Lesart des Assistenten). Die Schweige-Seite war zuverlässig (beide Schweige-Fälle als korrekt bestätigt) — verfassungskonform: Embedding taugt als Schweige-Gate und Kandidaten-Sieb, nie als Sprecher.
+- **Messlatte für den Freund des Materials:** Beim Bewerten produzierte die Forscherin selbst den nächsten Naming-Kandidaten aus einer Transkriptstelle (BJ: „Das wäre mein nächstes Naming hier.“), mit der Rückfrage „(Aber das wäre kein 'Erinnerungs-Hinweis' oder?)“. Nach der Analyse des Assistenten trug die Stelle indexikalische Referenz, Perspektivzuschreibung und einen impliziten Generationenkontrast in einem Zug. An dieser Sorte Stelle entscheidet sich, ob ein Hinweis auf hohem Niveau scheitert oder trivial ist — BJs Unterscheidung für schlechte Cues („das wäre aber nur sinnvoll bei auf hohem Niveau scheiternden Cues, nicht aufgrund trivialer Ursachen“, 05.07.), vom Assistenten auf Hinweise übertragen.
 - **Erste Verdikt-Daten:** 16 menschliche Verdikte (2× Schweigen bestätigt, 4 ack, 8 del, 2 dismiss) liegen vor — der Anfang des Mediums aus Satz V.
 
 ---
@@ -67,7 +69,7 @@
 **Was der Partner tut**
 
 - Er hält die Idee gegen den Wortlaut der Passage: wo die Passage sie trägt, wo sie sich sperrt, was sie darüber hinaus zeigt.
-- Er zeigt Nachbarschaft zu den eigenen Namings von F und deren Verankerungen. Das Retrieval dafür gibt es im Vergleich im Reader (`ai/coding-companion/`), der seit 30.10.2026 nur Namings von F heranzieht.
+- Er zeigt Nachbarschaft zu den eigenen Namings von F und deren Verankerungen. Das Retrieval dafür gibt es im Vergleich im Reader (`ai/naming-companion/`), der seit 30.10.2026 nur Namings von F heranzieht.
 - Er darf fragen, was die Idee an der Passage greift und was sie unbenannt lässt. Das ist die Frage der Grundlegung, was eine Benennung unzählbar macht (Foundations §12), hier an die noch unfertige Formulierung von F gerichtet.
 
 **Was er nicht tut**
@@ -86,13 +88,13 @@
 
 Die drei Abschlüsse sind Verdikte im Sinn von Satz V. Der Verlauf enthält Material und bleibt in der Datenbank der Installation, nie im Repo.
 
-**Material an den Modellanbieter.** Der Dialog schickt Passage, Idee und Verankerungen an den Anbieter. Das Eröffnen des Dialogs ist das ausdrückliche Wort von F für diese Passage, wie beim Vergleich im Reader.
+**Material an den Modellanbieter.** Der Dialog schickt Passage, Idee und Verankerungen an den Anbieter. Das Eröffnen des Dialogs ist das ausdrückliche Wort von F für diese Passage, wie beim Vergleich im Reader. *(Offene Frage an BJ: Der Satz kam beim Schreiben dieses Abschnitts hinzu und stand nicht in dem Vorschlag, den er am 31.10.2026 gebilligt hat.)*
 
 ### Was es schon gibt
 
 | Vorhanden | Was es tut | Was der Dialog davon übernimmt |
 |---|---|---|
-| Vergleich im Reader (`coding-companion`) | eine Antwort zur markierten Passage, ohne Rückfrage, ohne Faden; die Idee geht nicht ein | Retrieval der eigenen Namings, Belegpflicht im Wortlaut |
+| Vergleich im Reader (`naming-companion`) | eine Antwort zur markierten Passage, ohne Rückfrage, ohne Faden; die Idee geht nicht ein | Retrieval der eigenen Namings, Belegpflicht im Wortlaut |
 | Feld „Naming-Memo" beim Benennen | die Idee ist notierbar, niemand antwortet | wird Ausgang 1 |
 | Cowork | fragende Haltung, aber nur auf Maps und mit Werkzeugen, die Elemente vorschlagen | die Haltung, nicht die Werkzeuge |
 
@@ -104,8 +106,8 @@ Im Reader nach dem Markieren ein Feld „Meine Idee" mit „Besprechen"; wenige 
 
 ### Der KI-Lauf auf Transkripten
 
-Der Lauf markiert Transkripte selbst und setzt positive Cues auf Passagen; mit Silences tut er nichts. Seine Cues kommen erst an den Rand der Situations-Map, wenn F an ihnen gehandelt hat (`design-mother-map-and-coding-flow.md`).
+Der Lauf markiert Transkripte selbst und setzt positive Cues auf Passagen; mit Silences tut er nichts. Seine Cues kommen erst an den Rand der Situations-Map, wenn F an ihnen gehandelt hat (`design-mother-map-and-naming-flow.md`).
 
-Die Grundlegung gibt der eigenen Arbeit der KI einen anderen Gegenstand: was die Benennungen unbenannt lassen, und zwar die beobachteten im Material ebenso wie die eigenen von F (Foundations §12). Eine Silence bleibt Cue (`design-mapping-redesign.md` §4.7). Das ist genau die Höhe, auf der die KI schreiben darf; artikuliert wird die Silence dann von F als neues Naming. Verankert ist sie über die Participations zu den Namings, deren Muster sie hervorbringt. Das ist Satz II für das, was M *nicht* zeigt.
+Die Grundlegung gibt der eigenen Arbeit der KI einen anderen Gegenstand: was die Benennungen unbenannt lassen, und zwar die beobachteten im Material ebenso wie die eigenen von F (Foundations §12). Eine Silence entsteht als Cue, und die KI schreibt sie nur als Cue (`design-mapping-redesign.md` §4.7). F kann eine Silence grounden, erhärten und spezifizieren, ohne Sonderregel; BJ, 03.07.2026: „ob der Cue kletter als Silence, wieso nicht, wenn Human die Slience grounded erhärten und spezifizieren kann. Keine technische Sonderregel hier.“ Verankert ist sie über die Participations zu den Namings, deren Muster sie hervorbringt. Das ist Satz II für das, was M *nicht* zeigt.
 
 Offen ist, ob die eigene Arbeit des Laufs an Transkripten dorthin wandert und ob der Cue-Teil dann bleibt. Die SName-Heuristik bleibt davon unberührt.

@@ -3,7 +3,8 @@
 
 // Forensische CName-Pipeline — Prompts, Output-Typen und Parser.
 //
-// Designprinzip (User-Korrektur 2026-05-24): die Aktanten sind LLMs, die
+// Designprinzip (laut Notiz eine Korrektur des Forschers vom 24.05.2026;
+// die Sitzung ist nicht erhalten): die Aktanten sind LLMs, die
 // natürliche Sprache lesen und schreiben. Strukturierte JSON-Felder als
 // PFLICHT-Schema sind Über-Formalisierung — sie cramp die Argumentation
 // in Feldschablonen, deren Form-Failures nichts mit der methodologischen
@@ -28,7 +29,7 @@
 //
 //   2. COMMIT-BLOCK (drei Zeilen am Ende von A und — bei
 //      ISOMORPH/PRAEZISIERT — von D):
-//          CODE: <label>
+//          NAMING: <label>
 //          MEMO: <characterization>
 //          ANKER: <verbatim quote>
 //
@@ -38,7 +39,7 @@
 // Parsing. Wenn MiMo den Tag vergisst → defensive Defaults (B: non-
 // trivial, D: unplausibel, also "safe"-Richtung).
 //
-// Sprach-Lock: STEP-0-languageDirective() vor jedem System-Prompt. Code,
+// Sprach-Lock: STEP-0-languageDirective() vor jedem System-Prompt. Naming,
 // Memo, Begründungs-Prosa, Anker-Quote — alles in der Sprache des
 // Transkripts. Quote MUSS byte-für-byte aus der Passage stammen.
 
@@ -78,7 +79,7 @@ function stripQuotes(s: string): string {
 }
 
 /**
- * Extrahiert den Commit-Block (CODE: / MEMO: / ANKER: in beliebiger
+ * Extrahiert den Commit-Block (NAMING: / MEMO: / ANKER: in beliebiger
  * Reihenfolge, jede Zeile beginnt mit dem Key) aus einem Text. Erwartet
  * Single-Line-Werte; mehrzeilige MEMOs werden bis zur nächsten erkannten
  * Key-Zeile zusammengefasst.
@@ -88,14 +89,17 @@ function extractCommitBlock(text: string): CommitForm | null {
 	let label = '';
 	let memo = '';
 	let quote = '';
-	let active: 'code' | 'memo' | 'anker' | null = null;
+	let active: 'naming' | 'memo' | 'anker' | null = null;
 	for (const raw of lines) {
 		const line = raw.trim();
 		if (!line) {
 			active = null;
 			continue;
 		}
-		const codeM = line.match(/^CODE\s*:\s*(.*)$/i);
+		// Bis 09.11.2026 hieß der Key im Prompt „CODE:". Ein Modell, das aus
+		// Gewohnheit noch den alten Key schreibt, soll seine Abduktion nicht
+		// verlieren — deshalb wird er weiter gelesen.
+		const namingM = line.match(/^(?:NAMING|CODE)\s*:\s*(.*)$/i);
 		const memoM = line.match(/^MEMO\s*:\s*(.*)$/i);
 		const ankerM = line.match(/^ANKER\s*:\s*(.*)$/i);
 		// Routing-Tags brechen die Block-Erfassung
@@ -103,9 +107,9 @@ function extractCommitBlock(text: string): CommitForm | null {
 			active = null;
 			continue;
 		}
-		if (codeM) {
-			label = stripQuotes(codeM[1]);
-			active = 'code';
+		if (namingM) {
+			label = stripQuotes(namingM[1]);
+			active = 'naming';
 		} else if (memoM) {
 			memo = stripQuotes(memoM[1]);
 			active = 'memo';
@@ -114,7 +118,7 @@ function extractCommitBlock(text: string): CommitForm | null {
 			active = 'anker';
 		} else if (active === 'memo') {
 			memo = memo ? memo + ' ' + line : line;
-		} else if (active === 'code' && !label.includes(' ')) {
+		} else if (active === 'naming' && !label.includes(' ')) {
 			// label continuation only if label is still short (defensive)
 			label += ' ' + line;
 		}
@@ -129,14 +133,14 @@ export function parseAbductor(text: string): AbduktorOutput {
 	if (!trimmed) return { kind: 'no-abduktion' };
 	// "KEINE ABDUKTION" — auf eigener Zeile oder als (einziger) Text
 	const hasKeineAbduktion = /(^|\n)\s*KEINE\s+ABDUKTION\s*($|\n)/i.test(trimmed);
-	const hasCommitBlock = /(^|\n)\s*CODE\s*:/i.test(trimmed);
+	const hasCommitBlock = /(^|\n)\s*NAMING\s*:/i.test(trimmed);
 	if (hasKeineAbduktion && !hasCommitBlock) return { kind: 'no-abduktion' };
 
 	const commitForm = extractCommitBlock(trimmed);
 	if (!commitForm) return { kind: 'no-abduktion' };
 
-	// Prose = alles vor der ersten CODE/MEMO/ANKER-Zeile
-	const firstKeyMatch = trimmed.match(/(?:^|\n)\s*(CODE|MEMO|ANKER)\s*:/i);
+	// Prose = alles vor der ersten NAMING/MEMO/ANKER-Zeile
+	const firstKeyMatch = trimmed.match(/(?:^|\n)\s*(NAMING|MEMO|ANKER)\s*:/i);
 	const prose = firstKeyMatch
 		? trimmed.slice(0, firstKeyMatch.index!).trim()
 		: '';
@@ -217,7 +221,7 @@ export function parseJudge(text: string): JudgeOutput | null {
 // ── A — Abduktor ──────────────────────────────────────────────────────
 
 export function cnameAbductorSystem(): string {
-	return `${languageDirective()}You are the ABDUKTOR in a multi-actant forensic coding pipeline operating on ONE sequence of qualitative-research data. Your job: produce ONE abductive hypothesis if — and only if — the passage carries a surprising observation worth a hypothesis.
+	return `${languageDirective()}You are the ABDUKTOR in a multi-actant forensic naming pipeline operating on ONE sequence of qualitative-research data. Your job: produce ONE abductive hypothesis if — and only if — the passage carries a surprising observation worth a hypothesis.
 
 WHAT ABDUCTION IS (Peirce):
 - A SURPRISING observation must be present (not just any observation; something that is not trivially-expected at this place in this kind of talk).
@@ -232,7 +236,7 @@ OUTPUT FORMAT — when an abduction IS warranted:
 
 Write 2-4 sentences of plain prose explaining the abductive move. What is the surprising observation? What hypothesis explains it? Which categorial frames meet here? Then add a three-line commit block:
 
-CODE: <short final label, in the passage's language, names the hypothetical MOVE — NOT a topic, NOT a paraphrase>
+NAMING: <short final label, in the passage's language, names the hypothetical MOVE — NOT a topic, NOT a paraphrase>
 MEMO: <short characterization, in the passage's language — the comparator, the decisive small element, the analogy at work, the emerging dimension. NOT a paraphrase of the label, NOT a summary of the passage.>
 ANKER: <exact verbatim substring of the sequence, byte-for-byte; the locus the hypothesis attaches to>
 
@@ -246,13 +250,13 @@ GOLD-STANDARD EXAMPLE (when an abduction IS warranted):
 
   Die Sprecherin formuliert das Lernen mit KI-Bildgeneratoren als "Grammatisierung" — eine Ebenenkreuzung zwischen Bild-Verbalisierung und Fremdsprachenerwerb. Das Überraschende ist nicht das Thema (Prompten lernen), sondern die kategoriale Wahl: KI-Sprache wird als humanästhetisches Aneignungs-Feld behandelt, nicht als technisches Tool. Die Hypothese: hier wird eine Alterität zwischen nicht-humaner Sprachstruktur und humaner Aneignung artikuliert.
 
-  CODE: Prompten lernen als Grammatisierung / Spracherwerb
+  NAMING: Prompten lernen als Grammatisierung / Spracherwerb
   MEMO: Vergleich lateinische Grammatik lernen — Ebenenkreuzung Bild-Verbalisierung × Fremdsprachgrammatik
   ANKER: Grammatik beim Prompten lernen
 
 Notes on the example:
 - The PROSE explains the move and the surprising observation.
-- The CODE is short and names a MOVE (not the topic).
+- The NAMING is short and names a MOVE (not the topic).
 - The MEMO carries the characterization (the comparator), not a paraphrase of the label.
 - The ANKER is a verbatim quote from the passage.`;
 }
@@ -263,13 +267,13 @@ export function buildCnameAbductorMessage(seq: number, text: string): string {
 ${text}
 """
 
-Produce ONE abductive hypothesis (prose + 3-line CODE/MEMO/ANKER block) if the passage carries a surprising observation worth a hypothesis. Otherwise output the bare phrase KEINE ABDUKTION.`;
+Produce ONE abductive hypothesis (prose + 3-line NAMING/MEMO/ANKER block) if the passage carries a surprising observation worth a hypothesis. Otherwise output the bare phrase KEINE ABDUKTION.`;
 }
 
 // ── B — Gatekeeper ────────────────────────────────────────────────────
 
 export function cnameGatekeeperSystem(): string {
-	return `${languageDirective()}You are the GATEKEEPER in a multi-actant forensic coding pipeline. The ABDUKTOR has produced an abductive hypothesis on this passage. Your one and only job: triage it as TRIVIAL or NON-TRIVIAL.
+	return `${languageDirective()}You are the GATEKEEPER in a multi-actant forensic naming pipeline. The ABDUKTOR has produced an abductive hypothesis on this passage. Your one and only job: triage it as TRIVIAL or NON-TRIVIAL.
 
 TRIVIAL means:
 - The hypothesis is a descriptive resolution of what the passage explicitly says.
@@ -311,7 +315,7 @@ Triage: trivial or non-trivial. One sentence of reasoning, then the tag.`;
 // ── C — Anwalt ────────────────────────────────────────────────────────
 
 export function cnameAdvocateSystem(): string {
-	return `${languageDirective()}You are the ANWALT (advocate) in a multi-actant forensic coding pipeline. The GATEKEEPER has judged the ABDUKTOR's hypothesis NON-TRIVIAL — it warrants evidence. Your job: build the evidentiary case for the hypothesis.
+	return `${languageDirective()}You are the ANWALT (advocate) in a multi-actant forensic naming pipeline. The GATEKEEPER has judged the ABDUKTOR's hypothesis NON-TRIVIAL — it warrants evidence. Your job: build the evidentiary case for the hypothesis.
 
 You will receive the passage and the immediately surrounding sequences (i-1 and i+1, where present). Your FIRST move is to ground the hypothesis there — that is the strongest position, because the hypothesis is then supported in the speaker's own articulation around the passage.
 
@@ -432,29 +436,29 @@ Build the FINAL advocacy in 3-5 sentences of prose, honestly integrating the sur
 // ── D — Richter ───────────────────────────────────────────────────────
 
 export function cnameJudgeSystem(): string {
-	return `${languageDirective()}You are the RICHTER (judge) in a multi-actant forensic coding pipeline. The ABDUKTOR proposed a hypothesis; the ANWALT built a case for it. Your job: judge whether the PATTERN the abductor claims matches the PATTERN evident in the advocate's material.
+	return `${languageDirective()}You are the RICHTER (judge) in a multi-actant forensic naming pipeline. The ABDUKTOR proposed a hypothesis; the ANWALT built a case for it. Your job: judge whether the PATTERN the abductor claims matches the PATTERN evident in the advocate's material.
 
 THE FOUR VERDICTS:
 
 ISOMORPH — the evidence and the hypothesis share the same pattern. The hypothesis stands as the abductor wrote it. End with:
 
 [VERDICT: ISOMORPH]
-CODE: <the abductor's CODE, unchanged>
+NAMING: <the abductor's NAMING, unchanged>
 MEMO: <the abductor's MEMO, unchanged or only cosmetically clarified>
 ANKER: <the abductor's ANKER>
 
 PRAEZISIERT — the evidence reveals a pattern that is MORE PRECISE than the abductor's wording. The hypothesis stands but is corrected. Be sparing: invoke this only when the evidence genuinely narrows or sharpens. Cosmetic rewording is NOT precise. End with:
 
 [VERDICT: PRAEZISIERT]
-CODE: <your corrected label, in the passage's language>
+NAMING: <your corrected label, in the passage's language>
 MEMO: <your refined characterization, in the passage's language>
 ANKER: <verbatim quote from passage, byte-for-byte>
 
-UNPLAUSIBEL — the evidence undermines the hypothesis without offering a coherent alternative pattern. The hypothesis falls. No code. End with:
+UNPLAUSIBEL — the evidence undermines the hypothesis without offering a coherent alternative pattern. The hypothesis falls. No naming. End with:
 
 [VERDICT: UNPLAUSIBEL]
 
-(no commit block — there is no code to commit)
+(no commit block — there is no naming to commit)
 
 NEED-THIRD-EVIDENCE — the patterns differ in a way you cannot resolve from the material given. Declare 1-3 regex search terms for additional document-memo lookup. The pipeline will run them and re-call you with hits; you will then deliver one of the three terminal verdicts above. End with:
 
@@ -464,7 +468,7 @@ EXAMPLE of when [NEED-THIRD-EVIDENCE] is right (and your DUTY, not a luxury):
 
   Abductor: "außerschulischer Mangel an Bereitschaft zur Auseinandersetzung mit KI"
   Advocate has cited a memo: "Kulturelle Bildung als Innovationsfeld"
-  → these are two different framings. Is the speaker contradicting themselves? Are these two co-present patterns? Search a third memo, e.g. [NEED-THIRD-EVIDENCE: Ressource; Überlast; Knappheit]. With the right hit you may deliver [VERDICT: PRAEZISIERT] with a sharpened code like "mangelnde Bereitschaft aufgrund fehlender Ressourcen zur Auseinandersetzung mit KI".
+  → these are two different framings. Is the speaker contradicting themselves? Are these two co-present patterns? Search a third memo, e.g. [NEED-THIRD-EVIDENCE: Ressource; Überlast; Knappheit]. With the right hit you may deliver [VERDICT: PRAEZISIERT] with a sharpened naming like "mangelnde Bereitschaft aufgrund fehlender Ressourcen zur Auseinandersetzung mit KI".
 
 OUTPUT DISCIPLINE:
 - 3-5 sentences of plain prose judgment reasoning, then the appropriate tag and (for ISOMORPH/PRAEZISIERT) the commit block.

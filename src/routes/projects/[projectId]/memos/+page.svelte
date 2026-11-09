@@ -4,12 +4,24 @@
 -->
 <script lang="ts">
 	import PageHeader from '$lib/components/PageHeader.svelte';
+	import TechnicalErrorButton from '$lib/components/TechnicalErrorButton.svelte';
 	import FilterBar, { type FilterGroup } from '$lib/components/FilterBar.svelte';
+	import { memoText } from '$lib/shared/memoText.js';
+	import { formatWhen } from '$lib/shared/dates.js';
+	import { plural } from '$lib/shared/plural.js';
 
 	let { data } = $props();
 
+	type Persona = 'researcher' | 'cowork' | 'autonoma';
+
+	// Zwei Memo-Arten: analytische Memos (eigene Einträge mit Status) und
+	// Memos ZU einem Naming (Akte in dessen Stack, siehe +page.server.ts).
+	let filterKind = $state<'all' | 'analytic' | 'naming'>('all');
+	const namingMemos = $derived(data.namingMemos ?? []);
+	let expandedNote = $state<string | null>(null);
+
 	let filterStatus = $state<string>('all');
-	let filterAuthor = $state<string>('all');
+	let filterAuthor = $state<'all' | Persona>('all');
 	let showCreate = $state(false);
 	let newLabel = $state('');
 	let creating = $state(false);
@@ -20,35 +32,54 @@
 	let discussInput = $state('');
 	let discussLoading = $state(false);
 
-	function memoPersona(m: any): 'cowork' | 'autonoma' | 'researcher' {
+	function memoPersona(m: any): Persona {
 		if (!m.isAiAuthored) return 'researcher';
 		const label: string = m.label || '';
 		if (/^Autonoma[:\s]/i.test(label) || /^Document:/i.test(label) || /^Formation:/i.test(label) || /^Near-duplicates:/i.test(label)) return 'autonoma';
 		return 'cowork';
 	}
 
-	const filteredMemos = $derived.by(() => {
-		let memos = data.memos;
-		if (filterStatus !== 'all') {
-			memos = memos.filter((m: any) => m.status === filterStatus);
-		}
-		if (filterAuthor === 'cowork') {
-			memos = memos.filter((m: any) => memoPersona(m) === 'cowork');
-		} else if (filterAuthor === 'autonoma') {
-			memos = memos.filter((m: any) => memoPersona(m) === 'autonoma');
-		} else if (filterAuthor === 'researcher') {
-			memos = memos.filter((m: any) => !m.isAiAuthored);
-		}
-		return memos;
+	// Memos zu einem Naming schreibt die Forscherin; den Lebenszyklus der
+	// KI-Hinweise (presented, acknowledged, dismissed …) haben sie nicht.
+	const NAMING_MEMO_STATUS = 'active';
+
+	const authorOk = (p: Persona) => filterAuthor === 'all' || filterAuthor === p;
+	const statusOk = (s: string) => filterStatus === 'all' || filterStatus === s;
+	const kindOk = (k: 'analytic' | 'naming') => filterKind === 'all' || filterKind === k;
+
+	const filteredMemos = $derived(
+		kindOk('analytic') ? data.memos.filter((m: any) => authorOk(memoPersona(m)) && statusOk(m.status)) : []
+	);
+	const filteredNamingMemos = $derived(
+		kindOk('naming') && authorOk('researcher') && statusOk(NAMING_MEMO_STATUS) ? namingMemos : []
+	);
+
+	// Jede Zahl zählt die Memos, die man sieht, wenn man diese Option wählt —
+	// die übrigen Filter gelten weiter.
+	const kindCounts = $derived.by(() => {
+		const analytic = data.memos.filter((m: any) => authorOk(memoPersona(m)) && statusOk(m.status)).length;
+		const naming = authorOk('researcher') && statusOk(NAMING_MEMO_STATUS) ? namingMemos.length : 0;
+		return { all: analytic + naming, analytic, naming };
 	});
 
 	const statusCounts = $derived.by(() => {
-		const counts: Record<string, number> = { all: data.memos.length };
-		for (const m of data.memos) {
-			counts[m.status] = (counts[m.status] || 0) + 1;
+		const counts: Record<string, number> = { all: 0 };
+		const add = (s: string, n = 1) => { counts.all += n; counts[s] = (counts[s] || 0) + n; };
+		if (kindOk('analytic')) {
+			for (const m of data.memos) if (authorOk(memoPersona(m))) add(m.status);
+		}
+		if (kindOk('naming') && authorOk('researcher') && namingMemos.length > 0) {
+			add(NAMING_MEMO_STATUS, namingMemos.length);
 		}
 		return counts;
 	});
+
+	// Der Status-Filter erscheint nur, wenn es etwas zu unterscheiden gibt
+	// (sonst stünde da „All 13 / active 13") — oder wenn er gerade greift.
+	const showStatusFilter = $derived(
+		filterStatus !== 'all' || Object.keys(statusCounts).some((s) => s !== 'all' && s !== 'active')
+	);
+	const hasAutonomaMemos = $derived(data.memos.some((m: any) => memoPersona(m) === 'autonoma'));
 
 	async function createMemo() {
 		if (!newLabel.trim()) return;
@@ -71,11 +102,17 @@
 	}
 
 	async function setStatus(memoId: string, status: string) {
-		await fetch(`/api/projects/${data.projectId}/memos/${memoId}/status`, {
+		const res = await fetch(`/api/projects/${data.projectId}/memos/${memoId}/status`, {
 			method: 'PUT',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ status })
 		});
+		// „promote" macht das Memo zu einem Naming (wie auf der Map); scheitert
+		// es, soll man es sehen.
+		if (!res.ok) {
+			const body = await res.json().catch(() => ({}));
+			alert(body.error || `Status not saved (${res.status})`);
+		}
 		await refreshMemos();
 	}
 
@@ -112,31 +149,50 @@
 
 	const filterGroups = $derived.by<FilterGroup[]>(() => {
 		const statusOptions = [
-			{ value: 'all', label: `All ${statusCounts.all || 0}` },
+			{ value: 'all', label: `All ${statusCounts.all}` },
 			...['presented', 'active', 'discussed', 'acknowledged', 'promoted', 'dismissed']
-				.filter(s => statusCounts[s])
-				.map(s => ({ value: s, label: `${s} ${statusCounts[s]}` }))
+				.filter(s => statusCounts[s] || filterStatus === s)
+				.map(s => ({ value: s, label: `${s} ${statusCounts[s] || 0}` }))
+		];
+		const authorOptions = [
+			{ value: 'all', label: 'All' },
+			{ value: 'researcher', label: 'Researcher' },
+			{ value: 'cowork', label: 'Cowork' },
+			// Autonoma ist seit 04.08.2026 deprecated; der Filter bleibt nur für
+			// Memos aus älteren Läufen.
+			...(hasAutonomaMemos || filterAuthor === 'autonoma'
+				? [{ value: 'autonoma', label: 'Autonoma', title: 'Memos from earlier Autonoma runs (Autonoma is deprecated since August 2026)' }]
+				: [])
 		];
 		return [
 			{
+				key: 'kind',
+				label: 'Memos',
+				value: filterKind,
+				options: [
+					{ value: 'all', label: `All ${kindCounts.all}` },
+					{ value: 'analytic', label: `Analytic ${kindCounts.analytic}`, title: 'Analytic and organizational memos' },
+					{ value: 'naming', label: `On namings ${kindCounts.naming}`, title: 'Memos on a single naming, written in its stack' }
+				],
+				onchange: (v: string) => filterKind = v as typeof filterKind
+			},
+			...(showStatusFilter ? [{
 				key: 'status',
 				label: 'Status',
+				title: 'Lifecycle of AI hints (presented, acknowledged, dismissed …). Your own memos stay active.',
 				value: filterStatus,
 				options: statusOptions,
 				onchange: (v: string) => filterStatus = v
-			},
-			{
+			}] : []),
+			// Bei „On namings" gibt es nur Memos der Forschenden; der Filter
+			// bleibt sichtbar, solange er greift.
+			...(filterKind !== 'naming' || filterAuthor !== 'all' ? [{
 				key: 'author',
 				label: 'Author',
 				value: filterAuthor,
-				options: [
-					{ value: 'all', label: 'All' },
-					{ value: 'researcher', label: 'Researcher' },
-					{ value: 'cowork', label: 'Cowork' },
-					{ value: 'autonoma', label: 'Autonoma' }
-				],
-				onchange: (v: string) => filterAuthor = v
-			}
+				options: authorOptions,
+				onchange: (v: string) => filterAuthor = v as typeof filterAuthor
+			}] : [])
 		];
 	});
 </script>
@@ -161,8 +217,10 @@
 		{/snippet}
 	</PageHeader>
 
+	{#if filterKind !== 'naming'}
+	{#if filterKind === 'all'}<h2 class="memo-section">Analytic memos</h2>{/if}
 	{#if filteredMemos.length === 0}
-		<p class="empty">{data.memos.length === 0 ? 'No memos yet.' : 'No memos match these filters.'}</p>
+		<p class="empty">{data.memos.length === 0 ? 'No analytic memos yet.' : 'No memos match these filters.'}</p>
 	{:else}
 		<div class="memo-list">
 			{#each filteredMemos as memo}
@@ -180,23 +238,24 @@
 						{/if}
 						<span class="memo-title">{memo.label}</span>
 						{#if memo.discussion?.length > 0}
-							<span class="discussion-count" title="{memo.discussion.length} discussion turn(s)">{memo.discussion.length}</span>
+							<span class="discussion-count" title={plural(memo.discussion.length, 'discussion turn')}>{memo.discussion.length}</span>
 						{/if}
 						{#if memo.links?.length > 0}
 							<span class="link-count">{memo.links.length} link{memo.links.length === 1 ? '' : 's'}</span>
 						{/if}
-						<span class="memo-date">{new Date(memo.created_at).toLocaleDateString()}</span>
+						<span class="memo-date">{formatWhen(memo.created_at)}</span>
 						<span class="expand-indicator">{expandedId === memo.id ? '▾' : '▸'}</span>
 					</div>
 
 					{#if expandedId !== memo.id && memo.content}
-						<p class="memo-preview">{memo.content.slice(0, 200)}{memo.content.length > 200 ? '...' : ''}</p>
+						{@const preview = memoText(memo.content)}
+						<p class="memo-preview">{preview.slice(0, 200)}{preview.length > 200 ? '...' : ''}</p>
 					{/if}
 
 					{#if expandedId === memo.id}
 						<!-- Full content -->
 						{#if memo.content}
-							<div class="memo-content">{memo.content}</div>
+							<div class="memo-content">{memoText(memo.content)}</div>
 						{/if}
 
 						<!-- Linked elements -->
@@ -227,42 +286,56 @@
 							</div>
 						{/if}
 
-						<!-- Actions -->
+						<!-- Actions. ack/dismiss/promote/discuss gehören zum Lebenszyklus
+						     eines KI-Hinweises; an eigenen Memos bleibt „edit". -->
 						<div class="memo-actions">
 							<a href="/projects/{data.projectId}/memos/{memo.id}" class="btn-xs btn-edit">edit</a>
-							{#if memo.status === 'active' || memo.status === 'presented' || memo.status === 'discussed'}
-								<button class="btn-xs" onclick={() => setStatus(memo.id, 'acknowledged')}>ack</button>
-								<button class="btn-xs" onclick={() => setStatus(memo.id, 'dismissed')}>dismiss</button>
-								<button class="btn-xs btn-promote" onclick={() => setStatus(memo.id, 'promoted')}>promote</button>
+							{#if memo.isAiAuthored}
+								{#if memo.status === 'active' || memo.status === 'presented' || memo.status === 'discussed'}
+									<button class="btn-xs" onclick={() => setStatus(memo.id, 'acknowledged')}>ack</button>
+									<button class="btn-xs" onclick={() => setStatus(memo.id, 'dismissed')}>dismiss</button>
+									<button class="btn-xs btn-promote" onclick={() => setStatus(memo.id, 'promoted')}>promote</button>
+								{/if}
+								{#if memo.status === 'acknowledged'}
+									<button class="btn-xs" onclick={() => setStatus(memo.id, 'dismissed')}>dismiss</button>
+								{/if}
+								{#if memo.status === 'dismissed'}
+									<button class="btn-xs" onclick={() => setStatus(memo.id, 'presented')}>restore</button>
+								{/if}
+								{#if discussTarget === memo.id}
+									<form class="discuss-form" onsubmit={e => { e.preventDefault(); submitDiscussion(memo.id); }}>
+										<input type="text" placeholder="Discuss this memo..." bind:value={discussInput} disabled={discussLoading} />
+										<button type="submit" class="btn-xs" disabled={discussLoading || !discussInput.trim()}>
+											{discussLoading ? '...' : 'send'}
+										</button>
+										<button type="button" class="btn-xs" onclick={() => { discussTarget = null; discussInput = ''; }}>×</button>
+									</form>
+								{:else if memo.status !== 'dismissed'}
+									<button class="btn-xs btn-discuss" onclick={() => { discussTarget = memo.id; discussInput = ''; }}>discuss</button>
+								{/if}
+							{:else if memo.status === 'dismissed'}
+								<!-- Altbestand: eigene Memos, die früher verworfen wurden -->
+								<button class="btn-xs" onclick={() => setStatus(memo.id, 'active')}>restore</button>
 							{/if}
-							{#if memo.status === 'acknowledged'}
-								<button class="btn-xs" onclick={() => setStatus(memo.id, 'dismissed')}>dismiss</button>
-							{/if}
-							{#if memo.status === 'dismissed'}
-								<button class="btn-xs" onclick={() => setStatus(memo.id, 'presented')}>restore</button>
-							{/if}
-							{#if discussTarget === memo.id}
-								<form class="discuss-form" onsubmit={e => { e.preventDefault(); submitDiscussion(memo.id); }}>
-									<input type="text" placeholder="Discuss this memo..." bind:value={discussInput} disabled={discussLoading} />
-									<button type="submit" class="btn-xs" disabled={discussLoading || !discussInput.trim()}>
-										{discussLoading ? '...' : 'send'}
-									</button>
-									<button type="button" class="btn-xs" onclick={() => { discussTarget = null; discussInput = ''; }}>×</button>
-								</form>
-							{:else if memo.status !== 'dismissed'}
-								<button class="btn-xs btn-discuss" onclick={() => { discussTarget = memo.id; discussInput = ''; }}>discuss</button>
-							{/if}
+							<TechnicalErrorButton projectId={data.projectId} namingId={memo.id} what="memo" ondone={refreshMemos} />
 						</div>
 					{:else}
 						<!-- Collapsed actions -->
 						<div class="memo-card-meta">
 							<div class="quick-actions">
-								{#if memo.status === 'active' || memo.status === 'presented' || memo.status === 'discussed'}
-									<button class="btn-xs" onclick={() => setStatus(memo.id, 'acknowledged')}>ack</button>
-									<button class="btn-xs" onclick={() => setStatus(memo.id, 'dismissed')}>dismiss</button>
-								{/if}
-								{#if memo.status === 'dismissed'}
-									<button class="btn-xs" onclick={() => setStatus(memo.id, 'presented')}>restore</button>
+								{#if memo.isAiAuthored}
+									{#if memo.status === 'active' || memo.status === 'presented' || memo.status === 'discussed'}
+										<button class="btn-xs" onclick={() => setStatus(memo.id, 'acknowledged')}>ack</button>
+										<button class="btn-xs" onclick={() => setStatus(memo.id, 'dismissed')}>dismiss</button>
+									{/if}
+									{#if memo.status === 'dismissed'}
+										<button class="btn-xs" onclick={() => setStatus(memo.id, 'presented')}>restore</button>
+									{/if}
+								{:else}
+									<a href="/projects/{data.projectId}/memos/{memo.id}" class="btn-xs btn-edit">edit</a>
+									{#if memo.status === 'dismissed'}
+										<button class="btn-xs" onclick={() => setStatus(memo.id, 'active')}>restore</button>
+									{/if}
 								{/if}
 							</div>
 						</div>
@@ -271,9 +344,61 @@
 			{/each}
 		</div>
 	{/if}
+	{/if}
+
+	{#if filterKind !== 'analytic'}
+		{#if filterKind === 'all'}<h2 class="memo-section">Memos on namings</h2>{/if}
+		{#if namingMemos.length === 0}
+			<p class="empty">No memos on namings yet. Write one from the naming itself (+ Memo): in the namings list, on the naming's page, or in its stack on a map.</p>
+		{:else if filteredNamingMemos.length === 0}
+			<p class="empty">No memos match these filters.</p>
+		{:else}
+			<div class="memo-list">
+				{#each filteredNamingMemos as nm (nm.naming_id + ':' + nm.seq)}
+					{@const key = nm.naming_id + ':' + nm.seq}
+					<div class="memo-card note-card" class:expanded={expandedNote === key}>
+						<!-- svelte-ignore a11y_click_events_have_key_events -->
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
+						<div class="memo-card-header" onclick={() => expandedNote = expandedNote === key ? null : key}>
+							<span class="author-badge" title={nm.by_label}>R</span>
+							<a class="memo-title note-naming" href="/projects/{data.projectId}/namings/{nm.naming_id}"
+								title="Open this naming" onclick={(e) => e.stopPropagation()}>{nm.naming_label}</a>
+							{#if nm.passage_document}<span class="note-passage" title="Memo on a passage of this naming">passage · {nm.passage_document}</span>{/if}
+							{#if nm.act}<span class="note-passage" title="The act this memo belongs to">{nm.act}</span>{/if}
+							<span class="memo-date">{formatWhen(nm.created_at)}</span>
+							<span class="expand-indicator">{expandedNote === key ? '▾' : '▸'}</span>
+						</div>
+						{#if expandedNote === key}
+							<div class="memo-content">{nm.memo_text}</div>
+						{:else}
+							<p class="memo-preview">{nm.memo_text.slice(0, 200)}{nm.memo_text.length > 200 ? '...' : ''}</p>
+						{/if}
+						{#if nm.linked?.length > 0}
+							<div class="link-chips note-links">
+								{#each nm.linked as l (l.id)}
+									<a class="link-chip" href="/projects/{data.projectId}/namings/{l.id}">{l.label}</a>
+								{/each}
+							</div>
+						{/if}
+					</div>
+				{/each}
+			</div>
+		{/if}
+	{/if}
 </div>
 
 <style>
+	.memo-section {
+		font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+		color: #6b7280; margin: 1.25rem 0 0.5rem;
+	}
+	.note-card { border-left: 3px solid rgba(245, 158, 11, 0.35); }
+	a.note-naming { text-decoration: none; }
+	a.note-naming:hover { color: #8b9cf7; text-decoration: underline; }
+	.note-passage { font-size: 0.68rem; color: #8b8fa3; flex-shrink: 0; }
+	.note-links { margin-top: 0.35rem; }
+	a.link-chip { text-decoration: none; }
+	a.link-chip:hover { border-color: #8b9cf7; color: #e1e4e8; }
 	.memos-page { max-width: 750px; }
 
 	.btn-primary {

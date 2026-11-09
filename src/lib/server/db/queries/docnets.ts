@@ -140,22 +140,22 @@ export async function deleteDocNet(docnetId: string, projectId: string) {
 }
 
 /**
- * Get all namings (codes) grounded in documents of a DocNet.
+ * Get all namings grounded in documents of a DocNet.
  * Used for DocNet → SitMap generation.
  */
 export async function getDocNetGroundedNamings(docnetId: string, projectId: string) {
 	return (
 		await query(
-			`SELECT DISTINCT code.id, code.inscription as label
+			`SELECT DISTINCT nm.id, nm.inscription as label
 			 FROM participations dp
 			 JOIN namings dpn ON dpn.id = dp.id AND dpn.deleted_at IS NULL
 			 JOIN appearances ann ON ann.valence = 'codes'
 			   AND ann.directed_to = CASE WHEN dp.naming_id = $1 THEN dp.participant_id ELSE dp.naming_id END
 			 JOIN namings ann_n ON ann_n.id = ann.naming_id AND ann_n.deleted_at IS NULL
-			 JOIN namings code ON code.id = ann.directed_from AND code.deleted_at IS NULL
+			 JOIN namings nm ON nm.id = ann.directed_from AND nm.deleted_at IS NULL
 			 WHERE (dp.naming_id = $1 OR dp.participant_id = $1)
 			   AND ann_n.project_id = $2
-			 ORDER BY code.inscription`,
+			 ORDER BY nm.inscription`,
 			[docnetId, projectId]
 		)
 	).rows;

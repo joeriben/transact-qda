@@ -31,6 +31,7 @@
   it only calls existing core endpoints, never the reverse.
 -->
 <script lang="ts">
+	import { quoted } from '$lib/shared/namingLabel.js';
 	import { onMount } from 'svelte';
 	import { verdicts, evaluatorLabel, type EvalRow, type Verdict } from './verdicts.svelte.js';
 
@@ -268,7 +269,7 @@
 			/>
 			{#if betterReading.trim()}
 				<div class="ai-eval-hint">
-					Das Naming heißt danach „{betterReading.trim()}"; der Cue „{subjectLabel}" bleibt als
+					Das Naming heißt danach {quoted(betterReading.trim(), 'de')}; der Cue {quoted(subjectLabel, 'de')} bleibt als
 					früherer Eintrag im Stack{#if passageCount > 1}. Es trägt {passageCount} Passagen — die
 						Umschreibung gilt für alle{/if}.
 				</div>
@@ -304,7 +305,7 @@
 						<span class="ai-eval-when">{fmt(row.createdAt)}</span>
 					</div>
 					{#if row.betterReading}
-						<div class="ai-eval-reading">„{row.betterReading}"</div>
+						<div class="ai-eval-reading">{quoted(row.betterReading, 'de')}</div>
 					{/if}
 					{#if row.rationale}
 						<div class="ai-eval-rationale">{row.rationale}</div>

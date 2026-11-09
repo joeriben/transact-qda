@@ -64,7 +64,7 @@ function untilAborted<T>(promise: Promise<T>, signal: AbortSignal | undefined): 
 
 // ── Network-Retry-Layer ───────────────────────────────────────────
 //
-// Setzungen vom 09.05. und 13.05.2026. Bei Coding-Runs
+// Setzungen vom 09.05. und 13.05.2026. Bei Naming-Runs
 // auf langen Dokumenten (140 Sequenzen × 4 Calls = 560 Calls/Run) sind
 // transient socket-Drops statistisch garantiert. Ohne Retry rauscht
 // `TypeError: fetch failed { cause: terminated, code: UND_ERR_SOCKET }`
@@ -272,7 +272,7 @@ export interface AiSettings {
 	model: string;
 	/** Sub-agent for delegation (cheaper/faster model for simple tasks) */
 	delegationAgent?: DelegationAgent;
-	/** Analysis language — codes, memos, and AI output will use this language */
+	/** Analysis language — namings, memos, and AI output will use this language */
 	language?: string;
 	/**
 	 * Per-tier model routing. Keyed by tier ID
@@ -523,7 +523,7 @@ function noteSubstitution(model: string, substitute: string): void {
  * Das Modell, das für diese Route tatsächlich rechnen wird: die Route selbst,
  * oder ihr Ersatz aus model-policy.ts, wenn das Modell in der Datenregion des
  * Schlüssels keinen Endpunkt hat. Aufrufer, die das Modell protokollieren
- * (Coding-Run, Anker-Zug), lösen hierüber auf — sonst stünde im Lauf ein
+ * (Naming-Run, Anker-Zug), lösen hierüber auf — sonst stünde im Lauf ein
  * Modell, das nie gerechnet hat.
  */
 export async function effectiveRoute(route: ModelRoute): Promise<ModelRoute> {
@@ -737,8 +737,8 @@ type ChatOptions = {
 	cacheableSystemPrefix?: string;
 	/**
 	 * Per-call provider/model override. Bypasses the module-level settings
-	 * for this single call — used by tier-routed callsites (coding-run's H1/
-	 * H2). The override builds a one-shot client; it does NOT mutate the
+	 * for this single call — used by tier-routed callsites (the naming run's
+	 * H1/H2). The override builds a one-shot client; it does NOT mutate the
 	 * shared client state, so concurrent default-config calls are unaffected.
 	 */
 	modelOverride?: ModelRoute;
@@ -803,7 +803,7 @@ async function chatOnce(opts: ChatOptions): Promise<ChatResponse> {
 	// gleichberechtigt: jeder Abort von einer reißt den Call ab.
 	//   1) opts.signal — direkter Caller-Override (selten)
 	//   2) Run-Signal aus AsyncLocalStorage — User-Cancel via Watcher in
-	//      coding-run/+server.ts; greift mid-fetch, nicht nur zwischen Atomen
+	//      naming-run/+server.ts; greift mid-fetch, nicht nur zwischen Atomen
 	// Außerhalb eines Run-Contexts (Connection-Test, coach-library, etc.)
 	// fehlt (2). Eine Zeitgrenze gibt es bewusst nicht (siehe Kopf).
 	const runSignal = getRunAbortSignal();

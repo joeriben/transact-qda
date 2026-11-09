@@ -4,6 +4,7 @@
 -->
 <script lang="ts">
 	import { goto, invalidateAll } from '$app/navigation';
+	import { quoted } from '$lib/shared/namingLabel.js';
 
 	let { data } = $props();
 	let showCreate = $state(false);
@@ -55,7 +56,7 @@
 				URL.revokeObjectURL(url);
 			}
 
-			syncMessage = `Exported "${projectName}" to your computer`;
+			syncMessage = `Exported ${quoted(projectName)} to your computer`;
 		} catch (e: any) {
 			syncMessage = e.message || 'Native export failed';
 		} finally {
@@ -84,10 +85,10 @@
 	}
 
 	async function unloadProject(projectId: string, slug: string, projectName: string) {
-		if (!confirm(`Unload "${projectName}" from database? Data stays safe in project directory.`)) return;
+		if (!confirm(`Unload ${quoted(projectName)} from database? Data stays safe in project directory.`)) return;
 		const result = await syncAction('unload', { projectId, slug });
 		if (result) {
-			syncMessage = `Unloaded "${projectName}"`;
+			syncMessage = `Unloaded ${quoted(projectName)}`;
 			await invalidateAll();
 		}
 	}
@@ -95,23 +96,23 @@
 	async function loadProject(slug: string) {
 		const result = await syncAction('load', { slug });
 		if (result) {
-			syncMessage = `Loaded "${slug}"`;
+			syncMessage = `Loaded ${quoted(slug)}`;
 			await invalidateAll();
 		}
 	}
 
 	async function deleteProject(projectId: string, slug: string | null, projectName: string) {
-		if (!confirm(`Permanently delete "${projectName}"? This cannot be undone.`)) return;
-		if (!confirm(`Are you sure? ALL data for "${projectName}" will be destroyed.`)) return;
+		if (!confirm(`Permanently delete ${quoted(projectName)}? This cannot be undone.`)) return;
+		if (!confirm(`Are you sure? ALL data for ${quoted(projectName)} will be destroyed.`)) return;
 		const result = await syncAction('delete', { projectId, slug });
 		if (result) {
-			syncMessage = `Deleted "${projectName}"`;
+			syncMessage = `Deleted ${quoted(projectName)}`;
 			await invalidateAll();
 		}
 	}
 
 	async function deleteDiskProject(slug: string) {
-		const typed = prompt(`Permanently delete the "${slug}" archive?\nType the project name to confirm:`);
+		const typed = prompt(`Permanently delete the ${quoted(slug)} archive?\nType the project name to confirm:`);
 		if (typed !== slug) {
 			if (typed !== null) syncMessage = 'Name did not match. Deletion cancelled.';
 			return;
@@ -125,7 +126,7 @@
 			});
 			const result = await res.json();
 			if (!res.ok) throw new Error(result.error);
-			syncMessage = `Deleted "${slug}" archive`;
+			syncMessage = `Deleted ${quoted(slug)} archive`;
 			await invalidateAll();
 		} catch (e: any) {
 			syncMessage = e.message;
@@ -144,7 +145,7 @@
 			body: JSON.stringify({ action: 'duplicate', sourceProjectId: projectId, name: newName.trim() || undefined })
 		});
 		if (res.ok) {
-			syncMessage = `Duplicated "${projectName}"`;
+			syncMessage = `Duplicated ${quoted(projectName)}`;
 			await invalidateAll();
 		} else {
 			// Grund anzeigen, nicht verschlucken. Der Endpoint antwortet je nach
@@ -170,10 +171,11 @@
 			const project = await res.json();
 			// Auto-export new project to directory
 			await syncAction('export', { projectId: project.id });
-			await invalidateAll();
 			showCreate = false;
 			name = '';
 			description = '';
+			// Wer ein Projekt anlegt, will darin arbeiten.
+			await goto(`/projects/${project.id}`);
 		}
 		creating = false;
 	}

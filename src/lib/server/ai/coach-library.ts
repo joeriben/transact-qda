@@ -140,7 +140,7 @@ const INDEX_CHAPTER_PROMPT = `You are Coach, a didactic AI companion for Situati
 Produce a JSON object with:
 - "summary": 2-4 sentences — what this chapter covers, from your perspective as a methodology coach
 - "questions": array of 3-8 questions that a researcher might ask which this chapter helps answer
-- "key_concepts": array of key methodological concepts discussed (e.g., "situational map", "CCS gradient", "social worlds", "coding")
+- "key_concepts": array of key methodological concepts discussed (e.g., "situational map", "CCS gradient", "social worlds", "naming")
 - "relevance": "high" | "medium" | "low" — how important is this chapter for coaching SA/GT methodology?
 - "teaching_notes": 1-2 sentences — what you would want to remember when a researcher asks about this topic
 

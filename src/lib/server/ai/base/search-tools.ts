@@ -119,19 +119,55 @@ export const SEARCH_TOOLS: ToolDef[] = [
 	{
 		name: 'search_manual',
 		description:
-			'Search the transact-qda platform manual for information about features, concepts, and how to use the application.',
+			'Search the transact-qda platform manual for information about features, concepts, and how to use the application. ' +
+			'The manual is written in English — search with English terms. Each term counts on its own: passages that contain more of your terms rank first, a passage with only one of them still counts.',
 		input_schema: {
 			type: 'object' as const,
 			properties: {
 				query: {
 					type: 'string',
-					description: 'What to search for in the manual'
+					description: 'One or more English terms, e.g. "silence absence situational map"'
 				}
 			},
 			required: ['query']
 		}
 	}
 ];
+
+// ── Suchbegriffe ──────────────────────────────────────────────────
+//
+// Jede Suche zerlegt die Anfrage in einzelne Begriffe und lässt jeden für sich
+// treffen; mehr Treffer heißt weiter vorn. Vorher musste die ganze Anfrage
+// wörtlich vorkommen (Namings, Memos, Handbuch) oder jedes Wort (Dokumente) —
+// eine Anfrage wie „silence Stille create silence on map mode" fand dann im
+// Handbuch nichts, obwohl es Silences behandelt (Testbericht 09.11.2026, Befund 28).
+
+const STOPWORDS = new Set([
+	// en
+	'the', 'and', 'or', 'of', 'to', 'in', 'on', 'at', 'for', 'with', 'by', 'from', 'is', 'are', 'be',
+	'how', 'what', 'which', 'who', 'do', 'does', 'can', 'my', 'me', 'it', 'this', 'that', 'as', 'an',
+	'into', 'about', 'not', 'no', 'any', 'some', 'there', 'their', 'its',
+	// de
+	'der', 'die', 'das', 'den', 'dem', 'des', 'ein', 'eine', 'einer', 'einen', 'einem', 'eines', 'und',
+	'oder', 'zu', 'zum', 'zur', 'im', 'am', 'an', 'auf', 'mit', 'von', 'vom', 'für', 'ist', 'sind', 'wie',
+	'was', 'wer', 'ich', 'mein', 'meine', 'meiner', 'es', 'nicht', 'kein', 'keine', 'gar', 'dass', 'also',
+	'auch', 'bei', 'aus', 'als', 'man', 'wird', 'werden', 'kann', 'etwas'
+]);
+
+/** Inhaltswörter der Anfrage, klein geschrieben, ohne Dubletten. Nur Buchstaben und Ziffern — sicher für LIKE und tsquery. */
+export function searchTerms(searchQuery: string): string[] {
+	const words = (searchQuery ?? '').toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+	return Array.from(new Set(words.filter((w) => w.length >= 2 && !STOPWORDS.has(w))));
+}
+
+/** LIKE-Muster je Begriff (Begriffe enthalten weder % noch _). */
+function likePatterns(terms: string[]): string[] {
+	return terms.map((t) => `%${t}%`);
+}
+
+function noTermsMessage(searchQuery: string): string {
+	return `Nothing to search for in "${searchQuery ?? ''}": the search uses words of two or more letters or digits, and skips words like "the" or "und".`;
+}
 
 // ── Tool execution ────────────────────────────────────────────────
 
@@ -159,16 +195,18 @@ export async function executeSearchTool(
 async function searchDocuments(projectId: string, searchQuery: string, limit: number): Promise<{ success: boolean; result: string }> {
 	try {
 		// Use German FTS primarily (most projects), fall back to English
-		const words = searchQuery.trim().split(/\s+/).filter(w => w.length > 1);
-		if (words.length === 0) return { success: false, result: 'Empty search query' };
+		const terms = searchTerms(searchQuery);
+		if (terms.length === 0) return { success: false, result: noTermsMessage(searchQuery) };
 
-		const tsquery = words.map(w => `${w}:*`).join(' & ');
+		// Jeder Begriff trifft für sich (ODER); Dokumente mit mehr Begriffen zuerst.
+		const tsquery = terms.map((t) => `${t}:*`).join(' | ');
 
 		const results = await query(
 			`SELECT n.inscription as title,
 			        ts_headline('german', dc.full_text, to_tsquery('german', $1),
 			          'StartSel=>>>, StopSel=<<<, MaxFragments=3, MaxWords=50, MinWords=20') as headline,
-			        LEFT(dc.full_text, 200) as preview
+			        LEFT(dc.full_text, 200) as preview,
+			        (SELECT count(*) FROM unnest($3::text[]) AS p(pat) WHERE dc.full_text ILIKE p.pat)::int AS hits
 			 FROM document_content dc
 			 JOIN namings n ON n.id = dc.naming_id
 			 WHERE n.project_id = $2 AND n.deleted_at IS NULL
@@ -176,17 +214,18 @@ async function searchDocuments(projectId: string, searchQuery: string, limit: nu
 			   AND (
 			     to_tsvector('german', dc.full_text) @@ to_tsquery('german', $1)
 			     OR to_tsvector('english', dc.full_text) @@ to_tsquery('english', $1)
-			     OR dc.full_text ILIKE '%' || $3 || '%'
+			     OR dc.full_text ILIKE ANY($3::text[])
 			   )
+			 ORDER BY hits DESC, n.inscription
 			 LIMIT $4`,
-			[tsquery, projectId, words[0], limit]
+			[tsquery, projectId, likePatterns(terms), limit]
 		);
 
 		if (results.rows.length === 0) {
-			return { success: true, result: `No documents found matching "${searchQuery}"` };
+			return { success: true, result: `No documents contain any of: ${terms.join(', ')}` };
 		}
 
-		const parts = [`Found ${results.rows.length} document(s) matching "${searchQuery}":\n`];
+		const parts = [`Found ${results.rows.length} document(s) for any of: ${terms.join(', ')} (most matching terms first):\n`];
 		for (const row of results.rows) {
 			parts.push(`📄 "${row.title}"`);
 			parts.push(row.headline || row.preview);
@@ -200,8 +239,11 @@ async function searchDocuments(projectId: string, searchQuery: string, limit: nu
 
 async function searchNamings(projectId: string, searchQuery: string, limit: number): Promise<{ success: boolean; result: string }> {
 	try {
+		const terms = searchTerms(searchQuery);
+		if (terms.length === 0) return { success: false, result: noTermsMessage(searchQuery) };
+
 		const results = await query(
-			`SELECT DISTINCT n.id, n.inscription,
+			`SELECT n.id, n.inscription,
 			        COALESCE(
 			          (SELECT na.designation FROM naming_acts na
 			           WHERE na.naming_id = n.id AND na.designation IS NOT NULL
@@ -209,23 +251,24 @@ async function searchNamings(projectId: string, searchQuery: string, limit: numb
 			          'cue'
 			        ) as designation,
 			        array_agg(DISTINCT a.mode) FILTER (WHERE a.mode IS NOT NULL) as modes,
-			        array_agg(DISTINCT p_map.inscription) FILTER (WHERE p_map.inscription IS NOT NULL) as map_names
+			        array_agg(DISTINCT p_map.inscription) FILTER (WHERE p_map.inscription IS NOT NULL) as map_names,
+			        (SELECT count(*) FROM unnest($2::text[]) AS p(pat) WHERE n.inscription ILIKE p.pat)::int AS hits
 			 FROM namings n
 			 LEFT JOIN appearances a ON a.naming_id = n.id AND a.mode IN ('entity','relation','silence')
 			 LEFT JOIN namings p_map ON p_map.id = a.perspective_id AND p_map.id != n.id
 			 WHERE n.project_id = $1 AND n.deleted_at IS NULL
-			   AND n.inscription ILIKE '%' || $2 || '%'
+			   AND n.inscription ILIKE ANY($2::text[])
 			 GROUP BY n.id, n.inscription
-			 ORDER BY n.inscription
+			 ORDER BY hits DESC, n.inscription
 			 LIMIT $3`,
-			[projectId, searchQuery, limit]
+			[projectId, likePatterns(terms), limit]
 		);
 
 		if (results.rows.length === 0) {
-			return { success: true, result: `No namings found matching "${searchQuery}"` };
+			return { success: true, result: `No namings contain any of: ${terms.join(', ')}` };
 		}
 
-		const parts = [`Found ${results.rows.length} naming(s) matching "${searchQuery}":\n`];
+		const parts = [`Found ${results.rows.length} naming(s) for any of: ${terms.join(', ')} (most matching terms first):\n`];
 		for (const row of results.rows) {
 			const modes = row.modes?.join(', ') || 'no appearances';
 			const maps = row.map_names?.join(', ') || 'no maps';
@@ -239,24 +282,29 @@ async function searchNamings(projectId: string, searchQuery: string, limit: numb
 
 async function searchMemos(projectId: string, searchQuery: string, limit: number): Promise<{ success: boolean; result: string }> {
 	try {
+		const terms = searchTerms(searchQuery);
+		if (terms.length === 0) return { success: false, result: noTermsMessage(searchQuery) };
+
 		const results = await query(
-			`SELECT n.inscription as title, LEFT(mc.content, 300) as preview, n.created_at
+			`SELECT n.inscription as title, LEFT(mc.content, 300) as preview, n.created_at,
+			        (SELECT count(*) FROM unnest($2::text[]) AS p(pat)
+			         WHERE n.inscription ILIKE p.pat OR mc.content ILIKE p.pat)::int AS hits
 			 FROM namings n
 			 JOIN memo_content mc ON mc.naming_id = n.id
 			 WHERE n.project_id = $1 AND n.deleted_at IS NULL
 			   AND n.inscription NOT LIKE 'Discussion:%'
 			   AND n.inscription NOT LIKE 'MemoDiscussion:%'
-			   AND (n.inscription ILIKE '%' || $2 || '%' OR mc.content ILIKE '%' || $2 || '%')
-			 ORDER BY n.created_at DESC
+			   AND (n.inscription ILIKE ANY($2::text[]) OR mc.content ILIKE ANY($2::text[]))
+			 ORDER BY hits DESC, n.created_at DESC
 			 LIMIT $3`,
-			[projectId, searchQuery, limit]
+			[projectId, likePatterns(terms), limit]
 		);
 
 		if (results.rows.length === 0) {
-			return { success: true, result: `No memos found matching "${searchQuery}"` };
+			return { success: true, result: `No memos contain any of: ${terms.join(', ')}` };
 		}
 
-		const parts = [`Found ${results.rows.length} memo(s) matching "${searchQuery}":\n`];
+		const parts = [`Found ${results.rows.length} memo(s) for any of: ${terms.join(', ')} (most matching terms first):\n`];
 		for (const row of results.rows) {
 			parts.push(`📝 "${row.title}"`);
 			parts.push(`   ${row.preview}`);
@@ -353,43 +401,83 @@ async function searchRelatedPassages(
 	}
 }
 
+// Handbuch nach Absätzen, je mit seiner Überschrift — einmal gebaut.
+type ManualParagraph = { section: string; text: string; lower: string; sectionLower: string };
+let manualParagraphCache: ManualParagraph[] | null = null;
+
+function manualParagraphs(): ManualParagraph[] {
+	if (manualParagraphCache) return manualParagraphCache;
+	const out: ManualParagraph[] = [];
+	let section = '';
+	let block: string[] = [];
+	const flush = () => {
+		const text = block.join('\n').trim();
+		if (text) out.push({ section, text, lower: text.toLowerCase(), sectionLower: section.toLowerCase() });
+		block = [];
+	};
+	for (const line of MANUAL.split('\n')) {
+		if (/^#{1,6}\s/.test(line)) {
+			flush();
+			section = line.replace(/^#+\s*/, '').trim();
+		} else if (line.trim() === '') {
+			flush();
+		} else {
+			block.push(line);
+		}
+	}
+	flush();
+	manualParagraphCache = out;
+	return out;
+}
+
+const MANUAL_MAX_PASSAGES = 6;
+
 function searchManual(searchQuery: string): { success: boolean; result: string } {
 	if (!MANUAL) {
 		return { success: false, result: 'Manual not loaded' };
 	}
-
-	const queryLower = searchQuery.toLowerCase();
-	const lines = MANUAL.split('\n');
-	const matches: { section: string; content: string }[] = [];
-	let currentSection = '';
-
-	for (let i = 0; i < lines.length; i++) {
-		// Track section headers
-		if (lines[i].startsWith('#')) {
-			currentSection = lines[i].replace(/^#+\s*/, '');
-		}
-
-		// Check for query match
-		if (lines[i].toLowerCase().includes(queryLower)) {
-			// Grab context: 2 lines before and 5 after
-			const start = Math.max(0, i - 2);
-			const end = Math.min(lines.length, i + 6);
-			const context = lines.slice(start, end).join('\n');
-			matches.push({ section: currentSection, content: context });
-
-			if (matches.length >= 5) break;
-			i = end; // skip ahead to avoid overlapping matches
-		}
+	const terms = searchTerms(searchQuery);
+	if (terms.length === 0) {
+		return { success: false, result: noTermsMessage(searchQuery) };
 	}
 
-	if (matches.length === 0) {
-		return { success: true, result: `No manual entries found matching "${searchQuery}"` };
+	const paragraphs = manualParagraphs();
+	const inParagraph = (p: ManualParagraph, t: string) => p.lower.includes(t) || p.sectionLower.includes(t);
+	// Ein Begriff, der in vielen Absätzen steht, unterscheidet wenig.
+	const df = new Map(terms.map((t) => [t, paragraphs.filter((p) => inParagraph(p, t)).length]));
+	const found = terms.filter((t) => (df.get(t) ?? 0) > 0);
+	const missing = terms.filter((t) => (df.get(t) ?? 0) === 0);
+
+	if (found.length === 0) {
+		return {
+			success: true,
+			result: `No manual passage contains any of: ${terms.join(', ')}. The manual is written in English — try English terms.`
+		};
 	}
 
-	const parts = [`Found ${matches.length} section(s) in the manual matching "${searchQuery}":\n`];
-	for (const m of matches) {
-		parts.push(`── ${m.section} ──`);
-		parts.push(m.content);
+	// Gewicht je Begriff: Seltenheit im Handbuch × wie oft die Anfrage ihn nennt.
+	const queryWords = (searchQuery.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []);
+	const termWeight = (t: string) =>
+		Math.log(1 + paragraphs.length / (df.get(t) ?? 1)) * queryWords.filter((w) => w === t).length;
+
+	const ranked = paragraphs
+		.map((p, index) => {
+			const hits = found.filter((t) => inParagraph(p, t));
+			const weight = hits.reduce((sum, t) => sum + termWeight(t) * (p.lower.includes(t) ? 1 : 0.5), 0);
+			return { p, index, hits, weight };
+		})
+		.filter((r) => r.hits.length > 0)
+		.sort((a, b) => b.weight - a.weight || b.hits.length - a.hits.length || a.index - b.index)
+		.slice(0, MANUAL_MAX_PASSAGES);
+
+	const parts = [
+		`Manual passages for: ${found.join(', ')}` +
+			(missing.length > 0 ? ` (not in the manual: ${missing.join(', ')} — it is written in English)` : '') +
+			'. Best matches first.\n'
+	];
+	for (const r of ranked) {
+		parts.push(`── ${r.p.section || 'Manual'} ── (${r.hits.join(', ')})`);
+		parts.push(r.p.text);
 		parts.push('');
 	}
 	return { success: true, result: parts.join('\n') };

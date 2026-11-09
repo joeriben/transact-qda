@@ -12,6 +12,7 @@ import {
 	removeFromPhase
 } from '$lib/server/db/queries/maps.js';
 import { getOrCreateResearcherNaming } from '$lib/server/db/queries/namings.js';
+import { phaseInProject, bodyNamingInProject } from '$lib/server/auth/authz.js';
 
 export const GET: RequestHandler = async ({ params }) => {
 	const phases = await getProjectPhases(params.projectId);
@@ -35,6 +36,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		case 'getMembers': {
 			const { phaseId } = body;
 			if (!phaseId) return json({ error: 'phaseId required' }, { status: 400 });
+			if (!(await phaseInProject(phaseId, projectId))) return json({ error: 'Not found' }, { status: 404 });
 			const members = await getPhaseMembers(phaseId);
 			return json({ members });
 		}
@@ -42,6 +44,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		case 'getPassages': {
 			const { phaseId } = body;
 			if (!phaseId) return json({ error: 'phaseId required' }, { status: 400 });
+			if (!(await phaseInProject(phaseId, projectId))) return json({ error: 'Not found' }, { status: 404 });
 			const passages = await getPhasePassages(phaseId, projectId);
 			return json({ passages });
 		}
@@ -49,6 +52,9 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		case 'assign': {
 			const { phaseId, namingId } = body;
 			if (!phaseId || !namingId) return json({ error: 'phaseId and namingId required' }, { status: 400 });
+			if (!(await phaseInProject(phaseId, projectId)) || !(await bodyNamingInProject(namingId, projectId))) {
+				return json({ error: 'Not found' }, { status: 404 });
+			}
 			const researcherNamingId = await getOrCreateResearcherNaming(projectId, userId);
 			const appearance = await assignToPhase(phaseId, namingId, undefined, undefined, researcherNamingId);
 			return json(appearance);
@@ -57,6 +63,9 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		case 'remove': {
 			const { phaseId, namingId } = body;
 			if (!phaseId || !namingId) return json({ error: 'phaseId and namingId required' }, { status: 400 });
+			if (!(await phaseInProject(phaseId, projectId)) || !(await bodyNamingInProject(namingId, projectId))) {
+				return json({ error: 'Not found' }, { status: 404 });
+			}
 			const researcherNamingId = await getOrCreateResearcherNaming(projectId, userId);
 			await removeFromPhase(phaseId, namingId, researcherNamingId);
 			return json({ ok: true });

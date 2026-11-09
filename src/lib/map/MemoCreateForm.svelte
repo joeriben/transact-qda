@@ -4,6 +4,7 @@
 -->
 <script lang="ts">
 	import { getMapState } from './mapState.svelte.js';
+	import { focusSelect } from '$lib/canvas/dom.js';
 
 	const ms = getMapState();
 </script>
@@ -24,8 +25,9 @@
 				<span class="mcf-linked-label">Linked to:</span>
 				{#each ms.memoCreateLinkedIds as lid}
 					<span class="mcf-chip">
-						{ms.findInscription(lid)}
-						<button class="mcf-chip-remove" onclick={() => { ms.memoCreateLinkedIds = ms.memoCreateLinkedIds.filter(id => id !== lid); }}>×</button>
+						{#if lid === ms.mapId}<span class="mcf-chip-kind">Map</span>{/if}
+						{ms.linkLabel(lid)}
+						<button class="mcf-chip-remove" aria-label="Remove link" onclick={() => { ms.memoCreateLinkedIds = ms.memoCreateLinkedIds.filter(id => id !== lid); }}>×</button>
 					</span>
 				{/each}
 			</div>
@@ -35,16 +37,23 @@
 				type="text"
 				class="mcf-input"
 				placeholder="Memo title..."
+				aria-label="Memo title"
 				bind:value={ms.memoCreateTitle}
+				use:focusSelect
+				readonly={ms.memoCreateSaving}
 			/>
 			<textarea
 				class="mcf-textarea"
 				placeholder="Content (optional)..."
+				aria-label="Memo content"
 				bind:value={ms.memoCreateContent}
 				rows="3"
+				readonly={ms.memoCreateSaving}
 			></textarea>
 			<div class="mcf-actions">
-				<button type="submit" class="btn-primary" disabled={!ms.memoCreateTitle.trim()}>Create</button>
+				<button type="submit" class="btn-primary" disabled={!ms.memoCreateTitle.trim() || ms.memoCreateSaving}>
+					{ms.memoCreateSaving ? 'Saving…' : 'Create'}
+				</button>
 				<button type="button" class="btn-sm" onclick={() => ms.cancelMemoCreate()}>Cancel</button>
 			</div>
 		</form>
@@ -52,12 +61,14 @@
 {/if}
 
 <style>
+	/* Dialog: über der Cowork-Karte (950). Der Hintergrund bleibt unter dem
+	   Coach (900), damit der während des Schreibens benutzbar bleibt. */
 	.memo-create-backdrop {
-		position: fixed; inset: 0; z-index: 90; background: rgba(0, 0, 0, 0.3);
+		position: fixed; inset: 0; z-index: 890; background: rgba(0, 0, 0, 0.3);
 	}
 	.memo-create-form {
 		position: fixed; bottom: 4rem; left: 50%; transform: translateX(-50%);
-		z-index: 100; width: 420px; max-width: calc(100vw - 2rem);
+		z-index: 970; width: 420px; max-width: calc(100vw - 2rem);
 		background: #1e2030; border: 1px solid #3a3d4a; border-radius: 10px;
 		padding: 1rem; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
 	}
@@ -75,6 +86,9 @@
 		display: inline-flex; align-items: center; gap: 0.2rem;
 		font-size: 0.72rem; color: #c9cdd5; background: #161822;
 		border: 1px solid #2a2d3a; border-radius: 4px; padding: 0.1rem 0.4rem;
+	}
+	.mcf-chip-kind {
+		font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.04em; color: #8b9cf7;
 	}
 	.mcf-chip-remove {
 		background: none; border: none; color: #6b7280; cursor: pointer;

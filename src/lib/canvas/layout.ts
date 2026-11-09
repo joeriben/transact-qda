@@ -64,7 +64,7 @@ function buildElkGraph(
 			// visual distance — 120 was compensation for the fictional 50px height.
 			'elk.spacing.nodeNode': '48',
 			'elk.spacing.edgeNode': '40',
-			// Coding-bridge cues arrive unconnected: pack disconnected components
+			// Cues from the naming→map bridge arrive unconnected: pack disconnected components
 			// compactly instead of stringing them out.
 			'elk.separateConnectedComponents': 'true',
 			'elk.spacing.componentComponent': '48',

@@ -10,7 +10,7 @@
 // - discussCue: cue discussion mode — researcher discusses an AI-generated cue
 // - discussMemo: memo discussion mode — researcher discusses an analytical memo
 
-import { chat, getModel, getProvider, loadSettings, SUPPORTED_LANGUAGES } from '../client.js';
+import { chat, getModel, getProvider, loadSettings, SUPPORTED_LANGUAGES, type ChatResponse, type ToolCall } from '../client.js';
 import { FULL_KNOWLEDGE } from '../base/knowledge.js';
 import { MANUAL } from '../base/manual.js';
 import { buildProjectContext, buildMapDetail, buildMemoContext, buildLibraryContext, buildStructuredMapContext, type MapContext } from '../base/context.js';
@@ -18,6 +18,7 @@ import { SEARCH_TOOLS, executeSearchTool } from '../base/search-tools.js';
 import { DELEGATE_TOOL, executeDelegation, getAvailableAgents, getAvailableAgentsSync, getConfiguredDelegationAgent } from '../base/delegation.js';
 import { TICKET_TOOL, createTicket } from '../base/tickets.js';
 import { getPersona, type Persona, type PersonaName } from '../personas/index.js';
+import type { MapType } from '../personas/types.js';
 import { getOrCreateAiNaming, logAiInteraction } from '../../db/queries/ai.js';
 import { createMemo } from '../../db/queries/memos.js';
 import { getMap } from '../../db/queries/maps.js';
@@ -41,11 +42,11 @@ function getLanguageInstruction(): string | null {
 LANGUAGE
 ═══════════════════════════════════════
 
-ALL your output — code labels, memos, analytical reasoning, relations, silences — MUST be in ${langName}.
+ALL your output — naming labels, memos, analytical reasoning, relations, silences — MUST be in ${langName}.
 This is a hard requirement, not a suggestion. Do not fall back to English unless the researcher explicitly writes in English.`;
 }
 
-function buildSystemPrompt(persona: Persona, mapType?: string): string {
+function buildSystemPrompt(persona: Persona, mapType?: string, opts: { delegation?: boolean } = {}): string {
 	const parts: string[] = [];
 
 	parts.push(FULL_KNOWLEDGE);
@@ -68,7 +69,7 @@ TRANSACT-QDA SYSTEM MANUAL
 ${MANUAL}`);
 	}
 
-	if (persona.canDelegate) {
+	if (persona.canDelegate && opts.delegation !== false) {
 		const agents = getAvailableAgentsSync();
 		if (agents.length > 0) {
 			parts.push(`
@@ -99,6 +100,156 @@ function buildToolSet(persona: Persona, mapType?: string): ToolDef[] {
 	tools.push(TICKET_TOOL);
 
 	return tools;
+}
+
+// Material (Transkriptstellen) geht an einen externen Anbieter nur auf
+// ausdrückliches Wort des Forschers. Coach und Cowork bekommen deshalb bei
+// externem Anbieter keine Werkzeuge, die Material in das Gespräch holen:
+// Dokumentsuche, Passagen-Verwandtschaft und Delegation (die ganze Dokumente
+// mitschickt). Bis 09.11.2026 erreichten deren Ergebnisse das Modell ohnehin
+// nie — erst die Werkzeugschleife unten gibt Ergebnisse zurück.
+const MATERIAL_TOOLS = new Set(['search_documents', 'search_related_passages', 'delegate_task']);
+/** Werkzeuge, die nur nachschlagen; ihre Ergebnisse braucht das Modell noch. */
+const LOOKUP_TOOLS = new Set([...SEARCH_TOOLS.map((t) => t.name), 'delegate_task']);
+
+function providerIsExternal(): boolean {
+	return getProvider() !== 'ollama';
+}
+
+function withoutMaterialTools(tools: ToolDef[]): ToolDef[] {
+	return providerIsExternal() ? tools.filter((t) => !MATERIAL_TOOLS.has(t.name)) : tools;
+}
+
+// ── Tool loop ─────────────────────────────────────────────────────
+//
+// Ein Aufruf, der Werkzeuge anfordert, ist noch keine Antwort: die Ergebnisse
+// gehen an das Modell zurück, bis es ohne Werkzeug antwortet. Vorher endete
+// jeder Lauf nach dem ersten Aufruf — der Coach gab die rohe Protokollzeile
+// der Handbuchsuche als Antwort aus, Cowork suchte und schrieb nie
+// (Testbericht 09.11.2026, Befunde 28 und 29).
+//
+// chat() kennt nur Textnachrichten; Ergebnisse gehen deshalb als Nutzer-
+// Nachricht „TOOL RESULTS" zurück (wie in executeToolLoop). Die Rollen
+// wechseln streng ab — nicht jeder Anbieter nimmt zwei Nutzer-Nachrichten
+// hintereinander an.
+
+/** Runden mit Werkzeugaufrufen, danach wird um den Abschluss gebeten. Eine Schleifengrenze, keine Ausgabegrenze. */
+const MAX_TOOL_ROUNDS = 6;
+
+type ChatMessage = { role: 'user' | 'assistant'; content: string };
+type ToolOutcome = { success: boolean; result: unknown };
+
+export interface ToolStep {
+	tool: string;
+	input: Record<string, unknown>;
+	success: boolean;
+	result: unknown;
+}
+
+interface ToolLoopOptions {
+	system: string;
+	tools: ToolDef[];
+	/** Werkzeuge der abschließenden Runde; leer = nur Text. */
+	finalTools: ToolDef[];
+	messages: ChatMessage[];
+	execute: (tc: ToolCall) => Promise<ToolOutcome>;
+	/** Bitte um Abschluss nach MAX_TOOL_ROUNDS (und, mit requireText, nach einer leeren Antwort). */
+	concludeInstruction: string;
+	/** Eine leere Schlussantwort einmal nachfordern. Bei Cowork ist Schweigen ein Ergebnis. */
+	requireText: boolean;
+	/** Nach dieser Runde ist der Lauf fertig (spart den Aufruf, der nur noch ein Schlusswort liefert). */
+	doneAfter?: (round: ToolStep[]) => boolean;
+	onStep?: (tool: string) => void;
+	signal?: AbortSignal;
+}
+
+interface ToolLoopResult {
+	text: string;
+	steps: ToolStep[];
+	model: string;
+	provider: string;
+	stopReason: string;
+	tokensUsed: number;
+	inputTokens: number;
+	outputTokens: number;
+}
+
+function resultText(result: unknown): string {
+	return typeof result === 'string' ? result : JSON.stringify(result);
+}
+
+async function runToolLoop(o: ToolLoopOptions): Promise<ToolLoopResult> {
+	const messages: ChatMessage[] = [...o.messages];
+	const steps: ToolStep[] = [];
+	const usage = { tokensUsed: 0, inputTokens: 0, outputTokens: 0 };
+	let concluding = false;
+	let toolRounds = 0;
+	let response: ChatResponse;
+
+	for (;;) {
+		const tools = concluding ? o.finalTools : o.tools;
+		response = await chat({
+			system: o.system,
+			messages,
+			tools: tools.length > 0 ? tools : undefined,
+			signal: o.signal
+		});
+		usage.tokensUsed += response.tokensUsed;
+		usage.inputTokens += response.inputTokens;
+		usage.outputTokens += response.outputTokens;
+
+		if (response.toolCalls.length === 0) {
+			if (response.text.trim() || !o.requireText || concluding) break;
+			concluding = true;
+			messages.push({ role: 'assistant', content: '…' });
+			messages.push({ role: 'user', content: o.concludeInstruction });
+			continue;
+		}
+
+		const offered = new Set(tools.map((t) => t.name));
+		const results: string[] = [];
+		const roundStart = steps.length;
+		for (const tc of response.toolCalls) {
+			o.onStep?.(tc.name);
+			let outcome: ToolOutcome;
+			if (!offered.has(tc.name)) {
+				// Nur angebotene Werkzeuge laufen — sonst käme etwa die Dokumentsuche doch zum Zug.
+				outcome = { success: false, result: `The tool "${tc.name}" is not available here.` };
+			} else {
+				try {
+					outcome = await o.execute(tc);
+				} catch (err) {
+					outcome = { success: false, result: `Tool error: ${err instanceof Error ? err.message : String(err)}` };
+				}
+			}
+			steps.push({ tool: tc.name, input: tc.input, success: outcome.success, result: outcome.result });
+			results.push(`▸ ${tc.name} ${JSON.stringify(tc.input)}${outcome.success ? '' : ' — FAILED'}\n${resultText(outcome.result)}`);
+		}
+		// Was die Schlussrunde noch anfordert, ist ausgeführt; gefragt wird nicht mehr.
+		if (concluding || o.doneAfter?.(steps.slice(roundStart))) break;
+
+		messages.push({
+			role: 'assistant',
+			content: response.text.trim() || `(tool calls: ${response.toolCalls.map((tc) => tc.name).join(', ')})`
+		});
+		toolRounds++;
+		concluding = toolRounds >= MAX_TOOL_ROUNDS;
+		messages.push({
+			role: 'user',
+			content:
+				`TOOL RESULTS for the calls you just made (the researcher does not see them):\n\n${results.join('\n\n')}` +
+				(concluding ? `\n\n${o.concludeInstruction}` : '')
+		});
+	}
+
+	return {
+		text: response.text.trim(),
+		steps,
+		model: response.model,
+		provider: response.provider,
+		stopReason: response.stopReason,
+		...usage
+	};
 }
 
 // ── Context composition ───────────────────────────────────────────
@@ -195,42 +346,54 @@ export async function runConversation(
 	history: Array<{ role: 'user' | 'assistant'; content: string }>,
 	opts: {
 		currentPage?: string;
+		/** Muss zu projectId gehören — die Route prüft das. */
 		mapId?: string;
 		maxHistory?: number;
+		signal?: AbortSignal;
+		onStep?: (tool: string) => void;
 	} = {}
 ): Promise<{ response: string; model: string; tokensUsed: number }> {
 	const persona = getPersona(personaName);
-	const mapType = opts.mapId ? await getMapType(opts.mapId) : undefined;
+	const mapType = opts.mapId ? await getMapType(opts.mapId, projectId) : undefined;
 
-	const systemPrompt = buildSystemPrompt(persona, mapType);
+	const tools = withoutMaterialTools(buildToolSet(persona, mapType));
+	const systemPrompt = buildSystemPrompt(persona, mapType, {
+		delegation: tools.some((t) => t.name === 'delegate_task')
+	});
 	const context = await buildContext(persona, projectId, {
 		currentPage: opts.currentPage,
 		mapId: opts.mapId,
 		userMessage: message
 	});
-	const tools = buildToolSet(persona, mapType);
 
 	const maxHistory = opts.maxHistory || 40;
-	const trimmedHistory = history.slice(-maxHistory);
+	// Rollen wechseln ab, das Gespräch beginnt mit einer Frage und endet mit einer Antwort.
+	const trimmedHistory: ChatMessage[] = [];
+	for (const turn of history.slice(-maxHistory)) {
+		const prev = trimmedHistory[trimmedHistory.length - 1];
+		if (prev && prev.role === turn.role) prev.content += `\n\n${turn.content}`;
+		else if (prev || turn.role === 'user') trimmedHistory.push({ role: turn.role, content: turn.content });
+	}
+	if (trimmedHistory[trimmedHistory.length - 1]?.role === 'user') trimmedHistory.pop();
 	const userMessage = `CURRENT PROJECT STATE:\n${context}\n\nRESEARCHER'S MESSAGE:\n${message}`;
 
-	const response = await chat({
+	const result = await runToolLoop({
 		system: systemPrompt,
-		messages: [
-			...trimmedHistory,
-			{ role: 'user', content: userMessage }
-		],
-		tools: tools.length > 0 ? tools : undefined
+		tools,
+		finalTools: [],
+		messages: [...trimmedHistory, { role: 'user', content: userMessage }],
+		execute: async (tc) =>
+			(await executeInfrastructureTool(tc.name, tc.input, projectId, personaName)) ?? {
+				success: false,
+				result: `The tool "${tc.name}" is not available here.`
+			},
+		concludeInstruction:
+			'Now answer the researcher in plain prose with what you know and what you found. Do not call any more tools. ' +
+			'If the manual does not describe a way to do something in the interface, say so plainly instead of inventing one.',
+		requireText: true,
+		onStep: opts.onStep,
+		signal: opts.signal
 	});
-
-	// Handle any infrastructure tool calls in the response
-	let responseText = response.text;
-	for (const tc of response.toolCalls) {
-		const infraResult = await executeInfrastructureTool(tc.name, tc.input, projectId, personaName);
-		if (infraResult) {
-			responseText += `\n\n[${tc.name}: ${typeof infraResult.result === 'string' ? infraResult.result : JSON.stringify(infraResult.result)}]`;
-		}
-	}
 
 	// Log interaction
 	const model = getModel();
@@ -241,67 +404,139 @@ export async function runConversation(
 		personaName,
 		model,
 		{ currentPage: opts.currentPage, mapId: opts.mapId, messageCount: trimmedHistory.length },
-		{ text: responseText.slice(0, 500) },
-		response.tokensUsed,
-		response.provider,
-		response.inputTokens,
-		response.outputTokens
+		{
+			text: result.text.slice(0, 500),
+			tools: result.steps.map((s) => ({ tool: s.tool, input: s.input, success: s.success })),
+			stopReason: result.stopReason
+		},
+		result.tokensUsed,
+		result.provider,
+		result.inputTokens,
+		result.outputTokens
 	);
 
+	if (!result.text) {
+		throw new Error('The coach gave no answer this time. Please ask again.');
+	}
+
 	return {
-		response: responseText,
-		model: response.model,
-		tokensUsed: response.tokensUsed
+		response: result.text,
+		model: result.model,
+		tokensUsed: result.tokensUsed
 	};
 }
 
 // ── Entry point: Map agent (Cowork) ─────────────────────────────
 
+/** Ein Akt, den Cowork in diesem Lauf in den Datenraum geschrieben hat. */
+export interface CoworkAct {
+	kind: 'memo' | 'cue' | 'phase';
+	/** Was genau: memo, element, relation, silence, formation (arena) … */
+	what: string;
+	/** Naming-ID (Memos sind ebenfalls Namings); null, wenn das Werkzeug keine liefert. */
+	id: string | null;
+	label: string;
+}
+
+/**
+ * Wie ein Cowork-Lauf ausging. Schweigen ist ein legitimes Ergebnis
+ * (design-begleiten.md, Satz III) — die Forscherin soll es aber erfahren.
+ */
+export interface CoworkOutcome {
+	status: 'acted' | 'silent' | 'skipped' | 'failed';
+	acts: CoworkAct[];
+	/** Schlusswort des Modells, nicht gespeichert; bei 'silent' der Grund. */
+	note: string;
+	error?: string;
+}
+
+function actOf(tool: string, input: Record<string, unknown>, result: unknown): CoworkAct | null {
+	const r = (result && typeof result === 'object' ? result : {}) as Record<string, unknown>;
+	const str = (v: unknown) => (typeof v === 'string' ? v : '');
+	const id = str(r.id) || null;
+	switch (tool) {
+		case 'write_memo':
+			return { kind: 'memo', what: 'memo', id, label: str(r.title) || str(input.title) };
+		case 'suggest_axis_refinement':
+			return { kind: 'memo', what: 'axis refinement', id: str(r.memoId) || null, label: str(r.suggestedLabel) };
+		case 'suggest_element':
+			return { kind: 'cue', what: 'element', id, label: str(r.inscription) };
+		case 'suggest_formation':
+			return { kind: 'cue', what: `formation (${str(r.swRole)})`, id, label: str(r.inscription) };
+		case 'suggest_position':
+			return { kind: 'cue', what: 'position', id, label: str(r.inscription) };
+		case 'identify_empty_region':
+			return { kind: 'cue', what: 'empty region', id, label: str(r.inscription) };
+		case 'identify_silence':
+			return { kind: 'cue', what: 'silence', id, label: str(r.inscription) };
+		case 'suggest_relation':
+			return { kind: 'cue', what: 'relation', id, label: str(input.inscription) || str(input.valence) };
+		case 'create_phase':
+			return { kind: 'phase', what: 'phase', id, label: str(r.inscription) };
+		default:
+			return null;
+	}
+}
+
 export async function runMapAgent(
 	projectId: string,
 	mapId: string,
-	triggerEvent: TriggerEvent
-): Promise<void> {
+	triggerEvent: TriggerEvent,
+	opts: { signal?: AbortSignal; onStep?: (tool: string) => void } = {}
+): Promise<CoworkOutcome> {
 	// Manual "Ask Cowork" always runs; the per-map aiEnabled flag now only gates
 	// reactive triggers (auto-respond to researcher acts) so a researcher can
 	// summon Cowork on demand even when reactive mode is off.
-	if (triggerEvent.action !== 'requestAnalysis' && !(await isAiEnabled(mapId))) return;
+	if (triggerEvent.action !== 'requestAnalysis' && !(await isAiEnabled(mapId))) {
+		return { status: 'skipped', acts: [], note: 'Reactive mode is off for this project.' };
+	}
 
-	const model = getModel();
-	const aiNamingId = await getOrCreateAiNaming(projectId, model);
-	const persona = getPersona('cowork');
-	const context = await buildStructuredMapContext(mapId, projectId);
-
-	// Positional maps: only respond to explicit analysis requests
-	if (context.mapType === 'positional' && triggerEvent.action !== 'requestAnalysis') return;
-
-	const systemPrompt = buildSystemPrompt(persona, context.mapType);
-	const tools = buildToolSet(persona, context.mapType);
-	const contextMessage = buildContextMessage(context, triggerEvent);
-
+	const acts: CoworkAct[] = [];
 	try {
-		const response = await chat({
+		const model = getModel();
+		const aiNamingId = await getOrCreateAiNaming(projectId, model);
+		const persona = getPersona('cowork');
+		const context = await buildStructuredMapContext(mapId, projectId);
+
+		// Positional maps: only respond to explicit analysis requests
+		if (context.mapType === 'positional' && triggerEvent.action !== 'requestAnalysis') {
+			return { status: 'skipped', acts: [], note: 'On positional maps Cowork only answers when asked.' };
+		}
+
+		const tools = withoutMaterialTools(buildToolSet(persona, context.mapType));
+		const systemPrompt = buildSystemPrompt(persona, context.mapType, {
+			delegation: tools.some((t) => t.name === 'delegate_task')
+		});
+		const contextMessage = buildContextMessage(context, triggerEvent);
+
+		const result = await runToolLoop({
 			system: systemPrompt,
 			tools,
-			messages: [
-				{ role: 'user', content: contextMessage }
-			]
+			// Schlussrunde: nur noch schreiben oder schweigen, nicht weiter suchen.
+			finalTools: persona.getTools(context.mapType as MapType),
+			messages: [{ role: 'user', content: contextMessage }],
+			execute: async (tc) => {
+				// Infrastructure tools first (search, delegation, tickets), then naming acts
+				const infra = await executeInfrastructureTool(tc.name, tc.input, projectId, 'cowork');
+				if (infra) return infra;
+				const outcome = await executeMapTool(tc.name, tc.input, projectId, mapId, aiNamingId, { persona: 'cowork' });
+				if (outcome.success) {
+					const act = actOf(tc.name, tc.input, outcome.result);
+					if (act) acts.push(act);
+				}
+				return outcome;
+			},
+			concludeInstruction:
+				'Conclude now without searching further. If something is worth saying, write it with write_memo; ' +
+				'otherwise reply with one plain sentence saying why there is nothing to add.',
+			requireText: false,
+			// Das Memo schließt einen Lauf ab (eins je Anstoß); ein Schlusswort danach sähe niemand.
+			// Fragt das Modell in derselben Runde noch etwas nach, darf es weitermachen.
+			doneAfter: (round) =>
+				round.some((s) => s.tool === 'write_memo' && s.success) && !round.some((s) => LOOKUP_TOOLS.has(s.tool)),
+			onStep: opts.onStep,
+			signal: opts.signal
 		});
-
-		// Execute tool calls: map tools first, then infrastructure
-		const toolResults: Array<{ tool: string; input: unknown; result: unknown }> = [];
-
-		for (const tc of response.toolCalls) {
-			// Try infrastructure tools first (search, delegation, tickets)
-			const infraResult = await executeInfrastructureTool(tc.name, tc.input, projectId, 'cowork');
-			if (infraResult) {
-				toolResults.push({ tool: tc.name, input: tc.input, result: infraResult.result });
-				continue;
-			}
-			// Map-specific tools (naming acts)
-			const result = await executeMapTool(tc.name, tc.input, projectId, mapId, aiNamingId, { persona: 'cowork' });
-			toolResults.push({ tool: tc.name, input: tc.input, result: result.result });
-		}
 
 		await logAiInteraction(
 			projectId,
@@ -309,14 +544,22 @@ export async function runMapAgent(
 			`map:${triggerEvent.action}`,
 			model,
 			{ mapId, triggerEvent, contextSummary: { elements: context.elements.length, relations: context.relations.length } },
-			{ toolResults, stopReason: response.stopReason },
-			response.tokensUsed,
-			response.provider,
-			response.inputTokens,
-			response.outputTokens
+			{ toolResults: result.steps, text: result.text, stopReason: result.stopReason },
+			result.tokensUsed,
+			result.provider,
+			result.inputTokens,
+			result.outputTokens
 		);
+
+		return { status: acts.length > 0 ? 'acted' : 'silent', acts, note: result.text };
 	} catch (error) {
 		console.error('[AI Agent] Error:', error instanceof Error ? error.stack || error.message : error);
+		return {
+			status: 'failed',
+			acts,
+			note: '',
+			error: error instanceof Error ? error.message : String(error)
+		};
 	}
 }
 
@@ -589,7 +832,7 @@ export async function discussMemo(
 // ── Entry point: Autonomous analysis ─────────────────────────────
 
 export interface AutonomousProgress {
-	phase: 'starting' | 'coding' | 'cross-analysis' | 'integration' | 'done' | 'error';
+	phase: 'starting' | 'naming' | 'cross-analysis' | 'integration' | 'done' | 'error';
 	document?: string;
 	documentIndex?: number;
 	documentCount?: number;
@@ -646,7 +889,7 @@ async function executeToolLoop(
 				} else {
 					// Try autonomous-specific tools
 					const autonomousResult = await executeAutonomousTool(tc.name, tc.input, projectId, mapId, aiNamingId, prov);
-					if (autonomousResult.success || ['read_document', 'code_passage', 'designate'].includes(tc.name)) {
+					if (autonomousResult.success || ['read_document', 'name_passage', 'designate'].includes(tc.name)) {
 						result = autonomousResult;
 					} else {
 						// Try map tools
@@ -694,15 +937,15 @@ async function processSegmentDirectly(
 	segment: string,
 	segmentIndex: number,
 	totalSegments: number,
-	codingInstruction: string,
+	namingInstruction: string,
 	projectId: string,
 	mapId: string,
 	aiNamingId: string,
 	progress: (p: Partial<AutonomousProgress>) => void
-): Promise<Array<{ passage: string; code_label: string; reasoning: string }>> {
+): Promise<Array<{ passage: string; naming_label: string; reasoning: string }>> {
 	progress({ thinking: `Segment ${segmentIndex}/${totalSegments}...` });
 
-	const message = `${codingInstruction}\n\nDOCUMENT SEGMENT (${segmentIndex}/${totalSegments}):\n"""\n${segment}\n"""\n\nRespond with the JSON array only.`;
+	const message = `${namingInstruction}\n\nDOCUMENT SEGMENT (${segmentIndex}/${totalSegments}):\n"""\n${segment}\n"""\n\nRespond with the JSON array only.`;
 
 	const response = await chat({
 		system: systemPrompt,
@@ -740,11 +983,11 @@ export async function runAutonomousAnalysis(
 
 	progress({ phase: 'starting', message: 'Listing documents and preparing map...' });
 
-	// List all documents with their coding_runs counter
+	// List all documents with their run counter
 	const allDocs = (await query(
 		`SELECT n.id, n.inscription as title, dc.full_text,
 		        LENGTH(dc.full_text) as text_length,
-		        COALESCE(dc.coding_runs, 0) as coding_runs
+		        COALESCE(dc.coding_runs, 0) as run_count
 		 FROM document_content dc
 		 JOIN namings n ON n.id = dc.naming_id
 		 WHERE n.project_id = $1 AND n.deleted_at IS NULL AND dc.full_text IS NOT NULL
@@ -757,19 +1000,19 @@ export async function runAutonomousAnalysis(
 		throw new Error('No documents found in project. Upload documents first.');
 	}
 
-	// Only code documents that are behind: coding_runs < max(coding_runs)
-	// If all equal → code all (new full run)
-	const minRuns = Math.min(...allDocs.map((d: any) => d.coding_runs));
-	const maxRuns = Math.max(...allDocs.map((d: any) => d.coding_runs));
+	// Only process documents that are behind: run count < max(run count)
+	// If all equal → process all (new full run)
+	const minRuns = Math.min(...allDocs.map((d: any) => d.run_count));
+	const maxRuns = Math.max(...allDocs.map((d: any) => d.run_count));
 	const docs = minRuns === maxRuns
 		? allDocs  // all equal → full run
-		: allDocs.filter((d: any) => d.coding_runs < maxRuns);  // only the behind ones
+		: allDocs.filter((d: any) => d.run_count < maxRuns);  // only the behind ones
 
 	progress({
 		phase: 'starting',
 		message: minRuns === maxRuns
-			? `Full run: coding all ${docs.length} documents (run ${maxRuns + 1})`
-			: `Catch-up: coding ${docs.length}/${allDocs.length} documents (${allDocs.length - docs.length} already at run ${maxRuns})`
+			? `Full run: processing all ${docs.length} documents (run ${maxRuns + 1})`
+			: `Catch-up: processing ${docs.length}/${allDocs.length} documents (${allDocs.length - docs.length} already at run ${maxRuns})`
 	});
 
 	// Get or create a situational map for autonomous analysis
@@ -779,20 +1022,20 @@ export async function runAutonomousAnalysis(
 	const systemPrompt = buildSystemPrompt(persona2, mapType);
 	const tools = buildToolSet(persona2, mapType);
 
-	// ── Phase 1: Delegation-first document coding ────────────────
+	// ── Phase 1: Delegation-first passage naming ─────────────────
 	// Chunk each document, delegate passage identification to cheap
-	// model, then execute the codes. Chief model never sees full text.
+	// model, then write the namings. Chief model never sees full text.
 
 	for (let i = 0; i < docs.length; i++) {
 		const doc = docs[i];
 		const fullText: string = doc.full_text || '';
 
 		progress({
-			phase: 'coding',
+			phase: 'naming',
 			document: doc.title,
 			documentIndex: i + 1,
 			documentCount: docs.length,
-			message: `Coding document: ${doc.title} (${doc.text_length} chars)`
+			message: `Naming passages in document: ${doc.title} (${doc.text_length} chars)`
 		});
 
 		// Load parsed elements, fall back to legacy text segmentation
@@ -800,10 +1043,10 @@ export async function runAutonomousAnalysis(
 		const usesElements = elementSegments !== null;
 		const legacySegments = usesElements ? [] : segmentDocumentLegacy(fullText);
 		const segmentCount = usesElements ? elementSegments.length : legacySegments.length;
-		progress({ phase: 'coding', thinking: `${segmentCount} segments (${usesElements ? 'parsed elements' : 'paragraph boundaries'})` });
+		progress({ phase: 'naming', thinking: `${segmentCount} segments (${usesElements ? 'parsed elements' : 'paragraph boundaries'})` });
 
-		// Get existing codes with annotation counts and designations (Level 3)
-		const existingCodesFromDb = (await query(
+		// Get existing namings with annotation counts and designations (Level 3)
+		const existingNamingsFromDb = (await query(
 			`SELECT n.id, n.inscription,
 			        COALESCE(nd.designation, 'cue') as designation,
 			        COUNT(DISTINCT ann.id)::int as annotation_count
@@ -825,16 +1068,16 @@ export async function runAutonomousAnalysis(
 			[mapId, projectId]
 		)).rows as Array<{ id: string; inscription: string; designation: string; annotation_count: number }>;
 
-		// Build mutable codes list that accumulates across segments (Level 2)
-		const codesList: Array<{ label: string; designation: string; annotations: number }> = existingCodesFromDb.map((c) => ({
+		// Build mutable namings list that accumulates across segments (Level 2)
+		const namingsList: Array<{ label: string; designation: string; annotations: number }> = existingNamingsFromDb.map((c) => ({
 			label: c.inscription,
 			designation: c.designation,
 			annotations: c.annotation_count
 		}));
 
-		// Identify elements to code: delegate to configured agent, or process directly
-		let allIdentified: Array<{ element_id?: string; passage?: string; code_label: string; reasoning: string; reuse?: boolean }> = [];
-		const nearDuplicateNotes: Array<{ code_label: string; reasoning: string }> = [];
+		// Identify elements to name: delegate to configured agent, or process directly
+		let allIdentified: Array<{ element_id?: string; passage?: string; naming_label: string; reasoning: string; reuse?: boolean }> = [];
+		const nearDuplicateNotes: Array<{ naming_label: string; reasoning: string }> = [];
 
 		const delegateAgent = await getConfiguredDelegationAgent();
 		const useDelegation = !!delegateAgent;
@@ -843,41 +1086,41 @@ export async function runAutonomousAnalysis(
 		const delegationSystemPrompt = `You are a qualitative researcher trained in Situational Analysis (Clarke).
 You identify ONLY passages that are analytically distinctive — not everything that is "interesting" or "relevant."
 
-A passage warrants coding when it:
+A passage warrants a naming when it:
 - Constructs, contests, or legitimizes something in the situation
 - Reveals a tension, contradiction, or taken-for-granted assumption
 - Enacts a material-discursive entanglement (human/nonhuman hybrids)
 - Makes an absence visible through what IS said
 
-A passage does NOT warrant coding when it:
+A passage does NOT warrant a naming when it:
 - Merely describes or reports without analytical charge
-- Repeats a concept already captured by an existing code
+- Repeats a concept already captured by an existing naming
 - Is procedural, organizational, or meta-textual
 
-BEFORE CREATING ANY NEW CODE:
-1. Check the existing codes list — is this concept already captured?
-   → If YES: reuse the existing code (same code_label), do NOT create a duplicate
-   → If CLOSE but not identical: reuse the existing code AND note the nuance in your reasoning (prefix with "reuse — nuance:")
-   → If genuinely NEW: create a new code
+BEFORE CREATING ANY NEW NAMING:
+1. Check the existing namings list — is this concept already captured?
+   → If YES: reuse the existing naming (same naming_label), do NOT create a duplicate
+   → If CLOSE but not identical: reuse the existing naming AND note the nuance in your reasoning (prefix with "reuse — nuance:")
+   → If genuinely NEW: create a new naming
 2. "Close" means: same actor, same process, same tension — just different wording.
-   One code for the concept, not one code per phrasing.
+   One naming for the concept, not one naming per phrasing.
 
-Typical density: 3-8 codes per text segment. Most sentences are NOT code-worthy.
-When in doubt, skip — a missed passage can be found later, but code inflation cannot easily be reversed.`
-		+ (getLanguageInstruction() ? `\n\nLANGUAGE: All code labels and reasoning MUST be in ${SUPPORTED_LANGUAGES[loadSettings().language || 'auto'] || 'the document language'}.` : '');
+Typical density: 3-8 namings per text segment. Most sentences do NOT warrant a naming.
+When in doubt, skip — a missed passage can be found later, but naming inflation cannot easily be reversed.`
+		+ (getLanguageInstruction() ? `\n\nLANGUAGE: All naming labels and reasoning MUST be in ${SUPPORTED_LANGUAGES[loadSettings().language || 'auto'] || 'the document language'}.` : '');
 
 		if (useDelegation) {
 			// ── Delegation path: segments processed by delegation agent ──
-			progress({ phase: 'coding', thinking: `Using delegation agent: ${delegateAgent.label}` });
+			progress({ phase: 'naming', thinking: `Using delegation agent: ${delegateAgent.label}` });
 			let consecutiveFailures = 0;
 
 			for (let s = 0; s < segmentCount; s++) {
-				progress({ phase: 'coding', document: doc.title, thinking: `Segment ${s + 1}/${segmentCount}...` });
+				progress({ phase: 'naming', document: doc.title, thinking: `Segment ${s + 1}/${segmentCount}...` });
 
-				// Build per-segment instruction with current codes list (Level 2 + 3)
-				const codingInstruction = buildCodingInstruction(codesList, usesElements, s + 1, segmentCount);
+				// Build per-segment instruction with current namings list (Level 2 + 3)
+				const namingInstruction = buildNamingInstruction(namingsList, usesElements, s + 1, segmentCount);
 				const segmentText = usesElements ? elementSegments[s].formatted : legacySegments[s];
-				const taskWithSegment = codingInstruction + `\n\nDOCUMENT SEGMENT (${s + 1}/${segmentCount}):\n"""\n${segmentText}\n"""`;
+				const taskWithSegment = namingInstruction + `\n\nDOCUMENT SEGMENT (${s + 1}/${segmentCount}):\n"""\n${segmentText}\n"""`;
 
 				const delegationResult = await executeDelegation(
 					delegateAgent.label, taskWithSegment, projectId,
@@ -886,16 +1129,16 @@ When in doubt, skip — a missed passage can be found later, but code inflation 
 
 				if (!delegationResult.success) {
 					consecutiveFailures++;
-					progress({ phase: 'coding', thinking: `Segment ${s + 1}: failed — ${delegationResult.result}` });
+					progress({ phase: 'naming', thinking: `Segment ${s + 1}: failed — ${delegationResult.result}` });
 					if (consecutiveFailures >= 3) {
-						progress({ phase: 'coding', thinking: `Delegation agent failing — switching to direct processing` });
-						const fallbackInstruction = buildCodingInstruction(codesList, usesElements, 0, segmentCount);
+						progress({ phase: 'naming', thinking: `Delegation agent failing — switching to direct processing` });
+						const fallbackInstruction = buildNamingInstruction(namingsList, usesElements, 0, segmentCount);
 						for (let r = s; r < segmentCount; r++) {
 							const segText = usesElements ? elementSegments[r].formatted : legacySegments[r];
 							const directPassages = await processSegmentDirectly(
 								systemPrompt, tools, segText, r + 1, segmentCount,
 								fallbackInstruction, projectId, mapId, aiNamingId,
-								(p) => progress({ phase: 'coding', document: doc.title, ...p })
+								(p) => progress({ phase: 'naming', document: doc.title, ...p })
 							);
 							allIdentified.push(...directPassages);
 						}
@@ -913,45 +1156,45 @@ When in doubt, skip — a missed passage can be found later, but code inflation 
 							allIdentified.push(...identified);
 							// Accumulate new labels for next segment's prompt (Level 2)
 							for (const item of identified) {
-								if (item.code_label) {
-									const existing = codesList.find(c => c.label.toLowerCase() === item.code_label.toLowerCase());
+								if (item.naming_label) {
+									const existing = namingsList.find(c => c.label.toLowerCase() === item.naming_label.toLowerCase());
 									if (existing) {
 										existing.annotations++;
 									} else {
-										codesList.push({ label: item.code_label, designation: 'cue', annotations: 1 });
+										namingsList.push({ label: item.naming_label, designation: 'cue', annotations: 1 });
 									}
 								}
 								// Track near-duplicate notes (Level 2b)
 								if (item.reuse && item.reasoning?.includes('nuance:')) {
-									nearDuplicateNotes.push({ code_label: item.code_label, reasoning: item.reasoning });
+									nearDuplicateNotes.push({ naming_label: item.naming_label, reasoning: item.reasoning });
 								}
 							}
-							progress({ phase: 'coding', thinking: `Segment ${s + 1}: ${identified.length} elements identified (${codesList.length} codes total)` });
+							progress({ phase: 'naming', thinking: `Segment ${s + 1}: ${identified.length} elements identified (${namingsList.length} namings total)` });
 						}
 					}
 				} catch {
-					progress({ phase: 'coding', thinking: `Segment ${s + 1}: could not parse delegation result` });
+					progress({ phase: 'naming', thinking: `Segment ${s + 1}: could not parse delegation result` });
 				}
 			}
 		} else {
 			// ── Direct path: chief model processes segments itself ──
-			progress({ phase: 'coding', thinking: `No delegation agent — processing ${segmentCount} segments directly` });
+			progress({ phase: 'naming', thinking: `No delegation agent — processing ${segmentCount} segments directly` });
 			for (let s = 0; s < segmentCount; s++) {
-				const codingInstruction = buildCodingInstruction(codesList, usesElements, s + 1, segmentCount);
+				const namingInstruction = buildNamingInstruction(namingsList, usesElements, s + 1, segmentCount);
 				const segText = usesElements ? elementSegments[s].formatted : legacySegments[s];
 				const directPassages = await processSegmentDirectly(
 					systemPrompt, tools, segText, s + 1, segmentCount,
-					codingInstruction, projectId, mapId, aiNamingId,
-					(p) => progress({ phase: 'coding', document: doc.title, ...p })
+					namingInstruction, projectId, mapId, aiNamingId,
+					(p) => progress({ phase: 'naming', document: doc.title, ...p })
 				);
 				allIdentified.push(...directPassages);
 				for (const item of directPassages) {
-					if (item.code_label) {
-						const existing = codesList.find(c => c.label.toLowerCase() === item.code_label.toLowerCase());
+					if (item.naming_label) {
+						const existing = namingsList.find(c => c.label.toLowerCase() === item.naming_label.toLowerCase());
 						if (existing) {
 							existing.annotations++;
 						} else {
-							codesList.push({ label: item.code_label, designation: 'cue', annotations: 1 });
+							namingsList.push({ label: item.naming_label, designation: 'cue', annotations: 1 });
 						}
 					}
 				}
@@ -959,37 +1202,37 @@ When in doubt, skip — a missed passage can be found later, but code inflation 
 		}
 
 		progress({
-			phase: 'coding',
+			phase: 'naming',
 			document: doc.title,
-			thinking: `Total elements identified: ${allIdentified.length}. Creating codes...`
+			thinking: `Total elements identified: ${allIdentified.length}. Creating namings...`
 		});
 
 		// ── Entfernt (2026-07-29): der Cosinus-0.85-Überschreiber ──
 		// Hier stand eine Schleife, die nach der Modellentscheidung einen
 		// projektweiten k=5-KNN zog und bei similarity > 0.85 das erzeugte
-		// `code_label` still durch das Label eines vorhandenen Codes
+		// Label still durch das Label eines vorhandenen Namings
 		// ersetzte. Das war als "constant comparison" kommentiert, war aber
 		// das Gegenteil: Identität per Schwellwert, entschieden hinter dem
 		// Rücken des Modells, ohne dass die Ersetzung als Akt irgendwo
 		// auftauchte — also Subsumtion (match → copy), genau die
 		// inhaltsanalytische Operation, gegen die diese Anlage antritt
-		// (Paradigma Cue/Cut statt Code).
+		// (Paradigma Cue/Cut statt Subsumtion).
 		//
 		// Konstante Komparation ist ein Vergleich, aus dem eine
 		// unterscheidende Dimension hervorgeht — kein Kopieren des
 		// nächstliegenden Labels. Wo sie stattfinden soll, muss sie am
 		// Material sichtbar werden, nicht am Ergebnis.
 
-		// Execute code_passage for each identified element/passage
-		let codesCreated = 0;
+		// Execute name_passage for each identified element/passage
+		let namingsCreated = 0;
 		for (const p of allIdentified) {
-			if (!p.code_label) continue;
+			if (!p.naming_label) continue;
 			// Need either element_id (new) or passage (legacy)
 			if (!p.element_id && !p.passage) continue;
 
 			const toolInput: Record<string, string> = {
 				document_id: doc.id,
-				code_label: p.code_label,
+				naming_label: p.naming_label,
 				reasoning: p.reasoning || ''
 			};
 			if (p.element_id) {
@@ -1000,35 +1243,35 @@ When in doubt, skip — a missed passage can be found later, but code inflation 
 			}
 
 			const result = await executeAutonomousTool(
-				'code_passage', toolInput,
+				'name_passage', toolInput,
 				projectId, mapId, aiNamingId, prov
 			);
 
 			if (result.success) {
-				codesCreated++;
+				namingsCreated++;
 				progress({
-					phase: 'coding',
+					phase: 'naming',
 					toolCall: {
-						name: 'code_passage',
-						input: { code_label: p.code_label, element_id: p.element_id || '(passage)' },
+						name: 'name_passage',
+						input: { naming_label: p.naming_label, element_id: p.element_id || '(passage)' },
 						result: result.result
 					}
 				});
 			} else {
 				progress({
-					phase: 'coding',
-					thinking: `Failed to code "${p.code_label}": ${result.result}`
+					phase: 'naming',
+					thinking: `Failed to write naming "${p.naming_label}": ${result.result}`
 				});
 			}
 		}
 
 		// ── Post-document consolidation (Level 5) ──
-		// Chief model reviews new codes: advance designations, flag near-duplicates
-		if (codesCreated > 0) {
-			progress({ phase: 'coding', document: doc.title, thinking: `Consolidating ${codesCreated} codes...` });
+		// Chief model reviews new namings: advance designations, flag near-duplicates
+		if (namingsCreated > 0) {
+			progress({ phase: 'naming', document: doc.title, thinking: `Consolidating ${namingsCreated} namings...` });
 
-			// Reload enriched codes list from DB for accurate state
-			const consolidationCodes = (await query(
+			// Reload enriched namings list from DB for accurate state
+			const consolidationNamings = (await query(
 				`SELECT n.id, n.inscription,
 				        COALESCE(nd.designation, 'cue') as designation,
 				        COUNT(DISTINCT ann.id)::int as annotation_count
@@ -1050,42 +1293,42 @@ When in doubt, skip — a missed passage can be found later, but code inflation 
 				[mapId, projectId]
 			)).rows as Array<{ id: string; inscription: string; designation: string; annotation_count: number }>;
 
-			const newCodesThisDoc = allIdentified.filter(p => p.code_label).map(p =>
-				`- "${p.code_label}" — ${p.reasoning?.slice(0, 100) || '(no reasoning)'}`
+			const newNamingsThisDoc = allIdentified.filter(p => p.naming_label).map(p =>
+				`- "${p.naming_label}" — ${p.reasoning?.slice(0, 100) || '(no reasoning)'}`
 			).join('\n');
 
-			const allCodesFormatted = consolidationCodes.map(c =>
+			const allNamingsFormatted = consolidationNamings.map(c =>
 				`  [${c.designation}] "${c.inscription}" (id: ${c.id}, ${c.annotation_count} passages)`
 			).join('\n');
 
 			const duplicateNotesText = nearDuplicateNotes.length > 0
-				? `\nNEAR-DUPLICATE NOTES FROM CODING:\n${nearDuplicateNotes.map(n => `- "${n.code_label}": ${n.reasoning}`).join('\n')}`
+				? `\nNEAR-DUPLICATE NOTES FROM NAMING:\n${nearDuplicateNotes.map(n => `- "${n.naming_label}": ${n.reasoning}`).join('\n')}`
 				: '';
 
-			const consolidationMessage = `CONSOLIDATION: Review the ${codesCreated} codes just created for "${doc.title}".
+			const consolidationMessage = `CONSOLIDATION: Review the ${namingsCreated} namings just created for "${doc.title}".
 
-NEW CODES THIS DOCUMENT:
-${newCodesThisDoc}
+NEW NAMINGS THIS DOCUMENT:
+${newNamingsThisDoc}
 ${duplicateNotesText}
 
-ALL CODES ON MAP (${consolidationCodes.length}):
-${allCodesFormatted}
+ALL NAMINGS ON MAP (${consolidationNamings.length}):
+${allNamingsFormatted}
 
 INSTRUCTIONS:
-1. Identify near-duplicate codes — write a memo for each phase of overlapping codes
+1. Identify near-duplicate namings — write a memo for each phase of overlapping namings
    (title: "Near-duplicates: X / Y / Z", content: what they share, where they differ)
-2. Advance well-grounded cues to characterization using the designate tool:
-   call designate(naming_id, "characterization", reasoning)
-   — a cue is "well-grounded" when it appears in 2+ passages or its analytical meaning is clearly articulated
-3. Do NOT delete or merge codes — flag overlaps for the researcher via memos
+2. Name the well-grounded cues in a memo (title: "Ready for the researcher: X / Y"), with the reason —
+   a cue is "well-grounded" when it appears in 2+ passages or its analytical meaning is clearly articulated.
+   You do not designate: the researcher moves a cue up the gradient.
+3. Do NOT delete or merge namings — flag overlaps for the researcher via memos
 4. This is analytical housekeeping, not new analysis. Be brief.
 5. Do NOT write a document summary memo — that comes in the next step.
-6. Do NOT create new namings (no suggest_element). Only use: write_memo, designate.`;
+6. Do NOT create new namings (no suggest_element). Only use: write_memo.`;
 
 			await executeToolLoop(
 				systemPrompt, tools, consolidationMessage,
 				projectId, mapId, aiNamingId,
-				(p2) => progress({ phase: 'coding', document: doc.title, ...p2 }),
+				(p2) => progress({ phase: 'naming', document: doc.title, ...p2 }),
 				prov
 			);
 		}
@@ -1094,32 +1337,32 @@ INSTRUCTIONS:
 		const docMemoMessage = `Write a brief analytical memo summarizing what was found in this document.
 
 Document: "${doc.title}"
-Codes created: ${codesCreated}
-Elements coded:
-${allIdentified.map(p => `- [${p.code_label}] ${p.element_id || (p.passage?.slice(0, 60) + '...')} — ${p.reasoning}`).join('\n')}
+Namings created: ${namingsCreated}
+Elements named:
+${allIdentified.map(p => `- [${p.naming_label}] ${p.element_id || (p.passage?.slice(0, 60) + '...')} — ${p.reasoning}`).join('\n')}
 
 Write a memo (use write_memo tool) with title "Document: ${doc.title}" summarizing the key findings, tensions, and what this document contributes to understanding the situation.`;
 
 		await executeToolLoop(
 			systemPrompt, tools, docMemoMessage,
 			projectId, mapId, aiNamingId,
-			(p2) => progress({ phase: 'coding', document: doc.title, ...p2 }),
+			(p2) => progress({ phase: 'naming', document: doc.title, ...p2 }),
 			prov
 		);
 
-		// Increment coding_runs counter for this document
+		// Increment the run counter for this document
 		await query(
 			`UPDATE document_content SET coding_runs = COALESCE(coding_runs, 0) + 1 WHERE naming_id = $1`,
 			[doc.id]
 		);
 
 		progress({
-			phase: 'coding',
+			phase: 'naming',
 			document: doc.title,
 			documentIndex: i + 1,
 			documentCount: docs.length,
-			toolCalls: codesCreated,
-			message: `Finished: ${doc.title} — ${codesCreated} codes from ${allIdentified.length} elements`
+			toolCalls: namingsCreated,
+			message: `Finished: ${doc.title} — ${namingsCreated} namings from ${allIdentified.length} elements`
 		});
 	}
 
@@ -1136,9 +1379,9 @@ Write a memo (use write_memo tool) with title "Document: ${doc.title}" summarizi
 
 	const crossMessage = `PHASE 2: CROSS-DOCUMENT ANALYSIS
 
-You have coded ${docs.length} documents. Now analyze the codes across documents.
+You have named passages in ${docs.length} documents. Now analyze the namings across documents.
 
-ALL CODES ON MAP (${mapContext.elements.length}):
+ALL NAMINGS ON MAP (${mapContext.elements.length}):
 ${mapContext.elements.map(e => {
 	const prov = e.provenance === 'empirical' ? '📄' : '∅';
 	return `  [${e.designation}] ${prov} "${e.inscription}" (id: ${e.id})`;
@@ -1153,8 +1396,8 @@ INSTRUCTIONS:
 2. Use find_outliers on each document to surface unusual passages that may signal hidden themes or ruptures
 3. Use cross_document_compare to systematically compare documents — what concepts are shared, what diverges, what is absent in one but present in another?
 4. Draw relations using suggest_relation: what enables, constrains, legitimizes, silences what?
-5. Group related codes into phases using create_phase
-6. Advance designations where warranted using designate
+5. Group related namings into phases using create_phase
+6. Where a cue seems ready to move up the gradient, say so in a memo — designation is the researcher's act
 7. Identify silences using identify_silence — including absences revealed by cross-document comparison
 8. Write analytical memos about emerging patterns
 9. When done, say "ANALYSIS COMPLETE"`;
@@ -1195,7 +1438,7 @@ Write ONE integrative memo (write_memo) that addresses:
 3. What is structurally absent (silences)?
 4. What would Clarke ask about this map?
 
-Do NOT designate codes here — that was already done in the consolidation step.
+Do NOT designate namings — designation is the researcher's act.
 Do NOT create new namings. Focus on the integrative memo only.`;
 
 	const { text: integrationText } = await executeToolLoop(
@@ -1242,9 +1485,10 @@ async function getOrCreateAutonomousMap(projectId: string, aiNamingId: string): 
 			[mapId, JSON.stringify({ mapType: 'situational', createdBy: 'autonomous' })]
 		);
 
+		// Auch die Map eines KI-Laufs ist ein Cue der KI (KI schreibt nur Cues).
 		await client.query(
 			`INSERT INTO naming_acts (naming_id, designation, by)
-			 VALUES ($1, 'characterization', $2)`,
+			 VALUES ($1, 'cue', $2)`,
 			[mapId, aiNamingId]
 		);
 
@@ -1254,29 +1498,29 @@ async function getOrCreateAutonomousMap(projectId: string, aiNamingId: string): 
 
 // ── Helpers ───────────────────────────────────────────────────────
 
-// Build per-segment coding instruction with current codes list and saturation signals
-function buildCodingInstruction(
-	codesList: Array<{ label: string; designation: string; annotations: number }>,
+// Build per-segment naming instruction with current namings list and saturation signals
+function buildNamingInstruction(
+	namingsList: Array<{ label: string; designation: string; annotations: number }>,
 	usesElements: boolean,
 	segmentIndex: number,
 	totalSegments: number
 ): string {
-	// Enriched codes context (Level 3)
-	let codesText = '';
-	if (codesList.length > 0) {
-		const formattedCodes = codesList.map(c =>
+	// Enriched namings context (Level 3)
+	let namingsText = '';
+	if (namingsList.length > 0) {
+		const formattedNamings = namingsList.map(c =>
 			`- "${c.label}" [${c.designation}, ${c.annotations} passage${c.annotations !== 1 ? 's' : ''}]`
 		).join('\n');
-		codesText = `\nEXISTING CODES (reuse if same concept — check BEFORE creating new):\n${formattedCodes}`;
+		namingsText = `\nEXISTING NAMINGS (reuse if same concept — check BEFORE creating new):\n${formattedNamings}`;
 	}
 
 	// Saturation signal (Level 3)
 	let saturationSignal = '';
-	const totalCodes = codesList.length;
-	if (totalCodes >= 80) {
-		saturationSignal = `\n\n⚠ You have ${totalCodes} codes. Code creation should now be EXCEPTIONAL. Only create a new code if the concept is genuinely absent from ALL existing codes above.`;
-	} else if (totalCodes >= 30) {
-		saturationSignal = `\n\nYou already have ${totalCodes} codes. Strongly prefer reusing existing codes over creating new ones.`;
+	const totalNamings = namingsList.length;
+	if (totalNamings >= 80) {
+		saturationSignal = `\n\n⚠ You have ${totalNamings} namings. Creating new namings should now be EXCEPTIONAL. Only create a new naming if the concept is genuinely absent from ALL existing namings above.`;
+	} else if (totalNamings >= 30) {
+		saturationSignal = `\n\nYou already have ${totalNamings} namings. Strongly prefer reusing existing namings over creating new ones.`;
 	}
 
 	if (usesElements) {
@@ -1285,31 +1529,31 @@ function buildCodingInstruction(
 Each text element has a stable UUID shown as [S:uuid] or [P:uuid].
 For each significant element:
 - Reference it by its UUID (the "element_id")
-- Provide a concise, descriptive code label that captures the specific concept (NOT generic prefixes like "legitimizing..." or "contesting..." for everything)
+- Provide a concise, descriptive naming label that captures the specific concept (NOT generic prefixes like "legitimizing..." or "contesting..." for everything)
 - Explain briefly why this element is significant
-- If reusing an existing code with a nuance, set "reuse": true and prefix reasoning with "reuse — nuance:"
-${codesText}${saturationSignal}
+- If reusing an existing naming with a nuance, set "reuse": true and prefix reasoning with "reuse — nuance:"
+${namingsText}${saturationSignal}
 
 Respond in JSON format:
-[{"element_id": "uuid", "code_label": "analytical label", "reasoning": "why significant"}]
+[{"element_id": "uuid", "naming_label": "analytical label", "reasoning": "why significant"}]
 
-If reusing with nuance: [{"element_id": "uuid", "code_label": "existing label", "reasoning": "reuse — nuance: ...", "reuse": true}]
+If reusing with nuance: [{"element_id": "uuid", "naming_label": "existing label", "reasoning": "reuse — nuance: ...", "reuse": true}]
 
-Return [] if nothing in this segment warrants a new or reused code.`;
+Return [] if nothing in this segment warrants a new or reused naming.`;
 	} else {
 		return `Segment ${segmentIndex}/${totalSegments}. Identify analytically significant passages.
 
 For each significant passage:
 - Quote the EXACT text (verbatim, at least 20 chars)
-- Provide a concise, descriptive code label that captures the specific concept (NOT generic prefixes like "legitimizing..." or "contesting..." for everything)
+- Provide a concise, descriptive naming label that captures the specific concept (NOT generic prefixes like "legitimizing..." or "contesting..." for everything)
 - Explain briefly why this passage is significant
-- If reusing an existing code with a nuance, set "reuse": true and prefix reasoning with "reuse — nuance:"
-${codesText}${saturationSignal}
+- If reusing an existing naming with a nuance, set "reuse": true and prefix reasoning with "reuse — nuance:"
+${namingsText}${saturationSignal}
 
 Respond in JSON format:
-[{"passage": "exact quote from text", "code_label": "analytical label", "reasoning": "why significant"}]
+[{"passage": "exact quote from text", "naming_label": "analytical label", "reasoning": "why significant"}]
 
-Return [] if nothing in this segment warrants a new or reused code.`;
+Return [] if nothing in this segment warrants a new or reused naming.`;
 	}
 }
 
@@ -1407,11 +1651,12 @@ async function getDocumentSegments(documentId: string, maxChars: number = 12000)
 	return segments;
 }
 
-async function getMapType(mapId: string): Promise<string | undefined> {
+async function getMapType(mapId: string, projectId: string): Promise<string | undefined> {
 	const result = await query(
 		`SELECT a.properties FROM appearances a
+		 JOIN namings n ON n.id = a.naming_id AND n.project_id = $2
 		 WHERE a.naming_id = $1 AND a.perspective_id = $1 AND a.mode = 'perspective'`,
-		[mapId]
+		[mapId, projectId]
 	);
 	return result.rows[0]?.properties?.mapType;
 }

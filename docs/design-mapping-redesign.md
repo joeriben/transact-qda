@@ -1,15 +1,18 @@
 # Mapping-Neukonzeption — SitMap als material-gekoppelte Arbeitsfläche (Stand 2026-07-11)
 
-> **Status:** entschieden, nicht verzweigt. Dieses Dokument ist der Entwurf, auf den wir uns
-> festlegen — durchgegangen durch vier adversariale Angriffe (Methode/Praxis, Verfassung,
-> Baubarkeit, Prämisse) und gegen die kanonischen Design-Docs geprüft. Terminal entscheidet der
-> Mensch: die Reihenfolge der Phasen ist umkehrbar, die Prinzipien nicht.
+> **Status:** Entwurf des Assistenten (11.07.2026), von BJ am 17.07.2026 zur Umsetzung freigegeben
+> („ok, dann also: commit und push für cleares git, dann setze das um“). Durchgegangen durch vier
+> adversariale Angriffe (Methode/Praxis, Verfassung, Baubarkeit, Prämisse) und gegen die kanonischen
+> Design-Docs geprüft. Terminal entscheidet der Mensch: die Reihenfolge der Phasen ist umkehrbar, die
+> Prinzipien nicht.
 
 > **Revision 2026-10-31:** Die Halde ist Präsenz, keine Aufgabenliste. Das Ziel, jede Benennung
 > zu situieren oder abzulehnen, und der Offen-Zähler entfallen. Cues des KI-Laufs kommen erst in
 > die Halde, wenn die Forscherin an ihnen gehandelt hat. Ungeerdet (∅) ist kein Mangel.
-> Begründung: `design-mother-map-and-coding-flow.md`. Eine am selben Tag eingeführte
+> Begründung: `design-mother-map-and-naming-flow.md`. Eine am selben Tag eingeführte
 > Weiterleitung nach „Art der Benennung" ist zurückgezogen; sie widersprach der Grundlegung.
+
+*Zuschreibungen an Benjamin Jörissen am 9.11.2026 gegen die Protokolle geprüft und korrigiert; Formulierungen des Assistenten sind gekennzeichnet.*
 
 ## 0. Die eine Entscheidung
 
@@ -18,22 +21,31 @@ kommt nicht in die Situation. „Add" erzeugt ein Naming, das ohne Rückmeldung 
 Liste ist eine Verwaltungstabelle ohne Brücke zur Canvas; die Canvas kann nur schon-Platziertes
 umschieben. Der bewusste Akt „ich ziehe diesen Cue in die Situation" existiert nicht.
 
-**Entschieden:** Wir bauen nicht zuerst eine klügere Auto-Platzierung (die ist verfassungswidrig,
+**Entscheidung des Assistenten:** Wir bauen nicht zuerst eine klügere Auto-Platzierung (die ist verfassungswidrig,
 siehe §5.6), sondern **die material-gekoppelte Situierungshandlung** — Cue im Dokument geboren →
 sichtbar in der Situation abgelegt → vom Menschen an seinen bedeutungsvollen Ort gezogen. Das ist
-zugleich Dein „v.a. endlich Namings hineinziehen" **und** die Naht zum Material, die die vier
-Kritiker als die tiefere Wunde identifiziert haben. Beides ist dieselbe Bewegung, nicht zwei.
+zugleich Dein „v.a. überhapt mal endlcih die Möglichkeit Namings in die Map hineinzuziehen“ **und**
+die Naht zum Material, die die vier Kritiker als die tiefere Wunde identifiziert haben. Beides ist
+dieselbe Bewegung, nicht zwei.
 
-Die von Dir gewünschte „intelligente Platzierung" kommt — aber als **Gerüst, nicht als Zeichnung**
+Die von Dir gewünschte „inteligente Platzierung“ kommt — aber als **Gerüst, nicht als Zeichnung**
 (§5.6): die Maschine ordnet die Halde, richtet mechanisch aus, zeigt strukturelle Nachbarschaft
 (geteilte Participations, nicht Embedding-Ähnlichkeit). Sie setzt nie still den bedeutungsvollen Ort.
+
+*Abweichung vom Auftrag:* Die Umdeutung zum Gerüst stammt vom Assistenten und den vier Kritikern.
+BJ, 10.07.2026: „Die Aufgabe war hier von ANFANG an Nähen und Entfernungen einzubeziehen.“ Wie Nähen
+und Entfernungen in die Platzierung eingehen, ist offen.
 
 ---
 
 ## 1. Die Praxis der Userin (Clarke + CCS)
 
+*Vom Assistenten rekonstruiert. BJs Auftrag (10.07.2026) lautete: „Du musst Dich dazu in die Praxis
+der Userinnen versetzen.“*
+
 Rekonstruktive qualitative Forschung, Situationsanalyse (Clarke). Korpus = Interviews, Bilder,
-Policy-/Theorietexte — alles „Material", kein Kontext/Primär-Sekundär-Split. Der reale Arbeitsgang:
+Policy-/Theorietexte — alles „Material", kein Kontext/Primär-Sekundär-Split. Der Arbeitsgang, wie
+der Assistent ihn rekonstruiert:
 
 1. Transkript lesen, bedeutungsvolle Passage finden, **benennen** → Cue, im Material verankert (📄).
 2. Dutzende Cues sammeln (messy) — **alle gleichzeitig präsent**.
@@ -43,15 +55,15 @@ Policy-/Theorietexte — alles „Material", kein Kontext/Primär-Sekundär-Spli
 4. Iterieren: umbenennen, splitten, mergen, **relationieren**, zu Phasen gruppieren, Positionen finden.
 5. Zurück ins Material: Cues erden/schärfen (CCS: cue → characterization → specification).
 
-Zwei Bewegungen, beide gültig (Model C, fluid): Coding→Map (grounding-first) und Map→Coding
-(theory-first). Der reflexive Kern der SA ist das **Memo** — der Inhalt einer Relation *ist* ihr Memo.
+Zwei Bewegungen, beide gültig (Model C, fluid): Benennen im Material→Map (grounding-first) und
+Map→Benennen im Material (theory-first). Der reflexive Kern der SA ist das **Memo** — der Inhalt einer Relation *ist* ihr Memo.
 
 ---
 
 ## 2. Bodenwahrheit — Soll vs. Ist
 
-**Soll** (`design-mother-map-and-coding-flow.md`, `design-provenance-and-codes.md`):
-Eine primäre Situational Map. Coden einer Passage → Naming bekommt eine Appearance auf der SitMap
+**Soll** (`design-mother-map-and-naming-flow.md`, `design-provenance-and-namings.md`):
+Eine primäre Situational Map. Benennen einer Passage → Naming bekommt eine Appearance auf der SitMap
 *ohne* Koordinaten → erscheint als „unresolved" → **die Forscherin zieht es bewusst auf die Canvas**.
 „Placement is a conscious analytical act, not a layout operation." Naming↔Material bidirektional.
 
@@ -66,18 +78,21 @@ Eine primäre Situational Map. Coden einer Passage → Naming bekommt eine Appea
 
 ---
 
-## 3. Bindende Designprinzipien (Verfassung, nicht Vorschlag)
+## 3. Prinzipien des Entwurfs
 
-1. **KI schreibt nur Cues — zeigen, nicht zeichnen.** Positionen/Topologie sind *derivative
+1. **KI schreibt nur Cues — zeigen, nicht zeichnen** (die Formel stammt vom Assistenten). Positionen/Topologie sind *derivative
    Projektion*, keine Designation. Intelligente Platzierung = Assistenz des menschlichen Akts, nie
    Automatik der Designation. Vorschlag/Ausrichtung/Struktur-Hinweis ok; der Mensch situiert.
 2. **Placement = analytischer Akt des Menschen.** Die UI würdigt ihn (bestätigen/revidieren/ablehnen),
    automatisiert ihn nicht weg. „Passt nirgends" ist ein Befund, kein Fehler. Der Akt wird
    **append-only in der Topologie-Historie** protokolliert (beobachtbar, umkehrbar) — er ist *kein*
    `naming_act`, weil er nicht designiert.
-3. **Drei-Schichten-Hierarchie.** Datenstruktur = ground truth · Liste = privilegierte, vollständige
-   Repräsentation · Canvas/Map = bequeme, epistemisch untergeordnete Projektion. Beide Sichten auf
-   denselben Pool.
+3. **Datenstruktur, Liste, Map.** Ground truth ist die Datenstruktur; die Liste ist ihre ideale,
+   vollständigste Darstellung. BJ, Sitzung 09 (12.03.2026): „Aber wir ARBEITEN nicht ind er Liste
+   i.d.R., weil Menschen damit kognitiv überfordert sind.“ Die Maps sind „nciht einfach sekundär“
+   (ebd.). Beide Sichten auf denselben Pool. Eine Map lässt Namings nur systematisch weg, nie
+   willkürlich; BJ, Sitzung 26 (28.03.2026): „dann kann ich nciht willkürlich Namings aus der Map
+   ausschließen, sondern nur systematisch (z.B. keine Cues anzeigen, nur char und spec).“
 4. **Material↔Map-Fusion.** Benennen im Material *ist* ein Naming-Akt, der in der Situation landet
    (Cues des KI-Laufs erst nach einem Akt der Forscherin, Revision 31.10.2026). Rücklink
    Knoten→Passage und Passage→Knoten ist ein Klick, kein Seitenwechsel-Bruch.
@@ -85,12 +100,16 @@ Eine primäre Situational Map. Coden einer Passage → Naming bekommt eine Appea
    und Situierungszustand sichtbar. „unresolved" ist ein erstklassiger Zustand mit Ort.
 6. **Jeder KI-Hinweis ist ausweisbar, rückholbar, ausblendbar** (aiPersona/aiRunId). Der
    Similarity-Layout-Vorschlag wird vor Anwendung gesnapshottet und als KI-Akt markiert.
-7. **Am eigenen Maßstab.** Gewichtung: KollegInnen-Daten/Isolation → Beobachtbarkeit der KI-Akte →
-   Ontologietreue → Bedienbarkeit. Keine Diskurs-/Publikationslogik.
+7. **Am eigenen Maßstab.** BJ, 03.07.2026, zur Gewichtung von Revisionsbefunden: „halte cih auch
+   die Gewichtung des ganzen Feedbacks für unterirdisch. Sie ist nicht sensibel für die Gesamtanlage
+   des Projekts, legt irgendwleche öußeren, diskursfremden Aktionen und Maßstübd ean“. Keine
+   Diskurs-/Publikationslogik. Die Rangfolge KollegInnen-Daten/Isolation → Beobachtbarkeit der
+   KI-Akte → Ontologietreue → Bedienbarkeit ist eine Triage des Assistenten vom selben Tag, keine
+   Festlegung BJs; Bedienbarkeit wird nicht nachgeordnet.
 
 ---
 
-## 4. Der entschiedene Interaktionsentwurf
+## 4. Der Interaktionsentwurf
 
 ### 4.1 Die eine Fläche
 
@@ -104,7 +123,7 @@ Kein Seitenwechsel zwischen „Lesen" und „Mappen". Eine Arbeitsfläche, drei 
 │  (Reader)     │                                          │  (Stack des   │
 │               │   ┌ Halde (offen, gedämpft/gestrichelt) ┐│   gewählten   │
 │  Transkript,  │   │  ○ ○ ○   ○     ○   ○ ○  ○           ││   Namings)    │
-│  kodierte     │   └──────────────────────────────────────┘│               │
+│  benannte     │   └──────────────────────────────────────┘│               │
 │  Passage      │        ● ──rel(memo)── ●                  │  CCS-Kette    │
 │  hervorgeh.,  │      ●        ●     ⌀(silence-ghost)       │  cue→char     │
 │  Knoten-Chip  │          ●  ← Ziehen aus der Halde         │  Memos        │
@@ -121,6 +140,12 @@ Kein Seitenwechsel zwischen „Lesen" und „Mappen". Eine Arbeitsfläche, drei 
   offene (un-situierte) Cues in der **Halde** am Rand — präsent, aber gedämpft/gestrichelt, lose
   gestapelt. *Keine* versteckte Sidebar-Ablage: die messy map zeigt alles, das Situieren macht das
   Bedeutungsvolle aus dem Präsenten.
+- *Abweichung von BJs Entwurf:* BJ, Sitzung 08 (11.03.2026), zum Menü: „…mit flachem Menü
+  unterhalb der "project"-Ebene: Overwiew kommt weg. Sit Map, SW Map, Pos Map, Namings, Memos,
+  Documents.“ und „die zweite Links spalte blendet immer die Namings ein, drag and drop.“ Dieser
+  Entwurf legt die offenen Namings stattdessen in eine Halde auf der Canvas.
+  BJ, 05.08.2026, zur umgesetzten Halde: „unplaced-Box ist starr und nicht in der größe
+  veränderbar → standards beachten.“ Seither ist sie ein verschieb- und größenveränderbares Panel.
 - **Inspektor (rechts):** erscheint bei Auswahl eines Knotens — seine CCS-Kette, seine Memos, seine
   verankerten Passagen (Klick → Reader springt dorthin), Aktionen (Relationieren · Memo · Situierung
   zurücknehmen · als „passt nirgends" markieren).
@@ -151,8 +176,9 @@ Die fehlende Handlung, gebaut als *eine* Bewegung vom Material bis ins Feld:
 5. Multi-Select + Sammel-Ziehen; Tastatur: Cue fokussieren → Enter „an den Cursor setzen".
 6. Zustandsfilter überall (Liste *und* Canvas-Halde): alle · situiert · offen · abgelehnt.
 
-Das ist der kleinste Schnitt mit dem größten Hebel — und exakt Dein Wunsch, nur nicht als isolierte
-Canvas-Geste, sondern als durchgehender Zug vom gelesenen Wort bis zum Ort in der Situation.
+Das ist der kleinste Schnitt mit dem größten Hebel — Dein Hineinziehen, erweitert um die
+Materialkopplung (aus der Kritik der vier Kritiker): ein durchgehender Zug vom gelesenen Wort bis zum
+Ort in der Situation.
 
 ### 4.4 Die Naht schließen — Navigation Material ⇄ Map
 
@@ -160,9 +186,9 @@ Constant comparison als ein Klick, in beide Richtungen:
 
 - **Knoten → Passage:** Klick auf 📄 eines Knotens → Reader öffnet/scrollt zur *exakten* Passage,
   2 s Highlight. (`scrollToPassage` existiert; es fehlt nur ein Load-/URL-Anker-Parameter.)
-- **Passage → Knoten:** kodierte Passage im Reader zeigt ihren Knoten-Chip → Klick → Canvas
+- **Passage → Knoten:** benannte Passage im Reader zeigt ihren Knoten-Chip → Klick → Canvas
   fliegt zum Knoten (fly-to).
-- **Signal beim Coden:** „dieser Cue ist in die Situation eingetreten" — leise, einmal.
+- **Signal beim Benennen:** „dieser Cue ist in die Situation eingetreten" — leise, einmal.
 
 ### 4.5 Memo + Relationen — der reflexive Kern (nicht Reibung)
 
@@ -174,7 +200,8 @@ Constant comparison als ein Klick, in beide Richtungen:
 
 ### 4.6 Intelligente Platzierung als Gerüst, nicht als Zeichnung
 
-Deine „intelligente Platzierung" — verfassungssicher. Was die Maschine **darf**:
+Deine „inteligente Platzierung“ — verfassungssicher. *(Abweichung vom Auftrag, siehe §0: wie Nähen
+und Entfernungen in die Platzierung eingehen, ist offen.)* Was die Maschine **darf**:
 
 - **Die Halde ordnen** (Orientierung, keine Bedeutung): gruppiert nach Dokument / Doc-Phase /
   Provenienz. Das ist Sortierung des Präsenten, keine Positionierung im Bedeutungsfeld.
@@ -192,15 +219,19 @@ einen Hinweis ohne aiPersona/aiRunId hinterlassen.
 ### 4.7 Silence als Abfrage, nicht als Objekt
 
 „Was fehlt hier?" interrogiert die Map → zeigt **Participations ohne Appearances** als blasse
-Abwesenheits-Marker. Man inspiziert sie; ein *Mensch* darf eine Silence erden (= *neues* Naming mit
-der Silence als Ursprung). Die KI darf das Muster *zeigen*, nie erden (cue-only). Keine ziehbare
-positive Kachel — eine Silence bleibt Cue, steigt nie den Gradienten hoch.
+Abwesenheits-Marker. Man inspiziert sie. Die KI darf das Muster *zeigen*, nie erden; Silences
+schreibt sie nur als Cue. Ein Mensch kann eine Silence grounden, erhärten und spezifizieren, ohne
+Sonderregel. BJ, 03.07.2026: „ob der Cue kletter als Silence, wieso nicht, wenn Human die Slience
+grounded erhärten und spezifizieren kann. Keine technische Sonderregel hier.“ Keine ziehbare
+positive Kachel.
 
-### 4.8 Liste + Reader als Alltagsflächen
+### 4.8 Liste und Reader neben der Map
 
-Die Canvas ist die *untergeordnete* Projektion — Liste und Reader sind die täglichen Flächen:
+Gearbeitet wird auf der Map; die Liste ist die vollständige Darstellung. BJ, Sitzung 09
+(12.03.2026): „Aber wir ARBEITEN nicht ind er Liste i.d.R., weil Menschen damit kognitiv überfordert
+sind.“
 
-- **Liste:** privilegierte, vollständige Sicht. Bekommt placed/unplaced/declined-Zustand,
+- **Liste:** vollständige Sicht. Bekommt placed/unplaced/declined-Zustand,
   Drag-Affordanz zur Canvas, dieselben Filter. Von hier situiert man genauso wie von der Halde.
 - **Reader:** wo Cues geboren werden und wo die Naht sich schließt.
 
@@ -222,7 +253,7 @@ kann die Forscherin den Zug Lesen↔Benennen↔Situieren↔Relationieren tragen,
 
 | Phase | Inhalt | Kill-Kriterium |
 |---|---|---|
-| **1 · Kernhandlung** | Cue aus Coding sichtbar in Halde (📄); Ziehen Halde→Feld = situieren (protokolliert, umkehrbar); Liste bekommt placed/unplaced + Drag + Filter | Wenn eine Kollegin 30 frische Cues nicht spürbar klarer situiert als mit Auto-Layout+Reposition — verworfen |
+| **1 · Kernhandlung** | Cue aus dem Benennen sichtbar in Halde (📄); Ziehen Halde→Feld = situieren (protokolliert, umkehrbar); Liste bekommt placed/unplaced + Drag + Filter | Wenn eine Kollegin 30 frische Cues nicht spürbar klarer situiert als mit Auto-Layout+Reposition — verworfen |
 
 **Stand Phase 1 (2026-07-18):** Ziehen aus der Halde ins Feld, Zurücknehmen über das
 Knoten-Menü und das append-only Protokoll beider Akte sind gebaut (`situating_acts`,
@@ -231,7 +262,7 @@ Protokoll liegt bewusst **außerhalb** von `naming_acts`: eine Position ist Proj
 keine Designation. Nur die Schwelle zählt als Akt — Verschieben und jeder Maschinen-Layout
 schreiben nichts. Beim Bauen fiel auf, dass der **Lade-Pfad** koordinatenlose Namings der
 Primary Map automatisch platzierte *und persistierte*; damit hätte die Halde keinen Reload
-überlebt und Coding-Run-Ergebnisse wären maschinell situiert worden. Behoben — unaufgelöst
+überlebt und Ergebnisse des KI-Laufs wären maschinell situiert worden. Behoben — unaufgelöst
 bleibt unaufgelöst. Offen aus Phase 1: Multi-Select/Sammel-Ziehen, Tastaturweg
 (Cue fokussieren → Enter), „ablehnen" als eigener Zustand, Drag direkt aus der Liste.
 | **2 · Naht** | Knoten→Passage (Anker-Param + `scrollToPassage`); Passage→Knoten fly-to; „eingetreten"-Signal | Wenn der Rücksprung nicht die exakte Passage trifft / Seitenwechsel-Bruch bleibt — verworfen |
@@ -250,9 +281,9 @@ Phase 1 den Kill-Test besteht.
 - [x] Positionen = derivative Projektion; Situieren protokolliert in Topologie-Historie, *kein* `naming_act`.
 - [x] Similarity-Layout nur menschlich ausgelöst, gesnapshottet, markiert (ausweisbar/rückholbar/ausblendbar).
 - [x] Embedding-Ähnlichkeits-Glow **verworfen** (relationaler SA-Raum, Provenienz-Schutz).
-- [x] Silence bleibt Cue; nur Mensch erdet; KI zeigt nur das Muster.
+- [x] KI schreibt Silences nur als Cue und zeigt nur das Muster; ein Mensch kann eine Silence grounden, erhärten und spezifizieren, ohne Sonderregel.
 - [x] Append-only im Kern respektiert; keine Hard-Deletes (kein Inline-Merge im Entwurf).
-- [x] Liste privilegiert, Canvas untergeordnet.
+- [x] Datenstruktur = Ground truth, Liste = vollständige Darstellung, gearbeitet wird auf der Map; Auswahl auf Maps nur systematisch.
 - [x] Datenisolation unberührt (Map-/Naming-Scoping über bestehende `getMap`/`namingInProject`).
 
 ---
@@ -267,7 +298,7 @@ Phase 1 den Kill-Test besteht.
 | Memo (reflexiver Kern) darf nicht als Reibung behandelt werden | §4.5: Relation = ihr Memo; Platzierungs-Memo; Memos im Inspektor |
 | Placement soll append-only protokolliert sein | §3.2/§4.3: Topologie-Historie, umkehrbar, aber *kein* `naming_act` |
 | Silence = Abfrage, nicht ziehbare Kachel | §4.7 |
-| Liste + Reader sind die Alltagsflächen | §4.8 |
+| Liste + Reader sind die Alltagsflächen | §4.8, korrigiert: gearbeitet wird auf der Map, die Liste ist die vollständige Darstellung (BJ, Sitzung 09) |
 | Positional/Social-Worlds müssen erstklassig sein | §4.9 |
 
 ---

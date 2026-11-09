@@ -200,7 +200,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
 			// Copy document_elements — die Satz-/Parse-Ebene samt Embeddings.
 			// Ohne sie hat die Kopie zwar Dokumenttexte, aber keine Sätze: ein
-			// Coding-Run segmentiert über element_type='sentence' und bricht mit
+			// Naming-Run segmentiert über element_type='sentence' und bricht mit
 			// „Document has no sentence elements" ab, die Embedding-Suche läuft
 			// leer. Set-basiert statt zeilenweise — das sind zehntausende Zeilen
 			// mit 768-dim Vektoren. Die Temp-Tabelle hält alte→neue Element-ID

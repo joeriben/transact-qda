@@ -6,6 +6,12 @@
 	import { getMapState } from './mapState.svelte.js';
 	import { createFloatingPanel } from './floatingPanel.svelte.js';
 	import { viewHref } from '$lib/shared/rueckweg.js';
+	import { memoText } from '$lib/shared/memoText.js';
+	import StackActs from '$lib/components/StackActs.svelte';
+	import ReferringNotes from '$lib/components/ReferringNotes.svelte';
+	import { namingLabel } from '$lib/shared/namingLabel.js';
+	import { formatWhen } from '$lib/shared/dates.js';
+	import NamingMemoForm from '$lib/components/NamingMemoForm.svelte';
 	import { CLARKE_SW_QUESTIONS, CLARKE_ARENA_QUESTIONS, ANALYTICAL_DEEPENING } from '$lib/shared/constants.js';
 
 	let { mode, item }: { mode: 'floating' | 'inline'; item?: any } = $props();
@@ -31,11 +37,33 @@
 
 	const stackNode = $derived(mode === 'floating' ? ms.findNode(ms.stackId!) : item);
 
-	// The map name only earns a column when it distinguishes something: a naming
-	// situated on several maps. On one map it is the same word on every row.
-	const situatingSpansMaps = $derived(
-		new Set((ms.stackData?.situating ?? []).map((s: any) => s.map_inscription)).size > 1
-	);
+	// Aus der Platzierung abgeleitete Relation (getNamingStack.derivedFrom).
+	const derivedFrom = $derived(((ms.stackData as { derivedFrom?: string[] } | null)?.derivedFrom) ?? []);
+	// Memos in anderen Stacks, die auf dieses Naming verweisen (Bezug in beide Richtungen).
+	const referringNotes = $derived(((ms.stackData as { referringNotes?: any[] } | null)?.referringNotes) ?? []);
+	// Satz IV: Hinweise der KI leben außerhalb des Datenraums, bis der Mensch
+	// sie durch einen eigenen Akt hereinholt. Unbewertete (und verworfene)
+	// KI-Memos zählen daher nicht zu den Memos dieses Namings, sondern stehen
+	// gesondert, mit den Knöpfen zum Bewerten.
+	const isAiPending = (m: any) => m.isAiAuthored && (m.status === 'presented' || m.status === 'discussed' || m.status === 'dismissed');
+	const dataMemos = $derived((ms.stackData?.memos ?? []).filter((m: any) => !isAiPending(m)));
+	const aiPendingMemos = $derived((ms.stackData?.memos ?? []).filter(isAiPending));
+
+	// Eine Relation ohne eigene Inschrift heißt nach ihren Endpunkten.
+	const stackTitle = $derived.by(() => {
+		const n = stackNode;
+		if (!n) return '(unnamed)';
+		if (n.mode === 'relation') {
+			const [src, tgt] = ms.endpointsOf(n);
+			return namingLabel(n.inscription, {
+				source: src ? ms.findInscription(src) : null,
+				target: tgt ? ms.findInscription(tgt) : null,
+				valence: n.valence,
+				directed: !!(n.directed_from && n.directed_to)
+			});
+		}
+		return namingLabel(n.inscription, null);
+	});
 
 	// Begründung je Passage: die Akte tragen die Passagen-ID in
 	// linked_naming_ids (coding-run/write.ts). Sie stehen unter der Passage, für
@@ -59,6 +87,13 @@
 			(r: any) => !(r.linked_naming_ids ?? []).some((id: string) => shown.has(id))
 		);
 	});
+
+	// Worauf ein Memo zu diesem Naming verweisen kann: was auf dieser Karte steht.
+	const memoCandidates = $derived(
+		[...ms.elements, ...ms.relations, ...ms.silences]
+			.filter((n: any) => n.naming_id !== ms.stackId)
+			.map((n: any) => ({ id: n.naming_id, label: ms.findInscription(n.naming_id) }))
+	);
 
 	// Group annotations by document for the Material section
 	const annotationsByDoc = $derived.by(() => {
@@ -84,7 +119,7 @@
 			<div class="stack-panel-header" onpointerdown={panel.drag}
 				ondblclick={(e) => { if (!(e.target as Element).closest('button, a')) panel.reset(); }}
 				title="Drag to move · double-click resets">
-				<span class="stack-title">{stackNode?.inscription || '(unnamed)'}</span>
+				<span class="stack-title">{stackTitle}</span>
 				<button class="btn-link" onclick={() => { ms.stackId = null; ms.stackData = null; }}>close</button>
 			</div>
 		{/if}
@@ -93,7 +128,7 @@
 		     Weg dorthin trägt den Rückweg auf diese Karte mit (shared/rueckweg.ts). -->
 		<a class="open-in-namings"
 			href={viewHref(`/projects/${ms.projectId}/namings`, { focus: ms.stackId, from: mapPath })}
-			title="In der Naming-Liste öffnen — dort ist alles bearbeitbar; der Rückweg führt hierher zurück">
+			title="Open in the naming list, where everything can be edited; the way back leads here">
 			Open in Namings &rarr;
 		</a>
 		{#if stackNode?.is_collapsed}
@@ -101,54 +136,27 @@
 				unpin (show latest)
 			</button>
 		{/if}
-		{#if ms.stackData.inscriptions.length > 1}
-			<div class="history-section">
-				<span class="history-label">Inscriptions</span>
-				{#each ms.stackData.inscriptions as hi}
-					<div class="history-entry" class:pinned-layer={stackNode?.is_collapsed && stackNode?.properties?.collapseAt === hi.seq}>
-						<span class="he-value">{hi.inscription}</span>
-						<span class="he-by">{hi.by_inscription}</span>
-						<span class="he-date">{new Date(hi.created_at).toLocaleString()}</span>
-						<button class="btn-xs btn-pin" title="Pin to this layer" onclick={() => ms.pinToLayer(ms.stackId!, hi.seq)}>
-							pin
-						</button>
-					</div>
-				{/each}
-			</div>
-		{/if}
-		{#if (ms.stackData.situating?.length ?? 0) > 0}
-			<div class="history-section">
-				<!-- Deliberately separate from Designations: entering a situation is a
-				     topological act, not a step on the CCS gradient. -->
-				<span class="history-label">Situating</span>
-				{#each ms.stackData.situating as sa}
-					<div class="history-entry situating-entry" title="{sa.map_inscription} · {sa.act === 'situate' ? 'situated at' : 'was at'} {Math.round(sa.x)}, {Math.round(sa.y)}">
-						<span class="situating-dot" class:situating-out={sa.act === 'unsituate'}></span>
-						<span class="he-value">{sa.act === 'situate' ? 'situated' : 'taken back'}</span>
-						{#if situatingSpansMaps}
-							<span class="he-map">{sa.map_inscription}</span>
-						{/if}
-						<span class="he-by">{sa.by_inscription}</span>
-						<span class="he-date">{new Date(sa.created_at).toLocaleString()}</span>
-					</div>
-				{/each}
-			</div>
-		{/if}
 		<div class="history-section">
-			<span class="history-label">Designations</span>
-			{#each ms.stackData.designations as hd}
-				<div class="history-entry">
-					<span class="designation-dot-sm" style="background: {ms.designationColor(hd.designation)}"></span>
-					<span class="he-value">{hd.designation}</span>
-					<span class="he-by">{hd.by_inscription}</span>
-					<span class="he-date">{new Date(hd.created_at).toLocaleString()}</span>
+			<span class="history-label">Stack</span>
+			{#if derivedFrom.length > 0}
+				<div class="derived-note" title="Derived automatically from containment and overlap of formations on the map">
+					Derived from the placement on {derivedFrom.join(', ')} — moving the formations updates it.
 				</div>
-			{/each}
+			{/if}
+			<StackActs acts={ms.stackData.acts ?? []}
+				currentMap={ms.mapLabel ?? null}
+				pinnedSeq={stackNode?.is_collapsed ? stackNode?.properties?.collapseAt : null}
+				onpin={(seq) => ms.pinToLayer(ms.stackId!, seq)}
+				onlinked={(id) => { if (ms.findNode(id)) ms.showStack(id); }} />
+			{#key ms.stackId + ':' + (ms.noteOpenFor === ms.stackId)}
+				<NamingMemoForm projectId={ms.projectId} namingId={ms.stackId!}
+					candidates={memoCandidates}
+					startOpen={ms.noteOpenFor === ms.stackId}
+					oncreated={() => ms.afterNote()}
+					oncancel={() => { ms.noteOpenFor = null; }} />
+			{/key}
 		</div>
-		{#if ms.stackData.memos?.length > 0}
-			<div class="history-section">
-				<span class="history-label">Memos ({ms.stackData.memos.length})</span>
-				{#each ms.stackData.memos as memo}
+		{#snippet memoEntry(memo: any)}
 					<div class="memo-entry" class:memo-ai={memo.isAiAuthored} class:memo-dismissed={memo.status === 'dismissed'}>
 						<div class="memo-entry-header">
 							<span class="memo-author-badge" class:badge-ai={memo.isAiAuthored}>
@@ -158,9 +166,9 @@
 								<span class="memo-status-badge status-{memo.status}">{memo.status}</span>
 							{/if}
 							<span class="memo-label">{memo.label}</span>
-							<span class="he-date">{new Date(memo.created_at).toLocaleString()}</span>
+							<span class="he-date">{formatWhen(memo.created_at)}</span>
 						</div>
-						<span class="memo-content">{memo.content}</span>
+						<span class="memo-content">{memoText(memo.content)}</span>
 						{#if memo.discussion?.length > 0}
 							<div class="discussion-thread">
 								{#each memo.discussion as turn}
@@ -212,8 +220,28 @@
 							{/if}
 						</div>
 					</div>
-				{/each}
-			</div>
+		{/snippet}
+		{#if dataMemos.length + referringNotes.length > 0}
+		<div class="history-section">
+			<!-- Memos in anderen Stacks, die hierher verweisen, und Memo-Namings,
+			     die auf dieses Naming verweisen: analytische Memos (Konstellation,
+			     KI, nach Bewertung) und ältere Memos aus der Zeit, bevor das Memo zu
+			     einem Naming als Akt in seinen Stack ging. -->
+			<span class="history-label">Memos referring to this ({dataMemos.length + referringNotes.length})</span>
+			<ReferringNotes notes={referringNotes}
+				onopen={(id) => { if (ms.findNode(id)) ms.showStack(id); }} />
+			{#each dataMemos as memo (memo.id)}
+				{@render memoEntry(memo)}
+			{/each}
+		</div>
+		{/if}
+		{#if aiPendingMemos.length > 0}
+		<div class="history-section">
+			<span class="history-label">From Cowork, not yet judged ({aiPendingMemos.length})</span>
+			{#each aiPendingMemos as memo (memo.id)}
+				{@render memoEntry(memo)}
+			{/each}
+		</div>
 		{/if}
 		{#if annotationsByDoc.length > 0}
 			<div class="history-section material-section">
@@ -229,7 +257,7 @@
 								     ?passage= landet man oben im Transkript und sucht. -->
 								<a class="material-text"
 									href={viewHref(`/projects/${ms.projectId}/documents/${group.docId}`, { focus: ms.stackId, passage: p.id, from: mapPath })}
-									title="Im Material aufschlagen — der Rückweg führt hierher zurück">{p.properties?.anchor?.text || '(no text)'}</a>
+									title="Open this passage in the material; the way back leads here">{p.properties?.anchor?.text || '(no text)'}</a>
 								{#each reasoningByAnnotation.get(p.id) ?? [] as r}
 									<div class="material-reasoning">
 										<span class="mr-by">{r.by_inscription}</span>
@@ -403,14 +431,11 @@
 	.he-by::before { content: '— '; }
 	.he-date { color: #4b5563; margin-left: auto; font-size: 0.7rem; }
 	.designation-dot-sm { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
-	/* Hollow, not filled: a situating act carries no designation weight. */
-	.situating-dot {
-		width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; display: inline-block;
-		border: 1px solid #8b9cf7;
+	.derived-note {
+		font-size: 0.7rem; color: #a0a4b0; background: rgba(139, 156, 247, 0.07);
+		border: 1px dashed rgba(139, 156, 247, 0.35); border-radius: 4px;
+		padding: 0.25rem 0.45rem; margin: 0.2rem 0 0.35rem;
 	}
-	.situating-dot.situating-out { border-color: #4b5563; }
-	.situating-entry { white-space: nowrap; }
-	.he-map { color: #6b7280; font-size: 0.7rem; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 
 	/* Memo entries */
 	.memo-entry {

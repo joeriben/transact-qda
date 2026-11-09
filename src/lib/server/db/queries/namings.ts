@@ -60,6 +60,49 @@ export async function getOrCreateResearcherNaming(
 	});
 }
 
+// ---- Notiz zu einem Akt ----
+// Ein Naming IST sein Stack: Umschreiben und Designieren sind Akte in der
+// Geschichte derselben, nicht-identischen Entität. Was die Forscherin dazu
+// notiert und worauf sie dabei verweist, steht in diesem Akt
+// (naming_acts.memo_text / linked_naming_ids, Migration 009) — nicht in einem
+// eigenen Memo-Naming mit Verknüpfungs-Naming daneben.
+export interface ActNote {
+	text?: string | null;
+	linkedNamingIds?: string[] | null;
+}
+function noteText(note: ActNote): string | null {
+	const t = note.text?.trim();
+	return t ? t : null;
+}
+function noteLinks(note: ActNote): string[] | null {
+	const ids = (note.linkedNamingIds ?? []).filter((id) => typeof id === 'string' && id);
+	return ids.length > 0 ? ids : null;
+}
+
+/** Ein Naming gilt als zurückgezogen, wenn ALLE seine Erscheinungen unter
+ *  Perspektiven zurückgezogen sind; hat es keine, entscheidet die eigene. */
+export function WITHDRAWN_SQL(alias: string): string {
+	const flag = (a: string) =>
+		`(COALESCE((${a}.properties->>'withdrawn')::boolean, false) OR COALESCE((${a}.properties->>'aiWithdrawn')::boolean, false))`;
+	return `(CASE WHEN EXISTS (SELECT 1 FROM appearances wa WHERE wa.naming_id = ${alias}.id AND wa.perspective_id <> ${alias}.id)
+	              THEN NOT EXISTS (SELECT 1 FROM appearances wa WHERE wa.naming_id = ${alias}.id AND wa.perspective_id <> ${alias}.id AND NOT ${flag('wa')})
+	              ELSE EXISTS (SELECT 1 FROM appearances wa WHERE wa.naming_id = ${alias}.id AND wa.perspective_id = ${alias}.id AND ${flag('wa')})
+	         END)`;
+}
+
+/** Nur Namings dieses Projekts dürfen als Verweis in einen Akt. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export async function scopeNamingIds(ids: unknown, projectId: string): Promise<string[]> {
+	if (!Array.isArray(ids) || ids.length === 0) return [];
+	const r = await query<{ id: string }>(
+		`SELECT id FROM namings
+		 WHERE id = ANY($1::uuid[]) AND project_id = $2 AND deleted_at IS NULL`,
+		[ids.filter((id) => typeof id === 'string' && UUID_RE.test(id)), projectId]
+	);
+	return r.rows.map((row) => row.id);
+}
+
 // ---- Core naming operations ----
 
 export async function createNaming(
@@ -99,13 +142,18 @@ export async function renameNaming(
 	namingId: string,
 	projectId: string,
 	userId: string,
-	inscription: string
+	inscription: string,
+	note: ActNote = {}
 ) {
 	const researcherNamingId = await getOrCreateResearcherNaming(projectId, userId);
+	// Umschreiben MIT Notiz ist ein reflektierter Akt: auf einem Cue trägt er
+	// die Characterization (siehe noteLiftsCue). Ohne Notiz bleibt die
+	// Designation, wie sie ist.
+	const lift = noteText(note) ? await noteLiftsCue(namingId) : false;
 
 	return transaction(async (client) => {
 		// Was bisher dastand, festhalten, BEVOR es überschrieben wird. Namings aus
-		// Coding-Run und in-vivo entstehen ohne Inskriptions-Akt (nur Designation);
+		// Naming-Run und in-vivo entstehen ohne Inskriptions-Akt (nur Designation);
 		// ohne diesen Nachtrag ginge beim Umschreiben verloren, was umgeschrieben
 		// wurde — die Kette begänne mit der neuen Lesart. Der Nachtrag geht dem
 		// Umschreib-Akt in der seq voraus, trägt aber das Datum der Entstehung.
@@ -145,11 +193,11 @@ export async function renameNaming(
 			[inscription, namingId, projectId]
 		);
 
-		// Record in stack
+		// Record in stack — die Notiz zum Umschreiben gehört in denselben Akt.
 		await client.query(
-			`INSERT INTO naming_acts (naming_id, by, inscription)
-			 VALUES ($1, $2, $3)`,
-			[namingId, researcherNamingId, inscription]
+			`INSERT INTO naming_acts (naming_id, by, inscription, memo_text, linked_naming_ids, designation)
+			 VALUES ($1, $2, $3, $4, $5, $6)`,
+			[namingId, researcherNamingId, inscription, noteText(note), noteLinks(note), lift ? 'characterization' : null]
 		);
 
 		return result.rows[0];
@@ -181,6 +229,49 @@ export async function getNaming(namingId: string, projectId: string) {
 		`SELECT * FROM namings WHERE id = $1 AND project_id = $2 AND deleted_at IS NULL`,
 		[namingId, projectId]
 	);
+}
+
+/** Der Vermerk im Stack eines als technischer Fehler ausgeblendeten Eintrags. */
+export const TECHNICAL_ERROR_NOTE = 'Als technischer Fehler markiert und ausgeblendet.';
+
+/**
+ * Einen Eintrag als technischen Fehler markieren und dauerhaft ausblenden.
+ *
+ * BJ, 09.11.2026: „füge eine Möglichkeit hinzu technische Fehler zu beheben";
+ * „markieren als techn. Fehler und permanent ausblenden reicht auch, sollte
+ * Datenintegrität ein Problem sein für Löschfunktionen". Gemeint sind
+ * Einträge, die ein Fehler der Software erzeugt hat (etwa doppelte Memos aus
+ * dem kaputten Memo-Formular), keine analytische Entscheidung; die ist
+ * Withdraw und bleibt sichtbar.
+ *
+ * Gelöscht wird nichts. Das Naming bekommt einen Akt mit dem Vermerk in
+ * seinen Stack; es selbst und die Participation-Namings, an denen es
+ * beteiligt ist (Verknüpfungen eines Memos, Relationen), bekommen deleted_at
+ * und verschwinden damit aus allen Ansichten. Zurückholen lässt es sich nur
+ * in der Datenbank (deleted_at = NULL).
+ */
+export async function markTechnicalError(
+	namingId: string,
+	projectId: string,
+	userId: string
+): Promise<{ hidden: number }> {
+	const by = await getOrCreateResearcherNaming(projectId, userId);
+	return transaction(async (client) => {
+		await client.query(
+			`INSERT INTO naming_acts (naming_id, by, memo_text) VALUES ($1, $2, $3)`,
+			[namingId, by, TECHNICAL_ERROR_NOTE]
+		);
+		const res = await client.query(
+			`UPDATE namings SET deleted_at = now()
+			  WHERE project_id = $2 AND deleted_at IS NULL
+			    AND (id = $1 OR id IN (
+			      SELECT p.id FROM participations p
+			       WHERE p.naming_id = $1 OR p.participant_id = $1))
+			  RETURNING id`,
+			[namingId, projectId]
+		);
+		return { hidden: res.rowCount ?? 0 };
+	});
 }
 
 export async function getNamingsByProject(projectId: string) {
@@ -375,12 +466,74 @@ export async function createNamedAppearance(
 export async function designate(
 	namingId: string,
 	designation: 'cue' | 'characterization' | 'specification',
-	byNamingId: string
+	byNamingId: string,
+	note: ActNote = {}
 ) {
 	return queryOne(
-		`INSERT INTO naming_acts (naming_id, designation, by)
-		 VALUES ($1, $2, $3) RETURNING *`,
-		[namingId, designation, byNamingId]
+		`INSERT INTO naming_acts (naming_id, designation, by, memo_text, linked_naming_ids)
+		 VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+		[namingId, designation, byNamingId, noteText(note), noteLinks(note)]
+	);
+}
+
+/**
+ * Hebt eine Notiz der Forscherin dieses Naming von cue auf characterization?
+ *
+ * „ein reflected cue ist mindestens eine characeriztation" (BJ, Session 08,
+ * 11.03.2026); „MEMOS ADVANCEN EINE ENTITÄT VOM CUE ZUR CHARACTERIZATION"
+ * (BJ, 09.11.2026). Das gilt auch für Silences: „ob der Cue kletter als
+ * Silence, wieso nicht, wenn Human die Slience grounded erhärten und
+ * spezifizieren kann. Keine technische Sonderregel hier." (BJ, 03.07.2026).
+ * Die einzige Schranke ist die allgemeine: Hier schreiben nur Forschende,
+ * KI-Pfade schreiben Cues.
+ */
+export async function noteLiftsCue(namingId: string): Promise<boolean> {
+	const r = await queryOne<{ designation: string | null }>(
+		`SELECT (SELECT na.designation FROM naming_acts na
+		         WHERE na.naming_id = $1 AND na.designation IS NOT NULL
+		         ORDER BY na.seq DESC LIMIT 1) AS designation`,
+		[namingId]
+	);
+	if (!r) return false;
+	return r.designation === null || r.designation === 'cue';
+}
+
+/**
+ * Memo zu einem Naming = ein Akt in seinem Stack.
+ *
+ * Ein Memo ZU einem Naming ist dessen Description — „a description may be
+ * called an expanding naming" (Dewey/Bentley) — und gehört in seinen Stack
+ * (Session 16, 16.03.2026: Vorschlag des Assistenten „zwei Modi", von BJ
+ * mit „Ja, zwei Modi" bestätigt; BJs eigener Satz dort: Memos sind „dann doch
+ * kein Naming, solange man sie nicht dezidiert zu einem Naming macht"; er
+ * ergänzte die Organisationsmemos als dritte Art. 09.11.2026: „Wenn ich ZU
+ * einem Naming ein MEMO anlege, dann kann das ja wohl logischerweise kein
+ * EIGENES NAMING sein"). Es entsteht also kein Memo-Naming und kein
+ * Verknüpfungs-Naming: der Akt trägt den Text (memo_text) und die Namings,
+ * die man beim Schreiben im Sinn hat (linked_naming_ids; Session 05, BJs
+ * Vorschlag für die Beschriftung: „Namings I have in mind writing this
+ * memo"). Steht das Naming auf cue, trägt derselbe Akt die Characterization
+ * (noteLiftsCue).
+ *
+ * Analytische Memos über Konstellationen und Organisationsmemos sind etwas
+ * anderes (Inquiry-Medium, eigener Lebenszyklus) und laufen über memos.ts.
+ * Nur Forschende schreiben hier — KI-Pfade schreiben nur Cues.
+ */
+export async function noteOnNaming(
+	namingId: string,
+	projectId: string,
+	userId: string,
+	note: ActNote
+) {
+	const text = noteText(note);
+	if (!text) throw new Error('note text required');
+	const researcherNamingId = await getOrCreateResearcherNaming(projectId, userId);
+	const lift = await noteLiftsCue(namingId);
+	const links = noteLinks({ linkedNamingIds: (note.linkedNamingIds ?? []).filter((id) => id !== namingId) });
+	return queryOne(
+		`INSERT INTO naming_acts (naming_id, by, memo_text, linked_naming_ids, designation)
+		 VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+		[namingId, researcherNamingId, text, links, lift ? 'characterization' : null]
 	);
 }
 
@@ -458,29 +611,48 @@ export async function getAggregatedNaming(namingId: string, projectId: string) {
 			relation_id: string; relation_inscription: string;
 			partner_id: string; partner_inscription: string;
 			partner_designation: string | null;
+			relation_designation: string | null;
 			role: 'source' | 'target';
 			valence: string | null;
-			map_labels: string | null;
+			is_withdrawn: boolean;
+			map_appearances: { id: string; label: string; mode: string; withdrawn: boolean }[] | null;
 		}>(
 			`SELECT p.id as relation_id, pn.inscription as relation_inscription,
 			        partner.id as partner_id, partner.inscription as partner_inscription,
 			        (SELECT na.designation FROM naming_acts na
 			         WHERE na.naming_id = partner.id AND na.designation IS NOT NULL
 			         ORDER BY na.seq DESC LIMIT 1) as partner_designation,
+			        (SELECT na.designation FROM naming_acts na
+			         WHERE na.naming_id = p.id AND na.designation IS NOT NULL
+			         ORDER BY na.seq DESC LIMIT 1) as relation_designation,
 			        CASE WHEN p.naming_id = $1 THEN 'source' ELSE 'target' END as role,
 			        (SELECT a.valence FROM appearances a WHERE a.naming_id = p.id AND a.mode = 'relation' LIMIT 1) as valence,
-			        (SELECT string_agg(DISTINCT mp.inscription, ', ')
+			        ${WITHDRAWN_SQL('pn')} as is_withdrawn,
+			        -- Je Map: wie die Relation dort erscheint (als Relation oder
+			        -- umgeschaltet als Entität) und ob sie dort zurückgezogen ist.
+			        (SELECT json_agg(json_build_object(
+			            'id', mp.id, 'label', mp.inscription, 'mode', ra.mode,
+			            'withdrawn', COALESCE((ra.properties->>'withdrawn')::boolean, false)
+			                         OR COALESCE((ra.properties->>'aiWithdrawn')::boolean, false))
+			          ORDER BY mp.inscription)
 			         FROM appearances ra
 			         JOIN namings mp ON mp.id = ra.perspective_id AND mp.deleted_at IS NULL
 			         JOIN appearances mpa ON mpa.naming_id = mp.id AND mpa.perspective_id = mp.id
 			           AND mpa.mode = 'perspective' AND mpa.properties ? 'mapType'
-			         WHERE ra.naming_id = p.id AND ra.perspective_id != p.id) as map_labels
+			         WHERE ra.naming_id = p.id AND ra.perspective_id != p.id) as map_appearances
 			 FROM participations p
 			 JOIN namings pn ON pn.id = p.id AND pn.deleted_at IS NULL
 			 JOIN namings partner ON partner.id = CASE WHEN p.naming_id = $1 THEN p.participant_id ELSE p.naming_id END
 			   AND partner.deleted_at IS NULL
 			 WHERE (p.naming_id = $1 OR p.participant_id = $1)
-			 ORDER BY pn.created_at DESC`,
+			   -- Die Verankerung an einer Passage ist keine Relation zwischen
+			   -- Namings: sie steht unter „Material", ihr Memo im Stack. Ohne
+			   -- diesen Ausschluss erschien das Passagen-Memo hier als Relation.
+			   AND NOT EXISTS (
+			     SELECT 1 FROM appearances aa
+			      WHERE aa.naming_id IN (p.naming_id, p.participant_id)
+			        AND aa.mode = 'relation' AND aa.properties ? 'anchorType')
+			 ORDER BY ${WITHDRAWN_SQL('pn')} ASC, pn.created_at DESC`,
 			[namingId]
 		)
 	]);
@@ -503,10 +675,14 @@ export async function getAggregatedNaming(namingId: string, projectId: string) {
 	const relationEndpoints = await queryOne<{
 		source_id: string; target_id: string;
 		source_inscription: string; target_inscription: string;
+		valence: string | null; directed: boolean | null;
 	}>(
 		`SELECT p.naming_id as source_id, p.participant_id as target_id,
-		        src.inscription as source_inscription, tgt.inscription as target_inscription
+		        src.inscription as source_inscription, tgt.inscription as target_inscription,
+		        ra.valence, (ra.directed_from IS NOT NULL AND ra.directed_to IS NOT NULL) AS directed
 		 FROM participations p
+		 LEFT JOIN LATERAL (SELECT a.valence, a.directed_from, a.directed_to FROM appearances a
+		                     WHERE a.naming_id = p.id AND a.mode = 'relation' LIMIT 1) ra ON true
 		 JOIN namings src ON src.id = p.naming_id
 		 JOIN namings tgt ON tgt.id = p.participant_id
 		 WHERE p.id = $1`,
@@ -546,6 +722,7 @@ export async function getAllProjectNamings(projectId: string) {
 			target_inscription: string | null;
 			valence: string | null;
 			properties: Record<string, any> | null;
+			is_withdrawn: boolean;
 			ai_persona: string | null;
 			appears_on_maps: { id: string; label: string }[] | null;
 		}>(
@@ -556,21 +733,25 @@ export async function getAllProjectNamings(projectId: string) {
 			   -- Current inscription (latest non-NULL in stack)
 			   (SELECT na.inscription FROM naming_acts na
 			    WHERE na.naming_id = n.id AND na.inscription IS NOT NULL ORDER BY na.seq DESC LIMIT 1) as current_inscription,
-			   -- Grounding: has document anchor. Valenzen wie in getAnnotationsByCode
-			   -- (codes UND thematizes) — mit 'codes' allein galt jedes nur
+			   -- Grounding: has document anchor. Valenzen wie in getAnnotationsByNaming
+			   -- ('codes' UND 'thematizes') — mit 'codes' allein galt jedes nur
 			   -- thematisierend verankerte Naming als ungegroundet, und die Liste
 			   -- widerspraeche der Karte.
 			   EXISTS(SELECT 1 FROM appearances a
 			    WHERE a.directed_from = n.id
 			      AND a.valence IN ('codes', 'thematizes')) as has_document_anchor,
-			   -- Grounding: has memo link
-			   EXISTS(SELECT 1 FROM participations mp
+			   -- Memo: ein Memo zu diesem Naming im Stack (Akt mit memo_text einer
+			   -- Forscherin) oder ein Memo-Naming, das auf es verweist.
+			   (EXISTS(SELECT 1 FROM naming_acts na
+			      JOIN researcher_namings rn ON rn.naming_id = na.by
+			      WHERE na.naming_id = n.id AND na.memo_text IS NOT NULL AND btrim(na.memo_text) <> '')
+			    OR EXISTS(SELECT 1 FROM participations mp
 			    JOIN namings pn ON pn.id = mp.id AND pn.deleted_at IS NULL
 			    JOIN memo_content mc ON mc.naming_id = CASE
 			      WHEN mp.naming_id = n.id THEN mp.participant_id
 			      ELSE mp.naming_id END
 			    JOIN namings mn ON mn.id = mc.naming_id AND mn.deleted_at IS NULL
-			    WHERE mp.naming_id = n.id OR mp.participant_id = n.id) as has_memo_link,
+			    WHERE mp.naming_id = n.id OR mp.participant_id = n.id)) as has_memo_link,
 			   -- Mode from any appearance
 			   (SELECT a.mode FROM appearances a
 			    WHERE a.naming_id = n.id AND a.mode IN ('entity','relation','silence')
@@ -599,14 +780,19 @@ export async function getAllProjectNamings(projectId: string) {
 			    WHERE a.naming_id = n.id AND a.mode = 'relation' LIMIT 1) as valence,
 			   -- Properties (withdrawn, aiSuggested etc.)
 			   (SELECT a.properties FROM appearances a
-			    WHERE a.naming_id = n.id AND a.naming_id != a.perspective_id
+			    WHERE a.naming_id = n.id
+			    ORDER BY (a.naming_id = a.perspective_id) ASC
 			    LIMIT 1) as properties,
+			   -- Zurückgezogen = unter jeder Perspektive, in der es erscheint,
+			   -- zurückgezogen (ohne Perspektive: an der eigenen Erscheinung).
+			   -- Nicht eine beliebige Erscheinung entscheidet, sondern alle.
+			   ${WITHDRAWN_SQL('n')} as is_withdrawn,
 			   -- AI persona that created this naming (derived from any appearance that carries it)
 			   (SELECT a.properties->>'aiPersona' FROM appearances a
 			    WHERE a.naming_id = n.id AND a.properties->>'aiPersona' IS NOT NULL
 			    LIMIT 1) as ai_persona,
 			   -- Which maps does this naming appear on? Nur echte Karten (mapType):
-			   -- ohne den Filter bekam jedes in-vivo- und Coding-Run-Naming einen
+			   -- ohne den Filter bekam jedes in-vivo- und vom Naming-Run angelegte Naming einen
 			   -- Chip "Grounding Workspace", der die Infrastruktur-Perspektive als
 			   -- Karte öffnete.
 			   (SELECT json_agg(json_build_object('id', mp.id, 'label', mp.inscription))
@@ -621,9 +807,21 @@ export async function getAllProjectNamings(projectId: string) {
 			 WHERE n.project_id = $1
 			   AND n.deleted_at IS NULL
 			   AND (
+			     -- Was in die Liste gehört (Session 09; „Gegenstands-Namings" war der
+			     -- Begriff des Assistenten, BJ entschied: „Es macht keinen pragmatischen
+			     -- Sinn, Maps als Namings in der Liste zu repräsentieren … es macht
+			     -- jedoch Sinn den Forschenden als Naming aufzunehmen"; Phasen „eher so
+			     -- wie Memos"): Entitäten, Relationen, Silences, Forschende.
+			     -- Nicht: Memos und ihre Verweise — sie erscheinen nur auf der
+			     -- Memo-System-Perspektive und sind keine Namings, solange man sie
+			     -- nicht dezidiert zu einem macht (Session 16; promoteMemoToNaming).
 			     EXISTS (SELECT 1 FROM appearances a WHERE a.naming_id = n.id
 			             AND a.mode IN ('entity','relation','silence')
-			             AND (a.valence IS NULL OR a.valence != 'codes'))
+			             AND (a.valence IS NULL OR a.valence != 'codes')
+			             AND NOT EXISTS (SELECT 1 FROM appearances ms
+			                             WHERE ms.naming_id = a.perspective_id
+			                               AND ms.perspective_id = a.perspective_id
+			                               AND ms.properties->>'role' = 'memo-system'))
 			     OR EXISTS (SELECT 1 FROM researcher_namings rn WHERE rn.naming_id = n.id)
 			   )
 			 ORDER BY n.seq DESC`,
@@ -741,11 +939,11 @@ export async function mergeNamings(
 			   )`,
 			[survivorId, mergedId]
 		);
-		// Delete remaining (conflicting) appearances of merged
-		await client.query(
-			`DELETE FROM appearances WHERE naming_id = $1`,
-			[mergedId]
-		);
+		// Kollidierende Erscheinungen (beide standen auf derselben Map) bleiben am
+		// aufgenommenen Naming, das unten soft-gelöscht wird — wie die nicht
+		// übertragbaren Participations oben. Nichts wird hart gelöscht („we do
+		// only soft-delete, but not hard-delete", S08); Lage, Rolle und
+		// Rückzugsstand auf dieser Map bleiben nachvollziehbar.
 
 		// 3. Update directed_from/directed_to references in other appearances
 		await client.query(
@@ -763,20 +961,9 @@ export async function mergeNamings(
 			[survivorId, mergedId]
 		);
 
-		// 5. Record merge as naming_act on the survivor
-		await client.query(
-			`INSERT INTO naming_acts (naming_id, by, memo_text)
-			 VALUES ($1, $2, $3)`,
-			[survivorId, researcherNamingId, `Merged with "${mergedInscription}"`]
-		);
-
-		// 6. Soft-delete the merged naming
-		await client.query(
-			`UPDATE namings SET deleted_at = now() WHERE id = $1`,
-			[mergedId]
-		);
-
-		// 7. Create a memo documenting the merge (linked to survivor)
+		// 5. Der Merge ist ein Akt im Stack des überlebenden Namings — mit
+		// allem, was über das aufgenommene Naming zu sagen ist. Kein eigenes
+		// Memo-Naming daneben (ein Memo ZU einem Naming ist kein eigenes Naming).
 		const desig = mergedDesignation.rows[0]?.designation || 'cue';
 		const partners = mergedParts.rows.map((r: any) => r.partner_inscription).join(', ');
 		const maps = mergedMaps.rows.map((r: any) => r.map_label).join(', ');
@@ -789,18 +976,23 @@ export async function mergeNamings(
 			partners ? `- Participations with: ${partners}` : `- No participations`,
 			maps ? `- Appeared on: ${maps}` : `- Not on any map`,
 		];
-		// createMemo needs userId (not researcherNamingId) and runs its own transaction,
-		// so we do it after the main transaction commits.
-		// Store the memo content for post-commit creation.
-		const memoContent = memoLines.join('\n');
+		await client.query(
+			`INSERT INTO naming_acts (naming_id, by, memo_text, linked_naming_ids)
+			 VALUES ($1, $2, $3, $4)`,
+			[survivorId, researcherNamingId, memoLines.join('\n'), [mergedId]]
+		);
+
+		// 6. Soft-delete the merged naming
+		await client.query(
+			`UPDATE namings SET deleted_at = now() WHERE id = $1`,
+			[mergedId]
+		);
 
 		return {
 			survivorId,
 			mergedId,
 			mergedInscription,
-			survivorInscription,
-			_memoContent: memoContent,
-			_userId: userId,
+			survivorInscription
 		};
 	});
 }

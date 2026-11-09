@@ -4,7 +4,7 @@
 // AI-Evaluation audit layer — SEPARABLE from the empirical core.
 //
 // This module records and extracts a researcher's verdicts on AI-produced
-// namings ("AI codes"). It evaluates the PROVISIONAL AI-Naming subsystem and
+// namings. It evaluates the PROVISIONAL AI-Naming subsystem and
 // is meant to be removable as a unit:
 //
 //   Removal contract:  DROP TABLE ai_naming_evaluations
@@ -33,9 +33,9 @@ export interface EvaluationInput {
 	documentId: string | null;
 	/** Soft ref to the live AI naming being judged; null if unknown/removed. */
 	subjectNamingId: string | null;
-	/** Snapshot of the AI code's inscription at judgment time (self-contained). */
+	/** Snapshot of the AI naming's inscription at judgment time (self-contained). */
 	subjectLabel: string;
-	/** Passage offsets — the join key for aligning parallel human/AI codings. */
+	/** Passage offsets — the join key for aligning parallel human/AI namings. */
 	anchor?: { pos0: number; pos1: number; text: string } | null;
 	verdict: Verdict;
 	rationale?: string | null;

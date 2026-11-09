@@ -29,6 +29,8 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { CCS_CUE, CCS_CHAR, CCS_SPEC } from '$lib/shared/tokens.js';
+	import { hasOwnInscription } from '$lib/shared/namingLabel.js';
+	import { plural } from '$lib/shared/plural.js';
 
 	let {
 		item,
@@ -43,6 +45,8 @@
 		mergeSurvivorId = null,
 		recentlyTouched = false,
 		detailHref = null,
+		isResearcher = false,
+		axis = null,
 		actions = {},
 		after
 	}: {
@@ -58,12 +62,24 @@
 		mergeSurvivorId?: string | null;
 		recentlyTouched?: boolean;
 		detailHref?: string | null;
+		/** Forscher-Naming: gekennzeichnet, ohne merge und withdraw. */
+		isResearcher?: boolean;
+		/** Achse einer Positional Map: Badge-Text und Erklärung. */
+		axis?: { text: string; title: string } | null;
 		actions?: NamingActions;
 		after?: Snippet;
 	} = $props();
 
 	const namingId = $derived(item.naming_id);
 	const mode = $derived(item.mode);
+	// Für Screenreader-Namen der Bedienelemente: wie die Zeile beschriftet ist.
+	const displayLabel = $derived(
+		hasOwnInscription(item.current_inscription || item.inscription)
+			? `“${item.current_inscription || item.inscription}”`
+			: item.source_inscription && item.target_inscription
+				? `the relation “${item.source_inscription}” – “${item.target_inscription}”`
+				: 'this naming'
+	);
 	const isRich = $derived(density === 'rich');
 	const isCompact = $derived(density === 'compact');
 
@@ -78,18 +94,9 @@
 		return 'cue';
 	}
 
-	// Inscriptions containing UUIDs are technical noise (e.g. raw participation IDs),
-	// not a name a researcher would have written. Omit them entirely from the
-	// relation's secondary name label so the row reads as "source —valence→ target".
-	const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
-	function hasMeaningfulInscription(text: string | null | undefined): boolean {
-		if (!text?.trim()) return false;
-		return !UUID_RE.test(text);
-	}
-
 	const withdrawn = $derived(!!actions.isWithdrawn?.(namingId, item.properties));
-	const isRelateTarget = $derived(!!relatingFrom && relatingFrom !== namingId && !relatingTo);
-	const isMergeTarget = $derived(!!mergeSurvivorId && mergeSurvivorId !== namingId);
+	const isRelateTarget = $derived(!!relatingFrom && relatingFrom !== namingId && !relatingTo && !withdrawn);
+	const isMergeTarget = $derived(!!mergeSurvivorId && mergeSurvivorId !== namingId && !isResearcher && !withdrawn);
 	const isMergeSurvivor = $derived(mergeSurvivorId === namingId);
 
 	const srcId = $derived(item.directed_from || item.part_source_id);
@@ -108,6 +115,8 @@
 	}
 
 	function handleCardClick(e: MouseEvent) {
+		// Zurückgezogenes ist kein Ziel für Relate, Merge oder Phasen-Zuordnung.
+		if (withdrawn && (relatingFrom || mergeSurvivorId || assigningToPhase)) return;
 		actions.onCardClick?.(namingId, e);
 	}
 
@@ -144,7 +153,7 @@
 				<img class="provenance-indicator" src="/icons/question_mark.svg" alt="ungrounded" title="No grounding yet" />
 			{/if}
 			{#if item.memo_previews?.length > 0}
-				<span class="memo-count" title="{item.memo_previews.length} memo(s)">{item.memo_previews.length}</span>
+				<span class="memo-count" title={plural(item.memo_previews.length, 'memo')}>{item.memo_previews.length}</span>
 			{/if}
 			{#if isRich}
 				<span class="mode-hint mode-relation" title="Appears as a relation on at least one map">◇</span>
@@ -186,7 +195,7 @@
 						<button type="submit" class="btn-xs">ok</button>
 						<button type="button" class="btn-xs" onclick={() => actions.onCancelInlineEdit?.()}>x</button>
 					</form>
-				{:else if hasMeaningfulInscription(titleText)}
+				{:else if hasOwnInscription(titleText)}
 					<!-- svelte-ignore a11y_click_events_have_key_events -->
 					<span
 						class="rel-inscription editable"
@@ -195,26 +204,33 @@
 					>{titleText}</span>
 				{/if}
 			</div>
+			{#if withdrawn}<span class="tag tag-withdrawn" title="Withdrawn — restore brings it back">withdrawn</span>{/if}
 		</div>
 		{#if !isCompact}
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div class="naming-actions" onclick={(e) => { if (relatingFrom) e.stopPropagation(); }}>
-				<select
-					value={item.designation || 'cue'}
-					onchange={(e) => actions.onChangeDesignation?.(namingId, (e.target as HTMLSelectElement).value)}
-				>
-					<option value="cue">cue</option>
-					<option value="characterization">characterization</option>
-					<option value="specification">specification</option>
-				</select>
+				<!-- Zurückgezogenes bearbeitet man nicht: erst wiederherstellen. -->
+				{#if !withdrawn}
+					<select
+						value={item.designation || 'cue'}
+						aria-label="Designation of {displayLabel}"
+						onchange={(e) => actions.onChangeDesignation?.(namingId, (e.target as HTMLSelectElement).value)}
+					>
+						<option value="cue">cue</option>
+						<option value="characterization">characterization</option>
+						<option value="specification">specification</option>
+					</select>
+				{/if}
 				<button class="btn-xs" onclick={() => actions.onShowStack?.(namingId)}>stack</button>
 				{#if detailHref}
 					<a class="btn-xs btn-detail" href={detailHref}>detail</a>
 				{/if}
-				<button class="btn-xs btn-withdraw" onclick={() => actions.onWithdraw?.(namingId, withdrawn)}>
-					{withdrawn ? 'restore' : 'withdraw'}
-				</button>
+				{#if actions.onWithdraw}
+					<button class="btn-xs btn-withdraw" onclick={() => actions.onWithdraw?.(namingId, withdrawn)}>
+						{withdrawn ? 'restore' : 'withdraw'}
+					</button>
+				{/if}
 			</div>
 		{/if}
 		{#if after}{@render after()}{/if}
@@ -230,7 +246,7 @@
 				<img class="provenance-indicator" src="/icons/question_mark.svg" alt="ungrounded" title="No grounding yet" />
 			{/if}
 			{#if item.memo_previews?.length > 0}
-				<span class="memo-count" title="{item.memo_previews.length} memo(s)">{item.memo_previews.length}</span>
+				<span class="memo-count" title={plural(item.memo_previews.length, 'memo')}>{item.memo_previews.length}</span>
 			{/if}
 			{#if isRich}
 				<span class="mode-hint" title="Appears as a silence">∅</span>
@@ -255,12 +271,33 @@
 					{item.current_inscription || item.inscription || ''}
 				</span>
 			{/if}
+			{#if withdrawn}<span class="tag tag-withdrawn" title="Withdrawn — restore brings it back">withdrawn</span>{/if}
 		</div>
 		{#if !isCompact}
+			<!-- Eine Silence ist ein Naming wie jedes andere: Ein Mensch kann sie
+			     grounden, erhärten, spezifizieren und zurückziehen — „Keine
+			     technische Sonderregel hier." (BJ, 03.07.2026) -->
 			<div class="naming-actions">
+				<!-- Zurückgezogenes bearbeitet man nicht: erst wiederherstellen. -->
+				{#if !withdrawn}
+					<select
+						value={item.designation || 'cue'}
+						aria-label="Designation of {displayLabel}"
+						onchange={(e) => actions.onChangeDesignation?.(namingId, (e.target as HTMLSelectElement).value)}
+					>
+						<option value="cue">cue</option>
+						<option value="characterization">characterization</option>
+						<option value="specification">specification</option>
+					</select>
+				{/if}
 				<button class="btn-xs" onclick={() => actions.onShowStack?.(namingId)}>stack</button>
 				{#if detailHref}
 					<a class="btn-xs btn-detail" href={detailHref}>detail</a>
+				{/if}
+				{#if actions.onWithdraw}
+					<button class="btn-xs btn-withdraw" onclick={() => actions.onWithdraw?.(namingId, withdrawn)}>
+						{withdrawn ? 'restore' : 'withdraw'}
+					</button>
 				{/if}
 			</div>
 		{/if}
@@ -293,7 +330,7 @@
 				<img class="provenance-indicator" src="/icons/question_mark.svg" alt="ungrounded" title="No grounding yet" />
 			{/if}
 			{#if item.memo_previews?.length > 0}
-				<span class="memo-count" title="{item.memo_previews.length} memo(s)">{item.memo_previews.length}</span>
+				<span class="memo-count" title={plural(item.memo_previews.length, 'memo')}>{item.memo_previews.length}</span>
 			{/if}
 			{#if isRich}
 				<span class="mode-hint" title="Appears as an entity">●</span>
@@ -318,32 +355,45 @@
 					{item.current_inscription || item.inscription || ''}
 				</span>
 			{/if}
+			{#if isResearcher}
+				<span class="tag tag-researcher"
+					title="A researcher as a naming of this project: their acts are attributed to it. It cannot be merged or withdrawn.">researcher</span>
+			{/if}
+			{#if axis}<span class="tag tag-axis" title={axis.title}>{axis.text}</span>{/if}
+			{#if withdrawn}<span class="tag tag-withdrawn" title="Withdrawn — restore brings it back">withdrawn</span>{/if}
 		</div>
 		{#if !isCompact}
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div class="naming-actions" onclick={(e) => { if (relatingFrom) e.stopPropagation(); }}>
-				<select
-					value={item.designation || 'cue'}
-					onchange={(e) => actions.onChangeDesignation?.(namingId, (e.target as HTMLSelectElement).value)}
-				>
-					<option value="cue">cue</option>
-					<option value="characterization">characterization</option>
-					<option value="specification">specification</option>
-				</select>
+				<!-- Zurückgezogenes bearbeitet man nicht: erst wiederherstellen. -->
+				{#if !withdrawn}
+					<select
+						value={item.designation || 'cue'}
+						aria-label="Designation of {displayLabel}"
+						onchange={(e) => actions.onChangeDesignation?.(namingId, (e.target as HTMLSelectElement).value)}
+					>
+						<option value="cue">cue</option>
+						<option value="characterization">characterization</option>
+						<option value="specification">specification</option>
+					</select>
+				{/if}
 				<button class="btn-xs" onclick={() => actions.onShowStack?.(namingId)}>stack</button>
 				{#if detailHref}
 					<a class="btn-xs btn-detail" href={detailHref}>detail</a>
 				{/if}
-				{#if actions.onStartRelate}
+				{#if actions.onStartRelate && !withdrawn}
 					<button class="btn-xs" onclick={() => actions.onStartRelate?.(namingId)}>relate</button>
 				{/if}
-				{#if actions.onMerge}
+				{#if actions.onMerge && !isResearcher && !withdrawn}
 					<button class="btn-xs btn-merge" onclick={(e) => { e.stopPropagation(); actions.onMerge?.(namingId); }}>merge</button>
 				{/if}
-				<button class="btn-xs btn-withdraw" onclick={() => actions.onWithdraw?.(namingId, withdrawn)}>
-					{withdrawn ? 'restore' : 'withdraw'}
-				</button>
+				<!-- Ein Forscher-Naming lässt sich nicht zurückziehen; war es (früher) zurückgezogen, bleibt „restore". -->
+				{#if actions.onWithdraw && (!isResearcher || withdrawn)}
+					<button class="btn-xs btn-withdraw" onclick={() => actions.onWithdraw?.(namingId, withdrawn)}>
+						{withdrawn ? 'restore' : 'withdraw'}
+					</button>
+				{/if}
 			</div>
 		{/if}
 		{#if after}{@render after()}{/if}
@@ -405,6 +455,15 @@
 		margin-right: 0.1rem;
 	}
 	.mode-hint.mode-relation { color: #8b9cf7; }
+
+	.tag {
+		font-size: 0.6rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+		padding: 0.05rem 0.35rem; border-radius: 3px; border: 1px solid;
+		flex-shrink: 0; cursor: help; line-height: 1.4;
+	}
+	.tag-researcher { color: #10b981; border-color: rgba(16, 185, 129, 0.4); background: rgba(16, 185, 129, 0.08); }
+	.tag-axis { color: #8b9cf7; border-color: rgba(139, 156, 247, 0.4); background: rgba(139, 156, 247, 0.08); }
+	.tag-withdrawn { color: #9ca3af; border-color: #4b5563; }
 
 	.naming-inscription {
 		flex: 1;

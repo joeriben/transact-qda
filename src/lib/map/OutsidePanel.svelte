@@ -4,6 +4,8 @@
 -->
 <script lang="ts">
 	import { getMapState } from './mapState.svelte.js';
+	import { quoted } from '$lib/shared/namingLabel.js';
+	import { plural } from '$lib/shared/plural.js';
 
 	const ms = getMapState();
 </script>
@@ -22,10 +24,10 @@
 					<span class="designation-dot-sm" style="background: {ms.designationColor(op.outside_designation)}"></span>
 					<span class="outside-inscription">{op.outside_inscription}</span>
 					{#if op.relation_inscription}
-						<span class="outside-via">via "{op.relation_inscription}"</span>
+						<span class="outside-via">via {quoted(op.relation_inscription)}</span>
 					{/if}
 					{#if op.outside_appearance_count > 0}
-						<span class="outside-maps" title="Appears on {op.outside_appearance_count} map(s)">{op.outside_appearance_count} map(s)</span>
+						<span class="outside-maps" title="Appears on {plural(op.outside_appearance_count, 'map')}">{plural(op.outside_appearance_count, 'map')}</span>
 					{/if}
 					<button class="btn-xs btn-pull" onclick={() => ms.pullOntoMap(op.outside_naming_id)} title="Place on this map">pull</button>
 				</div>

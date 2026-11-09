@@ -29,6 +29,9 @@ export interface FloatingPanelOptions {
 	minWidth?: number;
 	minHeight?: number;
 	maxWidth?: number;
+	/** Ganz im Container halten (soweit er breit genug ist), nicht nur einen
+	 *  greifbaren Rest — für Panels mit Knöpfen am Rand (Unplaced: place). */
+	keepInside?: boolean;
 }
 
 export type ResizeDir = 'w' | 'e' | 's' | 'sw' | 'se';
@@ -38,6 +41,11 @@ const KEEP_VISIBLE = 60;
 
 /** Abstand zum unteren Containerrand: dort liegt die untere Ziehleiste. */
 const EDGE = 8;
+
+/** Liegt der rechte Panelrand so nah am rechten Containerrand, folgt das Panel
+ *  ihm, wenn der Container breiter oder schmaler wird (Phasen-Panel auf/zu,
+ *  Fenster). */
+const RIGHT_SNAP = 32;
 
 function clamp(v: number, lo: number, hi: number): number {
 	return Math.max(lo, Math.min(hi, v));
@@ -57,6 +65,8 @@ export function createFloatingPanel(opts: FloatingPanelOptions) {
 	let room = $state<number | null>(null);
 	let el: HTMLElement | null = null;
 	let hydrated = false;
+	/** Containerbreite beim letzten Zurechtrücken. */
+	let lastWidth = 0;
 
 	function storageKey() {
 		return STORE_PREFIX + opts.key;
@@ -87,7 +97,10 @@ export function createFloatingPanel(opts: FloatingPanelOptions) {
 		if (c.width <= 0 || c.height <= 0) return;
 		w = clamp(w, minW, Math.max(minW, Math.min(maxW, c.width - 8)));
 		if (h !== null) h = clamp(h, minH, Math.max(minH, c.height - 8));
-		x = clamp(x, KEEP_VISIBLE - w, Math.max(0, c.width - KEEP_VISIBLE));
+		x = opts.keepInside
+			? clamp(x, 0, Math.max(0, c.width - w))
+			: clamp(x, KEEP_VISIBLE - w, Math.max(0, c.width - KEEP_VISIBLE));
+		lastWidth = c.width;
 		// Seitlich darf das Panel hinausgeschoben werden, nach unten nicht: ragt es
 		// unten aus dem Container, ist die untere Ziehleiste nicht mehr zu fassen.
 		// Ein tiefer geschobenes Panel wird stattdessen niedriger angezeigt; die
@@ -132,11 +145,26 @@ export function createFloatingPanel(opts: FloatingPanelOptions) {
 		// Beim ersten Frame steht die Canvas-Fläche u.U. noch nicht; dann bleibt die
 		// gespeicherte Lage bis zum nächsten Frame ungenutzt.
 		if (!hydrated) requestAnimationFrame(() => hydrate());
-		const onWindowResize = () => clampIntoView();
+		// Fenster oder Container ändern die Breite (auch ohne Fensteränderung:
+		// das Phasen-Panel klappt auf oder zu). Ein Panel am rechten Rand bleibt dort.
+		function onContainerResize() {
+			if (!hydrated) { hydrate(); return; }
+			const c = container();
+			if (c.width <= 0 || c.height <= 0) return;
+			if (x !== null && lastWidth > 0 && c.width !== lastWidth && x + w >= lastWidth - RIGHT_SNAP) {
+				x += c.width - lastWidth;
+			}
+			clampIntoView();
+		}
+		const onWindowResize = () => onContainerResize();
 		window.addEventListener('resize', onWindowResize);
+		const parent = node.offsetParent as HTMLElement | null;
+		const ro = parent && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(onContainerResize) : null;
+		if (ro && parent) ro.observe(parent);
 		return {
 			destroy() {
 				window.removeEventListener('resize', onWindowResize);
+				ro?.disconnect();
 				if (el === node) el = null;
 			}
 		};

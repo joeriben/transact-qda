@@ -3,7 +3,7 @@
 
 import type { PageServerLoad } from './$types.js';
 import { query, queryOne } from '$lib/server/db/index.js';
-import { getAnnotationsByDocument, getAnnotationsByProject, getAnnotationCandidates } from '$lib/server/db/queries/codes.js';
+import { getAnnotationsByDocument, getAnnotationsByProject, getAnnotationCandidates } from '$lib/server/db/queries/annotations.js';
 import { getProjectPhases, getPhaseMembers } from '$lib/server/db/queries/maps.js';
 import { error } from '@sveltejs/kit';
 

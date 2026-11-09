@@ -6,11 +6,33 @@
 	import { page } from '$app/stores';
 	import { marked } from 'marked';
 	import { getCoachState } from './coachState.svelte.js';
+	import { stepLabel } from './aiStream.js';
 
 	const coach = getCoachState();
 
+	// Ladeanzeige: laufender Schritt und vergangene Sekunden. Eine Antwort
+	// braucht mit Nachschlagen oft über eine Minute.
+	let now = $state(Date.now());
+	$effect(() => {
+		if (!coach.loading) return;
+		now = Date.now();
+		const tick = setInterval(() => { now = Date.now(); }, 1000);
+		return () => clearInterval(tick);
+	});
+	const elapsed = $derived(coach.startedAt ? Math.max(0, Math.round((now - coach.startedAt) / 1000)) : 0);
+
 	let inputText = $state('');
 	let messagesEl: HTMLDivElement | undefined = $state();
+	let inputEl: HTMLTextAreaElement | undefined = $state();
+
+	// Wer den Coach öffnet, will tippen: Fokus ins Eingabefeld — auch wieder,
+	// sobald eine Antwort da ist.
+	$effect(() => {
+		if (coach.isOpen && !coach.loading && inputEl) {
+			const t = setTimeout(() => inputEl?.focus(), 0);
+			return () => clearTimeout(t);
+		}
+	});
 
 	// Resize state
 	let panelWidth = $state(380);
@@ -46,11 +68,13 @@
 		}
 	});
 
-	function handleSend() {
+	async function handleSend() {
 		const text = inputText.trim();
 		if (!text || coach.loading) return;
 		inputText = '';
-		coach.send(text, currentPage, currentMapId);
+		const answered = await coach.send(text, currentPage, currentMapId);
+		// Ohne Antwort geht die Frage nicht verloren: zurück ins Eingabefeld.
+		if (!answered && !inputText.trim()) inputText = text;
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
@@ -114,7 +138,7 @@
 			{#if coach.messages.length === 0}
 				<div class="coach-welcome">
 					<p class="coach-welcome-name">Coach</p>
-					<p class="coach-welcome-text">Ich helfe dir, Situational Analysis zu verstehen und anzuwenden. Frag mich zur Methodik, zum CCS-Gradienten, zu Map-Typen oder zu deinem aktuellen Projektstand.</p>
+					<p class="coach-welcome-text">I help you understand and use Situational Analysis and this platform. Ask about the method, the designation gradient (cue → characterization → specification), map types, or where your project stands. I answer in the language you write in.</p>
 				</div>
 			{/if}
 			{#each coach.messages as msg}
@@ -130,9 +154,12 @@
 				</div>
 			{/each}
 			{#if coach.loading}
-				<div class="coach-msg msg-assistant">
+				<div class="coach-msg msg-assistant" role="status" aria-live="polite">
 					<span class="msg-label">Coach</span>
-					<div class="msg-content msg-loading">...</div>
+					<div class="msg-content msg-loading">
+						<span class="loading-dots" aria-hidden="true"><span></span><span></span><span></span></span>
+						<span>{stepLabel(coach.step)}… <span class="loading-seconds">{elapsed} s</span></span>
+					</div>
 				</div>
 			{/if}
 			{#if coach.error}
@@ -142,15 +169,21 @@
 
 		<div class="coach-input">
 			<textarea
+				bind:this={inputEl}
 				bind:value={inputText}
 				onkeydown={handleKeydown}
-				placeholder="Ask the coach..."
+				placeholder="Ask the coach…"
+				aria-label="Ask the coach"
 				rows="2"
 				disabled={coach.loading}
 			></textarea>
-			<button class="coach-send" onclick={handleSend} disabled={coach.loading || !inputText.trim()} title="Send">
-				<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
-			</button>
+			{#if coach.loading}
+				<button class="coach-stop" onclick={() => coach.stop()} title="Stop this answer" aria-label="Stop this answer">Stop</button>
+			{:else}
+				<button class="coach-send" onclick={handleSend} disabled={!inputText.trim()} title="Send" aria-label="Send">
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+				</button>
+			{/if}
 		</div>
 	</div>
 {/if}
@@ -373,8 +406,31 @@
 	}
 
 	.msg-loading {
+		display: flex;
+		align-items: center;
+		gap: 0.55rem;
+		color: #a5b4fc;
+	}
+	.loading-seconds {
 		color: #6b7280;
-		font-style: italic;
+		font-variant-numeric: tabular-nums;
+	}
+	.loading-dots {
+		display: inline-flex;
+		gap: 3px;
+	}
+	.loading-dots span {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: #a5b4fc;
+		animation: coach-pulse 1.2s ease-in-out infinite;
+	}
+	.loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+	.loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+	@keyframes coach-pulse {
+		0%, 80%, 100% { opacity: 0.25; transform: scale(0.8); }
+		40% { opacity: 1; transform: scale(1); }
 	}
 
 	.coach-error {
@@ -415,6 +471,19 @@
 		color: #4b5563;
 	}
 
+	.coach-stop {
+		background: none;
+		border: 1px solid #ef4444;
+		border-radius: 6px;
+		color: #fca5a5;
+		height: 32px;
+		padding: 0 0.6rem;
+		font: inherit;
+		font-size: 0.75rem;
+		cursor: pointer;
+		flex-shrink: 0;
+	}
+	.coach-stop:hover { background: rgba(239, 68, 68, 0.12); }
 	.coach-send {
 		background: #a5b4fc;
 		border: none;

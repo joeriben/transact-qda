@@ -15,8 +15,14 @@ import {
 	testConnection
 } from '$lib/server/ai/client.js';
 
+// Die KI-Einstellungen gelten für die ganze Installation (alle Konten, alle
+// Projekte). Ändern darf sie nur ein Admin-Konto, wie beim Datenbank-Export
+// (BJ, 09.11.: „Ändern nur für Admin-Konten → ja, sinnvoll"). Lesen und den
+// Verbindungstest darf jedes angemeldete Konto.
+const isAdmin = (locals: App.Locals) => locals.user?.role === 'admin';
+
 // GET: current AI settings + provider list with key status
-export const GET: RequestHandler = async () => {
+export const GET: RequestHandler = async ({ locals }) => {
 	const settings = loadSettings();
 	const providers = Object.entries(PROVIDERS).map(([id, def]) => {
 		const key = readApiKey(id as Provider);
@@ -38,12 +44,16 @@ export const GET: RequestHandler = async () => {
 		delegationAgent: settings.delegationAgent || null,
 		language: settings.language || 'auto',
 		languages: SUPPORTED_LANGUAGES,
-		providers
+		providers,
+		canEdit: isAdmin(locals)
 	});
 };
 
 // POST: update settings (provider, model, apiKey, delegationAgent)
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async ({ request, locals }) => {
+	if (!isAdmin(locals)) {
+		return json({ error: 'Only an admin account can change the AI settings of this installation.' }, { status: 403 });
+	}
 	const body = await request.json();
 	const { provider, model, apiKey, delegationAgent, language } = body;
 

@@ -5,8 +5,10 @@
 <script lang="ts">
 	import { getMapState } from './mapState.svelte.js';
 	import { createFloatingPanel } from './floatingPanel.svelte.js';
+	import type { CanvasPositions } from './canvasPositions.svelte.js';
+	import { quoted } from '$lib/shared/namingLabel.js';
 
-	let { viewport }: { viewport: { x: number; y: number; zoom: number } } = $props();
+	let { cp }: { cp: CanvasPositions } = $props();
 
 	const ms = getMapState();
 
@@ -18,12 +20,26 @@
 		anchor: 'top-right',
 		minWidth: 200,
 		minHeight: 140,
-		maxWidth: 620
+		maxWidth: 620,
+		// Ganz in der Canvas: halb hinausgeschoben (schmales Fenster, Phasen-
+		// Panel offen) waren die place-Knöpfe am rechten Rand abgeschnitten.
+		keepInside: true
 	});
 
 	type GroupKey = 'phase' | 'document';
 	let groupBy = $state<GroupKey>('document');
-	let collapsed = $state(false);
+
+	// Zugeklappt bleibt zugeklappt, auch nach dem Neuladen.
+	const COLLAPSE_KEY = 'tqda:unplaced-collapsed';
+	let collapsed = $state(readCollapsed());
+	function readCollapsed(): boolean {
+		try { return typeof window !== 'undefined' && window.localStorage?.getItem(COLLAPSE_KEY) === '1'; }
+		catch { return false; }
+	}
+	function toggleCollapsed() {
+		collapsed = !collapsed;
+		try { window.localStorage?.setItem(COLLAPSE_KEY, collapsed ? '1' : '0'); } catch { /* ohne Speicher eben ungemerkt */ }
+	}
 
 	// If the map has no phases, fall back to document grouping so the
 	// selector doesn't offer a useless option.
@@ -68,12 +84,16 @@
 		});
 	});
 
-	async function placeAtViewportCenter(namingId: string) {
-		const cx = -viewport.x / viewport.zoom + 400;
-		const cy = -viewport.y / viewport.zoom + 300;
-		const jitter = () => (Math.random() - 0.5) * 80;
-		await ms.mapAction('updatePosition', { namingId, x: cx + jitter(), y: cy + jitter() });
-		await ms.reload();
+	// Auf einen freien Platz in der Mitte des Ausschnitts; eine Relation setzt
+	// ihre noch unplatzierten Endpunkte (sie steht, sobald die stehen).
+	function place(it: any) {
+		cp.placeUnplaced(it);
+	}
+
+	function placeTitle(it: any): string {
+		if (it.mode !== 'relation') return 'Place at a free spot in the middle of the view';
+		if (cp.missingEndpoints(it)) return 'An endpoint of this relation is not on this map — add it to the map first';
+		return 'Place its unplaced endpoints in the middle of the view; the relation appears between them';
 	}
 
 	// Drag a naming out of the Halde onto a chosen point on the canvas. The
@@ -92,10 +112,14 @@
 		<header class="up-head" onpointerdown={panel.drag}
 			ondblclick={(e) => { if (!(e.target as Element).closest('button, select, a, input')) panel.reset(); }}
 			title="Drag to move · double-click resets">
-			<button class="up-toggle" onclick={() => collapsed = !collapsed} title={collapsed ? 'Expand' : 'Collapse'}>
+			<button class="up-toggle" onclick={toggleCollapsed} title={collapsed ? 'Expand' : 'Collapse'}
+				aria-expanded={!collapsed} aria-label={collapsed ? 'Expand Unplaced' : 'Collapse Unplaced'}>
 				{collapsed ? '▸' : '▾'}
 			</button>
-			<span class="up-title">Unplaced <span class="up-count">{unplaced.length}</span></span>
+			<!-- Der Titel klappt ebenfalls auf und zu. -->
+			<button class="up-title" onclick={toggleCollapsed} aria-expanded={!collapsed}>
+				Unplaced <span class="up-count">{unplaced.length}</span>
+			</button>
 			{#if !collapsed}
 				<select class="up-group-select" bind:value={groupBy} aria-label="Group unplaced by">
 					<option value="document">by Document</option>
@@ -117,26 +141,31 @@
 					<div class="up-group">
 						<div class="up-group-label" title={g.label}>{g.label}</div>
 						{#each g.items as it (it.naming_id + ':' + g.key)}
+							{@const stuck = it.mode === 'relation' && cp.missingEndpoints(it)}
+							{@const itLabel = ms.findInscription(it.naming_id)}
 							<!-- svelte-ignore a11y_no_static_element_interactions -->
 							<div
 								class="up-item"
 								class:up-rejected={ms.isRejected(it)}
 								class:up-hidden={ms.isHidden(it)}
-								draggable="true"
+								draggable={stuck ? 'false' : 'true'}
 								ondragstart={(e) => onDragStart(e, it.naming_id)}
 								title={ms.isRejected(it)
 									? `${ms.rejectionLabel(it)} — shown because the hidden/rejected filter is off`
 									: ms.isHidden(it)
 										? 'All its passages are hidden in the material — shown because the hidden/rejected filter is off'
-										: 'Drag onto the canvas to place, or use the button for the viewport center'}
+										: it.mode === 'relation'
+											? 'A relation stands between its endpoints: drag it onto the canvas or use the button to place them'
+											: 'Drag onto the canvas to place, or use the button for the middle of the view'}
 							>
 								<span class="up-mode" data-mode={it.mode}></span>
 								<!-- svelte-ignore a11y_click_events_have_key_events -->
 								<!-- svelte-ignore a11y_no_static_element_interactions -->
-								<span class="up-label" title={it.inscription || '(unnamed)'} onclick={() => ms.showStack(it.naming_id)}>
-									{it.inscription || '(unnamed)'}
+								<span class="up-label" title={itLabel} onclick={() => ms.showStack(it.naming_id)}>
+									{itLabel}
 								</span>
-								<button class="up-place" onclick={() => placeAtViewportCenter(it.naming_id)} title="Place at viewport center">place</button>
+								<button class="up-place" onclick={() => place(it)} disabled={stuck} title={placeTitle(it)}
+									aria-label={`Place ${quoted(itLabel)}`}>place</button>
 							</div>
 						{/each}
 					</div>
@@ -186,7 +215,11 @@
 		background: none; border: none; color: #8b9cf7;
 		font-size: 0.75rem; cursor: pointer; padding: 0; line-height: 1;
 	}
-	.up-title { font-weight: 600; color: #fbbf24; flex: 1; }
+	/* Nur so breit wie der Text: der Rest der Kopfzeile bleibt Griff zum Verschieben. */
+	.up-title {
+		font-weight: 600; color: #fbbf24; flex: 0 1 auto; margin-right: auto; text-align: left;
+		background: none; border: none; padding: 0; font-size: inherit; font-family: inherit; cursor: pointer;
+	}
 	.up-count {
 		background: rgba(251, 191, 36, 0.18);
 		color: #fbbf24;
@@ -264,5 +297,6 @@
 		cursor: pointer;
 		flex-shrink: 0;
 	}
-	.up-place:hover { background: rgba(139, 156, 247, 0.3); }
+	.up-place:hover:not(:disabled) { background: rgba(139, 156, 247, 0.3); }
+	.up-place:disabled { opacity: 0.4; cursor: default; }
 </style>

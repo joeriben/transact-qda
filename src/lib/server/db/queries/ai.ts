@@ -3,6 +3,11 @@
 
 import { query, queryOne, transaction } from '../index.js';
 
+// KI-Akteure heißen nach ihrer Funktion, nicht nach einer Firma (BJ, 09.11.:
+// „KI-Naming - Firmennamen sind ohnehin nicht autorisiert" — „oder heißten
+// "(FUnktion)-Agent""). Bestehende Projekte: Migration 039, als Rename-Akt.
+export const AI_NAMING_INSCRIPTION = 'Analysis-Agent';
+
 // Get or create the AI's naming identity for a project.
 // Parallel to getOrCreateResearcherNaming: the AI is a naming in the data space.
 export async function getOrCreateAiNaming(
@@ -20,7 +25,7 @@ export async function getOrCreateAiNaming(
 		const naming = await client.query(
 			`INSERT INTO namings (project_id, inscription, created_by)
 			 VALUES ($1, $2, $3) RETURNING id`,
-			[projectId, `Claude (Analyst)`, '00000000-0000-0000-0000-000000000000']
+			[projectId, AI_NAMING_INSCRIPTION, '00000000-0000-0000-0000-000000000000']
 		);
 		const namingId = naming.rows[0].id;
 
@@ -38,11 +43,12 @@ export async function getOrCreateAiNaming(
 			[projectId, namingId, model]
 		);
 
-		// Initial act: the AI characterizes itself
+		// Initial act: the AI characterizes itself; the act carries its name,
+		// so a later rename does not lose what it was first called.
 		await client.query(
-			`INSERT INTO naming_acts (naming_id, designation, by)
-			 VALUES ($1, 'characterization', $1)`,
-			[namingId]
+			`INSERT INTO naming_acts (naming_id, inscription, designation, by)
+			 VALUES ($1, $2, 'characterization', $1)`,
+			[namingId, AI_NAMING_INSCRIPTION]
 		);
 
 		return namingId;

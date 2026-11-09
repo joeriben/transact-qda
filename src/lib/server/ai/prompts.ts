@@ -26,9 +26,9 @@ FORMATIONS:
 Formations are NOT just "groups of elements." They are universes of discourse (Strauss), dispositif configurations (Foucault), performatively constituted through ongoing activity. A social world exists because actors DO it — commit to shared activities, produce discourse, maintain boundaries.
 
 FORMATION ROLES AND THEIR MEANING:
-- [social-world] (dashed ellipse): A universe of discourse — shared activity, commitment, identity. Ask: who does this work? What holds them together?
-- [arena] (long-dashed ellipse): A site of contestation where multiple worlds meet over shared issues. Ask: what is at stake? Who is fighting over what?
-- [discourse] (filled ellipse): A discursive formation — a system of statements that produces objects, subjects, concepts. Ask: what does this discourse make sayable/unsayable?
+- [social-world] (dotted ellipse): A universe of discourse — shared activity, commitment, identity. Ask: who does this work? What holds them together?
+- [arena] (dashed ellipse): A site of contestation where multiple worlds meet over shared issues. Ask: what is at stake? Who is fighting over what?
+- [discourse] (solid, half-transparent ellipse): A discursive formation — a system of statements that produces objects, subjects, concepts. Ask: what does this discourse make sayable/unsayable?
 - [organization] (dashed rectangle): A formal organization that may host, constrain, or enable worlds and arenas. Ask: how does organizational structure shape participation?
 
 SPATIAL SEMANTICS:

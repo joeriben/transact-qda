@@ -3,6 +3,46 @@
 
 import { query, queryOne, transaction } from '../index.js';
 import { createNaming, setAppearance, getOrCreateResearcherNaming } from './namings.js';
+import { namingLabel, type RelationEnds } from '$lib/shared/namingLabel.js';
+
+// Was die Memo-Seite zeigt und die Projektübersicht zählt — eine Definition
+// für beide (n = Naming, na = Akt; $1 = Projekt):
+// Analytische Memos und Organisationsmemos sind eigene Memo-Namings mit
+// Inhalt, ohne die Diskussionsbeiträge zu ihnen.
+const ANALYTIC_MEMO_FILTER = `n.project_id = $1 AND n.deleted_at IS NULL
+	AND n.inscription NOT LIKE 'MemoDiscussion:%'
+	AND n.inscription NOT LIKE 'Discussion:%'`;
+// Memos ZU einem Naming sind Akte einer Forscherin mit Memo-Text im Stack
+// eines Namings dieses Projekts (keine KI-Begründungen).
+const NAMING_MEMO_FILTER = `n.project_id = $1 AND n.deleted_at IS NULL
+	AND na.memo_text IS NOT NULL AND btrim(na.memo_text) <> ''
+	AND EXISTS (SELECT 1 FROM researcher_namings rn WHERE rn.naming_id = na.by)`;
+
+// Aktuelle Inschrift (letzter Inskriptions-Akt) eines Namings.
+function currentInscriptionSql(alias: string): string {
+	return `COALESCE((SELECT na_.inscription FROM naming_acts na_
+	                   WHERE na_.naming_id = ${alias}.id AND na_.inscription IS NOT NULL
+	                   ORDER BY na_.seq DESC LIMIT 1), ${alias}.inscription)`;
+}
+
+// Endpunkte, Valenz und Richtung, falls das Naming eine Relation ist (sonst
+// NULL) — daraus macht namingLabel() den Titel einer unbenannten Relation.
+function relationEndsSql(alias: string): string {
+	return `(SELECT json_build_object('source', s_.inscription, 'target', t_.inscription,
+	                                  'valence', ra_.valence,
+	                                  'directed', ra_.directed_from IS NOT NULL AND ra_.directed_to IS NOT NULL)
+	           FROM (SELECT 1) one_
+	           LEFT JOIN LATERAL (SELECT a_.valence, a_.directed_from, a_.directed_to
+	                                FROM appearances a_
+	                               WHERE a_.naming_id = ${alias}.id AND a_.mode = 'relation'
+	                               ORDER BY a_.created_at LIMIT 1) ra_ ON true
+	           LEFT JOIN participations p_ ON p_.id = ${alias}.id
+	           JOIN namings s_ ON s_.id = COALESCE(ra_.directed_from, p_.naming_id)
+	                          AND s_.project_id = ${alias}.project_id
+	           JOIN namings t_ ON t_.id = COALESCE(ra_.directed_to, p_.participant_id)
+	                          AND t_.project_id = ${alias}.project_id
+	          LIMIT 1)`;
+}
 
 // The "memo system" perspective — lazily created per project
 async function getOrCreateMemoSystemPerspective(projectId: string, userId: string) {
@@ -99,9 +139,7 @@ export async function getMemosByProject(projectId: string) {
 			`SELECT n.id, n.inscription as label, n.created_at, n.created_by, mc.content, mc.format, mc.status
 			 FROM namings n
 			 JOIN memo_content mc ON mc.naming_id = n.id
-			 WHERE n.project_id = $1 AND n.deleted_at IS NULL
-			   AND n.inscription NOT LIKE 'MemoDiscussion:%'
-			   AND n.inscription NOT LIKE 'Discussion:%'
+			 WHERE ${ANALYTIC_MEMO_FILTER}
 			 ORDER BY n.created_at DESC`,
 			[projectId]
 		)
@@ -114,7 +152,9 @@ export async function getMemosByProject(projectId: string) {
 	const links = await query(
 		`SELECT
 			CASE WHEN p.naming_id = ANY($1::uuid[]) THEN p.naming_id ELSE p.participant_id END as memo_id,
-			t.id as target_id, t.inscription as target_label,
+			t.id as target_id,
+			${currentInscriptionSql('t')} as target_inscription,
+			${relationEndsSql('t')} as target_relation,
 			COALESCE((SELECT a.mode FROM appearances a WHERE a.naming_id = t.id LIMIT 1), 'entity') as target_mode
 		 FROM participations p
 		 JOIN namings pn ON pn.id = p.id AND pn.deleted_at IS NULL
@@ -129,7 +169,11 @@ export async function getMemosByProject(projectId: string) {
 	const linkMap = new Map<string, any[]>();
 	for (const row of links.rows) {
 		if (!linkMap.has(row.memo_id)) linkMap.set(row.memo_id, []);
-		linkMap.get(row.memo_id)!.push({ id: row.target_id, label: row.target_label, mode: row.target_mode });
+		linkMap.get(row.memo_id)!.push({
+			id: row.target_id,
+			label: namingLabel(row.target_inscription, row.target_relation as RelationEnds | null),
+			mode: row.target_mode
+		});
 	}
 
 	// Get discussion threads for all memos
@@ -176,6 +220,120 @@ export async function getMemosByProject(projectId: string) {
 	}));
 }
 
+export type NamingMemo = {
+	naming_id: string;
+	seq: string;
+	created_at: string;
+	memo_text: string;
+	/** Titel des Namings; bei einer unbenannten Relation „Quelle —valenz→ Ziel". */
+	naming_label: string;
+	by_label: string;
+	/** Das Memo gilt einer Passage dieses Namings (Dokumentansicht). */
+	passage_document: string | null;
+	linked: { id: string; label: string }[];
+	/** Welchen Akt das Memo begründet: Umbenennung (von …) und/oder Designation (alt → neu); null = reines Memo. */
+	act: string | null;
+};
+
+// Memos ZU einem Naming sind Akte in dessen Stack (noteOnNaming), keine
+// eigenen Namings. Die Memo-Seite zeigt sie neben den analytischen Memos.
+export async function getNamingMemosByProject(projectId: string): Promise<NamingMemo[]> {
+	const rows = (
+		await query<{
+			naming_id: string;
+			seq: string;
+			created_at: string;
+			memo_text: string;
+			act_inscription: string | null;
+			act_designation: string | null;
+			prev_inscription: string | null;
+			prev_designation: string | null;
+			naming_inscription: string | null;
+			naming_relation: RelationEnds | null;
+			by_label: string;
+			passage_document: string | null;
+			linked: { id: string; inscription: string | null; relation: RelationEnds | null }[];
+		}>(
+			`SELECT na.naming_id, na.seq, na.created_at, na.memo_text,
+			        na.inscription AS act_inscription, na.designation AS act_designation,
+			        (SELECT p.inscription FROM naming_acts p
+			          WHERE p.naming_id = na.naming_id AND p.seq < na.seq AND p.inscription IS NOT NULL
+			          ORDER BY p.seq DESC LIMIT 1) AS prev_inscription,
+			        (SELECT p.designation FROM naming_acts p
+			          WHERE p.naming_id = na.naming_id AND p.seq < na.seq AND p.designation IS NOT NULL
+			          ORDER BY p.seq DESC LIMIT 1) AS prev_designation,
+			        ${currentInscriptionSql('n')} AS naming_inscription,
+			        ${relationEndsSql('n')} AS naming_relation,
+			        b.inscription AS by_label,
+			        (SELECT doc.inscription
+			           FROM appearances pa
+			           JOIN namings doc ON doc.id = pa.directed_to AND doc.project_id = $1
+			          WHERE pa.naming_id = ANY(na.linked_naming_ids)
+			            AND pa.directed_from = na.naming_id
+			            AND pa.valence IN ('codes', 'thematizes')
+			          LIMIT 1) AS passage_document,
+			        COALESCE((SELECT json_agg(json_build_object('id', l.id,
+			                                                    'inscription', ${currentInscriptionSql('l')},
+			                                                    'relation', ${relationEndsSql('l')})
+			                                  ORDER BY l.inscription)
+			                    FROM namings l
+			                   WHERE l.id = ANY(na.linked_naming_ids) AND l.deleted_at IS NULL
+			                     AND l.project_id = $1
+			                     AND NOT EXISTS (SELECT 1 FROM appearances pa
+			                                      WHERE pa.naming_id = l.id AND pa.directed_from = na.naming_id
+			                                        AND pa.valence IN ('codes', 'thematizes'))),
+			                 '[]'::json) AS linked
+			   FROM naming_acts na
+			   JOIN namings n ON n.id = na.naming_id
+			   JOIN namings b ON b.id = na.by
+			  WHERE ${NAMING_MEMO_FILTER}
+			  ORDER BY na.created_at DESC, na.seq DESC`,
+			[projectId]
+		)
+	).rows;
+
+	return rows.map((r) => ({
+		naming_id: r.naming_id,
+		seq: r.seq,
+		created_at: r.created_at,
+		memo_text: r.memo_text,
+		naming_label: namingLabel(r.naming_inscription, r.naming_relation),
+		by_label: r.by_label,
+		passage_document: r.passage_document,
+		linked: (r.linked ?? []).map((l) => ({ id: l.id, label: namingLabel(l.inscription, l.relation) })),
+		act: describeAct(r)
+	}));
+}
+
+/** „renamed from “X”" und/oder „cue → characterization" — was der Akt setzt, zu dem das Memo gehört. */
+function describeAct(r: {
+	act_inscription: string | null;
+	act_designation: string | null;
+	prev_inscription: string | null;
+	prev_designation: string | null;
+}): string | null {
+	const parts: string[] = [];
+	if (r.act_inscription && r.prev_inscription && r.act_inscription !== r.prev_inscription) {
+		parts.push(`renamed from “${r.prev_inscription}”`);
+	}
+	if (r.act_designation && r.act_designation !== r.prev_designation) {
+		parts.push(r.prev_designation ? `${r.prev_designation} → ${r.act_designation}` : r.act_designation);
+	}
+	return parts.length > 0 ? parts.join(' · ') : null;
+}
+
+/** So viele Memos, wie die Memo-Seite zeigt: analytische und Memos zu Namings. */
+export async function countProjectMemos(projectId: string): Promise<number> {
+	const row = await queryOne<{ analytic: string; on_namings: string }>(
+		`SELECT (SELECT COUNT(*) FROM namings n JOIN memo_content mc ON mc.naming_id = n.id
+		          WHERE ${ANALYTIC_MEMO_FILTER}) AS analytic,
+		        (SELECT COUNT(*) FROM naming_acts na JOIN namings n ON n.id = na.naming_id
+		          WHERE ${NAMING_MEMO_FILTER}) AS on_namings`,
+		[projectId]
+	);
+	return parseInt(row?.analytic || '0') + parseInt(row?.on_namings || '0');
+}
+
 export async function updateMemoStatus(memoId: string, status: string) {
 	await query(
 		`UPDATE memo_content SET status = $1 WHERE naming_id = $2`,
@@ -183,21 +341,29 @@ export async function updateMemoStatus(memoId: string, status: string) {
 	);
 }
 
+/**
+ * Ein Memo dezidiert zu einem Naming machen (Session 16: „solange man sie nicht
+ * dezidiert zu einem Naming macht"): legt das Naming an,
+ * verknüpft es mit dem Memo und setzt den Status auf promoted — auf der Map
+ * (mit Platzierung) wie auf der Memo-Seite (mapId = null, ohne Platzierung).
+ * Ein schon beförderter Memo wird nicht ein zweites Mal Naming.
+ */
 export async function promoteMemoToNaming(
 	projectId: string,
 	userId: string,
 	memoId: string,
-	mapId: string
+	mapId: string | null
 ) {
 	return transaction(async (client) => {
 		// Get memo content
 		const memo = await client.query(
-			`SELECT n.inscription, mc.content FROM namings n
+			`SELECT n.inscription, mc.content, mc.status FROM namings n
 			 JOIN memo_content mc ON mc.naming_id = n.id
 			 WHERE n.id = $1 AND n.project_id = $2 AND n.deleted_at IS NULL`,
 			[memoId, projectId]
 		);
 		if (memo.rows.length === 0) throw new Error('Memo not found');
+		if (memo.rows[0].status === 'promoted') throw new Error('This memo has already been made a naming.');
 
 		// Create a new naming from the memo title
 		const namingRes = await client.query(
@@ -207,12 +373,14 @@ export async function promoteMemoToNaming(
 		);
 		const naming = namingRes.rows[0];
 
-		// Place it on the map as entity
-		await client.query(
-			`INSERT INTO appearances (naming_id, perspective_id, mode, properties)
-			 VALUES ($1, $2, 'entity', '{}')`,
-			[naming.id, mapId]
-		);
+		// Place it on the map as entity (von der Memo-Seite aus: keine Map)
+		if (mapId) {
+			await client.query(
+				`INSERT INTO appearances (naming_id, perspective_id, mode, properties)
+				 VALUES ($1, $2, 'entity', '{}')`,
+				[naming.id, mapId]
+			);
+		}
 
 		// Initial designation act: cue
 		const researcherNamingId = await getOrCreateResearcherNaming(projectId, userId);
@@ -261,21 +429,36 @@ export async function getMemo(memoId: string, projectId: string) {
 	);
 	if (!memo) return null;
 
-	// Get linked namings (via participations)
-	const links = await query(
-		`SELECT p.id, t.id as target_id, t.inscription as target_label,
-		        COALESCE(a.mode, 'entity') as target_mode
+	// Get linked namings (via participations) — eine Zeile je Verweis
+	const links = await query<{
+		id: string;
+		target_id: string;
+		target_inscription: string | null;
+		target_relation: RelationEnds | null;
+		target_mode: string;
+	}>(
+		`SELECT p.id, t.id as target_id,
+		        ${currentInscriptionSql('t')} as target_inscription,
+		        ${relationEndsSql('t')} as target_relation,
+		        COALESCE((SELECT a.mode FROM appearances a WHERE a.naming_id = t.id
+		                  ORDER BY (a.mode = 'perspective') LIMIT 1), 'entity') as target_mode
 		 FROM participations p
 		 JOIN namings pn ON pn.id = p.id AND pn.deleted_at IS NULL
 		 JOIN namings t ON t.id = CASE WHEN p.naming_id = $1 THEN p.participant_id ELSE p.naming_id END
-		 LEFT JOIN appearances a ON a.naming_id = t.id
 		 WHERE (p.naming_id = $1 OR p.participant_id = $1)
-		   AND t.deleted_at IS NULL AND t.id != $1
-		 GROUP BY p.id, t.id, t.inscription, a.mode`,
-		[memoId]
+		   AND t.deleted_at IS NULL AND t.id != $1 AND t.project_id = $2`,
+		[memoId, projectId]
 	);
 
-	return { ...memo, links: links.rows };
+	return {
+		...memo,
+		links: links.rows.map((r) => ({
+			id: r.id,
+			target_id: r.target_id,
+			target_label: namingLabel(r.target_inscription, r.target_relation),
+			target_mode: r.target_mode
+		}))
+	};
 }
 
 export async function getMemosForNaming(namingId: string, projectId: string) {

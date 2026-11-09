@@ -16,6 +16,7 @@
                Akt hereinholt — als Anker oder gar nicht.
 -->
 <script lang="ts">
+	import { formatDay } from '$lib/shared/dates.js';
 	interface Bestandteil { name: string; kenntlich: string }
 	interface Relation { name: string; bedingung: string; ertrag: string }
 	interface Kriterium { akteur: string; adressat: string; bestandteile: Bestandteil[]; relationen: Relation[] }
@@ -113,7 +114,7 @@
 	 * 00:14 am 6., das Panel den 5.
 	 */
 	const tag = (iso: string | null | undefined) =>
-		iso ? new Date(iso).toLocaleDateString() : '';
+		iso ? formatDay(iso) : '';
 
 	$effect(() => {
 		void namingId;

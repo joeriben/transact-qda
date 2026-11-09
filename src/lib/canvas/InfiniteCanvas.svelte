@@ -12,6 +12,8 @@
 		oncanvascontextmenu,
 		oncanvasdrop,
 		onreset,
+		onpanstart,
+		oninteract,
 		children
 	}: {
 		viewport?: ReturnType<typeof createViewport>;
@@ -22,6 +24,11 @@
 		 *  already converted to canvas coordinates. */
 		oncanvasdrop?: (e: DragEvent, x: number, y: number) => void;
 		onreset?: () => void;
+		/** Die Ansicht wird gezogen (z. B. offene Menüs schließen). */
+		onpanstart?: () => void;
+		/** Die Forscherin verschiebt oder zoomt die Ansicht selbst (Rad, Ziehen,
+		 *  Zoom-Knöpfe) — danach rahmt die Seite nicht mehr von sich aus ein. */
+		oninteract?: () => void;
 		children: Snippet;
 	} = $props();
 
@@ -32,6 +39,7 @@
 
 	function onWheel(e: WheelEvent) {
 		e.preventDefault();
+		oninteract?.();
 		if (e.ctrlKey || e.metaKey || e.altKey) {
 			// Trackpad pinch and ctrl+wheel fire MANY wheel events per gesture; a
 			// fixed step per event compounds to runaway zoom (0.9^n). Scale the step
@@ -52,12 +60,32 @@
 		return () => containerEl.removeEventListener('wheel', onWheel);
 	});
 
+	// Leere Fläche: der Container selbst oder die Canvas-Ebene (Knoten fangen
+	// ihren pointerdown selbst ab).
+	function isBackground(target: EventTarget | null): boolean {
+		return target === containerEl || !!(target as HTMLElement | null)?.classList?.contains('canvas-layer');
+	}
+
+	// Ziehen auf leerer Fläche verschiebt die Ansicht. Danach ist der Klick
+	// am Ende des Ziehens kein Klick auf die Fläche (der hebt die Auswahl auf).
+	let panTravel = 0;
+	let swallowClick = false;
+
 	function onPointerDown(e: PointerEvent) {
-		if (e.button === 1 || (e.button === 0 && e.altKey)) {
+		const leftOnBackground = e.button === 0 && isBackground(e.target);
+		if (e.button === 1 || (e.button === 0 && e.altKey) || leftOnBackground) {
 			isPanning = true;
+			panTravel = 0;
+			swallowClick = false;
 			lastPointer = { x: e.clientX, y: e.clientY };
 			containerEl.setPointerCapture(e.pointerId);
+			// Kein Markieren von Seitentext beim Ziehen. Den Fokus gibt ein Klick
+			// auf die Fläche trotzdem ab, wie ohne preventDefault.
 			e.preventDefault();
+			const active = document.activeElement as HTMLElement | null;
+			if (active && active !== document.body && typeof active.blur === 'function') active.blur();
+			oninteract?.();
+			onpanstart?.();
 		}
 	}
 
@@ -66,18 +94,21 @@
 		const dx = e.clientX - lastPointer.x;
 		const dy = e.clientY - lastPointer.y;
 		lastPointer = { x: e.clientX, y: e.clientY };
+		panTravel += Math.abs(dx) + Math.abs(dy);
 		viewport.pan(dx, dy);
 	}
 
 	function onPointerUp(e: PointerEvent) {
 		if (isPanning) {
 			isPanning = false;
+			swallowClick = panTravel > 4;
 			containerEl.releasePointerCapture(e.pointerId);
 		}
 	}
 
 	function onClick(e: MouseEvent) {
-		if (e.target === containerEl || (e.target as HTMLElement).classList.contains('canvas-layer')) {
+		if (swallowClick) { swallowClick = false; return; }
+		if (isBackground(e.target)) {
 			const rect = containerEl.getBoundingClientRect();
 			const pos = viewport.screenToCanvas(e.clientX - rect.left, e.clientY - rect.top);
 			oncanvasclick?.(pos.x, pos.y);
@@ -85,7 +116,7 @@
 	}
 
 	function onContextMenu(e: MouseEvent) {
-		if (e.target === containerEl || (e.target as HTMLElement).classList.contains('canvas-layer')) {
+		if (isBackground(e.target)) {
 			e.preventDefault();
 			oncanvascontextmenu?.(e);
 		}
@@ -153,10 +184,13 @@
 	</div>
 
 	<div class="canvas-hud">
-		<button onclick={() => viewport.zoomAt(0.8, containerEl.clientWidth / 2, containerEl.clientHeight / 2)}>−</button>
+		<button onclick={() => { oninteract?.(); viewport.zoomAt(0.8, containerEl.clientWidth / 2, containerEl.clientHeight / 2); }}
+			aria-label="Zoom out" title="Zoom out">−</button>
 		<span class="zoom-label">{Math.round(viewport.zoom * 100)}%</span>
-		<button onclick={() => viewport.zoomAt(1.25, containerEl.clientWidth / 2, containerEl.clientHeight / 2)}>+</button>
-		<button onclick={() => { if (onreset) onreset(); else viewport.reset(); }}>Reset</button>
+		<button onclick={() => { oninteract?.(); viewport.zoomAt(1.25, containerEl.clientWidth / 2, containerEl.clientHeight / 2); }}
+			aria-label="Zoom in" title="Zoom in">+</button>
+		<button onclick={() => { oninteract?.(); if (onreset) onreset(); else viewport.reset(); }}
+			title="Frame the whole map">Reset</button>
 	</div>
 </div>
 
@@ -165,11 +199,20 @@
 		position: relative;
 		width: 100%;
 		height: 100%;
+		/* clip statt hidden: ein overflow:hidden-Kasten lässt sich per focus()
+		   oder scrollIntoView verschieben — dann stimmen Ansicht und Zeiger-
+		   koordinaten nicht mehr überein. */
 		overflow: hidden;
+		overflow: clip;
+		user-select: none;
 		background: #0d0f16;
 		background-image:
 			radial-gradient(circle, #1a1d2e 1px, transparent 1px);
 		background-size: 20px 20px;
+	}
+
+	.infinite-canvas :global(input) {
+		user-select: text;
 	}
 
 	/* Dragging an unplaced naming over the canvas: signal it is droppable. */

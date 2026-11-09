@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
-// Per-Document-Cleanup: löscht *alle* Coding-Run-Outputs an einem Dokument
-// (CName-Annotationen, SName-Annotationen, orphan gewordene Codes, sowie die
-// `coding_runs`-Historie). Hand-typed Codes des Users bleiben unangetastet,
+// Per-Document-Cleanup: löscht *alle* Naming-Run-Outputs an einem Dokument
+// (CName-Annotationen, SName-Annotationen, orphan gewordene Namings, sowie die
+// `coding_runs`-Historie). Von Hand angelegte Namings bleiben unangetastet,
 // das Dokument selbst auch — der Forscher kann direkt einen neuen Run
 // starten, ohne neu hochladen zu müssen.
 //
@@ -14,7 +14,7 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { queryOne } from '$lib/server/db/index.js';
-import { deleteAllRunsForDocument } from '$lib/server/db/queries/codes.js';
+import { deleteAllRunsForDocument } from '$lib/server/db/queries/annotations.js';
 
 async function ensureDocAccess(projectId: string, docId: string, userId: string): Promise<void> {
 	const doc = await queryOne<{ id: string }>(

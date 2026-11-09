@@ -226,7 +226,7 @@ export interface ScatteredNaming {
 /**
  * Alle an Textstellen verankerten Namings der angegebenen Dokumente.
  *
- * Ankerlogik wie in coding-companion/retrieval.ts: Codes hängen per
+ * Ankerlogik wie in naming-companion/retrieval.ts: Namings hängen per
  * Zeichen-Offset (pos0/pos1) an der Annotation, nicht per element_id.
  */
 export async function loadAnchoredNamings(documentIds: string[]): Promise<AnchoredNaming[]> {
@@ -239,14 +239,14 @@ export async function loadAnchoredNamings(documentIds: string[]): Promise<Anchor
 		pos1: string;
 		document_id: string;
 	}>(
-		`SELECT code.id            AS naming_id,
-		        code.inscription   AS label,
+		`SELECT nm.id              AS naming_id,
+		        nm.inscription     AS label,
 		        ann.valence        AS valence,
 		        ann.properties->'anchor'->>'pos0' AS pos0,
 		        ann.properties->'anchor'->>'pos1' AS pos1,
 		        ann.directed_to    AS document_id
 		   FROM appearances ann
-		   JOIN namings code ON code.id = ann.directed_from AND code.deleted_at IS NULL
+		   JOIN namings nm   ON nm.id   = ann.directed_from AND nm.deleted_at IS NULL
 		   JOIN namings an   ON an.id   = ann.naming_id     AND an.deleted_at IS NULL
 		  WHERE ann.directed_to = ANY($1::uuid[])
 		    AND ann.valence IN ('codes', 'thematizes')

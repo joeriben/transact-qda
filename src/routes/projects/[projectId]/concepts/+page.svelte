@@ -12,7 +12,7 @@
   Minimize-Pool); die übrigen sind der Maximize-Pool.
 
   Verbraucht den SSE-Stream von POST /api/projects/[projectId]/comparative-run.
-  Dark-Theme-Sprache 1:1 von CodingRunPanel/+layout übernommen (keine globalen
+  Dark-Theme-Sprache 1:1 von NamingRunPanel/+layout übernommen (keine globalen
   Theme-Tokens im Projekt; Farben hartcodiert).
 -->
 <script lang="ts">

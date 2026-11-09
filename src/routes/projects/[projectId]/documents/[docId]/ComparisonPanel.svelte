@@ -15,10 +15,10 @@
 		projectId: string;
 		docId: string;
 		selection: { pos0: number; pos1: number; text: string } | null;
-		onannotate: (codeId: string) => void;
+		onannotate: (namingId: string) => void;
 		documentTitle?: string;
 		onsimilar?: (passages: any[] | null) => void;
-		mode?: 'code' | 'similar';
+		mode?: 'anchors' | 'similar';
 	} = $props();
 
 	let loading = $state(false);
@@ -38,8 +38,8 @@
 	let comparison = $derived(selection ? comparisons[cacheKey(selection.text, scope)] ?? null : null);
 	let comparisonOpen = $state(true);
 	// Eigene Namings mit Verankerung im gewählten Bereich — nur gegen sie
-	// wird verglichen (coding-companion/retrieval.ts).
-	let ownNamingCount = $derived(retrieval?.existingCodes?.length ?? 0);
+	// wird verglichen (naming-companion/retrieval.ts).
+	let ownNamingCount = $derived(retrieval?.existingNamings?.length ?? 0);
 
 	// Inline memo state
 	let showMemoForm = $state(false);
@@ -83,7 +83,7 @@
 		retrieval = null;
 
 		try {
-			const res = await fetch(`/api/projects/${projectId}/documents/${docId}/coding-companion`, {
+			const res = await fetch(`/api/projects/${projectId}/documents/${docId}/naming-companion`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ text, compare: false, scope: currentScope })
@@ -113,7 +113,7 @@
 		compareError = null;
 
 		try {
-			const res = await fetch(`/api/projects/${projectId}/documents/${docId}/coding-companion`, {
+			const res = await fetch(`/api/projects/${projectId}/documents/${docId}/naming-companion`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ text, compare: true, scope: requestScope })
@@ -410,7 +410,7 @@
 	.action-btn:hover { background: rgba(139, 156, 247, 0.15); border-color: #8b9cf7; }
 	.action-btn:disabled { opacity: 0.5; cursor: default; }
 
-	/* Mode switch (Code-Passagen ⇄ Ähnliche Stellen) now lives in the parent
+	/* Mode switch (Verankerungen ⇄ Ähnliche Stellen) now lives in the parent
 	   panel header; this component renders only the Similar-mode controls. */
 
 	/* Compare (action): stateless — neutral at rest, fill ONLY on hover/press.

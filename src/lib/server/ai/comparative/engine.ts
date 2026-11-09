@@ -7,7 +7,7 @@
 // (actant E; cue-only, {aiPersona,aiRunId}-stamped).
 //
 // This is the production port of the validated `.tmp-ab` harnesses (cat2med loop +
-// holistic-clustering saturation + emit). It is the OPERATION, not the per-document coder:
+// holistic-clustering saturation + emit). It is the OPERATION, not the per-document naming run:
 //
 //   seeded concept (cue) → per-case in-document retrieval + mode-agnostic verify
 //     → medoid seed (most central instance of the anchor case)
@@ -26,13 +26,11 @@ import { query, queryOne } from '../../db/index.js';
 import { effectiveRoute } from '../client.js';
 import { chatWithEmptyRetry } from '../coding-run/chat-with-retry.js';
 import { resolveTierRoute, resolveFallbackRoute, type TierModel } from '../coding-run/model-tiers.js';
-import { retrieveComparisonMaterialForText } from '../coding-companion/retrieval.js';
+import { retrieveComparisonMaterialForText } from '../naming-companion/retrieval.js';
 import { embed } from '../../documents/embeddings.js';
-import {
-	getOrCreateResearcherNaming,
-	getDesignationHistory
-} from '../../db/queries/namings.js';
-import { createOrphanNaming } from '../../db/queries/codes.js';
+import { getDesignationHistory } from '../../db/queries/namings.js';
+import { getOrCreateAiNaming } from '../../db/queries/ai.js';
+import { createOrphanNaming } from '../../db/queries/annotations.js';
 import { provenanceProps, type WriteProvenance } from '../runtime/tool-executor.js';
 
 const AI_SYSTEM_UUID = '00000000-0000-0000-0000-000000000000';
@@ -543,7 +541,7 @@ export async function runComparativeDimensionalization(params: ComparativeParams
  * the dimensional analysis. cue-only — NO auto-promotion to characterization: that gradient
  * step is the researcher's terminal act, not the engine's (design-begleiten.md, Satz I).
  * The {aiPersona,aiRunId} stamp makes the write hide-filterable (queries/namings.ts) and
- * rollback-addressable (reset-coding), exactly like every other AI write.
+ * rollback-addressable (reset-naming), exactly like every other AI write.
  * Returns the concept-naming id (undo: DELETE FROM namings WHERE id = … cascades).
  */
 export async function persistConceptProfile(
@@ -555,8 +553,14 @@ export async function persistConceptProfile(
 	axes: Axis[],
 	prov: WriteProvenance
 ): Promise<string> {
-	const by = await getOrCreateResearcherNaming(projectId, byUserId);
-	const naming = await createOrphanNaming(projectId, byUserId, concept.name, {
+	// Wer hier schreibt, ist die KI, nicht die Forscherin: Akte und Naming
+	// tragen das KI-Naming des Projekts (ai_namings) und den KI-Urheber, wie
+	// jeder andere KI-Akt (coding-run/write.ts). Vorher standen sie unter dem
+	// Forscher-Naming — die KI-Arbeit war nicht als solche ausweisbar.
+	// byUserId bleibt nur, wer den Lauf ausgelöst hat (Aufrufer).
+	void byUserId;
+	const by = await getOrCreateAiNaming(projectId, model);
+	const naming = await createOrphanNaming(projectId, AI_SYSTEM_UUID, concept.name, {
 		description: `GTM-Konstantvergleich: ${axes.length} Dimensionen (seed=${seedStrategy}, model=${model})`,
 		provenance: provenanceProps(prov),
 		placeOnPrimaryMap: false

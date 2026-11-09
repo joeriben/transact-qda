@@ -8,10 +8,14 @@
 		label: string;
 		dotColor?: string;
 		icon?: string;
+		/** Tooltip, wenn das Label allein nicht sagt, was die Option bedeutet. */
+		title?: string;
 	};
 	export type FilterGroup = {
 		key: string;
 		label: string;
+		/** Tooltip für die Gruppe. */
+		title?: string;
 		value: string;
 		options: FilterOption[];
 		onchange: (v: string) => void;
@@ -20,6 +24,7 @@
 		label: string;
 		value: boolean;
 		onchange: (v: boolean) => void;
+		title?: string;
 	};
 </script>
 
@@ -40,11 +45,14 @@
 <div class="filter-bar">
 	{#each groups as g (g.key)}
 		<div class="filter-group">
-			<span class="filter-label">{g.label}</span>
+			<span class="filter-label" class:has-title={!!g.title} title={g.title}>{g.label}</span>
 			{#each g.options as opt (opt.value)}
 				<button
+					type="button"
 					class="filter-btn"
 					class:active={g.value === opt.value}
+					aria-pressed={g.value === opt.value}
+					title={opt.title}
 					onclick={() => g.onchange(opt.value)}
 				>
 					{#if opt.dotColor}<span class="dot" style="background: {opt.dotColor}"></span>{/if}
@@ -58,8 +66,11 @@
 		<div class="filter-group">
 			{#each toggles as t (t.label)}
 				<button
+					type="button"
 					class="filter-btn toggle"
 					class:active={t.value}
+					aria-pressed={!!t.value}
+					title={t.title}
 					onclick={() => t.onchange(!t.value)}
 				>{t.label}</button>
 			{/each}
@@ -71,6 +82,7 @@
 			type="text"
 			bind:value={search}
 			placeholder={searchPlaceholder}
+			aria-label={searchPlaceholder?.replace(/[.…]+$/, '') || 'Search'}
 		/>
 	{/if}
 </div>
@@ -95,6 +107,7 @@
 		letter-spacing: 0.05em;
 		margin-right: 0.15rem;
 	}
+	.filter-label.has-title { cursor: help; text-decoration: underline dotted; text-underline-offset: 3px; }
 	.filter-btn {
 		display: flex;
 		align-items: center;

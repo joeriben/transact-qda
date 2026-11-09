@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * Coding Companion — LLM Comparator
+ * Naming Companion — LLM Comparator
  *
  * Receives material assembled by the retrieval layer and compares the
  * marked passage with the researcher's own namings on several levels at
@@ -45,6 +45,10 @@ export interface ComparisonResult {
 	tokensUsed: number;
 }
 
+// Schlüssel der Nutzungsstatistik (ai_interactions.request_type). Der Wert
+// steht so in den gespeicherten Protokollzeilen und bleibt deshalb stehen.
+const USAGE_REQUEST_TYPE = 'coding-companion';
+
 // ── Prompt ─────────────────────────────────────────────────────────────────
 
 const SYSTEM_PROMPT = `„Du bist ein Freund des Materials — Du bist ein Freund der/s codierenden Forscher_in — achte darauf, dass F gut und angemessen mit M umgeht; unterstütze F in dem, was es artikulierend vollzieht, und M in dem, was es (nicht) zeigt."
@@ -82,7 +86,7 @@ export async function comparePassage(
 	projectId: string,
 	options?: { language?: string }
 ): Promise<ComparisonResult> {
-	const comparedWith = retrieval.existingCodes.length;
+	const comparedWith = retrieval.existingNamings.length;
 	if (comparedWith === 0) {
 		return { comparisons: [], comparedWith, droppedUnanchored: 0, tokensUsed: 0 };
 	}
@@ -108,7 +112,7 @@ export async function comparePassage(
 	for (const c of raw ?? []) {
 		// Nur Namings, die dem Modell vorlagen — eine erfundene ID darf
 		// keinen Klick zum Verankern bekommen.
-		const naming = retrieval.existingCodes.find((ec) => ec.id === c?.namingId);
+		const naming = retrieval.existingNamings.find((en) => en.id === c?.namingId);
 		const analysis = typeof c?.analysis === 'string' ? c.analysis.trim() : '';
 		if (!naming || !analysis) continue;
 		type Grounding = (typeof naming.sampleGroundings)[number];
@@ -132,7 +136,7 @@ export async function comparePassage(
 
 	await logInteraction(
 		projectId,
-		'coding-companion',
+		USAGE_REQUEST_TYPE,
 		response.model,
 		{ passageLength: retrieval.passage.content.length, comparedWith },
 		{ parsed: raw !== null, comparisonsCount: comparisons.length, droppedUnanchored },
@@ -169,7 +173,7 @@ function formatRetrievalForLLM(retrieval: RetrievalResult, language?: string): s
 	parts.push(`"${retrieval.passage.content}"\n`);
 
 	parts.push(`## The researcher's namings and their anchored passages\n`);
-	for (const naming of retrieval.existingCodes) {
+	for (const naming of retrieval.existingNamings) {
 		parts.push(`### ${naming.label} [${naming.designation}] — namingId: ${naming.id}, anchored ${naming.groundingCount}×`);
 		naming.sampleGroundings.forEach((g, i) => {
 			parts.push(`[${i + 1}] "${g.text}" (${g.documentTitle})`);
@@ -180,13 +184,13 @@ function formatRetrievalForLLM(retrieval: RetrievalResult, language?: string): s
 	// Embedding-Nachbarn mit eigenen Namings: Zugang ins Material, nicht
 	// Befund — sie liegen nah im Vokabular oder Register.
 	const nearby = retrieval.similarPassages
-		.map((sp) => ({ ...sp, own: sp.codes.filter((c) => c.own) }))
+		.map((sp) => ({ ...sp, own: sp.namings.filter((n) => n.own) }))
 		.filter((sp) => sp.own.length > 0);
 	if (nearby.length > 0) {
 		parts.push(`## Further passages near the marked one\n`);
 		parts.push(`Near in vocabulary or register (embedding neighbourhood), not necessarily the same phenomenon. For context only — do not cite them.\n`);
 		for (const sp of nearby.slice(0, 5)) {
-			const labels = sp.own.map((c) => `${c.label} [${c.designation}]`).join(', ');
+			const labels = sp.own.map((n) => `${n.label} [${n.designation}]`).join(', ');
 			parts.push(`- "${sp.content}" (${sp.documentTitle}) — the researcher anchored here: ${labels}`);
 		}
 	}

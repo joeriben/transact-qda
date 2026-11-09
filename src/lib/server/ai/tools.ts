@@ -64,7 +64,7 @@ export const AI_TOOLS: ToolDef[] = [
 	{
 		name: 'identify_silence',
 		description:
-			'Point out a notable absence — something or someone missing from the situational map. In Situational Analysis, silences are as analytically important as presences.',
+			'Point out a notable absence — something or someone missing from the situational map. A silence arises from the pattern of relations among namings that ARE on the map; it is connected to exactly those namings. Your reasoning may rest only on namings and relations that exist on the map.',
 		input_schema: {
 			type: 'object' as const,
 			properties: {
@@ -72,12 +72,17 @@ export const AI_TOOLS: ToolDef[] = [
 					type: 'string',
 					description: 'What is absent/silenced'
 				},
+				related_element_ids: {
+					type: 'array',
+					items: { type: 'string' },
+					description: 'IDs of the namings on this map whose relational pattern makes the absence notable (at least one). The silence is related to each of them.'
+				},
 				reasoning: {
 					type: 'string',
-					description: 'Why this absence is notable given the situation'
+					description: 'Why this absence is notable, referring only to the namings given in related_element_ids and relations that exist on the map'
 				}
 			},
-			required: ['inscription', 'reasoning']
+			required: ['inscription', 'related_element_ids', 'reasoning']
 		}
 	},
 	{
@@ -247,6 +252,7 @@ export interface SuggestRelationInput {
 
 export interface IdentifySilenceInput {
 	inscription: string;
+	related_element_ids?: string[];
 	reasoning: string;
 }
 
@@ -419,7 +425,7 @@ export const AUTONOMOUS_DOCUMENT_TOOLS: ToolDef[] = [
 	{
 		name: 'read_document',
 		description:
-			'Read a document as structured elements with stable IDs. Returns paragraphs and sentences, each with a UUID you can reference in code_passage. Use this to read and understand a document before coding it.',
+			'Read a document as structured elements with stable IDs. Returns paragraphs and sentences, each with a UUID you can reference in name_passage. Use this to read and understand a document before naming its passages.',
 		input_schema: {
 			type: 'object' as const,
 			properties: {
@@ -432,9 +438,9 @@ export const AUTONOMOUS_DOCUMENT_TOOLS: ToolDef[] = [
 		}
 	},
 	{
-		name: 'code_passage',
+		name: 'name_passage',
 		description:
-			'Code a document element — the core analytical act. Reference the element by its UUID from read_document output. Creates a grounded naming (📄) anchored to that element. If a code with the same label already exists, it reuses it (same concept across documents). The code is automatically placed on the active map.',
+			'Name a document element — the core analytical act. Reference the element by its UUID from read_document output. Creates a grounded naming (📄) anchored to that element. If a naming with the same label already exists, it reuses it (same concept across documents). The naming is automatically placed on the active map.',
 		input_schema: {
 			type: 'object' as const,
 			properties: {
@@ -444,18 +450,18 @@ export const AUTONOMOUS_DOCUMENT_TOOLS: ToolDef[] = [
 				},
 				element_id: {
 					type: 'string',
-					description: 'UUID of the document element to code (from read_document output)'
+					description: 'UUID of the document element to name (from read_document output)'
 				},
-				code_label: {
+				naming_label: {
 					type: 'string',
-					description: 'Analytical label for this code (prefer gerunds/process forms)'
+					description: 'Analytical label for this naming (prefer gerunds/process forms)'
 				},
 				reasoning: {
 					type: 'string',
 					description: 'Why this element is analytically significant'
 				}
 			},
-			required: ['document_id', 'element_id', 'code_label', 'reasoning']
+			required: ['document_id', 'element_id', 'naming_label', 'reasoning']
 		}
 	},
 	{
@@ -553,11 +559,11 @@ export interface ReadDocumentInput {
 	document_id: string;
 }
 
-export interface CodePassageInput {
+export interface NamePassageInput {
 	document_id: string;
 	element_id?: string;
 	passage?: string;  // legacy fallback for unparsed documents
-	code_label: string;
+	naming_label: string;
 	reasoning: string;
 }
 

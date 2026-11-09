@@ -26,6 +26,8 @@
 	let testResult = $state<{ ok: boolean; error?: string; model?: string } | null>(null);
 	let message = $state<{ type: 'ok' | 'error'; text: string } | null>(null);
 	let loading = $state(true);
+	/** Nur ein Admin-Konto ändert die installationsweiten KI-Einstellungen. */
+	let canEdit = $state(false);
 
 	// Language state
 	let language = $state('auto');
@@ -71,6 +73,7 @@
 			delegationModel = data.delegationAgent?.model || '';
 			language = data.language || 'auto';
 			languages = data.languages || {};
+			canEdit = data.canEdit === true;
 		} catch (e: any) {
 			message = { type: 'error', text: e.message };
 		} finally {
@@ -184,6 +187,14 @@
 		if (key !== 'custom') { customFrom = ''; customTo = ''; }
 		fetchUsage();
 	}
+
+	// Anfragearten sind gespeicherte Protokollschlüssel. Zwei davon stammen aus
+	// der Zeit vor „Naming" und werden vom eingefrorenen Naming-Run weiter so
+	// geschrieben; angezeigt werden sie unter dem heutigen Namen.
+	const REQUEST_TYPE_LABELS: Record<string, string> = {
+		'coding-run': 'naming-run',
+		'coding-companion': 'naming-companion'
+	};
 
 	function formatTokens(n: number): string {
 		if (!n) return '0';
@@ -340,6 +351,10 @@
 		{#if loading}
 			<div class="loading">Loading...</div>
 		{:else}
+			{#if !canEdit}
+				<p class="readonly-note">These settings apply to the whole installation — every account and project. Only an admin account can change them; you can see them and test the connection.</p>
+			{/if}
+			<fieldset class="settings-fields" disabled={!canEdit}>
 			<div class="section">
 				<h2>Provider</h2>
 				<div class="provider-grid">
@@ -448,10 +463,14 @@
 				</div>
 			</div>
 
+			</fieldset>
+
 			<div class="actions">
-				<button class="btn btn-primary" onclick={save} disabled={saving}>
-					{saving ? 'Saving...' : 'Save'}
-				</button>
+				{#if canEdit}
+					<button class="btn btn-primary" onclick={save} disabled={saving}>
+						{saving ? 'Saving...' : 'Save'}
+					</button>
+				{/if}
 				<button class="btn btn-secondary" onclick={test} disabled={testing}>
 					{testing ? 'Testing...' : 'Test Connection'}
 				</button>
@@ -543,7 +562,7 @@
 							<tbody>
 								{#each Object.entries(usageData.by_type) as [type, stats]}
 									<tr>
-										<td>{type}</td>
+										<td>{REQUEST_TYPE_LABELS[type] ?? type}</td>
 										<td class="mono right">{stats.calls}</td>
 										<td class="mono right">{formatTokens(stats.input_tokens)}</td>
 										<td class="mono right">{formatTokens(stats.output_tokens)}</td>
@@ -1151,5 +1170,11 @@
 	.coach-btn-sm:hover {
 		color: #ef4444;
 		background: rgba(239, 68, 68, 0.1);
+	}
+	.settings-fields { border: none; margin: 0; padding: 0; min-width: 0; }
+	.settings-fields:disabled { opacity: 0.75; }
+	.readonly-note {
+		margin: 0 0 1rem; padding: 0.6rem 0.8rem; border: 1px solid #2a2d3a; border-radius: 6px;
+		background: #161822; color: #c9cdd5; font-size: 0.85rem; line-height: 1.45;
 	}
 </style>

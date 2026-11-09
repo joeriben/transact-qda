@@ -142,7 +142,7 @@ function cacheKey(projectId: string, opts: RelatednessOptions): string {
  * Sequenzen des Geltungsbereichs samt TF-IDF-Raum.
  *
  * Die Segmentierung ist ephemer (segmentation.ts) und wird hier wie im
- * Coding-Run neu gerechnet — damit die Einheiten dieselben sind, an denen
+ * Naming-Run neu gerechnet — damit die Einheiten dieselben sind, an denen
  * die Aktanten arbeiten. Nichts wird persistiert.
  */
 async function loadCorpus(projectId: string, opts: RelatednessOptions): Promise<Corpus> {

@@ -6,8 +6,8 @@ export {
 	retrieveComparisonMaterialForText,
 	type RetrievalResult,
 	type SimilarPassage,
-	type CodeWithGroundings,
-	type PassageCode
+	type NamingWithGroundings,
+	type PassageNaming
 } from './retrieval.js';
 
 export {

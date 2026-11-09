@@ -4,20 +4,49 @@
 import { query, queryOne, transaction } from '../index.js';
 import type { MapType, DesignationStage } from '$lib/shared/types/index.js';
 import { getOrCreateResearcherNaming } from './namings.js';
-import { getAnnotationsByCode } from './codes.js';
+import { getAnnotationsByNaming } from './annotations.js';
+import { getSituatingActs } from './situating.js';
 
 // A map IS a naming that serves as a perspective.
 // Everything "on the map" has an appearance from this perspective.
 // "Messy" vs "ordered" is not a mode — it's the aggregate designation
 // state of the map's elements.
 
+/**
+ * Lesbarer Name eines Namings in SQL. Eine Relation ohne eigene Inschrift
+ * heißt nach ihren Endpunkten („Quelle —valenz→ Ziel").
+ */
+export function namingLabelSql(alias: string): string {
+	// Gerichtet: „Quelle —valenz→ Ziel", symmetrisch: „Quelle —valenz— Ziel";
+	// ohne Valenz „→" bzw. „↔" (wie relationLabel in shared/namingLabel.ts).
+	return `COALESCE(NULLIF(btrim(${alias}.inscription), ''),
+	  (SELECT s_.inscription
+	          || CASE WHEN ra_.valence IS NOT NULL AND btrim(ra_.valence) <> ''
+	                  THEN ' —' || ra_.valence || CASE WHEN ra_.directed_from IS NOT NULL THEN '→ ' ELSE '— ' END
+	                  ELSE CASE WHEN ra_.directed_from IS NOT NULL THEN ' → ' ELSE ' ↔ ' END
+	             END
+	          || t_.inscription
+	     FROM participations p_
+	     JOIN namings s_ ON s_.id = p_.naming_id
+	     JOIN namings t_ ON t_.id = p_.participant_id
+	     LEFT JOIN LATERAL (SELECT a_.valence, a_.directed_from
+	                          FROM appearances a_
+	                         WHERE a_.naming_id = ${alias}.id AND a_.mode = 'relation'
+	                         ORDER BY (a_.valence IS NULL), a_.created_at
+	                         LIMIT 1) ra_ ON true
+	    WHERE p_.id = ${alias}.id
+	    LIMIT 1),
+	  '(unnamed)')`;
+}
+
 // ---- Primary Situational Map ----
 
 /**
  * Get or create the primary Situational Map for a project.
- * The primary map is the default target for all coding namings.
+ * The primary map is the default target for all namings anchored in documents.
  * Its list is the source of truth (three-layer hierarchy).
  */
+
 export async function getOrCreatePrimarySitMap(projectId: string, userId: string): Promise<string> {
 	const existing = await queryOne<{ id: string }>(
 		`SELECT n.id FROM namings n
@@ -171,11 +200,12 @@ export async function duplicateMap(
 				[newPhaseId, newMapId, JSON.stringify(phase.properties || {})]
 			);
 
-			// Phase's self-referential appearance
+			// Phase's self-referential appearance — mit der Rolle, an der
+			// getProjectPhases und phaseInProject eine Phase erkennen.
 			await client.query(
 				`INSERT INTO appearances (naming_id, perspective_id, mode, properties)
-				 VALUES ($1, $1, 'perspective', '{}')`,
-				[newPhaseId]
+				 VALUES ($1, $1, 'perspective', $2)`,
+				[newPhaseId, JSON.stringify({ role: 'phase', parentMapId: newMapId })]
 			);
 
 			// Initial naming act for the phase
@@ -259,15 +289,40 @@ export async function addElementToMap(
 			[naming.id, mapId, JSON.stringify(properties || {})]
 		);
 
-		// Initial act: cue (just registered, not yet determined)
+		// Erster Akt: die Inschrift, als Cue („everything is a cue, and every
+		// cue is a THING", Session 10). Die Inschrift gehört in den Stack — sonst
+		// beginnt die Kette ohne das, was benannt wurde.
 		await client.query(
-			`INSERT INTO naming_acts (naming_id, designation, by)
-			 VALUES ($1, 'cue', $2)`,
-			[naming.id, researcherNamingId]
+			`INSERT INTO naming_acts (naming_id, inscription, designation, by)
+			 VALUES ($1, $2, 'cue', $3)`,
+			[naming.id, inscription, researcherNamingId]
 		);
 
 		return naming;
 	});
+}
+
+// Ein Naming ist sein Stack: Heißt im Projekt schon ein Naming so (ohne
+// Groß/Klein, getrimmt), legt das Hinzufügen auf einer Map kein zweites an,
+// sondern holt das vorhandene auf diese Map (Testbericht 09.11.2026: zwei
+// „Elternbeirat" nach dem Formationsfeld der SW/A-Map). Memos, Relationen,
+// Perspektiven (Maps, Phasen, Forscher- und KI-Namings) zählen nicht.
+export async function findSameNamedNaming(projectId: string, mapId: string, inscription: string) {
+	return queryOne<{ id: string; inscription: string; on_map: boolean }>(
+		`SELECT n.id, n.inscription,
+		        EXISTS (SELECT 1 FROM appearances a WHERE a.naming_id = n.id AND a.perspective_id = $3) AS on_map
+		   FROM namings n
+		  WHERE n.project_id = $1 AND n.deleted_at IS NULL
+		    AND LOWER(TRIM(n.inscription)) = LOWER(TRIM($2))
+		    AND NOT EXISTS (SELECT 1 FROM memo_content mc WHERE mc.naming_id = n.id)
+		    AND NOT EXISTS (SELECT 1 FROM document_content dc WHERE dc.naming_id = n.id)
+		    AND NOT EXISTS (SELECT 1 FROM participations p WHERE p.id = n.id)
+		    AND NOT EXISTS (SELECT 1 FROM appearances pa
+		                     WHERE pa.naming_id = n.id AND pa.perspective_id = n.id AND pa.mode = 'perspective')
+		  ORDER BY on_map DESC, n.seq
+		  LIMIT 1`,
+		[projectId, inscription, mapId]
+	);
 }
 
 // Place an existing naming on this map without creating a new naming.
@@ -283,10 +338,15 @@ export async function placeExistingOnMap(
 	properties?: Record<string, unknown>
 ) {
 	return transaction(async (client) => {
-		// Verify the naming exists and belongs to this project
+		// Verify the naming exists and belongs to this project. Memos und
+		// Dokumente sind keine Namings, die man auf eine Map stellt (Session 16:
+		// kein Naming, „solange man sie nicht dezidiert zu einem Naming macht";
+		// das geschieht über promoteMemoToNaming, das ein eigenes Naming anlegt).
 		const naming = await client.query(
-			`SELECT id, inscription FROM namings
-			 WHERE id = $1 AND project_id = $2 AND deleted_at IS NULL`,
+			`SELECT id, inscription FROM namings n
+			 WHERE id = $1 AND project_id = $2 AND deleted_at IS NULL
+			   AND NOT EXISTS (SELECT 1 FROM memo_content mc WHERE mc.naming_id = n.id)
+			   AND NOT EXISTS (SELECT 1 FROM document_content dc WHERE dc.naming_id = n.id)`,
 			[namingId, projectId]
 		);
 		if (naming.rows.length === 0) return null;
@@ -342,6 +402,11 @@ export async function searchNamingsForPlacement(
 			     WHERE self.naming_id = n.id AND self.perspective_id = n.id
 			       AND self.mode = 'perspective'
 			   )
+			   -- Memos und Dokumente sind keine platzierbaren Namings (siehe
+			   -- placeExistingOnMap); ein freies Map-Memo stand hier unter
+			   -- „In this project — place here" (Testlauf 09.11.).
+			   AND NOT EXISTS (SELECT 1 FROM memo_content mc WHERE mc.naming_id = n.id)
+			   AND NOT EXISTS (SELECT 1 FROM document_content dc WHERE dc.naming_id = n.id)
 			 ORDER BY n.seq DESC
 			 LIMIT $4`,
 			[projectId, mapId, `%${searchQuery}%`, limit]
@@ -366,13 +431,31 @@ export async function relateElements(
 		symmetric?: boolean;
 		properties?: Record<string, unknown>;
 		skipDesignationAdvance?: boolean;
+		/** Ohne Map (Grounding-Workspace): die Endpunkte dort nicht ablegen. */
+		skipEndpointAppearances?: boolean;
 	}
 ) {
 	return transaction(async (client) => {
+		// Ein geordnetes Paar hat genau eine Relation (participations: UNIQUE
+		// naming_id, participant_id). Besteht sie schon, sagt die Antwort das,
+		// statt an der Datenbank zu scheitern. Wurde sie früher gelöscht, kehrt
+		// DIESELBE Relation zurück und ihr Stack geht weiter — kein zweites Naming.
+		const prior = (
+			await client.query<{ id: string; deleted: boolean }>(
+				`SELECT p.id, n.deleted_at IS NOT NULL AS deleted
+				 FROM participations p JOIN namings n ON n.id = p.id
+				 WHERE p.naming_id = $1 AND p.participant_id = $2`,
+				[sourceId, targetId]
+			)
+		).rows[0];
+		if (prior && !prior.deleted) {
+			return { id: prior.id, sourceId, targetId, valence: opts?.valence, alreadyRelated: true, restored: false };
+		}
+
 		const researcherNamingId = await getOrCreateResearcherNaming(projectId, userId);
 
 		// Ensure both endpoints have appearances on this map (structural integrity)
-		for (const endpointId of [sourceId, targetId]) {
+		for (const endpointId of opts?.skipEndpointAppearances ? [] : [sourceId, targetId]) {
 			const onMap = await client.query(
 				`SELECT 1 FROM appearances WHERE naming_id = $1 AND perspective_id = $2`,
 				[endpointId, mapId]
@@ -386,20 +469,35 @@ export async function relateElements(
 			}
 		}
 
-		// The participation is itself a naming
-		const partNamingRes = await client.query(
-			`INSERT INTO namings (project_id, inscription, created_by)
-			 VALUES ($1, $2, $3) RETURNING *`,
-			[projectId, opts?.inscription || '', userId]
-		);
-		const partNaming = partNamingRes.rows[0];
+		let partNaming;
+		if (prior) {
+			// Die frühere Relation dieses Paars kehrt zurück. Ohne neue Inschrift
+			// bleibt die alte stehen (sie ist die letzte im Stack).
+			partNaming = (
+				await client.query(
+					`UPDATE namings SET deleted_at = NULL,
+					        inscription = COALESCE(NULLIF(btrim($2), ''), inscription)
+					 WHERE id = $1 RETURNING *`,
+					[prior.id, opts?.inscription || '']
+				)
+			).rows[0];
+		} else {
+			// The participation is itself a naming
+			partNaming = (
+				await client.query(
+					`INSERT INTO namings (project_id, inscription, created_by)
+					 VALUES ($1, $2, $3) RETURNING *`,
+					[projectId, opts?.inscription || '', userId]
+				)
+			).rows[0];
 
-		// Create the undirected participation
-		await client.query(
-			`INSERT INTO participations (id, naming_id, participant_id)
-			 VALUES ($1, $2, $3)`,
-			[partNaming.id, sourceId, targetId]
-		);
+			// Create the undirected participation
+			await client.query(
+				`INSERT INTO participations (id, naming_id, participant_id)
+				 VALUES ($1, $2, $3)`,
+				[partNaming.id, sourceId, targetId]
+			);
+		}
 
 		// The participation appears as relation on the map.
 		// If symmetric: no directed_from/to (the participation is undirected).
@@ -408,7 +506,12 @@ export async function relateElements(
 		const dirTo = opts?.symmetric ? null : targetId;
 		await client.query(
 			`INSERT INTO appearances (naming_id, perspective_id, mode, directed_from, directed_to, valence, properties)
-			 VALUES ($1, $2, 'relation', $3, $4, $5, $6)`,
+			 VALUES ($1, $2, 'relation', $3, $4, $5, $6)
+			 ON CONFLICT (naming_id, perspective_id) DO UPDATE
+			   SET mode = 'relation', directed_from = EXCLUDED.directed_from,
+			       directed_to = EXCLUDED.directed_to, valence = EXCLUDED.valence,
+			       properties = (appearances.properties - 'withdrawn' - 'aiWithdrawn') || EXCLUDED.properties,
+			       updated_at = now()`,
 			[
 				partNaming.id, mapId,
 				dirFrom, dirTo,
@@ -429,10 +532,12 @@ export async function relateElements(
 		if (hasInscription && hasValence) relDesignation = 'specification';
 		else if (hasInscription) relDesignation = 'characterization';
 
+		// Erster Akt der Relation trägt, was sie setzt: Inschrift und Valenz
+		// (NULL = nicht gesetzt) — der Stack beginnt nicht leer.
 		await client.query(
-			`INSERT INTO naming_acts (naming_id, designation, by)
-			 VALUES ($1, $2, $3)`,
-			[partNaming.id, relDesignation, researcherNamingId]
+			`INSERT INTO naming_acts (naming_id, inscription, valence, designation, by)
+			 VALUES ($1, $2, $3, $4, $5)`,
+			[partNaming.id, opts?.inscription?.trim() || null, opts?.valence?.trim() || null, relDesignation, researcherNamingId]
 		);
 
 		// Relating is an act of determination: the related elements
@@ -447,16 +552,17 @@ export async function relateElements(
 					[elementId]
 				);
 				if (current.rows[0]?.designation === 'cue') {
+					// Der Akt nennt seine Ursache: die Relation, die ihn hebt.
 					await client.query(
-						`INSERT INTO naming_acts (naming_id, designation, by)
-						 VALUES ($1, 'characterization', $2)`,
-						[elementId, researcherNamingId]
+						`INSERT INTO naming_acts (naming_id, designation, by, linked_naming_ids)
+						 VALUES ($1, 'characterization', $2, $3)`,
+						[elementId, researcherNamingId, [partNaming.id]]
 					);
 				}
 			}
 		}
 
-		return { id: partNaming.id, sourceId, targetId, valence: opts?.valence };
+		return { id: partNaming.id, sourceId, targetId, valence: opts?.valence, alreadyRelated: false, restored: !!prior };
 	});
 }
 
@@ -650,7 +756,10 @@ export async function getNamingStack(namingId: string, projectId?: string) {
 			return {
 				inscriptions: [],
 				designations: [],
+				acts: [],
+				derivedFrom: [] as string[],
 				memos: [],
+				referringNotes: [],
 				annotations: [],
 				reasonings: [],
 				discussion: [],
@@ -759,32 +868,216 @@ export async function getNamingStack(namingId: string, projectId?: string) {
 	}));
 
 	// Fetch document annotations (material) for this naming
-	const annotations = projectId ? await getAnnotationsByCode(projectId, namingId) : [];
+	const annotations = projectId ? await getAnnotationsByNaming(projectId, namingId) : [];
 
 	// Begründungs-Akte: naming_acts, die weder Inschrift noch Designation
 	// tragen, sondern nur memo_text — und in linked_naming_ids die Passage, für
 	// die sie gelten (so schreibt coding-run/write.ts). Sie sind die Begründung
-	// des KI-Cues. Ohne sie zeigt der Stack eines Coding-Run-Cues eine einzige
+	// des KI-Cues. Ohne sie zeigt der Stack eines Naming-Run-Cues eine einzige
 	// Zeile ('cue') und sonst nichts, obwohl die Begründung in der Datenbank
 	// steht — die Karte wirkt tot.
-	const reasonings = await query(
-		`SELECT na.seq, na.memo_text, na.created_at, na.linked_naming_ids,
-		        n.inscription as by_inscription
-		 FROM naming_acts na
-		 JOIN namings n ON n.id = na.by
-		 WHERE na.naming_id = $1
-		   AND na.memo_text IS NOT NULL AND na.memo_text <> ''
-		   AND na.inscription IS NULL AND na.designation IS NULL
-		 ORDER BY na.seq ASC`,
-		[namingId]
-	);
+	//
+	// Der Stack selbst: jeder Akt mit allen Dimensionen (Inskription,
+	// Designation, Modus, Valenz; NULL = unverändert) und der Notiz, die in ihm
+	// steht — das Memo ZU diesem Naming (noteOnNaming) samt den Namings, auf die
+	// es verweist. Ein Naming IST diese Schichtung.
+	const actRows = (
+		await query<{
+			seq: string;
+			created_at: string;
+			inscription: string | null;
+			designation: string | null;
+			mode: string | null;
+			valence: string | null;
+			memo_text: string | null;
+			linked_naming_ids: string[] | null;
+			by_inscription: string;
+			by_researcher: boolean;
+			linked: { id: string; label: string }[];
+			inferred_cause: { id: string; label: string }[] | null;
+		}>(
+			`SELECT na.seq, na.created_at, na.inscription, na.designation, na.mode, na.valence,
+			        na.memo_text, na.linked_naming_ids,
+			        b.inscription AS by_inscription,
+			        EXISTS (SELECT 1 FROM researcher_namings rn WHERE rn.naming_id = na.by) AS by_researcher,
+			        COALESCE((SELECT json_agg(json_build_object('id', l.id, 'label', ${namingLabelSql('l')}) ORDER BY l.inscription)
+			                  FROM namings l
+			                  WHERE l.id = ANY(na.linked_naming_ids) AND l.deleted_at IS NULL), '[]'::json) AS linked,
+			        -- Ältere Hebungen durch eine Relation (vor dem 09.11.2026) tragen
+			        -- ihre Ursache nicht: Sie entstanden in derselben Transaktion wie
+			        -- die Relation, also mit demselben Zeitstempel wie deren erster Akt.
+			        CASE WHEN na.linked_naming_ids IS NULL AND na.memo_text IS NULL
+			                  AND na.inscription IS NULL AND na.designation IS NOT NULL
+			             THEN (SELECT json_agg(json_build_object('id', l.id, 'label', ${namingLabelSql('l')}))
+			                   FROM participations p
+			                   JOIN namings l ON l.id = p.id AND l.deleted_at IS NULL
+			                   WHERE (p.naming_id = na.naming_id OR p.participant_id = na.naming_id)
+			                     AND p.id <> na.naming_id
+			                     AND EXISTS (SELECT 1 FROM naming_acts ra
+			                                 WHERE ra.naming_id = p.id AND ra.created_at = na.created_at))
+			        END AS inferred_cause
+			 FROM naming_acts na
+			 JOIN namings b ON b.id = na.by
+			 WHERE na.naming_id = $1
+			 ORDER BY na.seq ASC`,
+			[namingId]
+		)
+	).rows.map((a) => {
+		const inferred = (a as { inferred_cause?: { id: string; label: string }[] | null }).inferred_cause ?? [];
+		const linked = (a.linked ?? []).length > 0 ? a.linked : inferred;
+		// „durch": ein Akt, der nur die Designation setzt und auf ein anderes
+		// Naming verweist — die Relation, die ihn hebt.
+		const through = !!a.designation && !a.inscription && !a.memo_text?.trim() && linked.length > 0;
+		return { ...a, linked, through };
+	});
+
+	// Begründungen, die an einer Passage hängen (Naming-Run, Passagen-Memo),
+	// stehen unter dieser Passage im Material; Begründungen der KI ohne Passage
+	// unter „Reasoning". Alles andere — auch die Notizen der Forschenden — ist
+	// der Stack.
+	const passageIds = new Set((annotations as any[]).map((a) => a.id));
+	const isReasoning = (a: (typeof actRows)[number]) =>
+		!!a.memo_text?.trim() &&
+		a.inscription === null &&
+		a.designation === null &&
+		((a.linked_naming_ids ?? []).some((id) => passageIds.has(id)) || !a.by_researcher);
+	const reasonings = actRows.filter(isReasoning);
+	// Eine Relation beginnt auf der Stufe, die ihr erster Akt setzt (S09: mit
+	// Valenz, aber ohne eigene Inschrift bleibt sie Cue; die Stufen darüber
+	// sind die Regel des Assistenten, die BJ mit „commit" übernahm). Der Stack
+	// nennt den Grund, statt die Stufe kommentarlos hinzustellen.
+	const isRelation = !!(await queryOne(`SELECT 1 FROM participations WHERE id = $1`, [namingId]));
+	const firstDesignationSeq = actRows.find((a) => !!a.designation)?.seq ?? null;
+	const relationBasis = (a: (typeof actRows)[number]): string | null => {
+		if (!isRelation || a.seq !== firstDesignationSeq) return null;
+		const named = !!a.inscription?.trim();
+		const typed = !!a.valence?.trim();
+		if (named && typed) return 'drawn with a name and a valence';
+		if (named) return 'drawn with a name';
+		if (typed) return 'drawn with a valence, without a name of its own';
+		return 'drawn without name or valence';
+	};
+	const acts = actRows
+		.filter((a) => !isReasoning(a))
+		.map((a) => ({
+			...a,
+			linked: (a.linked ?? []).filter((l) => !passageIds.has(l.id)),
+			basis: relationBasis(a)
+		}));
+
+	// Notizen in den Stacks ANDERER Namings, die auf dieses verweisen
+	// (noteOnNaming und Akt-Notizen mit linked_naming_ids). Ein Bezug ist in
+	// beide Richtungen sichtbar — wie bei den Memo-Namings unten.
+	const referringNotes = projectId
+		? (
+				await query<{
+					seq: string;
+					on_id: string;
+					on_label: string;
+					memo_text: string;
+					designation: string | null;
+					inscription: string | null;
+					created_at: string;
+					by_inscription: string;
+				}>(
+					`SELECT na.seq, na.naming_id AS on_id, ${namingLabelSql('o')} AS on_label,
+					        na.memo_text, na.designation, na.inscription, na.created_at,
+					        b.inscription AS by_inscription
+					   FROM naming_acts na
+					   JOIN namings o ON o.id = na.naming_id AND o.project_id = $2 AND o.deleted_at IS NULL
+					   JOIN namings b ON b.id = na.by
+					  WHERE $1 = ANY(na.linked_naming_ids) AND na.naming_id <> $1
+					    AND na.memo_text IS NOT NULL AND btrim(na.memo_text) <> ''
+					  ORDER BY na.created_at`,
+					[namingId, projectId]
+				)
+			).rows
+		: [];
+
+	// Aus der Platzierung abgeleitete Relation (SW/A-Map, Containment oder
+	// Überschneidung): Der Stack sagt es, damit niemand sie für eine eigens
+	// gezogene Relation hält.
+	const derivedFrom = (
+		await query<{ map_inscription: string }>(
+			`SELECT m.inscription AS map_inscription
+			 FROM appearances a
+			 JOIN namings m ON m.id = a.perspective_id
+			 WHERE a.naming_id = $1 AND (a.properties->>'spatiallyDerived')::boolean IS TRUE`,
+			[namingId]
+		)
+	).rows.map((r) => r.map_inscription);
+
+	// Eintreten in die Situation einer Map, Verlassen, Zurückziehen und
+	// Wiederherstellen (situating_acts, migrations/034 und 038) stehen
+	// chronologisch im selben Stack: Auch sie sind Akte an diesem Naming,
+	// mit Zeit und Autorin. Sie tragen keine Designation.
+	const situating = projectId ? await getSituatingActs(namingId, projectId) : [];
+	// Zuordnung zu einer Phase und ihre Aufhebung (phase_memberships,
+	// migrations/006, append-only) sind ebenso Akte an diesem Naming.
+	const phaseActs = (
+		await query<{ action: 'assign' | 'remove'; created_at: string; phase_label: string; by_inscription: string }>(
+			`SELECT pm.action, pm.created_at, ph.inscription AS phase_label, b.inscription AS by_inscription
+			 FROM phase_memberships pm
+			 JOIN namings ph ON ph.id = pm.phase_id
+			 JOIN namings b ON b.id = pm.by
+			 WHERE pm.naming_id = $1
+			 ORDER BY pm.seq`,
+			[namingId]
+		)
+	).rows;
+	const phaseEntries = phaseActs.map((pa, i) => ({
+		seq: `p${i}-${new Date(pa.created_at).getTime()}`,
+		created_at: pa.created_at,
+		inscription: null,
+		designation: null,
+		mode: null,
+		valence: null,
+		memo_text: null,
+		linked_naming_ids: null,
+		by_inscription: pa.by_inscription,
+		by_researcher: true,
+		linked: [] as { id: string; label: string }[],
+		through: false,
+		basis: null as string | null,
+		kind: (pa.action === 'assign' ? 'phase-assign' : 'phase-remove') as 'phase-assign' | 'phase-remove',
+		map_inscription: null as string | null,
+		phase_label: pa.phase_label as string | null,
+		sw_role: null as string | null
+	}));
+	const situatingEntries = (situating as any[]).map((sa, i) => ({
+		seq: `s${i}-${new Date(sa.created_at).getTime()}`,
+		created_at: sa.created_at,
+		inscription: null,
+		designation: null,
+		mode: null,
+		valence: null,
+		memo_text: null,
+		linked_naming_ids: null,
+		by_inscription: sa.by_inscription,
+		by_researcher: true,
+		linked: [] as { id: string; label: string }[],
+		through: false,
+		basis: null as string | null,
+		kind: sa.act as 'situate' | 'unsituate' | 'withdraw' | 'restore',
+		map_inscription: sa.map_inscription as string,
+		phase_label: null as string | null,
+		sw_role: (sa.sw_role ?? null) as string | null
+	}));
+	const history = [
+		...acts.map((a) => ({ ...a, kind: 'act' as const, map_inscription: null as string | null, phase_label: null as string | null, sw_role: null as string | null })),
+		...situatingEntries,
+		...phaseEntries
+	].sort((x, y) => new Date(x.created_at).getTime() - new Date(y.created_at).getTime());
 
 	return {
 		inscriptions: inscriptions.rows,
 		designations: designations.rows,
+		acts: history,
+		derivedFrom,
 		memos: enrichedMemos,
+		referringNotes,
 		annotations,
-		reasonings: reasonings.rows,
+		reasonings,
 		discussion: discussion.map((m: any) => ({
 			id: m.id,
 			role: m.label === 'Discussion: researcher' ? 'researcher' : 'ai',
@@ -831,7 +1124,7 @@ export async function getMapAppearances(mapId: string, projectId: string) {
 			   -- Whether this appearance is collapsed (pinned) or showing latest
 			   (a.properties->>'collapseAt') IS NOT NULL as is_collapsed,
 			   -- Provenance: empirical grounding (has document annotations)
-			   -- Valenzen wie in getAnnotationsByCode (codes UND thematizes): 'codes'
+			   -- Valenzen wie in getAnnotationsByNaming ('codes' UND 'thematizes'): 'codes'
 			   -- allein liess jedes nur thematisierend verankerte Naming als
 			   -- ungegroundet erscheinen — auf der Primaerkarte traf das ausschliesslich
 			   -- die von Hand angelegten Namings des Forschers, also gerade die, deren
@@ -845,7 +1138,7 @@ export async function getMapAppearances(mapId: string, projectId: string) {
 			   -- ausgeblendet (properties.hidden) — dann steht in der Unplaced-Liste
 			   -- nichts mehr an, was im Material noch zu sehen wäre. Kein Löschen:
 			   -- die Appearances bleiben, der Schalter holt sie zurück.
-			   -- Valenzen wie in getAnnotationsByCode (codes UND thematizes) —
+			   -- Valenzen wie in getAnnotationsByNaming ('codes' UND 'thematizes') —
 			   -- 'codes' allein ließ jedes nur thematisierend verankerte Naming
 			   -- unausblendbar.
 			   (
@@ -861,8 +1154,12 @@ export async function getMapAppearances(mapId: string, projectId: string) {
 			         AND COALESCE(ann.properties->>'hidden', 'false') <> 'true'
 			     )
 			   ) as anchors_hidden,
-			   -- Provenance: analytical grounding (linked to a memo)
+			   -- Memo: im Stack (Memo zu diesem Naming) oder ein verweisendes Memo-Naming
 			   EXISTS (
+			     SELECT 1 FROM naming_acts nam
+			     JOIN researcher_namings rnm ON rnm.naming_id = nam.by
+			     WHERE nam.naming_id = a.naming_id AND nam.memo_text IS NOT NULL AND btrim(nam.memo_text) <> ''
+			   ) OR EXISTS (
 			     SELECT 1 FROM participations mp
 			     JOIN memo_content mc ON mc.naming_id = CASE
 			       WHEN mp.naming_id = a.naming_id THEN mp.participant_id
@@ -871,22 +1168,42 @@ export async function getMapAppearances(mapId: string, projectId: string) {
 			     WHERE mp.naming_id = a.naming_id OR mp.participant_id = a.naming_id
 			   ) as has_memo_link,
 			   -- Memo previews (all memos incl. AI, for hover tooltips + badges)
+			   -- Memos im Stack dieses Namings (Akte mit memo_text einer Forscherin)
+			   -- und Memo-Namings, die auf es verweisen.
 			   COALESCE(
-			     (SELECT json_agg(json_build_object(
+			     (SELECT json_agg(mx.obj ORDER BY mx.at DESC) FROM (
+			      SELECT json_build_object(
 			        'label', msub.inscription,
 			        'content', mcsub.content,
 			        'isAi', msub.created_by = '00000000-0000-0000-0000-000000000000',
 			        'status', mcsub.status
-			      ) ORDER BY msub.created_at DESC)
+			      ) AS obj, msub.created_at AS at
 			      FROM participations psub
 			      JOIN namings pnsub ON pnsub.id = psub.id AND pnsub.deleted_at IS NULL
 			      JOIN namings msub ON msub.id = CASE WHEN psub.naming_id = a.naming_id THEN psub.participant_id ELSE psub.naming_id END
 			        AND msub.deleted_at IS NULL AND msub.id != a.naming_id
 			      JOIN memo_content mcsub ON mcsub.naming_id = msub.id
 			      WHERE (psub.naming_id = a.naming_id OR psub.participant_id = a.naming_id)
-			     ), '[]'::json
+			        -- Satz IV: unbewertete oder verworfene KI-Hinweise zählen
+			        -- nicht am Knoten, bis der Mensch sie hereinholt.
+			        AND NOT (msub.created_by = '00000000-0000-0000-0000-000000000000'
+			                 AND mcsub.status IN ('presented', 'discussed', 'dismissed'))
+			      UNION ALL
+			      SELECT json_build_object(
+			        'label', NULL,
+			        'content', nas.memo_text,
+			        'isAi', false,
+			        'status', 'active'
+			      ), nas.created_at
+			      FROM naming_acts nas
+			      JOIN researcher_namings rns ON rns.naming_id = nas.by
+			      WHERE nas.naming_id = a.naming_id AND nas.memo_text IS NOT NULL AND btrim(nas.memo_text) <> ''
+			     ) mx), '[]'::json
 			   ) as memo_previews,
-			   -- SW/A role: extracted from first "Formation:" classification memo
+			   -- SW/A-Rolle: die Art der Erscheinung unter dieser Perspektive
+			   -- (appearances.properties.swRole). Alte Formationen tragen sie noch
+			   -- im ersten „Formation:"-Memo — das bleibt als Rückfall lesbar.
+			   COALESCE(NULLIF(a.properties->>'swRole', ''),
 			   (SELECT substring(msw.inscription FROM 'Formation: (.+)')
 			    FROM participations psw
 			    JOIN namings pnsw ON pnsw.id = psw.id AND pnsw.deleted_at IS NULL
@@ -897,7 +1214,7 @@ export async function getMapAppearances(mapId: string, projectId: string) {
 			      AND msw.inscription LIKE 'Formation:%'
 			    ORDER BY msw.created_at ASC
 			    LIMIT 1
-			   ) as sw_role,
+			   )) as sw_role,
 			   p.naming_id as part_source_id,
 			   p.participant_id as part_target_id,
 			   -- Project-level phase memberships of this naming (for dots on the node).
@@ -1007,7 +1324,7 @@ export async function getOutsideParticipations(
 }
 
 // Get all namings that annotate a document but aren't yet on this map.
-// "Namings of a document" = code namings used in annotations (valence='codes').
+// "Namings of a document" = namings anchored by annotations (valence='codes').
 export async function getDocumentNamingsForPlacement(
 	projectId: string,
 	mapId: string,
@@ -1015,23 +1332,23 @@ export async function getDocumentNamingsForPlacement(
 ) {
 	return (
 		await query(
-			`SELECT DISTINCT code.id, code.inscription,
+			`SELECT DISTINCT nm.id, nm.inscription,
 			   COALESCE(
 			     (SELECT na.designation FROM naming_acts na
-			      WHERE na.naming_id = code.id AND na.designation IS NOT NULL
+			      WHERE na.naming_id = nm.id AND na.designation IS NOT NULL
 			      ORDER BY na.seq DESC LIMIT 1),
 			     'cue'
 			   ) as designation
 			 FROM appearances ann
 			 JOIN namings ann_n ON ann_n.id = ann.naming_id AND ann_n.deleted_at IS NULL
-			 JOIN namings code ON code.id = ann.directed_from AND code.deleted_at IS NULL
+			 JOIN namings nm ON nm.id = ann.directed_from AND nm.deleted_at IS NULL
 			 WHERE ann.directed_to = $3 AND ann.valence = 'codes'
-			   AND code.project_id = $1
+			   AND nm.project_id = $1
 			   AND NOT EXISTS (
 			     SELECT 1 FROM appearances a_map
-			     WHERE a_map.naming_id = code.id AND a_map.perspective_id = $2
+			     WHERE a_map.naming_id = nm.id AND a_map.perspective_id = $2
 			   )
-			 ORDER BY code.inscription`,
+			 ORDER BY nm.inscription`,
 			[projectId, mapId, documentId]
 		)
 	).rows;
@@ -1261,20 +1578,20 @@ export async function getPhaseMembers(phaseId: string) {
 export async function getPhasePassages(phaseId: string, projectId: string) {
 	return (
 		await query(
-			`SELECT ann.naming_id as id, ann.directed_from as code_id,
-			   code.inscription as code_label,
+			`SELECT ann.naming_id as id, ann.directed_from as naming_id,
+			   nm.inscription as naming_label,
 			   ann.directed_to as document_id,
 			   doc.inscription as document_label,
 			   ann.properties
 			 FROM appearances member
 			 JOIN appearances ann ON ann.directed_from = member.naming_id
 			   AND ann.valence = 'codes'
-			 JOIN namings code ON code.id = ann.directed_from AND code.deleted_at IS NULL
+			 JOIN namings nm ON nm.id = ann.directed_from AND nm.deleted_at IS NULL
 			 JOIN namings doc ON doc.id = ann.directed_to AND doc.deleted_at IS NULL
 			 WHERE member.perspective_id = $1
 			   AND member.naming_id != $1
-			   AND code.project_id = $2
-			 ORDER BY code.inscription, doc.inscription, (ann.properties->'anchor'->>'pos0')::int`,
+			   AND nm.project_id = $2
+			 ORDER BY nm.inscription, doc.inscription, (ann.properties->'anchor'->>'pos0')::int`,
 			[phaseId, projectId]
 		)
 	).rows;
@@ -1300,7 +1617,7 @@ export async function createProjectPhase(
 			return existing.rows[0];
 		}
 
-		const { getOrCreateGroundingWorkspace } = await import('./codes.js');
+		const { getOrCreateGroundingWorkspace } = await import('./annotations.js');
 		const gwId = await getOrCreateGroundingWorkspace(projectId, userId);
 		const researcherNamingId = await getOrCreateResearcherNaming(projectId, userId);
 

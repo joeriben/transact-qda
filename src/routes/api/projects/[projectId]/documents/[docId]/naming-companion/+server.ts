@@ -6,11 +6,11 @@ import {
 	retrieveComparisonMaterial,
 	retrieveComparisonMaterialForText,
 	comparePassage
-} from '$lib/server/ai/coding-companion/index.js';
+} from '$lib/server/ai/naming-companion/index.js';
 import { loadSettings } from '$lib/server/ai/client.js';
 
 /**
- * POST /api/projects/[projectId]/documents/[docId]/coding-companion
+ * POST /api/projects/[projectId]/documents/[docId]/naming-companion
  *
  * Retrieves comparison material for a marked passage.
  * With compare=true, also performs the LLM comparison against the
@@ -20,13 +20,13 @@ export async function POST({ params, request }: { params: { projectId: string; d
 	const { projectId, docId } = params;
 	const body = await request.json();
 
-	const { elementId, text, compare, maxSimilar, maxCodes, maxGroundingsPerCode, scope } = body as {
+	const { elementId, text, compare, maxSimilar, maxNamings, maxGroundingsPerNaming, scope } = body as {
 		elementId?: string;
 		text?: string;
 		compare?: boolean;
 		maxSimilar?: number;
-		maxCodes?: number;
-		maxGroundingsPerCode?: number;
+		maxNamings?: number;
+		maxGroundingsPerNaming?: number;
 		scope?: 'in-document' | 'cross-document';
 	};
 
@@ -34,7 +34,7 @@ export async function POST({ params, request }: { params: { projectId: string; d
 		throw error(400, 'Either elementId or text is required');
 	}
 
-	const options = { maxSimilar, maxCodes, maxGroundingsPerCode, scope };
+	const options = { maxSimilar, maxNamings, maxGroundingsPerNaming, scope };
 
 	const retrieval = elementId
 		? await retrieveComparisonMaterial(projectId, elementId, options)

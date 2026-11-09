@@ -10,6 +10,11 @@
 	import { page } from '$app/stores';
 	import { tick } from 'svelte';
 	import { viewHref, scrollIntoViewStable } from '$lib/shared/rueckweg.js';
+	import { memoText } from '$lib/shared/memoText.js';
+	import { namingLabel, quoted } from '$lib/shared/namingLabel.js';
+	import NamingMemoForm from '$lib/components/NamingMemoForm.svelte';
+	import StackActs from '$lib/components/StackActs.svelte';
+	import ReferringNotes from '$lib/components/ReferringNotes.svelte';
 
 	let { data } = $props();
 
@@ -28,6 +33,7 @@
 		has_document_anchor: boolean;
 		has_memo_link: boolean;
 		properties: Record<string, any> | null;
+		ai_persona?: string | null;
 		appears_on_maps: { id: string; label: string }[] | null;
 		created_at: string;
 		seq: string;
@@ -36,7 +42,10 @@
 	type StackData = {
 		inscriptions: any[];
 		designations: any[];
+		acts?: any[];
 		memos: any[];
+		/** Memos in anderen Stacks, die auf dieses Naming verweisen. */
+		referringNotes?: any[];
 		annotations?: any[];
 		discussion?: any[];
 		aiReasoning?: string | null;
@@ -47,6 +56,43 @@
 	// ---- State ----
 	let namings = $derived<NamingRow[]>(data.namings);
 	let phases = $derived<any[]>(data.phases ?? []);
+
+	// Forscher-Namings: Die Forscherin ist selbst ein Naming dieses Projekts.
+	const researcherIds = $derived(new Set<string>(data.researcherNamingIds ?? []));
+
+	// Achsen der Positional Maps → Badge „X-axis"/„Y-axis" mit Kartenname.
+	const axisByNaming = $derived.by(() => {
+		const byId = new Map<string, { dims: Set<string>; maps: string[] }>();
+		for (const a of data.axes ?? []) {
+			const entry = byId.get(a.naming_id) ?? { dims: new Set<string>(), maps: [] };
+			if (a.dimension) entry.dims.add(a.dimension);
+			if (!entry.maps.includes(a.map_label)) entry.maps.push(a.map_label);
+			byId.set(a.naming_id, entry);
+		}
+		const out = new Map<string, { text: string; title: string }>();
+		for (const [id, e] of byId) {
+			const dim = e.dims.size === 1 ? [...e.dims][0].toUpperCase() + '-' : '';
+			out.set(id, {
+				text: `${dim}axis`,
+				title: `Axis of the positional map${e.maps.length > 1 ? 's' : ''} ${e.maps.map((m) => quoted(m)).join(', ')}`
+			});
+		}
+		// Abwesende Positionen: dieselbe Kennzeichnung wie auf der Karte.
+		const absentMaps = new Map<string, string[]>();
+		for (const a of data.absentPositions ?? []) {
+			const maps = absentMaps.get(a.naming_id) ?? [];
+			if (!maps.includes(a.map_label)) maps.push(a.map_label);
+			absentMaps.set(a.naming_id, maps);
+		}
+		for (const [id, maps] of absentMaps) {
+			if (out.has(id)) continue;
+			out.set(id, {
+				text: 'absent position',
+				title: `Absent position on the positional map${maps.length > 1 ? 's' : ''} ${maps.map((m) => quoted(m)).join(', ')}`
+			});
+		}
+		return out;
+	});
 	let filterCCS = $state<'all' | 'cue' | 'characterization' | 'specification'>('all');
 	let filterGrounding = $state<'all' | 'grounded' | 'memo' | 'ungrounded'>('all');
 	let filterMode = $state<'all' | 'entity' | 'relation' | 'silence'>('all');
@@ -92,8 +138,11 @@
 	// Merge mode: select survivor, then merged
 	let mergeSurvivorId = $state<string | null>(null);
 
-	// Local withdrawn set (keeps items visible until next page load)
-	let localWithdrawn = $state<Set<string>>(new Set());
+	// Zurückziehen/Wiederherstellen lokal sofort sichtbar; der Server hält das
+	// Flag (properties.withdrawn) an allen Erscheinungen des Namings.
+	let localWithdrawn = $state<Map<string, boolean>>(new Map());
+	// In dieser Ansicht zurückgezogen: bleibt sichtbar, bis „Hide withdrawn" umgeschaltet wird.
+	let withdrawnInView = $state<Set<string>>(new Set());
 
 	// 8-second persistence after any filter-mutating action so the user can
 	// see the result of their click before the item leaves the filtered view.
@@ -134,7 +183,28 @@
 		});
 	});
 
+	// Worauf ein Memo verweisen kann: die Namings dieses Projekts.
+	const memoCandidates = $derived(
+		(namings as NamingRow[]).map((n) => ({ id: n.naming_id, label: labelOf(n) }))
+	);
+
 	// ---- Helpers ----
+	// Lesbarer Name; eine Relation ohne Inschrift heißt nach ihren Endpunkten.
+	function labelOf(n: NamingRow | undefined): string {
+		if (!n) return '?';
+		return namingLabel(
+			n.current_inscription || n.inscription,
+			n.mode === 'relation'
+				? {
+					source: n.source_inscription,
+					target: n.target_inscription,
+					valence: n.valence,
+					directed: !!(n.directed_from && n.directed_to)
+				}
+				: null
+		);
+	}
+
 	function designationColor(d: string | null | undefined) {
 		if (d === 'specification') return CCS_SPEC;
 		if (d === 'characterization') return CCS_CHAR;
@@ -142,7 +212,12 @@
 	}
 
 	function isWithdrawn(namingId: string, props: any): boolean {
-		return localWithdrawn.has(namingId) || props?.withdrawn === true || props?.aiWithdrawn === true;
+		if (localWithdrawn.has(namingId)) return localWithdrawn.get(namingId)!;
+		// Der Server entscheidet über alle Erscheinungen (is_withdrawn), nicht
+		// über eine beliebige.
+		const row = (namings as NamingRow[]).find((n) => n.naming_id === namingId) as { is_withdrawn?: boolean } | undefined;
+		if (typeof row?.is_withdrawn === 'boolean') return row.is_withdrawn;
+		return props?.withdrawn === true || props?.aiWithdrawn === true;
 	}
 
 	// ---- Escape key handler ----
@@ -184,7 +259,7 @@
 		if (hideCowork || hideAutonoma) {
 			result = result.filter(n => {
 				if (keepTouched(n)) return true;
-				const persona = (n as any).ai_persona as string | null;
+				const persona = n.ai_persona ?? null;
 				if (hideCowork && persona === 'cowork') return false;
 				if (hideAutonoma && persona === 'autonoma') return false;
 				// Legacy AI-created namings without persona tag: hide when either toggle is on
@@ -200,12 +275,26 @@
 			});
 		}
 		if (hideWithdrawn) {
-			result = result.filter(n => keepTouched(n) || !isWithdrawn(n.naming_id, n.properties));
+			// Was man hier eben zurückgezogen hat, bleibt ausgegraut mit „restore"
+			// stehen, bis „Hide withdrawn" umgeschaltet wird — sonst rutscht die
+			// nächste Zeile unter den Zeiger. Ein schon beim Laden zurückgezogenes,
+			// per ?focus= aufgeschlagenes Naming bleibt ebenfalls sichtbar.
+			result = result.filter(n => {
+				if (!isWithdrawn(n.naming_id, n.properties)) return true;
+				if (withdrawnInView.has(n.naming_id)) return true;
+				return keepTouched(n);
+			});
 		}
 		if (searchQuery.trim()) {
 			const q = searchQuery.toLowerCase();
+			// Eine Relation findet man auch über ihre Endpunkte und ihre Valenz —
+			// so, wie sie in der Liste beschriftet ist.
 			result = result.filter(n =>
-				keepTouched(n) || (n.current_inscription || n.inscription).toLowerCase().includes(q)
+				keepTouched(n) ||
+				[
+					n.current_inscription || n.inscription,
+					...(n.mode === 'relation' ? [n.source_inscription, n.target_inscription, n.valence] : [])
+				].some((t) => typeof t === 'string' && t.toLowerCase().includes(q))
 			);
 		}
 		return result;
@@ -216,12 +305,20 @@
 	// distinct analytical move (Barad) rather than a mode of the same gesture.
 	const entitiesAndRelations = $derived(filtered.filter(n => n.mode !== 'silence'));
 	const silences = $derived(filtered.filter(n => n.mode === 'silence'));
+	// Abschnittszähler wie der Kopf: Zurückgezogenes gesondert.
+	function sectionCount(rows: NamingRow[]) {
+		const withdrawn = rows.filter(n => isWithdrawn(n.naming_id, n.properties)).length;
+		return `${rows.length - withdrawn}${withdrawn > 0 ? ` + ${withdrawn} withdrawn` : ''}`;
+	}
 
+	// Zurückgezogenes zählt gesondert — wie im Kopf der Map und auf der Übersicht.
+	const activeNamings = $derived((namings as NamingRow[]).filter(n => !isWithdrawn(n.naming_id, n.properties)));
 	const counts = $derived({
-		total: (namings as NamingRow[]).length,
-		cue: (namings as NamingRow[]).filter(n => (n.designation || 'cue') === 'cue').length,
-		char: (namings as NamingRow[]).filter(n => n.designation === 'characterization').length,
-		spec: (namings as NamingRow[]).filter(n => n.designation === 'specification').length
+		total: activeNamings.length,
+		withdrawn: (namings as NamingRow[]).length - activeNamings.length,
+		cue: activeNamings.filter(n => (n.designation || 'cue') === 'cue').length,
+		char: activeNamings.filter(n => n.designation === 'characterization').length,
+		spec: activeNamings.filter(n => n.designation === 'specification').length
 	});
 
 	// ---- API ----
@@ -231,7 +328,19 @@
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ action, ...params })
 		});
-		return res.json();
+		const body = await res.json().catch(() => ({}));
+		// Jede Ablehnung sagt etwas: ohne Text vom Server wenigstens, was nicht ging.
+		if (!res.ok && !body?.error) body.error = `${action} did not go through (${res.status}).`;
+		return body;
+	}
+
+	// Meldung in der Seite statt Browser-Dialog; bleibt, bis man sie schließt
+	// oder die nächste Aktion gelingt.
+	let actionError = $state<string | null>(null);
+	function showActionError(res: any): boolean {
+		if (res?.error) { actionError = String(res.error); return true; }
+		actionError = null;
+		return false;
 	}
 
 	// ---- Create ----
@@ -316,9 +425,7 @@
 		const result = await apiAction('relate', { sourceId: srcId, targetId: tgtId });
 		relateSource = null;
 		relateTarget = null;
-		if (result.error) {
-			alert(result.error);
-		} else {
+		if (!showActionError(result)) {
 			// Mark source and target so the user sees them flagged after the
 			// relation is created. (The new relation naming itself is not
 			// returned by the API; an active mode filter on it is unhandled.)
@@ -339,21 +446,23 @@
 		if (!actTarget) return;
 		const touchedId = actTarget;
 
+		let res: any = null;
 		if (actType === 'rename') {
-			await apiAction('rename', {
+			res = await apiAction('rename', {
 				namingId: actTarget,
 				inscription: actNewValue,
 				memoText: actMemo,
 				linkedNamingIds: actLinkedIds
 			});
 		} else if (actType === 'designate') {
-			await apiAction('designate', {
+			res = await apiAction('designate', {
 				namingId: actTarget,
 				designation: actNewValue,
 				memoText: actMemo,
 				linkedNamingIds: actLinkedIds
 			});
 		}
+		showActionError(res);
 
 		actTarget = null;
 		actMemo = '';
@@ -367,11 +476,13 @@
 		if (!actTarget) return;
 		const touchedId = actTarget;
 
+		let res: any = null;
 		if (actType === 'rename') {
-			await apiAction('rename', { namingId: actTarget, inscription: actNewValue });
+			res = await apiAction('rename', { namingId: actTarget, inscription: actNewValue });
 		} else if (actType === 'designate') {
-			await apiAction('designate', { namingId: actTarget, designation: actNewValue });
+			res = await apiAction('designate', { namingId: actTarget, designation: actNewValue });
 		}
+		showActionError(res);
 
 		actTarget = null;
 		actMemo = '';
@@ -401,24 +512,37 @@
 	}
 
 	// ---- Withdraw ----
-	async function withdraw(namingId: string) {
-		// Mark locally first so the item stays in place with visual feedback
-		localWithdrawn = new Set([...localWithdrawn, namingId]);
+	async function withdraw(namingId: string, currentlyWithdrawn = false) {
+		// Zurückziehen ist kein Löschen: das Naming bleibt durchgestrichen stehen
+		// und lässt sich wiederherstellen.
+		const next = !currentlyWithdrawn;
+		localWithdrawn = new Map(localWithdrawn).set(namingId, next);
+		if (next) withdrawnInView = new Set(withdrawnInView).add(namingId);
 		markTouched(namingId);
-		await apiAction('withdraw', { namingId });
-		// Don't invalidate — item stays visible (struck through) until next navigation
+		const res = await apiAction('withdraw', { namingId, withdrawn: next });
+		if (res?.error) {
+			const back = new Map(localWithdrawn);
+			back.delete(namingId);
+			localWithdrawn = back;
+			showActionError(res);
+		} else {
+			actionError = null;
+		}
 	}
 
 	// ---- Merge ----
 	let mergeTargetId = $state<string | null>(null);
 
 	function startMerge(survivorId: string) {
+		if (researcherIds.has(survivorId)) return;
 		mergeSurvivorId = survivorId;
 		mergeTargetId = null;
 	}
 
 	function selectMergeTarget(mergedId: string) {
 		if (!mergeSurvivorId || mergedId === mergeSurvivorId) return;
+		// Ein Forscher-Naming geht in keinem anderen auf.
+		if (researcherIds.has(mergedId)) return;
 		mergeTargetId = mergedId;
 	}
 
@@ -426,11 +550,7 @@
 		if (!mergeSurvivorId || !mergeTargetId) return;
 		const survivorId = mergeSurvivorId;
 		const result = await apiAction('merge', { survivorId, mergedId: mergeTargetId });
-		if (result.error) {
-			alert(result.error);
-		} else {
-			markTouched(survivorId);
-		}
+		if (!showActionError(result)) markTouched(survivorId);
 		mergeSurvivorId = null;
 		mergeTargetId = null;
 		const module = await import('$app/navigation');
@@ -543,20 +663,27 @@
 		}
 	]);
 
+	// Autonoma ist seit 04.08.2026 deprecated: der Schalter nur, wo es noch
+	// Namings aus ihren Läufen gibt.
+	const hasAutonomaNamings = $derived((namings as NamingRow[]).some(n => n.ai_persona === 'autonoma'));
+
 	const filterToggles: Toggle[] = $derived([
-		{ label: 'Hide withdrawn', value: hideWithdrawn, onchange: (v: boolean) => hideWithdrawn = v },
+		{ label: 'Hide withdrawn', value: hideWithdrawn, onchange: (v: boolean) => { hideWithdrawn = v; withdrawnInView = new Set(); } },
 		{ label: 'Hide Cowork', value: hideCowork, onchange: (v: boolean) => hideCowork = v },
-		{ label: 'Hide Autonoma', value: hideAutonoma, onchange: (v: boolean) => hideAutonoma = v }
+		...(hasAutonomaNamings || hideAutonoma
+			? [{
+				label: 'Hide Autonoma',
+				value: hideAutonoma,
+				onchange: (v: boolean) => hideAutonoma = v,
+				title: 'Namings from earlier Autonoma runs (Autonoma is deprecated since August 2026)'
+			}]
+			: [])
 	]);
 
 	// Adapter that routes NamingRow callbacks to page-level functions/state.
 	// Closures here read the latest reactive values via lexical binding.
 	const namingsActions: NamingActions = {
-		findInscription: (id: string | null) => {
-			if (!id) return '?';
-			const n = findNaming(id);
-			return n ? (n.current_inscription || n.inscription || '?') : '?';
-		},
+		findInscription: (id: string | null) => (id ? labelOf(findNaming(id)) : '?'),
 		isWithdrawn: (id: string, props: any) => isWithdrawn(id, props),
 		onShowStack: (id: string) => showStack(id),
 		onChangeDesignation: (id: string, d: string) => startDesignation(id, d),
@@ -575,7 +702,7 @@
 			editingId = null;
 			editingValenceId = null;
 		},
-		onWithdraw: (id: string) => withdraw(id),
+		onWithdraw: (id: string, currentlyWithdrawn: boolean) => withdraw(id, currentlyWithdrawn),
 		onStartRelate: (id: string) => startRelate(id),
 		onMerge: (id: string) => startMerge(id),
 		onCardClick: (id: string) => {
@@ -593,6 +720,7 @@
 	<PageHeader title="Namings">
 		{#snippet summary()}
 			{counts.total} total
+			{#if counts.withdrawn > 0}<span class="sep">+</span> {counts.withdrawn} withdrawn{/if}
 			<span class="sep">|</span>
 			<span style="color: var(--ccs-cue)">{counts.cue} cue</span>
 			<span class="sep">/</span>
@@ -615,17 +743,21 @@
 			<FilterBar groups={filterGroups} toggles={filterToggles} bind:search={searchQuery} searchPlaceholder="Search..." />
 		{/snippet}
 		{#snippet afterHeader()}
+			{#if actionError}
+				<div class="action-error" role="alert">
+					<span>{actionError}</span>
+					<button class="btn-xs" onclick={() => (actionError = null)} aria-label="Dismiss message">×</button>
+				</div>
+			{/if}
 			<!-- Relate mode indicator -->
 			{#if relateSource}
-				{@const srcNaming = findNaming(relateSource)}
 				<div class="relate-banner">
 					{#if relateTarget}
-						{@const tgtNaming = findNaming(relateTarget)}
-						Relate: <strong>{srcNaming?.current_inscription || srcNaming?.inscription}</strong> → <strong>{tgtNaming?.current_inscription || tgtNaming?.inscription}</strong>
+						Relate: <strong>{labelOf(findNaming(relateSource))}</strong> → <strong>{labelOf(findNaming(relateTarget))}</strong>
 						<button class="btn-xs btn-confirm" onclick={confirmRelate}>ok</button>
 						<button class="btn-xs" onclick={cancelRelate}>cancel</button>
 					{:else}
-						Relating: <strong>{srcNaming?.current_inscription || srcNaming?.inscription}</strong> — click another naming to connect
+						Relating: <strong>{labelOf(findNaming(relateSource))}</strong> — click another naming to connect
 						<button class="btn-xs" onclick={cancelRelate}>cancel</button>
 					{/if}
 				</div>
@@ -633,36 +765,37 @@
 
 			<!-- Merge mode indicator -->
 			{#if mergeSurvivorId}
-				{@const survNaming = findNaming(mergeSurvivorId)}
+				{@const survLabel = quoted(labelOf(findNaming(mergeSurvivorId)))}
 				<div class="relate-banner merge-banner">
 					{#if mergeTargetId}
-						{@const tgtNaming = findNaming(mergeTargetId)}
-						Merge <strong>"{tgtNaming?.current_inscription || tgtNaming?.inscription}"</strong> into <strong>"{survNaming?.current_inscription || survNaming?.inscription}"</strong>?
+						Merge <strong>{quoted(labelOf(findNaming(mergeTargetId)))}</strong> into <strong>{survLabel}</strong>?
 						All participations, appearances, and annotations transfer to the survivor.
 						<button class="btn-xs btn-confirm" onclick={confirmMerge}>merge</button>
 						<button class="btn-xs" onclick={cancelMerge}>cancel</button>
 					{:else}
-						Merge into <strong>"{survNaming?.current_inscription || survNaming?.inscription}"</strong> — click the naming to absorb
+						Merge into <strong>{survLabel}</strong> — click the naming to absorb
 						<button class="btn-xs" onclick={cancelMerge}>cancel</button>
 					{/if}
 				</div>
 			{/if}
 
+
 			<!-- Act-prompt bar -->
 			{#if actTarget}
-				{@const targetNaming = findNaming(actTarget)}
+				{@const targetLabel = labelOf(findNaming(actTarget))}
 				{@const allOtherNamings = (namings as NamingRow[]).filter(n => n.naming_id !== actTarget && n.mode !== 'relation')}
 				<div class="act-prompt-bar">
 					<div class="act-header">
 						{#if actType === 'rename'}
-							Rename: <strong>{targetNaming?.current_inscription || targetNaming?.inscription}</strong> → <strong>{actNewValue}</strong>
+							Rename: <strong>{targetLabel}</strong> → <strong>{actNewValue}</strong>
 						{:else if actType === 'designate'}
-							Designation: <strong>{targetNaming?.current_inscription || targetNaming?.inscription}</strong> →
+							Designation: <strong>{targetLabel}</strong> →
 							<span style="color: {designationColor(actNewValue)}">{actNewValue}</span>
 						{/if}
 					</div>
 					<textarea
 						placeholder="What influenced this act? What changed in your understanding?"
+						aria-label="Memo on this act"
 						bind:value={actMemo}
 						rows="2"
 					></textarea>
@@ -723,33 +856,25 @@
 	{#snippet stackPanelFor(n: NamingRow, includeMemos: boolean)}
 		{#if stackId === n.naming_id && stackData}
 			<div class="stack-panel">
-				{#if stackData.inscriptions.length > 0}
+				<div class="stack-section">
+					<h4>Stack</h4>
+					<StackActs acts={stackData.acts ?? []} onlinked={(id) => showStack(id)} />
+					<NamingMemoForm projectId={data.projectId} namingId={n.naming_id}
+						candidates={memoCandidates}
+						oncreated={async () => {
+							stackData = await apiAction('getStack', { namingId: n.naming_id });
+							markTouched(n.naming_id);
+							const module = await import('$app/navigation');
+							module.invalidateAll();
+						}} />
+				</div>
+				{#if includeMemos && (stackData.memos?.length ?? 0) + (stackData.referringNotes?.length ?? 0) > 0}
 					<div class="stack-section">
-						<h4>Inscription Chain</h4>
-						{#each stackData.inscriptions as hi}
-							<div class="history-entry">
-								<span class="he-value">{hi.inscription}</span>
-								<span class="he-by">{hi.by_inscription}</span>
-								<span class="he-date">{new Date(hi.created_at).toLocaleString()}</span>
-							</div>
-						{/each}
-					</div>
-				{/if}
-				{#if stackData.designations.length > 0}
-					<div class="stack-section">
-						<h4>Designation Chain</h4>
-						{#each stackData.designations as hd}
-							<div class="history-entry">
-								<span class="he-value" style="color: {designationColor(hd.designation)}">{hd.designation}</span>
-								<span class="he-by">{hd.by_inscription}</span>
-								<span class="he-date">{new Date(hd.created_at).toLocaleString()}</span>
-							</div>
-						{/each}
-					</div>
-				{/if}
-				{#if includeMemos && stackData.memos.length > 0}
-					<div class="stack-section">
-						<h4>Memos</h4>
+						<!-- Memos in anderen Stacks und Memo-Namings, die auf dieses Naming
+						     verweisen (analytische Memos, ältere Memos); das Memo ZU diesem
+						     Naming steht im Stack. -->
+						<h4>Memos referring to this</h4>
+						<ReferringNotes notes={stackData.referringNotes ?? []} onopen={(id) => showStack(id)} />
 						{#each stackData.memos as memo}
 							<div class="memo-entry" class:memo-dismissed={memo.status === 'dismissed'}>
 								<div class="memo-entry-header">
@@ -761,18 +886,24 @@
 									{/if}
 									<span class="memo-label">{memo.label}</span>
 								</div>
-								<div class="memo-content">{@html memo.content}</div>
+								<div class="memo-content">{memoText(memo.content)}</div>
 								<div class="memo-entry-actions">
-									{#if memo.status === 'active' || memo.status === 'presented' || memo.status === 'discussed'}
-										<button class="btn-xs" onclick={() => setMemoStatus(memo.id, 'dismissed')}>dismiss</button>
-										<button class="btn-xs" onclick={() => setMemoStatus(memo.id, 'acknowledged')}>ack</button>
+									<!-- ack/dismiss: Lebenszyklus eines KI-Hinweises, nicht eigener Memos -->
+									{#if memo.isAiAuthored}
+										{#if memo.status === 'active' || memo.status === 'presented' || memo.status === 'discussed'}
+											<button class="btn-xs" onclick={() => setMemoStatus(memo.id, 'dismissed')}>dismiss</button>
+											<button class="btn-xs" onclick={() => setMemoStatus(memo.id, 'acknowledged')}>ack</button>
+										{/if}
+										{#if memo.status === 'acknowledged'}
+											<button class="btn-xs" onclick={() => setMemoStatus(memo.id, 'dismissed')}>dismiss</button>
+										{/if}
+										{#if memo.status === 'dismissed'}
+											<button class="btn-xs" onclick={() => setMemoStatus(memo.id, 'presented')}>restore</button>
+										{/if}
+									{:else if memo.status === 'dismissed'}
+										<button class="btn-xs" onclick={() => setMemoStatus(memo.id, 'active')}>restore</button>
 									{/if}
-									{#if memo.status === 'acknowledged'}
-										<button class="btn-xs" onclick={() => setMemoStatus(memo.id, 'dismissed')}>dismiss</button>
-									{/if}
-									{#if memo.status === 'dismissed'}
-										<button class="btn-xs" onclick={() => setMemoStatus(memo.id, 'presented')}>restore</button>
-									{/if}
+									<a class="btn-xs" href="/projects/{data.projectId}/memos/{memo.id}">edit</a>
 								</div>
 							</div>
 						{/each}
@@ -817,7 +948,7 @@
 	     per-appearance collapse, not a naming category). -->
 	{#if entitiesAndRelations.length > 0}
 		<div class="section">
-			<h2 class="section-label">Namings <span class="section-count">{entitiesAndRelations.length}</span></h2>
+			<h2 class="section-label">Namings <span class="section-count">{sectionCount(entitiesAndRelations)}</span></h2>
 			<div class="naming-list">
 				{#each entitiesAndRelations as n (n.naming_id)}
 					<div data-naming-id={n.naming_id} class:focused={focusId === n.naming_id}>
@@ -837,6 +968,8 @@
 								focus: n.naming_id,
 								from: $page.url.searchParams.get("from")
 							})}
+							isResearcher={researcherIds.has(n.naming_id)}
+							axis={axisByNaming.get(n.naming_id) ?? null}
 							actions={namingsActions}
 						>
 							{#snippet after()}
@@ -853,7 +986,7 @@
 	<!-- Silences -->
 	{#if silences.length > 0}
 		<div class="section">
-			<h2 class="section-label">Silences <span class="section-count">{silences.length}</span></h2>
+			<h2 class="section-label">Silences <span class="section-count">{sectionCount(silences)}</span></h2>
 			<div class="naming-list">
 				{#each silences as n (n.naming_id)}
 					<div data-naming-id={n.naming_id} class:focused={focusId === n.naming_id}>
@@ -937,9 +1070,10 @@
 				<p class="phase-empty">No members yet.</p>
 			{:else}
 				{#each phaseMembers as member}
+					{@const memberNaming = findNaming(member.naming_id)}
 					<div class="phase-member">
 						<span class="designation-dot" style="background: {designationColor(member.designation)}"></span>
-						<span class="phase-member-label">{member.inscription}</span>
+						<span class="phase-member-label">{memberNaming ? labelOf(memberNaming) : member.inscription}</span>
 						<button class="btn-xs btn-remove" onclick={() => removeNamingFromPhase(selectedPhaseId!, member.naming_id)}>×</button>
 					</div>
 				{/each}
@@ -947,19 +1081,19 @@
 
 			{#if phasePassages.length > 0}
 				<h4>Passages ({phasePassages.length})</h4>
-				{@const passagesByCode = phasePassages.reduce((groups: Record<string, any>, p: any) => {
-					const key = p.code_id;
-					if (!groups[key]) groups[key] = { label: p.code_label, docGroups: {} };
+				{@const passagesByNaming = phasePassages.reduce((groups: Record<string, any>, p: any) => {
+					const key = p.naming_id;
+					if (!groups[key]) groups[key] = { label: p.naming_label, docGroups: {} };
 					const docKey = p.document_id;
 					if (!groups[key].docGroups[docKey]) groups[key].docGroups[docKey] = { label: p.document_label, docId: p.document_id, items: [] };
 					groups[key].docGroups[docKey].items.push(p);
 					return groups;
 				}, {})}
-				{#each Object.entries(passagesByCode) as [codeId, codeGroup]}
-					{@const cg = codeGroup as any}
-					<div class="passage-code-group">
-						<div class="passage-code-header">{cg.label}</div>
-						{#each Object.entries(cg.docGroups) as [docId, docGroup]}
+				{#each Object.entries(passagesByNaming) as [namingId, namingGroup]}
+					{@const ng = namingGroup as any}
+					<div class="passage-naming-group">
+						<div class="passage-naming-header">{ng.label}</div>
+						{#each Object.entries(ng.docGroups) as [docId, docGroup]}
 							{@const dg = docGroup as any}
 							<div class="passage-doc-group">
 								<a class="passage-doc-link" href="/projects/{data.projectId}/documents/{dg.docId}">{dg.label}</a>
@@ -1049,8 +1183,8 @@
 	.phase-member-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.btn-remove { color: #ef4444; border-color: transparent; padding: 0 0.3rem; }
 	.btn-remove:hover { background: rgba(239, 68, 68, 0.1); }
-	.passage-code-group { margin-bottom: 0.5rem; }
-	.passage-code-header {
+	.passage-naming-group { margin-bottom: 0.5rem; }
+	.passage-naming-header {
 		font-size: 0.8rem; color: #c9cdd5; font-weight: 500;
 		padding: 0.2rem 0; border-bottom: 1px solid #2a2d3a;
 	}
@@ -1216,6 +1350,7 @@
 		font-size: 0.7rem;
 		padding: 0.15rem 0.35rem;
 		cursor: pointer;
+		text-decoration: none;
 	}
 	.btn-xs:hover { border-color: #4b5060; color: #e1e4e8; }
 	.btn-confirm { border-color: #8b9cf7; color: #8b9cf7; font-weight: 600; }
@@ -1295,7 +1430,7 @@
 	.memo-status-badge.status-promoted { background: rgba(16, 185, 129, 0.25); color: #10b981; }
 	.memo-status-badge.status-dismissed { background: rgba(107, 114, 128, 0.15); color: #6b7280; }
 	.memo-label { font-size: 0.75rem; color: #f59e0b; }
-	.memo-content { font-size: 0.75rem; color: #8b8fa3; margin-top: 0.1rem; }
+	.memo-content { font-size: 0.75rem; color: #8b8fa3; margin-top: 0.1rem; white-space: pre-wrap; }
 	.memo-entry-actions { display: flex; gap: 0.25rem; margin-top: 0.25rem; }
 
 	.discussion-msg {
@@ -1325,4 +1460,9 @@
 	}
 
 	.empty { color: #6b7280; font-size: 0.9rem; }
+	.action-error {
+		display: flex; align-items: center; justify-content: space-between; gap: 0.6rem;
+		margin: 0.4rem 0; padding: 0.45rem 0.7rem; border: 1px solid #7f1d1d; border-radius: 6px;
+		background: rgba(239, 68, 68, 0.08); color: #fca5a5; font-size: 0.82rem;
+	}
 </style>

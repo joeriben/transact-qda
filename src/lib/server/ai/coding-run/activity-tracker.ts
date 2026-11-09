@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Live-Activity-Tracker für laufende Coding-Runs.
+// Live-Activity-Tracker für laufende Naming-Runs.
 //
 // Unverändert aus einem älteren Pipeline-Tracker übernommen — der
 // Mechanismus ist rein generisch (kein Bezug auf Pipeline-Phasen) und
@@ -42,7 +42,7 @@ interface RunContext {
 	// liest beim LLM-Call-Start daraus, damit die Activity das aktuelle
 	// Step-Label trägt, ohne dass alle chat()-Callsites es durchreichen müssen.
 	currentStepLabel: string;
-	// Per-Run-AbortSignal. Wird vom Caller (coding-run/+server.ts) erzeugt
+	// Per-Run-AbortSignal. Wird vom Caller (naming-run/+server.ts) erzeugt
 	// und vom Cancel-Watcher dort abgebrochen, wenn `cancel_requested=true`
 	// in der DB auftaucht. `chat()` liest das Signal aus dem Context und
 	// reicht es an die SDK / fetch durch — damit ein hängender LLM-Call
@@ -56,7 +56,7 @@ const activityByRun = new Map<string, Activity>();
 /**
  * Öffnet einen Run-Context, in dem alle await-Ketten (inklusive `chat()`)
  * den runId UND das Cancel-Signal lesen können. Wrap-Aufrufer
- * (coding-run/+server.ts) ruft das einmal um den Loop-Aufruf und übergibt
+ * (naming-run/+server.ts) ruft das einmal um den Loop-Aufruf und übergibt
  * das per-Run-AbortSignal seines Watchers.
  */
 export function withRun<T>(runId: string, signal: AbortSignal, fn: () => Promise<T>): Promise<T> {

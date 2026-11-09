@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
-// Coding-Helfer: EIN Strukturmuster am Material prüfen.
+// Naming-Helfer: EIN Strukturmuster am Material prüfen.
 //
 // Die Hypothese ist die des Forschers. Er hat sie aus der Lektüre der Reihe
 // gewonnen, abduktiv, und an einer Stelle festgemacht. Der Helfer bildet keine

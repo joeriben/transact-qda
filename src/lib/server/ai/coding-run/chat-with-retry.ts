@@ -10,10 +10,10 @@
 // unparseable garbage ("Transaktionale Ontologie ** Metadaten in-T Prozelleichtungen
 // The process- itsung mit encodingierenatJungungen-Hierarch**..."). Der
 // gehärtete parseJsonArray in index.ts wirft den Garbage korrekt weg →
-// leeres Array → die ganze Sequenz verliert ihre H1-Codes oder die H2-
-// Konfrontation. Im Lab: v1-DE seg 2/3 lieferten je 0 H1-Codes; mehrere
+// leeres Array → die ganze Sequenz verliert ihre H1-Namings oder die H2-
+// Konfrontation. Im Lab: v1-DE seg 2/3 lieferten je 0 H1-Namings; mehrere
 // Runs auf design-memo-ontology hatten "H2 confront: 0 verdicts" trotz
-// vorhandener H1-Codes (H1-Codes überlebten dann unkonfrontiert, was die
+// vorhandener H1-Namings (H1-Namings überlebten dann unkonfrontiert, was die
 // Strauss-Disziplin durchbricht).
 //
 // Pattern: chat() ist Primitiv — eine SDK-Antwort, drinnen rate-limit-Retry
@@ -28,8 +28,8 @@
 //   • prose-Modus (H2 read): text.trim() === '' ist leer.
 //   • json-Modus (H1 propose / H2 confront / H1 react): text.trim() === ''
 //     ist leer, UND text.trim() === '[]' (mit oder ohne Fences) ist
-//     LEGITIM-leer (das Modell sagt "nichts codable", siehe Prompt-Kontrakt
-//     "Empty array [] if the passage carries nothing codable.") → kein
+//     LEGITIM-leer (das Modell sagt "hier ist nichts zu benennen"; der
+//     Prompt-Kontrakt in prompts.ts erlaubt das leere Array ausdrücklich) → kein
 //     Retry. Nur das Meltdown-Pattern (Text non-empty, parst aber zu []) →
 //     Retry/Escalate.
 //
@@ -138,7 +138,7 @@ export async function chatWithEmptyRetry(
 		return { ...resp, attempts, escalated: false, finalEmpty: false };
 	}
 	console.warn(
-		`[coding-run ${opts.runId}] ${opts.phaseLabel}: primary (${opts.primary.provider}/${opts.primary.model}) returned empty — retrying primary once. ` +
+		`[naming-run ${opts.runId}] ${opts.phaseLabel}: primary (${opts.primary.provider}/${opts.primary.model}) returned empty — retrying primary once. ` +
 			`text.length=${resp.text.length} preview=${JSON.stringify(resp.text.slice(0, 200))}`
 	);
 
@@ -157,7 +157,7 @@ export async function chatWithEmptyRetry(
 		// versuche Eskalation auf Fallback, sonst propagiere.
 		if (isFatalProviderError(err) || isAbort(err)) throw err;
 		console.warn(
-			`[coding-run ${opts.runId}] ${opts.phaseLabel}: primary retry threw (${(err as Error)?.message ?? err}) — falling through to escalation if configured.`
+			`[naming-run ${opts.runId}] ${opts.phaseLabel}: primary retry threw (${(err as Error)?.message ?? err}) — falling through to escalation if configured.`
 		);
 		// Attempts bleibt 1, der retry-Throw zählt nicht als usable Antwort.
 	}
@@ -165,12 +165,12 @@ export async function chatWithEmptyRetry(
 	// 3) Escalate to fallback if configured.
 	if (!opts.fallback) {
 		console.warn(
-			`[coding-run ${opts.runId}] ${opts.phaseLabel}: primary leer nach 2 Versuchen, kein fallback konfiguriert — gebe leere Antwort durch.`
+			`[naming-run ${opts.runId}] ${opts.phaseLabel}: primary leer nach 2 Versuchen, kein fallback konfiguriert — gebe leere Antwort durch.`
 		);
 		return { ...resp, attempts, escalated: false, finalEmpty: true };
 	}
 	console.warn(
-		`[coding-run ${opts.runId}] ${opts.phaseLabel}: escalating to fallback (${opts.fallback.provider}/${opts.fallback.model}).`
+		`[naming-run ${opts.runId}] ${opts.phaseLabel}: escalating to fallback (${opts.fallback.provider}/${opts.fallback.model}).`
 	);
 	const escResp = await chat({ ...baseOpts, modelOverride: opts.fallback });
 	attempts += 1;
@@ -178,7 +178,7 @@ export async function chatWithEmptyRetry(
 	const finalEmpty = isResponseEmpty(escResp.text, opts.emptyMode);
 	if (finalEmpty) {
 		console.warn(
-			`[coding-run ${opts.runId}] ${opts.phaseLabel}: escalation to ${opts.fallback.provider}/${opts.fallback.model} ALSO empty — giving up. text.length=${escResp.text.length}`
+			`[naming-run ${opts.runId}] ${opts.phaseLabel}: escalation to ${opts.fallback.provider}/${opts.fallback.model} ALSO empty — giving up. text.length=${escResp.text.length}`
 		);
 	}
 	return { ...escResp, attempts, escalated: true, finalEmpty };

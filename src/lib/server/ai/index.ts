@@ -4,32 +4,32 @@
 import { chat, getModel, getProvider } from './client.js';
 import { query } from '../db/index.js';
 
-export async function suggestCodes(
+export async function suggestNamings(
 	projectId: string,
 	passage: string,
-	existingCodes: { label: string; description?: string }[]
+	existingNamings: { label: string; description?: string }[]
 ) {
-	const codeList = existingCodes.map(c => `- ${c.label}${c.description ? ': ' + c.description : ''}`).join('\n');
+	const namingList = existingNamings.map(c => `- ${c.label}${c.description ? ': ' + c.description : ''}`).join('\n');
 
 	const response = await chat({
 		messages: [{
 			role: 'user',
-			content: `You are assisting a qualitative researcher doing Situational Analysis (Adele Clarke). The researcher is coding a text passage.
+			content: `You are assisting a qualitative researcher doing Situational Analysis (Adele Clarke). The researcher is naming a text passage.
 
-Existing codes:
-${codeList || '(none yet)'}
+Existing namings:
+${namingList || '(none yet)'}
 
-Text passage to code:
+Text passage to name:
 """
 ${passage}
 """
 
-Suggest 2-5 codes for this passage. For each code:
-1. If an existing code fits, use it exactly
-2. If a new code is needed, suggest one with a short label
+Suggest 2-5 namings for this passage. For each naming:
+1. If an existing naming fits, use it exactly
+2. If a new naming is needed, suggest one with a short label
 
 Respond in JSON format:
-[{"code": "code label", "existing": true/false, "reasoning": "brief explanation"}]`
+[{"naming": "naming label", "existing": true/false, "reasoning": "brief explanation"}]`
 		}]
 	});
 

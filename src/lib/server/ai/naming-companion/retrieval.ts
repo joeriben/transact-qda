@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * Coding Companion — Retrieval Layer
+ * Naming Companion — Retrieval Layer
  *
  * Embedding-based retrieval: finds material that should enter the LLM context
  * for constant comparison. Vertically (within a document) and horizontally
@@ -15,7 +15,7 @@ import { embed, toPgVector } from '../../documents/embeddings.js';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-export interface PassageCode {
+export interface PassageNaming {
 	id: string;
 	label: string;
 	designation: 'cue' | 'characterization' | 'specification';
@@ -29,10 +29,10 @@ export interface SimilarPassage {
 	documentId: string;
 	documentTitle: string;
 	similarity: number;
-	codes: PassageCode[];
+	namings: PassageNaming[];
 }
 
-export interface CodeWithGroundings {
+export interface NamingWithGroundings {
 	id: string;
 	label: string;
 	designation: string;
@@ -52,7 +52,7 @@ export interface RetrievalResult {
 		documentTitle: string;
 	};
 	similarPassages: SimilarPassage[];
-	existingCodes: CodeWithGroundings[];
+	existingNamings: NamingWithGroundings[];
 }
 
 // ── Core retrieval ─────────────────────────────────────────────────────────
@@ -60,21 +60,21 @@ export interface RetrievalResult {
 /**
  * Retrieve comparison material for a parsed document element.
  * Uses embedding KNN to find topically related passages, then enriches
- * with annotation/code data so the LLM has material to compare against.
+ * with annotation/naming data so the LLM has material to compare against.
  */
 export async function retrieveComparisonMaterial(
 	projectId: string,
 	elementId: string,
 	options?: {
 		maxSimilar?: number;
-		maxCodes?: number;
-		maxGroundingsPerCode?: number;
+		maxNamings?: number;
+		maxGroundingsPerNaming?: number;
 		scope?: 'in-document' | 'cross-document';
 	}
 ): Promise<RetrievalResult> {
 	const maxSimilar = options?.maxSimilar ?? 10;
-	const maxCodes = options?.maxCodes ?? 10;
-	const maxGroundingsPerCode = options?.maxGroundingsPerCode ?? 3;
+	const maxNamings = options?.maxNamings ?? 10;
+	const maxGroundingsPerNaming = options?.maxGroundingsPerNaming ?? 3;
 
 	// 1. Get the source passage
 	const sourceRow = await query<{
@@ -105,13 +105,13 @@ export async function retrieveComparisonMaterial(
 
 	const scopeDocId = options?.scope === 'in-document' ? source.document_id : undefined;
 
-	// 2. Find similar passages with their codes (parallel)
-	const [similarPassages, existingCodes] = await Promise.all([
-		findSimilarWithCodes(projectId, elementId, maxSimilar, scopeDocId),
-		getCodesWithGroundings(projectId, maxCodes, maxGroundingsPerCode, scopeDocId)
+	// 2. Find similar passages with their namings (parallel)
+	const [similarPassages, existingNamings] = await Promise.all([
+		findSimilarWithNamings(projectId, elementId, maxSimilar, scopeDocId),
+		getNamingsWithGroundings(projectId, maxNamings, maxGroundingsPerNaming, scopeDocId)
 	]);
 
-	return { passage, similarPassages, existingCodes };
+	return { passage, similarPassages, existingNamings };
 }
 
 /**
@@ -124,14 +124,14 @@ export async function retrieveComparisonMaterialForText(
 	documentId: string,
 	options?: {
 		maxSimilar?: number;
-		maxCodes?: number;
-		maxGroundingsPerCode?: number;
+		maxNamings?: number;
+		maxGroundingsPerNaming?: number;
 		scope?: 'in-document' | 'cross-document';
 	}
 ): Promise<RetrievalResult> {
 	const maxSimilar = options?.maxSimilar ?? 10;
-	const maxCodes = options?.maxCodes ?? 10;
-	const maxGroundingsPerCode = options?.maxGroundingsPerCode ?? 3;
+	const maxNamings = options?.maxNamings ?? 10;
+	const maxGroundingsPerNaming = options?.maxGroundingsPerNaming ?? 3;
 	const scope = options?.scope ?? 'in-document';
 
 	// Get document title
@@ -150,12 +150,18 @@ export async function retrieveComparisonMaterialForText(
 
 	const scopeDocId = scope === 'in-document' ? documentId : undefined;
 
-	const [similarPassages, existingCodes] = await Promise.all([
-		findSimilarToTextWithCodes(projectId, text, maxSimilar, scopeDocId),
-		getCodesWithGroundings(projectId, maxCodes, maxGroundingsPerCode, scopeDocId)
+	const [found, existingNamings] = await Promise.all([
+		findSimilarToTextWithNamings(projectId, text, maxSimilar + 1, scopeDocId),
+		getNamingsWithGroundings(projectId, maxNamings, maxGroundingsPerNaming, scopeDocId)
 	]);
+	// Die Stelle, in der die Markierung selbst steht, ist ihr eigener
+	// nächster Nachbar; als „ähnliche Stelle" sagt sie nichts.
+	const marked = text.trim();
+	const similarPassages = found
+		.filter((p) => !(p.documentId === documentId && marked && p.content.includes(marked)))
+		.slice(0, maxSimilar);
 
-	return { passage, similarPassages, existingCodes };
+	return { passage, similarPassages, existingNamings };
 }
 
 // ── Internal queries ───────────────────────────────────────────────────────
@@ -166,7 +172,7 @@ export async function retrieveComparisonMaterialForText(
  * Forscher selbst gehandelt hat (designiert, umbenannt, revidiert): dann
  * steht sein Akt im Stack. Ein ungeprüfter oder verworfener Cue ist ein
  * Hinweis, keine Kategorie; ohne diese Grenze verglich das Modell eine
- * Passage überwiegend mit Ausgaben des Coding-Runs.
+ * Passage überwiegend mit Ausgaben des Naming-Runs.
  *
  * Das Urteil der Auditschicht (ai_naming_evaluations) wird hier bewusst
  * nicht gelesen — sie muss sich restlos entfernen lassen.
@@ -183,9 +189,9 @@ function ownNamingSql(alias: string): string {
 const NOT_HIDDEN = `COALESCE(ann.properties->>'hidden', 'false') <> 'true'`;
 
 /**
- * Find similar passages (by element embedding) enriched with their code annotations.
+ * Find similar passages (by element embedding) enriched with the namings anchored there.
  */
-async function findSimilarWithCodes(
+async function findSimilarWithNamings(
 	projectId: string,
 	elementId: string,
 	limit: number,
@@ -201,10 +207,10 @@ async function findSimilarWithCodes(
 		document_id: string;
 		document_title: string;
 		similarity: number;
-		code_id: string | null;
-		code_label: string | null;
-		code_designation: string | null;
-		code_own: boolean | null;
+		naming_id: string | null;
+		naming_label: string | null;
+		naming_designation: string | null;
+		naming_own: boolean | null;
 	}>(
 		`WITH source AS (
 		   SELECT embedding FROM document_elements WHERE id = $1
@@ -214,17 +220,17 @@ async function findSimilarWithCodes(
 		        e2.document_id,
 		        doc.inscription AS document_title,
 		        1 - (e2.embedding <=> s.embedding) AS similarity,
-		        code.id AS code_id,
-		        code.inscription AS code_label,
+		        nm.id AS naming_id,
+		        nm.inscription AS naming_label,
 		        (SELECT na.designation FROM naming_acts na
-		         WHERE na.naming_id = code.id AND na.designation IS NOT NULL
-		         ORDER BY na.seq DESC LIMIT 1) AS code_designation,
-		        ${ownNamingSql('code')} AS code_own
+		         WHERE na.naming_id = nm.id AND na.designation IS NOT NULL
+		         ORDER BY na.seq DESC LIMIT 1) AS naming_designation,
+		        ${ownNamingSql('nm')} AS naming_own
 		 FROM document_elements e2
 		 CROSS JOIN source s
 		 JOIN namings doc ON doc.id = e2.document_id AND doc.deleted_at IS NULL
 		 -- LEFT JOIN: annotation whose char-range overlaps this element.
-		 -- Codes anchor by char-offset (pos0/pos1); elementId is optional and
+		 -- Namings anchor by char-offset (pos0/pos1); elementId is optional and
 		 -- usually absent, so match [pos0,pos1) against [char_start,char_end).
 		 LEFT JOIN appearances ann ON ann.directed_to = e2.document_id
 		   AND ann.valence = 'codes'
@@ -234,7 +240,7 @@ async function findSimilarWithCodes(
 		   AND (ann.properties->'anchor'->>'pos0')::int < e2.char_end
 		   AND (ann.properties->'anchor'->>'pos1')::int > e2.char_start
 		   AND EXISTS (SELECT 1 FROM namings an WHERE an.id = ann.naming_id AND an.deleted_at IS NULL)
-		 LEFT JOIN namings code ON code.id = ann.directed_from AND code.deleted_at IS NULL
+		 LEFT JOIN namings nm ON nm.id = ann.directed_from AND nm.deleted_at IS NULL
 		 WHERE e2.embedding IS NOT NULL
 		   AND e2.id != $1
 		   AND doc.project_id = $2
@@ -244,13 +250,13 @@ async function findSimilarWithCodes(
 		params
 	);
 
-	return groupPassageCodes(result.rows);
+	return groupPassageNamings(result.rows);
 }
 
 /**
- * Find similar passages by free-text embedding, enriched with codes.
+ * Find similar passages by free-text embedding, enriched with namings.
  */
-async function findSimilarToTextWithCodes(
+async function findSimilarToTextWithNamings(
 	projectId: string,
 	text: string,
 	limit: number,
@@ -269,22 +275,22 @@ async function findSimilarToTextWithCodes(
 		document_id: string;
 		document_title: string;
 		similarity: number;
-		code_id: string | null;
-		code_label: string | null;
-		code_designation: string | null;
-		code_own: boolean | null;
+		naming_id: string | null;
+		naming_label: string | null;
+		naming_designation: string | null;
+		naming_own: boolean | null;
 	}>(
 		`SELECT e.id AS element_id,
 		        e.content,
 		        e.document_id,
 		        doc.inscription AS document_title,
 		        1 - (e.embedding <=> $1::vector) AS similarity,
-		        code.id AS code_id,
-		        code.inscription AS code_label,
+		        nm.id AS naming_id,
+		        nm.inscription AS naming_label,
 		        (SELECT na.designation FROM naming_acts na
-		         WHERE na.naming_id = code.id AND na.designation IS NOT NULL
-		         ORDER BY na.seq DESC LIMIT 1) AS code_designation,
-		        ${ownNamingSql('code')} AS code_own
+		         WHERE na.naming_id = nm.id AND na.designation IS NOT NULL
+		         ORDER BY na.seq DESC LIMIT 1) AS naming_designation,
+		        ${ownNamingSql('nm')} AS naming_own
 		 FROM document_elements e
 		 JOIN namings doc ON doc.id = e.document_id AND doc.deleted_at IS NULL
 		 LEFT JOIN appearances ann ON ann.directed_to = e.document_id
@@ -295,7 +301,7 @@ async function findSimilarToTextWithCodes(
 		   AND (ann.properties->'anchor'->>'pos0')::int < e.char_end
 		   AND (ann.properties->'anchor'->>'pos1')::int > e.char_start
 		   AND EXISTS (SELECT 1 FROM namings an WHERE an.id = ann.naming_id AND an.deleted_at IS NULL)
-		 LEFT JOIN namings code ON code.id = ann.directed_from AND code.deleted_at IS NULL
+		 LEFT JOIN namings nm ON nm.id = ann.directed_from AND nm.deleted_at IS NULL
 		 WHERE e.embedding IS NOT NULL
 		   AND doc.project_id = $2
 		   ${scopeClause}
@@ -304,24 +310,24 @@ async function findSimilarToTextWithCodes(
 		params
 	);
 
-	return groupPassageCodes(result.rows);
+	return groupPassageNamings(result.rows);
 }
 
 /**
- * Group flat rows (one row per passage×code) into SimilarPassage objects
- * with nested codes arrays.
+ * Group flat rows (one row per passage×naming) into SimilarPassage objects
+ * with nested namings arrays.
  */
-function groupPassageCodes(
+function groupPassageNamings(
 	rows: Array<{
 		element_id: string;
 		content: string;
 		document_id: string;
 		document_title: string;
 		similarity: number;
-		code_id: string | null;
-		code_label: string | null;
-		code_designation: string | null;
-		code_own: boolean | null;
+		naming_id: string | null;
+		naming_label: string | null;
+		naming_designation: string | null;
+		naming_own: boolean | null;
 	}>
 ): SimilarPassage[] {
 	const map = new Map<string, SimilarPassage>();
@@ -335,18 +341,18 @@ function groupPassageCodes(
 				documentId: row.document_id,
 				documentTitle: row.document_title,
 				similarity: row.similarity,
-				codes: []
+				namings: []
 			};
 			map.set(row.element_id, entry);
 		}
-		// A code can overlap one element via several groundings → dedup by id
+		// A naming can overlap one element via several groundings → dedup by id
 		// (range-overlap matching makes this reachable; elementId matching did not).
-		if (row.code_id && row.code_label && !entry.codes.some((c) => c.id === row.code_id)) {
-			entry.codes.push({
-				id: row.code_id,
-				label: row.code_label,
-				designation: (row.code_designation as PassageCode['designation']) ?? 'cue',
-				own: row.code_own === true
+		if (row.naming_id && row.naming_label && !entry.namings.some((n) => n.id === row.naming_id)) {
+			entry.namings.push({
+				id: row.naming_id,
+				label: row.naming_label,
+				designation: (row.naming_designation as PassageNaming['designation']) ?? 'cue',
+				own: row.naming_own === true
 			});
 		}
 	}
@@ -359,46 +365,46 @@ function groupPassageCodes(
  * material, with sample anchors — the analytic categories a passage is
  * compared against.
  */
-async function getCodesWithGroundings(
+async function getNamingsWithGroundings(
 	projectId: string,
-	maxCodes: number,
-	maxGroundingsPerCode: number,
+	maxNamings: number,
+	maxGroundingsPerNaming: number,
 	scopeDocumentId?: string
-): Promise<CodeWithGroundings[]> {
+): Promise<NamingWithGroundings[]> {
 	// Ordered by anchor count. When scoped to a document, only namings
 	// anchored in that document.
 	const scopeClause = scopeDocumentId ? `AND ann.directed_to = $3` : '';
-	const params: any[] = [projectId, maxCodes];
+	const params: any[] = [projectId, maxNamings];
 	if (scopeDocumentId) params.push(scopeDocumentId);
 
-	const codesResult = await query<{
-		code_id: string;
-		code_label: string;
+	const namingsResult = await query<{
+		naming_id: string;
+		naming_label: string;
 		designation: string | null;
 		grounding_count: number;
 	}>(
-		`SELECT code.id AS code_id,
-		        code.inscription AS code_label,
+		`SELECT nm.id AS naming_id,
+		        nm.inscription AS naming_label,
 		        (SELECT na.designation FROM naming_acts na
-		         WHERE na.naming_id = code.id AND na.designation IS NOT NULL
+		         WHERE na.naming_id = nm.id AND na.designation IS NOT NULL
 		         ORDER BY na.seq DESC LIMIT 1) AS designation,
 		        COUNT(ann.naming_id) AS grounding_count
-		 FROM namings code
-		 JOIN appearances ann ON ann.directed_from = code.id AND ann.valence = 'codes'
+		 FROM namings nm
+		 JOIN appearances ann ON ann.directed_from = nm.id AND ann.valence = 'codes'
 		   AND ${NOT_HIDDEN}
 		 JOIN namings ann_n ON ann_n.id = ann.naming_id AND ann_n.deleted_at IS NULL
-		 WHERE code.project_id = $1 AND code.deleted_at IS NULL
-		   AND ${ownNamingSql('code')}
+		 WHERE nm.project_id = $1 AND nm.deleted_at IS NULL
+		   AND ${ownNamingSql('nm')}
 		   ${scopeClause}
-		 GROUP BY code.id, code.inscription
+		 GROUP BY nm.id, nm.inscription
 		 ORDER BY grounding_count DESC
 		 LIMIT $2`,
 		params
 	);
 
-	// For each code, get sample groundings
-	const codes: CodeWithGroundings[] = [];
-	for (const row of codesResult.rows) {
+	// For each naming, get sample groundings
+	const namings: NamingWithGroundings[] = [];
+	for (const row of namingsResult.rows) {
 		const groundings = await query<{
 			text: string;
 			document_title: string;
@@ -423,12 +429,12 @@ async function getCodesWithGroundings(
 			   AND ann_n.project_id = $2
 			 ORDER BY ann_n.created_at
 			 LIMIT $3`,
-			[row.code_id, projectId, maxGroundingsPerCode]
+			[row.naming_id, projectId, maxGroundingsPerNaming]
 		);
 
-		codes.push({
-			id: row.code_id,
-			label: row.code_label,
+		namings.push({
+			id: row.naming_id,
+			label: row.naming_label,
 			designation: row.designation ?? 'cue',
 			groundingCount: Number(row.grounding_count),
 			sampleGroundings: groundings.rows
@@ -437,5 +443,5 @@ async function getCodesWithGroundings(
 		});
 	}
 
-	return codes;
+	return namings;
 }

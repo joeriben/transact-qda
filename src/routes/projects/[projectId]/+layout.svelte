@@ -8,11 +8,11 @@
 	import CoachPanel from '$lib/coach/CoachPanel.svelte';
 	import Rueckweg from '$lib/components/Rueckweg.svelte';
 	import { createCoachState, setCoachState } from '$lib/coach/coachState.svelte.js';
+	import { runAiStream, stepLabel } from '$lib/coach/aiStream.js';
 	import { docOutline, type OutlineEntry } from '$lib/stores/docOutline.svelte.js';
 
 	let { data, children }: { data: any; children: Snippet } = $props();
 	const p = $derived(data.project);
-	const c = $derived(data.counts);
 	const base = $derived(`/projects/${p.id}`);
 	const mapsByType = $derived(data.mapsByType as Record<string, { id: string; label: string; isPrimary?: boolean }[]>);
 	const documents = $derived(data.documents as { id: string; label: string }[]);
@@ -101,32 +101,141 @@
 		const m = pathname.match(new RegExp(`^${base}/maps/([^/]+)$`));
 		return m ? m[1] : null;
 	});
-	let coworkRequesting = $state(false);
-	let coworkFlash = $state<string | null>(null);
-	async function askCowork() {
-		if (!currentMapId || coworkRequesting) return;
-		coworkRequesting = true;
-		coworkFlash = null;
+	// Wie der Lauf ausging, steht unter dem Knopf, bis die Forscherin es
+	// wegklickt oder Cowork erneut fragt: geschriebene Memos und Cues,
+	// „nothing to add" mit Grund, oder der Fehler mit Grund.
+	type CoworkAct = { kind: 'memo' | 'cue' | 'phase'; what: string; id: string | null; label: string };
+	type CoworkResult = {
+		mapId: string;
+		status: 'acted' | 'silent' | 'skipped' | 'failed' | 'stopped';
+		acts: CoworkAct[];
+		note: string;
+		error?: string;
+	};
+	let coworkRunning = $state(false);
+	let coworkStep = $state<string | null>(null);
+	let coworkStartedAt = $state(0);
+	let coworkNow = $state(0);
+	// Das Ergebnis des letzten Laufs überlebt ein Neuladen (pro Projekt, nur
+	// in diesem Tab): Sonst ist die Liste dessen, was Cowork schrieb, weg.
+	let coworkResult = $state<CoworkResult | null>(null);
+	let coworkResultKey: string | null = null;
+	$effect(() => {
+		const key = `cowork-result-${p.id}`;
+		if (key === coworkResultKey) return;
+		coworkResultKey = key;
 		try {
-			const res = await fetch(`/api/projects/${p.id}/maps/${currentMapId}`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ action: 'requestAnalysis' })
-			});
-			coworkFlash = res.ok ? 'Cowork analysis requested' : 'Request failed';
+			const raw = sessionStorage.getItem(key);
+			coworkResult = raw ? (JSON.parse(raw) as CoworkResult) : null;
 		} catch {
-			coworkFlash = 'Request failed';
-		} finally {
-			coworkRequesting = false;
-			setTimeout(() => { coworkFlash = null; }, 4000);
+			coworkResult = null;
 		}
+	});
+	function setCoworkResult(r: CoworkResult | null) {
+		coworkResult = r;
+		if (!coworkResultKey) return;
+		try {
+			if (r) sessionStorage.setItem(coworkResultKey, JSON.stringify(r));
+			else sessionStorage.removeItem(coworkResultKey);
+		} catch {
+			/* Speicher nicht verfügbar — dann eben ohne */
+		}
+	}
+	let coworkAbort: AbortController | null = null;
+
+	$effect(() => {
+		if (!coworkRunning) return;
+		coworkNow = Date.now();
+		const tick = setInterval(() => { coworkNow = Date.now(); }, 1000);
+		return () => clearInterval(tick);
+	});
+	const coworkSeconds = $derived(Math.max(0, Math.round((coworkNow - coworkStartedAt) / 1000)));
+
+	async function askCowork() {
+		if (!currentMapId || coworkRunning) return;
+		const mapId = currentMapId;
+		coworkRunning = true;
+		coworkStep = null;
+		setCoworkResult(null);
+		coworkStartedAt = Date.now();
+		coworkAbort = new AbortController();
+		try {
+			const last = await runAiStream(`/api/projects/${p.id}/cowork`, { mapId }, (event) => {
+				if (event.kind === 'step' && typeof event.tool === 'string') coworkStep = event.tool;
+			}, coworkAbort.signal);
+			const outcome = last.kind === 'done' ? (last.outcome as Omit<CoworkResult, 'mapId'> | undefined) : undefined;
+			setCoworkResult(last.kind === 'cancelled'
+				? {
+					mapId,
+					status: 'stopped',
+					acts: [],
+					note: 'Whatever Cowork had already written before you stopped it stays on the map and in Memos.'
+				}
+				: outcome
+				? { mapId, ...outcome }
+				: {
+					mapId,
+					status: 'failed',
+					acts: [],
+					note: '',
+					error: typeof last.message === 'string' ? last.message : 'no result arrived'
+				});
+		} finally {
+			coworkRunning = false;
+			coworkStep = null;
+			coworkAbort = null;
+		}
+	}
+
+	function stopCowork() {
+		coworkAbort?.abort();
+	}
+
+	function countLabel(n: number, one: string, many: string): string {
+		return `${n} ${n === 1 ? one : many}`;
+	}
+
+	function actsSummary(acts: CoworkAct[]): string {
+		const memos = acts.filter((a) => a.kind === 'memo').length;
+		const cues = acts.filter((a) => a.kind === 'cue').length;
+		const phases = acts.filter((a) => a.kind === 'phase').length;
+		const parts: string[] = [];
+		if (memos) parts.push(countLabel(memos, 'memo', 'memos'));
+		if (cues) parts.push(countLabel(cues, 'cue', 'cues'));
+		if (phases) parts.push(countLabel(phases, 'phase', 'phases'));
+		return parts.join(', ');
+	}
+
+	const coworkHeadline = $derived.by(() => {
+		const r = coworkResult;
+		if (!r) return '';
+		switch (r.status) {
+			case 'acted': return `Cowork wrote ${actsSummary(r.acts)}`;
+			case 'silent': return 'Cowork: nothing to add';
+			case 'skipped': return 'Cowork did not run';
+			case 'stopped': return 'Cowork stopped';
+			default: return r.acts.length ? `Cowork failed after writing ${actsSummary(r.acts)}` : 'Cowork failed';
+		}
+	});
+
+	function mapLabelOf(mapId: string): string {
+		for (const maps of Object.values(mapsByType)) {
+			const m = maps.find((x) => x.id === mapId);
+			if (m) return m.label;
+		}
+		return 'another map';
+	}
+
+	function actHref(act: CoworkAct): string | null {
+		if (!act.id) return null;
+		return act.kind === 'memo' ? `${base}/memos/${act.id}` : `${base}/namings/${act.id}`;
 	}
 
 	// Autonoma (früher Raichel) ist DEPRECATED — hier steht bewusst kein
 	// Client-Code mehr. Der autonome Massenlauf erzeugte hunderte textnaher,
 	// aber unsystematischer Namings ohne Komparation und ohne Relevanzsinn;
 	// die Sichtungslast landete vollständig beim Menschen. Begründung und
-	// Gegenentwurf (begleiten statt codieren): docs/design-begleiten.md.
+	// Gegenentwurf: docs/design-begleiten.md.
 	// Der Start-Code lag nach dem UI-Ausbau im April als toter Code hier und
 	// wurde seither mehrfach versehentlich wieder angeschlossen — deshalb
 	// entfernt statt auskommentiert. Nicht wieder einbauen.
@@ -143,18 +252,39 @@
      fest) muss die Menüspalte kennen, deren Breite ziehbar und einklappbar ist. -->
 <div class="project-layout" style="--content-left: {sidebarOpen ? sidebarWidth + 5 : 18}px;">
 	{#if !sidebarOpen}
-		<button class="sidebar-rail" onclick={() => { sidebarOpen = true; }} title="Menüspalte einblenden">⟩</button>
+		<button class="sidebar-rail" onclick={() => { sidebarOpen = true; }} title="Show menu">⟩</button>
 	{/if}
 	<div class="project-sidebar" class:sidebar-hidden={!sidebarOpen} style="width: {sidebarWidth}px;">
+		<!-- Der Rückweg zu den Projekten steht oben; unten war er inkonsistent (BJ, 03.08.2026). -->
+		<a href="/projects" class="back-link">← Projects</a>
 		<h2>
 			<a href={base} class:active={pathname === base} class="project-name-link">{p.name}</a>
-			<button class="sidebar-hide" onclick={() => { sidebarOpen = false; }} title="Menüspalte ausblenden">⟨</button>
+			<button class="sidebar-hide" onclick={() => { sidebarOpen = false; }} title="Hide menu">⟨</button>
 		</h2>
 		{#if p.description}
 			<p class="desc">{p.description}</p>
 		{/if}
 
 		<nav>
+			<!-- Ordnung nach BJ, Sitzung 08 (11.03.2026): „flaches Menü unterhalb der
+			     "project"-Ebene … Sit Map, SW Map, Pos Map, Namings, Memos, Documents." -->
+			<a href="{base}/maps" class:active={pathname === `${base}/maps`}>Maps</a>
+
+			{#each mapTypeOrder as type}
+				{#if mapsByType[type]?.length}
+					<span class="map-group-label">{mapTypeLabels[type]}</span>
+					{#each mapsByType[type] as map}
+						<a
+							href="{base}/maps/{map.id}"
+							class="map-link"
+							class:active={pathname === `${base}/maps/${map.id}`}
+						>{map.label}</a>
+					{/each}
+				{/if}
+			{/each}
+
+			<a href="{base}/namings" class:active={pathname.startsWith(`${base}/namings`)}>Namings</a>
+			<a href="{base}/memos" class:active={pathname.startsWith(`${base}/memos`)}>Memos</a>
 			<a href="{base}/documents" class:active={pathname === `${base}/documents`}>Documents</a>
 			{#each documents as d}
 				{#if renamingDocId === d.id}
@@ -171,7 +301,7 @@
 						href="{base}/documents/{d.id}"
 						class="doc-link"
 						class:active={pathname === `${base}/documents/${d.id}`}
-						title="{d.label} — Doppelklick: Anzeigenamen ändern (die Datei bleibt unberührt)"
+						title="{d.label} — double-click to change the display name (the file stays unchanged)"
 						ondblclick={(e) => { e.preventDefault(); renamingDocId = d.id; renameValue = d.label; }}
 					>{d.label}</a>
 				{/if}
@@ -185,7 +315,7 @@
 								<!-- svelte-ignore a11y_autofocus -->
 								<input
 									class="seq-rename-input"
-									placeholder="Titel für diese Sequenz…"
+									placeholder="Title for this sequence…"
 									bind:value={renameSeqValue}
 									autofocus
 									onkeydown={(e) => { if (e.key === 'Enter') saveSeqRename(entry); if (e.key === 'Escape') renamingSeqKey = null; }}
@@ -197,32 +327,16 @@
 									class="seq-link"
 									class:active={docOutline.activeKey === entry.key}
 									class:seq-unnamed={!entry.label}
-									title={entry.label ?? 'Diese Sequenz hat keinen Titel — Doppelklick, um sie zu benennen'}
+									title={entry.label ?? 'This sequence has no title — double-click to name it'}
 									onclick={() => docOutline.select(entry)}
 									ondblclick={() => { renamingSeqKey = entry.key; renameSeqValue = entry.label ?? ''; }}
 								>
 									{#if entry.seq != null}<span class="seq-num">{entry.seq}</span>{/if}
-									<span class="seq-text">{entry.label ?? 'unbenannt'}</span>
+									<span class="seq-text">{entry.label ?? 'untitled'}</span>
 								</button>
 							{/if}
 						{/each}
 					</div>
-				{/if}
-			{/each}
-			<a href="{base}/namings" class:active={pathname.startsWith(`${base}/namings`)}>Namings</a>
-			<a href="{base}/memos" class:active={pathname.startsWith(`${base}/memos`)}>Memos</a>
-			<a href="{base}/maps" class:active={pathname === `${base}/maps`}>Maps</a>
-
-			{#each mapTypeOrder as type}
-				{#if mapsByType[type]?.length}
-					<span class="map-group-label">{mapTypeLabels[type]}</span>
-					{#each mapsByType[type] as map}
-						<a
-							href="{base}/maps/{map.id}"
-							class="map-link"
-							class:active={pathname === `${base}/maps/${map.id}`}
-						>{map.label}</a>
-					{/each}
 				{/if}
 			{/each}
 
@@ -240,22 +354,54 @@
 				<button
 					class="cowork-toggle"
 					onclick={askCowork}
-					disabled={coworkRequesting}
-					title="Ask Cowork to analyse the current map (on-demand)"
-				>{coworkRequesting ? 'Cowork…' : 'Cowork'}</button>
-				{#if coworkFlash}
-					<span class="cowork-flash">{coworkFlash}</span>
-				{/if}
+					disabled={coworkRunning}
+					title="Ask Cowork to look at the current map (on demand)"
+				>{coworkRunning ? `Cowork… ${coworkSeconds} s` : 'Cowork'}</button>
+			{/if}
+			{#if coworkRunning}
+				<span class="cowork-step" role="status" aria-live="polite">{stepLabel(coworkStep)}…</span>
+				<button class="cowork-stop" onclick={stopCowork} title="Stop this Cowork run">Stop</button>
+			{:else if coworkResult}
+				<div
+					class="cowork-result"
+					class:cowork-result-failed={coworkResult.status === 'failed'}
+					role="status"
+					aria-live="polite"
+				>
+					<div class="cowork-result-head">
+						<span>{coworkHeadline}</span>
+						<button class="cowork-dismiss" onclick={() => setCoworkResult(null)} title="Dismiss" aria-label="Dismiss">×</button>
+					</div>
+					{#if coworkResult.mapId !== currentMapId}
+						<div class="cowork-where">on {mapLabelOf(coworkResult.mapId)}</div>
+					{/if}
+					{#if coworkResult.acts.length > 0}
+						<ul class="cowork-acts">
+							{#each coworkResult.acts as act}
+								{@const href = actHref(act)}
+								<li>
+									<span class="cowork-act-what">{act.what}</span>
+									{#if href}<a {href}>{act.label || '(untitled)'}</a>{:else}<span>{act.label || '(untitled)'}</span>{/if}
+								</li>
+							{/each}
+						</ul>
+					{/if}
+					{#if (coworkResult.status === 'silent' || coworkResult.status === 'skipped' || coworkResult.status === 'stopped') && coworkResult.note}
+						<p class="cowork-note">{coworkResult.note}</p>
+					{/if}
+					{#if coworkResult.status === 'failed'}
+						<p class="cowork-note">{coworkResult.error || 'Unknown error'}</p>
+					{/if}
+				</div>
 			{/if}
 
 			<!-- Kein Autonoma-Trigger: deprecated, siehe Kommentar oben im Script. -->
 
-			<a href="/projects" class="back-link">← Projects</a>
 		</nav>
 	</div>
 	{#if sidebarOpen}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div class="sidebar-divider" onmousedown={startSidebarResize} title="Breite ziehen"></div>
+		<div class="sidebar-divider" onmousedown={startSidebarResize} title="Drag to resize"></div>
 	{/if}
 
 	<div class="project-content">
@@ -529,20 +675,99 @@
 		opacity: 0.6;
 		cursor: progress;
 	}
-	.cowork-flash {
+	.cowork-step {
 		display: block;
 		font-size: 0.7rem;
 		color: #8b9cf7;
-		padding: 0.1rem 0.5rem 0;
+		padding: 0.15rem 0.5rem 0;
 		font-style: italic;
+	}
+	.cowork-result {
+		margin-top: 0.3rem;
+		padding: 0.4rem 0.5rem;
+		border: 1px solid #2a2d3a;
+		border-left: 2px solid #8b9cf7;
+		border-radius: 5px;
+		background: #171a25;
+		font-size: 0.72rem;
+		color: #c9cdd5;
+		overflow-wrap: anywhere;
+	}
+	.cowork-result-failed { border-left-color: #ef4444; }
+	.cowork-result-head {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 0.3rem;
+		font-weight: 600;
+		color: #e1e4e8;
+	}
+	.cowork-dismiss {
+		background: none;
+		border: none;
+		color: #6b7280;
+		cursor: pointer;
+		font-size: 0.85rem;
+		line-height: 1;
+		padding: 0 0.1rem;
+		flex-shrink: 0;
+	}
+	.cowork-dismiss:hover { color: #e1e4e8; }
+	.cowork-where {
+		color: #6b7280;
+		font-style: italic;
+		margin-top: 0.1rem;
+	}
+	.cowork-acts {
+		list-style: none;
+		margin: 0.3rem 0 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.2rem;
+		/* Lange Ergebnislisten ragen sonst unter den Bildschirmrand. */
+		max-height: 40vh;
+		overflow-y: auto;
+	}
+	.cowork-stop {
+		align-self: flex-start;
+		margin: 0.25rem 0 0 0.5rem;
+		background: none;
+		border: 1px solid #ef4444;
+		border-radius: 4px;
+		color: #fca5a5;
+		font: inherit;
+		font-size: 0.72rem;
+		padding: 0.1rem 0.5rem;
+		cursor: pointer;
+	}
+	.cowork-stop:hover { background: rgba(239, 68, 68, 0.12); }
+	.cowork-acts a {
+		display: inline;
+		padding: 0;
+		font-size: inherit;
+		color: #a5b4fc;
+	}
+	.cowork-acts a:hover { background: none; text-decoration: underline; }
+	.cowork-act-what {
+		color: #6b7280;
+		margin-right: 0.3rem;
+	}
+	.cowork-note {
+		margin: 0.3rem 0 0;
+		max-height: 9rem;
+		overflow-y: auto;
+		color: #9ca3af;
+		line-height: 1.4;
+		white-space: pre-wrap;
 	}
 
 	.back-link {
+		display: block;
 		font-size: 0.78rem;
 		color: #6b7280 !important;
-		margin-top: 0.5rem;
-		padding-top: 0.5rem;
-		border-top: 1px solid #2a2d3a;
+		margin-bottom: 0.6rem;
+		text-decoration: none;
 	}
 	.back-link:hover {
 		color: #a5b4fc !important;

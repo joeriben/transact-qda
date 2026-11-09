@@ -5,6 +5,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import PageHeader from '$lib/components/PageHeader.svelte';
+	import { formatDay } from '$lib/shared/dates.js';
 
 	let { data } = $props();
 	let showCreate = $state(false);
@@ -23,10 +24,6 @@
 	let ctxMenuPos = $state({ x: 0, y: 0 });
 	let ctxMap = $derived(data.maps.find((m: any) => m.id === ctxMenuId));
 
-	function openMap(mapId: string) {
-		goto(`/projects/${data.projectId}/maps/${mapId}`);
-	}
-
 	function onCardContext(mapId: string, e: MouseEvent) {
 		e.preventDefault();
 		ctxMenuId = mapId;
@@ -43,7 +40,8 @@
 		});
 		if (res.ok) {
 			const map = await res.json();
-			goto(`/projects/${data.projectId}/maps/${map.id}`);
+			// invalidateAll: die Seitenleiste (Layout-Daten) kennt die neue Karte sonst erst nach dem Neuladen.
+			await goto(`/projects/${data.projectId}/maps/${map.id}`, { invalidateAll: true });
 		}
 		creating = false;
 	}
@@ -57,7 +55,7 @@
 		});
 		if (res.ok) {
 			const map = await res.json();
-			goto(`/projects/${data.projectId}/maps/${map.id}`);
+			await goto(`/projects/${data.projectId}/maps/${map.id}`, { invalidateAll: true });
 		}
 	}
 </script>
@@ -74,8 +72,8 @@
 		{#snippet afterHeader()}
 			{#if showCreate}
 				<form class="create-form" onsubmit={e => { e.preventDefault(); createMap(); }}>
-					<input type="text" placeholder="Map name" bind:value={newLabel} required />
-					<select bind:value={newType}>
+					<input type="text" placeholder="Map name" aria-label="Map name" bind:value={newLabel} required />
+					<select bind:value={newType} aria-label="Map type">
 						<option value="situational">Situational Map</option>
 						<option value="social-worlds">Social Worlds / Arenas</option>
 						<option value="positional">Positional Map</option>
@@ -90,15 +88,15 @@
 		<p class="empty">No maps yet. Create one to start your situational analysis.</p>
 	{:else}
 		<div class="map-grid">
-			{#each data.maps as map}
-				<div class="map-card" role="button" tabindex="0"
-					onclick={() => openMap(map.id)}
-					oncontextmenu={(e) => onCardContext(map.id, e)}
-					onkeydown={(e) => { if (e.key === 'Enter') openMap(map.id); }}>
+			<!-- Karten sind Links: sie tragen ihren Namen, lassen sich in einem neuen
+			     Tab öffnen und per Tastatur erreichen. -->
+			{#each data.maps as map (map.id)}
+				<a class="map-card" href="/projects/{data.projectId}/maps/{map.id}"
+					oncontextmenu={(e) => onCardContext(map.id, e)}>
 					<div class="map-type">{mapTypeLabels[map.properties?.mapType] || map.properties?.mapType}</div>
 					<h3>{map.label}</h3>
-					<span class="meta">{new Date(map.created_at).toLocaleDateString()}</span>
-				</div>
+					<span class="meta">{formatDay(map.created_at)}</span>
+				</a>
 			{/each}
 		</div>
 	{/if}
@@ -144,6 +142,7 @@
 	}
 
 	.map-card {
+		display: block; text-decoration: none; color: inherit;
 		background: #161822; border: 1px solid #2a2d3a; border-radius: 8px;
 		padding: 1.25rem; cursor: pointer; transition: border-color 0.15s;
 	}

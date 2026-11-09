@@ -3,7 +3,7 @@
 //
 // Comparative-Run-Endpoint (CName) — projektweiter Lauf der GTM-Konstantvergleich-
 // Engine über mehrere Fall-Dokumente, mit Live-Status via Server-Sent Events.
-// Bewusst SCHLANK gegenüber der coding-run-Route: ein Comparative-Run ist
+// Bewusst SCHLANK gegenüber der naming-run-Route: ein Comparative-Run ist
 // fire-and-forget (eine endliche Folge LLM-Calls, kein Pause/Resume) — es gibt
 // daher KEINE comparative_runs-Tabelle, keinen Cancel-Watcher, keinen Stuck-
 // Watchdog. Die einzige Abbruchquelle ist der Client-Disconnect; dessen

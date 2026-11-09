@@ -210,6 +210,47 @@ async function run() {
 			inscription: 'HIJACKED'
 		})
 	);
+	// Memo zu einem Naming (Akt im Stack), Zurückziehen und Zusammenführen:
+	// dieselbe Klasse — eigenes Projekt in der URL, fremde UUID im Body.
+	await expectDenied(
+		'B note on A-naming via own project',
+		await req('POST', `/api/projects/${projB}/namings`, B.cookie, {
+			action: 'note',
+			namingId: namingA,
+			memoText: 'HIJACKED'
+		})
+	);
+	await expectDenied(
+		'B withdraw A-naming via own project',
+		await req('POST', `/api/projects/${projB}/namings`, B.cookie, {
+			action: 'withdraw',
+			namingId: namingA
+		})
+	);
+	{
+		const res = await req('POST', `/api/projects/${projB}/namings`, B.cookie, {
+			action: 'merge',
+			survivorId: namingB,
+			mergedId: namingA
+		});
+		record('B merge A-naming via own project', res.status >= 400 && res.status < 500, `status ${res.status} (want 4xx)`);
+	}
+	{
+		const r = await pool.query(
+			`SELECT
+			   (SELECT count(*)::int FROM naming_acts WHERE naming_id = $1 AND memo_text = 'HIJACKED') AS notes,
+			   (SELECT count(*)::int FROM appearances
+			     WHERE naming_id = $1 AND COALESCE((properties->>'withdrawn')::boolean, false)) AS withdrawn,
+			   (SELECT count(*)::int FROM namings WHERE id = $1 AND deleted_at IS NULL) AS alive`,
+			[namingA]
+		);
+		const x = r.rows[0];
+		record(
+			'A-naming untouched by note/withdraw/merge attempts',
+			x.notes === 0 && x.withdrawn === 0 && x.alive === 1,
+			JSON.stringify(x)
+		);
+	}
 
 	// getStack / getMemosForNaming are project-scoped at the query layer: they
 	// return 200 but with EMPTY data for a foreign naming. 200-but-empty is a
@@ -285,6 +326,86 @@ async function run() {
 		);
 	}
 
+	// --- 4b. B's OWN map, A's UUIDs im Body: relate, Entität/Relation-Umschalter,
+	// Lage-Synchronisation, Memo-Status. relateElements legt fehlende
+	// Erscheinungen an, der Umschalter schrieb Endpunkte einer Relation um —
+	// beides darf mit fremden UUIDs nichts bewirken.
+	{
+		const mapB = await getPrimaryMapId(projB);
+		const namingA2 = await createNaming(A.cookie, projA, 'secret-A2');
+		const namingA3 = await createNaming(A.cookie, projA, 'secret-A3');
+		const namingB2 = await createNaming(B.cookie, projB, 'secret-B2');
+		// A verbindet zwei eigene Namings (nicht namingA: dessen Designationen zählt Abschnitt 7).
+		let relA = null;
+		if (mapA) {
+			const r = await req('POST', `/api/projects/${projA}/maps/${mapA}`, A.cookie, {
+				action: 'relate', sourceId: namingA2, targetId: namingA3, inscription: 'secret-A-relation'
+			});
+			relA = (await r.json().catch(() => ({})))?.id ?? null;
+			record('A relate own namings on own map', r.status === 201 && !!relA, `status ${r.status}`);
+			const again = await req('POST', `/api/projects/${projA}/maps/${mapA}`, A.cookie, {
+				action: 'relate', sourceId: namingA2, targetId: namingA3
+			});
+			const againBody = await again.json().catch(() => ({}));
+			record(
+				'A relate same pair again -> 409 already related (no server error)',
+				again.status === 409 && againBody.alreadyRelated === true && againBody.id === relA,
+				`status ${again.status}`
+			);
+		}
+		if (mapB) {
+			await expectDenied(
+				'B relate own naming with A-naming on own map',
+				await req('POST', `/api/projects/${projB}/maps/${mapB}`, B.cookie, {
+					action: 'relate', sourceId: namingB, targetId: namingA
+				})
+			);
+			await expectDenied(
+				'B switch A-naming to relation on own map',
+				await req('POST', `/api/projects/${projB}/maps/${mapB}`, B.cookie, {
+					action: 'switchAppearanceMode', namingId: namingA, mode: 'relation', sourceId: namingB, targetId: namingB2
+				})
+			);
+			if (relA) {
+				await expectDenied(
+					'B rewrite A-relation endpoints via switch on own map',
+					await req('POST', `/api/projects/${projB}/maps/${mapB}`, B.cookie, {
+						action: 'switchAppearanceMode', namingId: relA, mode: 'relation', sourceId: namingB, targetId: namingB2
+					})
+				);
+			}
+			await req('POST', `/api/projects/${projB}/maps/${mapB}`, B.cookie, {
+				action: 'syncSpatialRelations', add: [{ sourceId: namingB, targetId: namingA, valence: 'contains' }]
+			});
+			if (memoAId) {
+				await expectDenied(
+					'B set A-memo status via own map',
+					await req('POST', `/api/projects/${projB}/maps/${mapB}`, B.cookie, {
+						action: 'updateMemoStatus', memoId: memoAId, status: 'dismissed'
+					})
+				);
+			}
+			const x = (
+				await pool.query(
+					`SELECT
+					   (SELECT count(*)::int FROM appearances a JOIN namings n ON n.id = a.naming_id
+					     WHERE a.perspective_id = $1 AND n.project_id = $2) AS a_on_b_map,
+					   (SELECT count(*)::int FROM participations
+					     WHERE naming_id = ANY($3::uuid[]) OR participant_id = ANY($3::uuid[])) AS cross_parts,
+					   (SELECT count(*)::int FROM participations
+					     WHERE id = $4 AND naming_id = $5 AND participant_id = $6) AS rel_a_intact,
+					   (SELECT count(*)::int FROM memo_content WHERE naming_id = $7 AND status = 'dismissed') AS memo_dismissed`,
+					[mapB, projA, [namingB, namingB2], relA, namingA2, namingA3, memoAId]
+				)
+			).rows[0];
+			record(
+				'No A-naming on B-map, no B<->A relation, A-relation and A-memo intact',
+				x.a_on_b_map === 0 && x.cross_parts === 0 && (relA ? x.rel_a_intact === 1 : true) && x.memo_dismissed === 0,
+				JSON.stringify(x)
+			);
+		}
+	}
+
 	// --- 5. Document route: B deletes A's project docs (no doc, but 404 not 200)
 	await expectDenied(
 		'B DELETE A-naming as doc via own project',
@@ -297,6 +418,61 @@ async function run() {
 		await req('POST', '/api/projects', B.cookie, { action: 'duplicate', sourceProjectId: projA })
 	);
 
+	// --- 6b. Phasen: phaseId und namingId aus dem Body gehören zum Projekt ------
+	{
+		const phaseA = (await (await req('POST', `/api/projects/${projA}/phases`, A.cookie, {
+			action: 'create', inscription: 'phase-A'
+		})).json().catch(() => ({}))).id;
+		const phaseB = (await (await req('POST', `/api/projects/${projB}/phases`, B.cookie, {
+			action: 'create', inscription: 'phase-B'
+		})).json().catch(() => ({}))).id;
+		record('phases created for the phase checks', !!phaseA && !!phaseB, `${phaseA} / ${phaseB}`);
+		if (phaseA && phaseB) {
+			await expectDenied(
+				'B getMembers of A-phase via own project',
+				await req('POST', `/api/projects/${projB}/phases`, B.cookie, { action: 'getMembers', phaseId: phaseA })
+			);
+			await expectDenied(
+				'B assign own naming into A-phase via own project',
+				await req('POST', `/api/projects/${projB}/phases`, B.cookie, { action: 'assign', phaseId: phaseA, namingId: namingB })
+			);
+			await expectDenied(
+				'B assign A-naming into own phase',
+				await req('POST', `/api/projects/${projB}/phases`, B.cookie, { action: 'assign', phaseId: phaseB, namingId: namingA })
+			);
+			const mapB = await getPrimaryMapId(projB);
+			if (mapB) {
+				await expectDenied(
+					'B assignToPhase A-phase via own map',
+					await req('POST', `/api/projects/${projB}/maps/${mapB}`, B.cookie, {
+						action: 'assignToPhase', phaseId: phaseA, namingId: namingB
+					})
+				);
+				await expectDenied(
+					'B phase history of A-phase via own map',
+					await req('POST', `/api/projects/${projB}/maps/${mapB}`, B.cookie, {
+						action: 'getPhaseMembershipHistory', phaseId: phaseA
+					})
+				);
+			}
+			const m = await pool.query(
+				`SELECT
+				   (SELECT count(*)::int FROM appearances WHERE perspective_id = $1 AND naming_id <> $1) AS in_a,
+				   (SELECT count(*)::int FROM appearances WHERE perspective_id = $2 AND naming_id = $3) AS a_in_b`,
+				[phaseA, phaseB, namingA]
+			);
+			record(
+				'phases untouched by cross-project attempts',
+				m.rows[0].in_a === 0 && m.rows[0].a_in_b === 0,
+				JSON.stringify(m.rows[0])
+			);
+			await expectOk(
+				'A assign own naming into own phase',
+				await req('POST', `/api/projects/${projA}/phases`, A.cookie, { action: 'assign', phaseId: phaseA, namingId: namingA })
+			);
+		}
+	}
+
 	// --- 7. Integrity: A's naming was never designated by B -------------------
 	const afterDesignate = await designationCount(namingA);
 	record(
@@ -304,6 +480,17 @@ async function run() {
 		afterDesignate === beforeDesignate,
 		`${beforeDesignate} -> ${afterDesignate}`
 	);
+
+	// --- 7b. Installation-wide AI settings: only an admin account may change
+	// them (BJ, 09.11.). A fresh account is role 'user'. The body changes
+	// nothing even if the gate failed (empty = keep current values).
+	{
+		const res = await req('POST', '/api/settings/ai', A.cookie, {});
+		record('non-admin POST /api/settings/ai denied', res.status === 403, `status ${res.status} (want 403)`);
+		const get = await req('GET', '/api/settings/ai', A.cookie);
+		const body = await get.json().catch(() => ({}));
+		record('non-admin sees settings read-only', get.ok && body.canEdit === false, `status ${get.status}, canEdit ${body.canEdit}`);
+	}
 
 	// --- 8. Positive control: A on A's own resources -> 2xx -------------------
 	await expectOk('A GET own members', await req('GET', `/api/projects/${projA}/members`, A.cookie));

@@ -4,6 +4,15 @@
 -->
 <script lang="ts">
 	import { CCS_CUE, CCS_CHAR, CCS_SPEC } from '$lib/shared/tokens.js';
+	import { invalidateAll } from '$app/navigation';
+	import { memoText } from '$lib/shared/memoText.js';
+	import NamingMemoForm from '$lib/components/NamingMemoForm.svelte';
+	import StackActs from '$lib/components/StackActs.svelte';
+	import ReferringNotes from '$lib/components/ReferringNotes.svelte';
+	import { formatWhen } from '$lib/shared/dates.js';
+	import { quoted, namingLabel } from '$lib/shared/namingLabel.js';
+	import { goto } from '$app/navigation';
+	import TechnicalErrorButton from '$lib/components/TechnicalErrorButton.svelte';
 
 	let { data } = $props();
 
@@ -12,8 +21,33 @@
 	const desig = $derived(data.currentDesignation);
 	const mode = $derived(data.primaryMode);
 	const endpoints = $derived(data.relationEndpoints);
+	// Eine Relation ohne eigene Inschrift heißt nach ihren Endpunkten.
+	const title = $derived(
+		namingLabel(
+			n?.inscription,
+			endpoints
+				? {
+						source: endpoints.source_inscription,
+						target: endpoints.target_inscription,
+						valence: endpoints.valence,
+						directed: !!endpoints.directed
+					}
+				: null
+		)
+	);
 	const appearances = $derived(data.appearances);
 	const participations = $derived(data.participations);
+	const activeRelations = $derived(participations.filter((p: any) => !p.is_withdrawn).length);
+	const withdrawnRelations = $derived(participations.length - activeRelations);
+
+	function isWithdrawnAppearance(props: Record<string, any> | null | undefined) {
+		return !!(props?.withdrawn || props?.aiWithdrawn);
+	}
+	/** Wie das Naming auf einer Map erscheint: auf SW/A mit seiner Formationsrolle. */
+	function appearanceAs(app: { mode: string; properties: Record<string, any> | null }) {
+		const role = app.properties?.swRole;
+		return typeof role === 'string' && role ? role.replace(/-/g, ' ') : app.mode;
+	}
 
 	// Group annotations by document
 	const annotationsByDoc = $derived.by(() => {
@@ -59,7 +93,7 @@
 		<a class="back-link" href="/projects/{data.projectId}/namings">&larr; Namings</a>
 		<div class="header-main">
 			<span class="mode-icon" title={mode}>{modeIcon(mode)}</span>
-			<h1>{n.inscription}</h1>
+			<h1>{title}</h1>
 			<span class="designation-badge" style="background: {designationColor(desig)}">{desig}</span>
 			{#if data.hasDocumentAnchor}
 				<span class="grounding-badge grounded" title="Document-grounded">&#128196;</span>
@@ -84,38 +118,26 @@
 	<div class="detail-grid">
 		<!-- Left column: history + memos -->
 		<div class="detail-column">
-			<!-- Inscription History -->
-			{#if stack.inscriptions.length > 1}
-				<section class="detail-section">
-					<h2>Inscriptions ({stack.inscriptions.length})</h2>
-					{#each stack.inscriptions as hi, i}
-						<div class="history-entry" class:current={i === stack.inscriptions.length - 1}>
-							<span class="he-value">{hi.inscription}</span>
-							<span class="he-by">{hi.by_inscription}</span>
-							<span class="he-date">{new Date(hi.created_at).toLocaleDateString()}</span>
-						</div>
-					{/each}
-				</section>
-			{/if}
-
-			<!-- Designation History -->
+			<!-- Der Stack: jeder Akt mit seinem Memo -->
 			<section class="detail-section">
-				<h2>Designations ({stack.designations.length})</h2>
-				{#each stack.designations as hd}
-					<div class="history-entry">
-						<span class="designation-dot" style="background: {designationColor(hd.designation)}"></span>
-						<span class="he-value">{hd.designation}</span>
-						<span class="he-by">{hd.by_inscription}</span>
-						<span class="he-date">{new Date(hd.created_at).toLocaleDateString()}</span>
-					</div>
-				{/each}
+				<h2>Stack ({stack.acts?.length ?? 0})</h2>
+				{#if (stack.derivedFrom?.length ?? 0) > 0}
+					<div class="derived-note">Derived from the placement on {stack.derivedFrom.join(', ')} — moving the formations there updates it.</div>
+				{/if}
+				<StackActs acts={stack.acts ?? []}
+					onlinked={(id) => goto(`/projects/${data.projectId}/namings/${id}`)} />
+				<NamingMemoForm projectId={data.projectId} namingId={n.id}
+					candidates={data.memoCandidates ?? []}
+					oncreated={() => invalidateAll()} />
 			</section>
 
-			<!-- Memos -->
-			{#if stack.memos?.length > 0}
-				<section class="detail-section">
-					<h2>Memos ({stack.memos.length})</h2>
-					{#each stack.memos as memo}
+			<!-- Memos in anderen Stacks und Memo-Namings, die auf dieses Naming verweisen -->
+			{#if (stack.memos?.length ?? 0) + (stack.referringNotes?.length ?? 0) > 0}
+			<section class="detail-section">
+				<h2>Memos referring to this ({(stack.memos?.length ?? 0) + (stack.referringNotes?.length ?? 0)})</h2>
+				<ReferringNotes notes={stack.referringNotes ?? []}
+					onopen={(id) => goto(`/projects/${data.projectId}/namings/${id}`)} />
+				{#each stack.memos ?? [] as memo}
 						<div class="memo-card" class:memo-ai={memo.isAiAuthored} class:memo-dismissed={memo.status === 'dismissed'}>
 							<div class="memo-card-header">
 								<span class="memo-author" class:badge-ai={memo.isAiAuthored}>
@@ -125,9 +147,9 @@
 									<span class="memo-status status-{memo.status}">{memo.status}</span>
 								{/if}
 								<span class="memo-label">{memo.label}</span>
-								<span class="he-date">{new Date(memo.created_at).toLocaleDateString()}</span>
+								<span class="he-date">{formatWhen(memo.created_at)}</span>
 							</div>
-							<div class="memo-content">{memo.content}</div>
+							<div class="memo-content">{memoText(memo.content)}</div>
 							{#if memo.discussion?.length > 0}
 								<div class="discussion-thread">
 									{#each memo.discussion as turn}
@@ -188,7 +210,10 @@
 								{app.perspective_label}
 							</a>
 							<span class="appearance-type">{app.map_type}</span>
-							<span class="appearance-mode">as {app.mode}</span>
+							<span class="appearance-mode">as {appearanceAs(app)}</span>
+							{#if isWithdrawnAppearance(app.properties)}
+								<span class="withdrawn-tag" title="Withdrawn on this map; restore it there">withdrawn</span>
+							{/if}
 							{#if app.phase_label}
 								<span class="appearance-phase">{app.phase_label}</span>
 							{/if}
@@ -200,23 +225,36 @@
 			<!-- Participations (Relations) -->
 			{#if participations.length > 0}
 				<section class="detail-section">
-					<h2>Relations ({participations.length})</h2>
+					<h2>Relations ({activeRelations}{withdrawnRelations > 0 ? ` + ${withdrawnRelations} withdrawn` : ''})</h2>
 					{#each participations as part}
-						<div class="participation-entry">
+						<div class="participation-entry" class:withdrawn={part.is_withdrawn}>
+							{#if part.partner_designation}
+								<span class="part-partner-dot" style="background: {designationColor(part.partner_designation)}"
+									title="{part.partner_inscription}: {part.partner_designation}"></span>
+							{/if}
 							<a href="/projects/{data.projectId}/namings/{part.partner_id}" class="partner-link">
 								{part.partner_inscription}
 							</a>
 							{#if part.valence}
 								<span class="part-valence">{part.valence}</span>
 							{/if}
-							{#if part.relation_inscription && !part.relation_inscription.includes('↔')}
-								<span class="part-label">via "{part.relation_inscription}"</span>
+							<a class="part-label" href="/projects/{data.projectId}/namings/{part.relation_id}" title="Open this relation">
+								{part.relation_inscription && !part.relation_inscription.includes('↔') ? `via ${quoted(part.relation_inscription)}` : 'relation'}
+							</a>
+							{#if part.relation_designation}
+								<span class="part-designation" title="Designation of the relation" style="color: {designationColor(part.relation_designation)}">{part.relation_designation}</span>
 							{/if}
-							{#if part.partner_designation}
-								<span class="part-designation" style="color: {designationColor(part.partner_designation)}">{part.partner_designation}</span>
+							{#if part.is_withdrawn}
+								<span class="withdrawn-tag" title="Withdrawn on every map it appears on">withdrawn</span>
 							{/if}
-							{#if part.map_labels}
-								<span class="part-maps">on {part.map_labels}</span>
+							{#if part.map_appearances?.length}
+								<span class="part-maps">
+									{#each part.map_appearances as ma, i}{i > 0 ? ' · ' : ''}<a
+											href="/projects/{data.projectId}/maps/{ma.id}"
+											class:ma-off={ma.withdrawn || ma.mode !== 'relation'}
+											>{ma.withdrawn ? 'withdrawn on' : ma.mode === 'relation' ? 'on' : `as ${ma.mode} on`} {ma.label}</a
+										>{/each}
+								</span>
 							{/if}
 						</div>
 					{/each}
@@ -246,9 +284,15 @@
 			{/if}
 		</div>
 	</div>
+	<!-- Für Einträge, die ein Fehler der Software erzeugt hat. -->
+	<div class="te-footer">
+		<TechnicalErrorButton projectId={data.projectId} namingId={n.id} what="naming"
+			ondone={() => goto(`/projects/${data.projectId}/namings`)} />
+	</div>
 </div>
 
 <style>
+	.te-footer { margin-top: 2rem; padding-top: 0.75rem; border-top: 1px solid #2a2d3a; }
 	.naming-detail {
 		max-width: 960px;
 	}
@@ -283,6 +327,12 @@
 	}
 	.ai-badge.withdrawn { opacity: 0.5; text-decoration: line-through; }
 
+	.derived-note {
+		font-size: 0.75rem; color: #a0a4b0; background: rgba(139, 156, 247, 0.07);
+		border: 1px dashed rgba(139, 156, 247, 0.35); border-radius: 4px;
+		padding: 0.3rem 0.5rem; margin-bottom: 0.5rem;
+	}
+	.part-partner-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
 	.relation-endpoints {
 		display: flex; align-items: center; gap: 0.5rem;
 		font-size: 0.85rem; color: #8b8fa3; margin-top: 0.3rem;
@@ -428,9 +478,18 @@
 		font-size: 0.68rem; color: #e1b54a;
 		background: rgba(225, 181, 74, 0.1); padding: 0.05rem 0.3rem; border-radius: 3px;
 	}
-	.part-label { font-size: 0.72rem; color: #8b8fa3; font-style: italic; }
+	.part-label { font-size: 0.72rem; color: #8b8fa3; font-style: italic; text-decoration: none; }
+	.part-label:hover { color: #c9cdd5; text-decoration: underline; }
 	.part-designation { font-size: 0.68rem; margin-left: auto; }
-	.part-maps { font-size: 0.65rem; color: #4b5563; }
+	.part-maps { font-size: 0.65rem; color: #6b7280; }
+	.part-maps a { color: inherit; text-decoration: none; }
+	.part-maps a:hover { text-decoration: underline; }
+	.part-maps a.ma-off { font-style: italic; }
+	.participation-entry.withdrawn { opacity: 0.55; }
+	.withdrawn-tag {
+		font-size: 0.62rem; color: #fca5a5; text-transform: uppercase; letter-spacing: 0.03em;
+		border: 1px solid rgba(248, 113, 113, 0.4); padding: 0 0.3rem; border-radius: 3px;
+	}
 
 	/* Material */
 	.material-section { border-color: rgba(16, 185, 129, 0.2); }

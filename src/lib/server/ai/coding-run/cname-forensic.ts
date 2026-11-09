@@ -5,7 +5,7 @@
 //
 // Aktanten: A Abduktor → B Gatekeeper → {C Anwalt → D Richter | bypass}
 // → E Operativ. Routing-Tags in B/C/D ([TRIVIAL]/[NON-TRIVIAL] usw.) +
-// Commit-Block-Zeilen (CODE/MEMO/ANKER) in A und D sind die einzigen
+// Commit-Block-Zeilen (NAMING/MEMO/ANKER) in A und D sind die einzigen
 // parsbaren Stellen. Reasoning ist Prosa von Aktant zu Aktant.
 //
 // Was als "leer" zählt: emptyMode='prose' — text.trim()==='' triggert
@@ -14,8 +14,8 @@
 //
 // Defensive Defaults bei fehlgeschlagenem Tag-Parsing:
 //   • B ohne Tag → behandle als 'non-trivial' (safe — geht durch C/D)
-//   • D ohne Tag oder ohne Commit-Block bei ISOMORPH/PRAEZISIERT → no-code
-//   • C ohne Tag → no-code
+//   • D ohne Tag oder ohne Commit-Block bei ISOMORPH/PRAEZISIERT → kein Commit
+//   • C ohne Tag → kein Commit
 // AbortError/Provider-Fehler propagieren wie im SName-Pfad.
 
 import {
@@ -25,7 +25,7 @@ import {
 import { isFatalProviderError } from '../client.js';
 import { findRelatedToText } from '../../corpus-structure/relatedness.js';
 import { type DocumentMemo } from './index.js';
-import { commitCodedPassage, type CommitResult } from './write.js';
+import { commitNamedPassage, type CommitResult } from './write.js';
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { WriteProvenance } from '../runtime/tool-executor.js';
@@ -64,10 +64,16 @@ export interface ActantCall {
 	tokensUsed: number;
 }
 
+/**
+ * Ausgang ohne Commit. Das Literal steht so im Lauf-Protokoll (SequenceTrace
+ * in index.ts, Trace-Feld der Läufe, ai_interactions) und bleibt deshalb.
+ */
+const NOTHING_COMMITTED = 'no-code';
+
 export type ForensicOutcome =
 	| 'commit-new'
 	| 'commit-reuse'
-	| 'no-code'
+	| typeof NOTHING_COMMITTED
 	| 'no-abduktion';
 
 export interface ForensicSequenceResult {
@@ -582,7 +588,7 @@ async function continueAtCDE(
 			triage,
 			advocacy: null,
 			judgment: null,
-			outcome: 'no-code',
+			outcome: NOTHING_COMMITTED,
 			commitResult: null,
 			commitForm: null,
 			noCodeReason: 'C-1 failed non-fatally — no advocacy possible'
@@ -602,7 +608,7 @@ async function continueAtCDE(
 			triage,
 			advocacy: null,
 			judgment: null,
-			outcome: 'no-code',
+			outcome: NOTHING_COMMITTED,
 			commitResult: null,
 			commitForm: null,
 			noCodeReason: 'C-1 produced no parseable advocacy tag'
@@ -696,7 +702,7 @@ async function continueAtCDE(
 			triage,
 			advocacy,
 			judgment: null,
-			outcome: 'no-code',
+			outcome: NOTHING_COMMITTED,
 			commitResult: null,
 			commitForm: null,
 			noCodeReason: 'D-1 failed non-fatally — judgment unavailable'
@@ -771,7 +777,7 @@ async function continueAtCDE(
 			triage,
 			advocacy,
 			judgment,
-			outcome: 'no-code',
+			outcome: NOTHING_COMMITTED,
 			commitResult: null,
 			commitForm: null,
 			noCodeReason: judgment.prose || 'verdict unplausibel'
@@ -824,7 +830,7 @@ async function runEAndFinish(
 			triage,
 			advocacy,
 			judgment,
-			outcome: 'no-code',
+			outcome: NOTHING_COMMITTED,
 			commitResult: null,
 			commitForm,
 			noCodeReason: 'ANKER quote not byte-for-byte in sequence'
@@ -839,10 +845,10 @@ async function runEAndFinish(
 			triage,
 			advocacy,
 			judgment,
-			outcome: 'no-code',
+			outcome: NOTHING_COMMITTED,
 			commitResult: null,
 			commitForm,
-			noCodeReason: 'CODE empty after normalization'
+			noCodeReason: 'NAMING empty after normalization'
 		});
 	}
 	const normalizedMemo = commitForm.memo.trim();
@@ -852,10 +858,10 @@ async function runEAndFinish(
 			triage,
 			advocacy,
 			judgment,
-			outcome: 'no-code',
+			outcome: NOTHING_COMMITTED,
 			commitResult: null,
 			commitForm,
-			noCodeReason: 'MEMO empty — no characterization to anchor the code'
+			noCodeReason: 'MEMO empty — no characterization to anchor the naming'
 		});
 	}
 	if (normalizedMemo.toLowerCase() === normalizedLabel.toLowerCase()) {
@@ -864,10 +870,10 @@ async function runEAndFinish(
 			triage,
 			advocacy,
 			judgment,
-			outcome: 'no-code',
+			outcome: NOTHING_COMMITTED,
 			commitResult: null,
 			commitForm,
-			noCodeReason: 'MEMO duplicates CODE — no characterization'
+			noCodeReason: 'MEMO duplicates NAMING — no characterization'
 		});
 	}
 
@@ -879,7 +885,7 @@ async function runEAndFinish(
 	const pos1 = pos0 + quote.length;
 	let commitResult: CommitResult;
 	try {
-		commitResult = await commitCodedPassage({
+		commitResult = await commitNamedPassage({
 			projectId: opts.projectId,
 			bearbeiterNamingId: opts.bearbeiterNamingId,
 			documentId: opts.documentId,
@@ -896,14 +902,14 @@ async function runEAndFinish(
 			triage,
 			advocacy,
 			judgment,
-			outcome: 'no-code',
+			outcome: NOTHING_COMMITTED,
 			commitResult: null,
 			commitForm,
 			noCodeReason: `commit failed: ${err instanceof Error ? err.message : String(err)}`
 		});
 	}
 
-	// 5. Mutable Pools aktualisieren — spätere Sequenzen sehen den neuen Code/Memo
+	// 5. Mutable Pools aktualisieren — spätere Sequenzen sehen das neue Naming/Memo
 	if (!opts.existingCNameLabelsLowerSet.has(commitResult.codeLabel.toLowerCase())) {
 		opts.existingCNameLabelsLowerSet.add(commitResult.codeLabel.toLowerCase());
 		opts.existingCNameLabels.push(commitResult.codeLabel);

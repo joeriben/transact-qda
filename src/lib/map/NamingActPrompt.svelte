@@ -4,22 +4,39 @@
 -->
 <script lang="ts">
 	import { getMapState } from './mapState.svelte.js';
+	import { focusSelect } from '$lib/canvas/dom.js';
 
 	const ms = getMapState();
+
+	// Strg/⌘+Enter übernimmt, wie der Knopf.
+	function onKeydown(e: KeyboardEvent) {
+		if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+			e.preventDefault();
+			ms.submitAct();
+		}
+	}
 </script>
 
 {#if ms.actTarget}
-	{@const actNode = ms.findNode(ms.actTarget)}
+	{@const actLabel = ms.findInscription(ms.actTarget)}
 	{@const allMapNamings = [...ms.elements, ...ms.relations].filter((e: any) => e.naming_id !== ms.actTarget)}
 	<div class="act-prompt-bar">
 		<div class="act-header">
 			{#if ms.actType === 'rename'}
-				Rename: <strong>{actNode?.inscription}</strong> → <strong>{ms.actNewValue}</strong>
+				Rename: <strong>{actLabel}</strong> → <strong>{ms.actNewValue}</strong>
 			{:else if ms.actType === 'designate'}
-				Designation: <strong>{actNode?.inscription}</strong> →
+				Designation: <strong>{actLabel}</strong> →
 				<span style="color: {ms.designationColor(ms.actNewValue)}">{ms.actNewValue}</span>
 			{:else if ms.actType === 'relate'}
-				Relation: <strong>{actNode?.inscription || ms.actNewValue || '(unnamed)'}</strong>
+				Relation: <strong>{actLabel !== '?' ? actLabel : ms.actNewValue || '(unnamed)'}</strong>
+			{:else if ms.actType === 'mode'}
+				{#if ms.actNewValue === 'relation' && ms.actModeEnds}
+					Show as relation (this map): <strong>{actLabel}</strong> —
+					between <strong>{ms.findInscription(ms.actModeEnds.sourceId)}</strong>
+					and <strong>{ms.findInscription(ms.actModeEnds.targetId)}</strong>
+				{:else}
+					Show as entity (this map): <strong>{actLabel}</strong>
+				{/if}
 			{/if}
 		</div>
 		{#if ms.actExistingMemos.length > 0}
@@ -33,19 +50,24 @@
 				{/each}
 			</div>
 		{/if}
-		<textarea placeholder="What influenced this act? What changed in your understanding?" bind:value={ms.actMemo} rows="2"></textarea>
+		<textarea placeholder="What influenced this act? What changed in your understanding?" bind:value={ms.actMemo} rows="2"
+			aria-label="Memo on this act" use:focusSelect onkeydown={onKeydown}></textarea>
 		<div class="act-links-toggle">
-			<button class="btn-xs" onclick={() => ms.showActLinks = !ms.showActLinks}>
-				{ms.showActLinks ? 'hide' : `namings I have in mind (${ms.actLinkedIds.length})`}
+			<!-- Gleicher Name offen und zu; den Zustand sagen Pfeil und aria-expanded. -->
+			<button class="btn-xs" onclick={() => ms.showActLinks = !ms.showActLinks} aria-expanded={ms.showActLinks}
+				aria-controls="act-links-list">
+				<span aria-hidden="true">{ms.showActLinks ? '▾' : '▸'}</span> namings I have in mind ({ms.actLinkedIds.length})
 			</button>
 		</div>
 		{#if ms.showActLinks}
-			<div class="act-links-list">
+			<div class="act-links-list" id="act-links-list">
 				{#each allMapNamings as n}
+					{@const nl = ms.findInscription(n.naming_id)}
 					<label class="act-link-item">
-						<input type="checkbox" checked={ms.actLinkedIds.includes(n.naming_id)} onchange={() => ms.toggleActLink(n.naming_id)} />
+						<input type="checkbox" checked={ms.actLinkedIds.includes(n.naming_id)} onchange={() => ms.toggleActLink(n.naming_id)}
+							aria-label={nl} />
 						<span class="designation-dot-sm" style="background: {ms.designationColor(n.designation)}"></span>
-						<span>{n.inscription || '(unnamed relation)'}</span>
+						<span>{nl}</span>
 					</label>
 				{/each}
 			</div>
@@ -59,9 +81,11 @@
 {/if}
 
 <style>
+	/* Über der Karte, nicht über ihr im Fluss: die Karte rückt nicht nach unten. */
 	.act-prompt-bar {
 		background: #161822; border: 1px solid #f59e0b; border-radius: 8px;
-		padding: 0.75rem 1rem; margin: 0 1rem 0.5rem;
+		padding: 0.75rem 1rem;
+		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
 	}
 	.act-header { font-size: 0.85rem; color: #c9cdd5; margin-bottom: 0.4rem; }
 	.act-existing-memos {

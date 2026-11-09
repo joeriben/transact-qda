@@ -1,20 +1,21 @@
 // SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
-// Reset-Coding-Seite — Form-Action für den project-weiten Cleanup. Nutzt
+// Reset-Naming-Seite — Form-Action für den project-weiten Cleanup. Nutzt
 // SvelteKit-Form-Actions, damit weder DevTools-Konsole noch Cookie-Probe
 // nötig sind. Die Session liegt durch das normale Page-Routing schon vor.
 
 import { error, fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types.js';
 import { queryOne } from '$lib/server/db/index.js';
-import { deleteAllRunsForProject } from '$lib/server/db/queries/codes.js';
+import { deleteAllRunsForProject } from '$lib/server/db/queries/annotations.js';
 
 export const load: PageServerLoad = async ({ params, locals }) => {
 	if (!locals.user) error(401, 'Not authenticated');
-	const project = await queryOne<{ id: string; inscription: string }>(
-		`SELECT id, inscription FROM namings
-		 WHERE id = $1 AND deleted_at IS NULL`,
+	// Projekte stehen in `projects`, nicht in `namings` — die frühere Abfrage
+	// fand nie etwas, die Seite antwortete immer mit 404.
+	const project = await queryOne<{ id: string; name: string }>(
+		`SELECT id, name FROM projects WHERE id = $1`,
 		[params.projectId]
 	);
 	if (!project) error(404, 'Project not found');
@@ -23,7 +24,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		[params.projectId, locals.user.id]
 	);
 	if (!member) error(403, 'Not a member');
-	return { projectId: project.id, projectName: project.inscription };
+	return { projectId: project.id, projectName: project.name };
 };
 
 export const actions: Actions = {

@@ -15,6 +15,8 @@
 		kind = 'entity',
 		zoom = 1,
 		draggable = true,
+		passThrough = false,
+		ondragmove,
 		ondragend,
 		onclick,
 		ondblclick,
@@ -30,6 +32,13 @@
 		kind?: string;
 		zoom?: number;
 		draggable?: boolean;
+		/** Nur die Teile des Inhalts, die selbst Zeigerereignisse annehmen, sind
+		 *  greifbar (Formationen: Label und Umriss). Der umgebende Kasten fängt
+		 *  nichts ab — sonst griffe man bei überlappenden Formationen die obere,
+		 *  obwohl das Label der unteren unter dem Zeiger liegt. */
+		passThrough?: boolean;
+		/** Während des Ziehens, mit der aktuellen Lage (z. B. damit eine Linie mitgeht). */
+		ondragmove?: (id: string, x: number, y: number) => void;
 		ondragend?: (id: string, x: number, y: number) => void;
 		onclick?: (id: string, e: MouseEvent) => void;
 		ondblclick?: (id: string, e: MouseEvent) => void;
@@ -40,6 +49,11 @@
 	let isDragging = $state(false);
 	let didDrag = $state(false);
 	let dragStart = { x: 0, y: 0 };
+	let downAt = { x: 0, y: 0 };
+	/** Erst ab so viel Bewegung (Bildschirmpixel) ist es ein Ziehen: ein
+	 *  Doppelklick mit leichtem Zittern verschob sonst den Knoten (bei einer
+	 *  Raute: setzte ihre Lage fest) und öffnete den Stack nicht. */
+	const DRAG_SLOP = 3;
 	let currentX = $state(x);
 	let currentY = $state(y);
 
@@ -58,11 +72,18 @@
 		isDragging = true;
 		didDrag = false;
 		dragStart = { x: e.clientX, y: e.clientY };
-		(e.target as HTMLElement).closest('.canvas-element')?.setPointerCapture(e.pointerId);
+		downAt = { x: e.clientX, y: e.clientY };
+		// Bei passThrough nimmt der Kasten selbst keine Zeigerereignisse an; dann
+		// hält das gegriffene Teil den Zeiger, die Ereignisse steigen zu uns auf.
+		const captureEl = passThrough
+			? (e.target as Element)
+			: (e.target as HTMLElement).closest('.canvas-element');
+		captureEl?.setPointerCapture(e.pointerId);
 	}
 
 	function onPointerMove(e: PointerEvent) {
 		if (!isDragging) return;
+		if (!didDrag && Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) < DRAG_SLOP) return;
 		// Divide screen-space delta by zoom to get canvas-space delta
 		const dx = (e.clientX - dragStart.x) / zoom;
 		const dy = (e.clientY - dragStart.y) / zoom;
@@ -70,6 +91,7 @@
 		currentX += dx;
 		currentY += dy;
 		didDrag = true;
+		ondragmove?.(id, currentX, currentY);
 	}
 
 	function onPointerUp(e: PointerEvent) {
@@ -104,6 +126,7 @@
 <div
 	class="canvas-element"
 	class:selected
+	class:pass-through={passThrough}
 	class:dragging={isDragging}
 	style="left: {currentX}px; top: {currentY}px; transform: translate(-50%, -50%); --el-color: {color};"
 	onpointerdown={onPointerDown}
@@ -136,10 +159,20 @@
 		z-index: 100;
 	}
 
+	.canvas-element.pass-through {
+		pointer-events: none;
+	}
+
 	/* Die überfahrene Karte nach vorn, sonst verdecken spätere Nachbarn ihren
 	   Hover-Kasten. */
 	.canvas-element:hover {
 		z-index: 60;
+	}
+	/* Formationen nicht: eine überfahrene große Formation käme sonst über die
+	   kleineren in ihr, und die ließen sich nicht mehr greifen. Sie bleiben in
+	   ihrer Zeichenreihenfolge (große unten, kleine oben). */
+	.canvas-element.pass-through:hover {
+		z-index: auto;
 	}
 
 	.element-body {

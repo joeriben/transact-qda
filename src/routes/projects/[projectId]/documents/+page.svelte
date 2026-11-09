@@ -3,6 +3,7 @@
   SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 <script lang="ts">
+	import { formatDay } from '$lib/shared/dates.js';
 	import { onMount } from 'svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	let { data } = $props();
@@ -394,7 +395,7 @@
 									<button class="btn-xs btn-parse" onclick={() => parseDocument(doc.id)}>parse</button>
 								{/if}
 							</td>
-							<td class="meta">{new Date(doc.created_at).toLocaleDateString()}</td>
+							<td class="meta">{formatDay(doc.created_at)}</td>
 							<td><button class="btn-xs btn-danger" onclick={() => deleteDocument(doc.id, doc.label)}>delete</button></td>
 						</tr>
 					{/each}

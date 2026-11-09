@@ -9,7 +9,7 @@
  *
  * Mode detection:
  * - tq: namespace present → full fidelity (naming_acts, appearances, phases, AI)
- * - standard QDPX only → codes as cues, documents + annotations, memos
+ * - standard QDPX only → namings as cues, documents + annotations, memos
  */
 
 import { XMLParser } from 'fast-xml-parser';
@@ -156,7 +156,7 @@ interface CollectedTopology {
 export interface ImportResult {
 	projectId: string;
 	projectName: string;
-	counts: { codes: number; documents: number; annotations: number; memos: number; relations: number; maps: number };
+	counts: { namings: number; documents: number; annotations: number; memos: number; relations: number; maps: number };
 	mode: 'transact-qda' | 'standard';
 }
 
@@ -200,7 +200,7 @@ export async function importProject(
 	const memoContents: CollectedMemoContent[] = [];
 	const phaseMemberships: CollectedPhaseMembership[] = [];
 	const topologies: CollectedTopology[] = [];
-	const counts = { codes: 0, documents: 0, annotations: 0, memos: 0, relations: 0, maps: 0 };
+	const counts = { namings: 0, documents: 0, annotations: 0, memos: 0, relations: 0, maps: 0 };
 
 	// Fixed IDs created during import
 	const researcherNamingId = randomUUID();
@@ -226,8 +226,8 @@ export async function importProject(
 	// naming_acts reference `by` GUIDs (researcher/AI namings from original project).
 	// These must exist as namings before naming_acts can reference them.
 	const byIds = new Set<string>();
-	for (const code of arr(project.CodeBook?.Codes?.Code)) {
-		for (const act of arr(code['tq:NamingActs']?.['tq:Act'])) {
+	for (const namingEl of arr(project.CodeBook?.Codes?.Code)) {
+		for (const act of arr(namingEl['tq:NamingActs']?.['tq:Act'])) {
 			if (act['@_by']) byIds.add(act['@_by']);
 		}
 	}
@@ -248,15 +248,15 @@ export async function importProject(
 		namings.push({ id: mappedId, inscription: userLabel });
 	}
 
-	// ---- Collect codes ----
-	for (const code of arr(project.CodeBook?.Codes?.Code)) {
-		const id = remap(code['@_guid']);
-		const name = code['@_name'] || 'unnamed';
-		const color = code['@_color'] || null;
+	// ---- Collect namings ----
+	for (const namingEl of arr(project.CodeBook?.Codes?.Code)) {
+		const id = remap(namingEl['@_guid']);
+		const name = namingEl['@_name'] || 'unnamed';
+		const color = namingEl['@_color'] || null;
 		namings.push({ id, inscription: name });
 
-		if (mode === 'transact-qda' && code['tq:NamingActs']) {
-			for (const act of arr(code['tq:NamingActs']['tq:Act'])) {
+		if (mode === 'transact-qda' && namingEl['tq:NamingActs']) {
+			for (const act of arr(namingEl['tq:NamingActs']['tq:Act'])) {
 				namingActs.push({
 					namingId: id, seq: parseInt(act['@_seq']), by: remap(act['@_by']),
 					inscription: act['@_inscription'] || undefined,
@@ -271,8 +271,8 @@ export async function importProject(
 			namingActs.push({ namingId: id, by: researcherNamingId, inscription: name, designation: 'cue' });
 		}
 
-		if (mode === 'transact-qda' && code['tq:Appearances']) {
-			for (const app of arr(code['tq:Appearances']['tq:Appearance'])) {
+		if (mode === 'transact-qda' && namingEl['tq:Appearances']) {
+			for (const app of arr(namingEl['tq:Appearances']['tq:Appearance'])) {
 				const props = app['@_properties'] ? JSON.parse(unesc(app['@_properties'])) : {};
 				if (color && !props.color) props.color = color;
 				appearances.push({
@@ -286,7 +286,7 @@ export async function importProject(
 			}
 		}
 
-		counts.codes++;
+		counts.namings++;
 	}
 
 	// ---- Collect documents ----
@@ -329,10 +329,10 @@ export async function importProject(
 			textSels.push(...arr(repr.PlainTextSelection));
 		}
 		for (const sel of textSels) {
-			for (const coding of arr(sel.Coding)) {
-				for (const ref of arr(coding.CodeRef)) {
-					const codeId = remap(ref['@_targetGUID']);
-					collectAnnotation(id, codeId, 'text', {
+			for (const annotationEl of arr(sel.Coding)) {
+				for (const ref of arr(annotationEl.CodeRef)) {
+					const namingId = remap(ref['@_targetGUID']);
+					collectAnnotation(id, namingId, 'text', {
 						pos0: parseInt(sel['@_startPosition'] || '0'),
 						pos1: parseInt(sel['@_endPosition'] || '0')
 					});
@@ -342,10 +342,10 @@ export async function importProject(
 
 		// Image annotations
 		for (const sel of arr(el.PictureSelection)) {
-			for (const coding of arr(sel.Coding)) {
-				for (const ref of arr(coding.CodeRef)) {
-					const codeId = remap(ref['@_targetGUID']);
-					collectAnnotation(id, codeId, 'image_region', {
+			for (const annotationEl of arr(sel.Coding)) {
+				for (const ref of arr(annotationEl.CodeRef)) {
+					const namingId = remap(ref['@_targetGUID']);
+					collectAnnotation(id, namingId, 'image_region', {
 						x: parseFloat(sel['@_firstX'] || '0'),
 						y: parseFloat(sel['@_firstY'] || '0'),
 						width: parseFloat(sel['@_secondX'] || '0') - parseFloat(sel['@_firstX'] || '0'),
@@ -356,27 +356,27 @@ export async function importProject(
 		}
 	}
 
-	function collectAnnotation(docId: string, codeId: string, anchorType: string, anchor: Record<string, any>) {
+	function collectAnnotation(docId: string, namingId: string, anchorType: string, anchor: Record<string, any>) {
 		const annId = randomUUID();
-		const partCodeId = randomUUID();
+		const partNamingId = randomUUID();
 		const partDocId = randomUUID();
 
-		namings.push({ id: annId, inscription: `annotation: ${codeId} → ${docId}` });
-		namings.push({ id: partCodeId, inscription: `annotation ${annId} ↔ ${codeId}` });
+		namings.push({ id: annId, inscription: `annotation: ${namingId} → ${docId}` });
+		namings.push({ id: partNamingId, inscription: `annotation ${annId} ↔ ${namingId}` });
 		namings.push({ id: partDocId, inscription: `annotation ${annId} ↔ ${docId}` });
 
-		participations.push({ id: partCodeId, namingId: annId, participantId: codeId });
+		participations.push({ id: partNamingId, namingId: annId, participantId: namingId });
 		participations.push({ id: partDocId, namingId: annId, participantId: docId });
 
 		appearances.push({
 			namingId: annId, perspectiveId: gwId,
-			mode: 'relation', directedFrom: codeId, directedTo: docId,
+			mode: 'relation', directedFrom: namingId, directedTo: docId,
 			valence: 'codes', properties: { anchorType, anchor }
 		});
 
-		// Ensure code appears on grounding workspace
-		if (!appearances.some(a => a.namingId === codeId && a.perspectiveId === gwId)) {
-			appearances.push({ namingId: codeId, perspectiveId: gwId, mode: 'entity', properties: {} });
+		// Ensure the naming appears on the grounding workspace
+		if (!appearances.some(a => a.namingId === namingId && a.perspectiveId === gwId)) {
+			appearances.push({ namingId, perspectiveId: gwId, mode: 'entity', properties: {} });
 		}
 
 		counts.annotations++;
@@ -522,16 +522,16 @@ export async function importProject(
 	}
 
 	// Standard mode: create a default SitMap
-	if (mode === 'standard' && counts.codes > 0) {
+	if (mode === 'standard' && counts.namings > 0) {
 		const mapId = randomUUID();
 		namings.push({ id: mapId, inscription: 'Imported Map' });
 		appearances.push({ namingId: mapId, perspectiveId: mapId, mode: 'perspective', properties: { mapType: 'situational' } });
 
-		// Place codes on map
-		const codeIds = arr(project.CodeBook?.Codes?.Code).map((c: any) => remap(c['@_guid']));
-		for (let i = 0; i < codeIds.length; i++) {
+		// Place namings on map
+		const namingIds = arr(project.CodeBook?.Codes?.Code).map((c: any) => remap(c['@_guid']));
+		for (let i = 0; i < namingIds.length; i++) {
 			appearances.push({
-				namingId: codeIds[i], perspectiveId: mapId, mode: 'entity',
+				namingId: namingIds[i], perspectiveId: mapId, mode: 'entity',
 				properties: { x: (i % 8) * 180 + 100, y: Math.floor(i / 8) * 100 + 100 }
 			});
 		}

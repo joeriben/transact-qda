@@ -1,12 +1,18 @@
 // SPDX-FileCopyrightText: 2024-2026 Benjamin Jörissen
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { getContext, setContext } from 'svelte';
+import { getContext, setContext, untrack } from 'svelte';
 import { regionColor } from '$lib/canvas/regions.js';
 import { CCS_CUE, CCS_CHAR, CCS_SPEC } from '$lib/shared/tokens.js';
-import type { SwRole } from '$lib/shared/types/index.js';
+import { namingLabel } from '$lib/shared/namingLabel.js';
+import { formatWhen } from '$lib/shared/dates.js';
+import { viewHref } from '$lib/shared/rueckweg.js';
 
 const MAP_STATE_KEY = Symbol('mapState');
+
+/** Persona-Präfix im Titel eines KI-Memos („Cowork: …"). „Coding-Run" ist die
+ *  alte Bezeichnung des Naming-Runs und kann in gespeicherten Titeln stehen. */
+const AI_MEMO_TITLE_PREFIX = /^(Cowork|AI|Autonoma|Naming-Run|Coding-Run|Comparative):\s*/;
 
 /** ai-eval: das letzte Verdikt zu einem Naming, samt Urteilendem. */
 export type RejectionInfo = {
@@ -22,6 +28,9 @@ export type RejectionInfo = {
 export type StackData = {
 	inscriptions: any[];
 	designations: any[];
+	/** Der Stack: jeder Akt mit allen Dimensionen und seiner Notiz (Memo zu
+	 *  diesem Naming), chronologisch. */
+	acts?: StackAct[];
 	memos: any[];
 	annotations?: any[];
 	/** Akte, die nur eine Begründung tragen (memo_text ohne Inschrift/
@@ -37,6 +46,19 @@ export type StackData = {
 	aiWithdrawn?: boolean;
 };
 
+export type StackAct = {
+	seq: string;
+	created_at: string;
+	inscription: string | null;
+	designation: string | null;
+	mode: string | null;
+	valence: string | null;
+	memo_text: string | null;
+	by_inscription: string;
+	by_researcher: boolean;
+	linked: { id: string; label: string }[];
+};
+
 export type MemoPanelData = {
 	id: string;
 	title: string;
@@ -44,6 +66,24 @@ export type MemoPanelData = {
 	linkedIds: string[];
 	authorId: string;
 };
+
+/** Urteile über ein KI-Memo — dieselbe Auswahl wie im Stack-Panel. */
+export type MemoVerdict = 'acknowledged' | 'dismissed' | 'promoted';
+
+/** Antwort einer Map-Aktion samt Status — für Fälle, in denen der Fehler etwas sagt (409). */
+export type MapResponse = { ok: boolean; status: number; data: any };
+
+/** Meldung über der Karte. Hinweise verschwinden von selbst, Fehler bleiben
+ *  stehen, bis man sie schließt. */
+export type Notice = {
+	id: number;
+	text: string;
+	kind: 'info' | 'error';
+	link?: { href: string; label: string };
+};
+
+/** Ein Naming in den Blick holen; mit `stack` auch seinen Stack öffnen. */
+export type RevealOptions = { stack?: boolean };
 
 export type MapState = ReturnType<typeof createMapState>;
 
@@ -65,14 +105,44 @@ export function createMapState(
 	const mapType = $derived(mapMeta.properties?.mapType || 'situational');
 	const isPrimary = $derived(mapMeta.properties?.isPrimary === true);
 	const allItems = $derived([...axes, ...elements, ...relations, ...silences]);
+	// Nachschlagen per ID: findNode läuft beim Zeichnen jeder Relation mehrfach.
+	const nodeIndex = $derived(new Map<string, any>(allItems.map((n: any) => [n.naming_id, n])));
 	const phaseColorMap = $derived(
 		new Map(phases.map((p: any, i: number) => [p.id, regionColor(i)]))
 	);
 
-	const DECLINED_PHASE = '__declined__';
-	const declinedCount = $derived(
-		allItems.filter((n: any) => isWithdrawn(n.properties)).length
+	// ─── Zurückgezogenes (Withdraw) ───
+	// Ausblenden ist ein eigener Schalter, kein Phasen-Fokus: als Phasen-Fokus
+	// dimmte er alle übrigen Knoten mit, und jeder Klick auf die Fläche hob ihn
+	// wieder auf.
+	let hideWithdrawn = $state(false);
+	// Gezählt wird, was die Leinwand zeigen kann. Aus der Lage abgeleitete
+	// Relationen (SW/A: „contains", „overlaps") zeichnet sie nicht — ein
+	// zurückgezogenes „contains" nach dem Herausziehen stand sonst als
+	// „Withdrawn 1" ohne sichtbares Element da. Sie werden eigens genannt.
+	const withdrawnCount = $derived(
+		allItems.filter((n: any) => isWithdrawn(n.properties) && !n.properties?.spatiallyDerived).length
 	);
+	const withdrawnDerivedCount = $derived(
+		allItems.filter((n: any) => isWithdrawn(n.properties) && n.properties?.spatiallyDerived).length
+	);
+
+	// CCS-Kopfzähler ohne Zurückgezogenes. Das Profil kommt vom Server (zählt
+	// jede Erscheinung); abgezogen wird, was hier als zurückgezogen vorliegt.
+	const designationCounts = $derived.by(() => {
+		const withdrawnBy = new Map<string, number>();
+		for (const n of allItems) {
+			if (!isWithdrawn(n.properties)) continue;
+			const d = n.designation || 'cue';
+			withdrawnBy.set(d, (withdrawnBy.get(d) ?? 0) + 1);
+		}
+		return (designationProfile ?? [])
+			.map((dp: any) => ({
+				designation: dp.designation as string,
+				count: Math.max(0, Number(dp.count) - (withdrawnBy.get(dp.designation) ?? 0))
+			}))
+			.filter((dp: { count: number }) => dp.count > 0);
+	});
 
 	// ─── Ausgeblendete und verworfene KI-Cues ───
 	// Ausgeblendet = jede Passage des Namings ist im Reader ausgeblendet.
@@ -108,7 +178,7 @@ export function createMapState(
 		const r = rejectionOf(node);
 		if (!r) return null;
 		const who = r.mine ? 'You' : (r.evaluatorName ?? 'Another member');
-		const when = r.createdAt ? new Date(r.createdAt).toLocaleDateString() : null;
+		const when = r.createdAt ? formatWhen(r.createdAt) || null : null;
 		const base = `${who} rejected this cue${when ? ` on ${when}` : ''}`;
 		return r.evaluatorCount > 1
 			? `${base} — ${r.evaluatorCount} members have judged it, the latest verdict counts here`
@@ -119,7 +189,38 @@ export function createMapState(
 	// A naming is "unresolved" if it has no canvas position and is not declined.
 	// The positionsRef is set externally by canvasPositions after init.
 	let positionsRef = $state<Map<string, { x: number; y: number }> | null>(null);
-	let listFilter = $state<'all' | 'placed' | 'unresolved' | 'declined'>('all');
+	let listFilter = $state<'all' | 'placed' | 'unresolved' | 'withdrawn'>('all');
+
+	/** Quelle und Ziel einer Relation. */
+	function endpointsOf(node: any): [string | null, string | null] {
+		return [node?.directed_from || node?.part_source_id || null, node?.directed_to || node?.part_target_id || null];
+	}
+
+	// Was der Forscher eben selbst angelegt hat, soll er sehen: die nächste
+	// automatische Platzierung darf die Ansicht dorthin schieben (kurz gültig,
+	// damit kein späterer KI- oder Import-Knoten die Ansicht verrückt).
+	let revealUntil = 0;
+	function requestReveal() { revealUntil = Date.now() + 8000; }
+	function takeReveal(): boolean {
+		const r = Date.now() < revealUntil;
+		revealUntil = 0;
+		return r;
+	}
+
+	// Eine Relation ist platziert, sobald ihre beiden Endpunkte es sind: auf dem
+	// Canvas steht sie zwischen ihnen, eine eigene Position braucht sie nicht.
+	function hasPosition(node: any, depth = 0): boolean {
+		if (!positionsRef) return true;
+		if (node?.mode === 'relation') {
+			if (depth > 4) return false;
+			const [s, t] = endpointsOf(node);
+			if (!s || !t) return false;
+			const sn = nodeIndex.get(s);
+			const tn = nodeIndex.get(t);
+			return !!sn && !!tn && hasPosition(sn, depth + 1) && hasPosition(tn, depth + 1);
+		}
+		return positionsRef.has(node?.naming_id);
+	}
 
 	// Zählt, was der Schalter zurückholt: unplatzierte Namings, die nur wegen
 	// Ausblenden/Verwerfen nicht in der Unplaced-Liste stehen.
@@ -128,7 +229,7 @@ export function createMapState(
 			? allItems.filter(
 					(n: any) =>
 						(isHidden(n) || isRejected(n)) &&
-						!positionsRef!.has(n.naming_id) &&
+						!hasPosition(n) &&
 						!isWithdrawn(n.properties)
 				).length
 			: 0
@@ -137,12 +238,23 @@ export function createMapState(
 	// ─── Shared interaction state ───
 	let stackId = $state<string | null>(null);
 	let stackData = $state<StackData | null>(null);
-	// Memo-Vorschau beim Überfahren eines Knotens. Gerendert außerhalb der
-	// skalierten Canvas-Ebene (MemoTooltip.svelte) — darin wuchs und schrumpfte
-	// sie mit dem Zoom. Das kurze Nachlaufen beim Verlassen des Knotens lässt
-	// den Weg in den Kasten zu, zu "open stack".
+	// Memo-Vorschau beim Überfahren eines Knotens oder einer Raute. Gerendert
+	// außerhalb der skalierten Canvas-Ebene (MemoTooltip.svelte) — darin wuchs
+	// und schrumpfte sie mit dem Zoom. Reine Anzeige: sie verschwindet beim
+	// Verlassen und nimmt keine Klicks an (der Stack öffnet sich über das
+	// Abzeichen oder den Doppelklick).
 	let memoTip = $state.raw<{ el: any; rect: DOMRect } | null>(null);
 	let memoTipTimer: ReturnType<typeof setTimeout> | null = null;
+
+	// Kurz hervorgehoben: ein eben platziertes oder gesuchtes Naming, damit das
+	// Auge es auf der Karte findet.
+	let flashId = $state<string | null>(null);
+	let flashTimer: ReturnType<typeof setTimeout> | undefined;
+	function flash(id: string) {
+		flashId = id;
+		clearTimeout(flashTimer);
+		flashTimer = setTimeout(() => { flashId = null; }, 2600);
+	}
 	let editingId = $state<string | null>(null);
 	let editingValue = $state('');
 	let relatingFrom = $state<string | null>(null);
@@ -156,7 +268,10 @@ export function createMapState(
 
 	// Naming act prompt
 	let actTarget = $state<string | null>(null);
-	let actType = $state<'rename' | 'designate' | 'relate'>('rename');
+	let actType = $state<'rename' | 'designate' | 'relate' | 'mode'>('rename');
+	// Beim Moduswechsel (Entität ↔ Relation auf dieser Map) wartet der Akt auf
+	// die Notiz: der Server schreibt Wechsel und Notiz in DENSELBEN Akt.
+	let actModeEnds = $state<{ sourceId: string; targetId: string } | null>(null);
 	let actNewValue = $state('');
 	let actMemo = $state('');
 	let actLinkedIds = $state<string[]>([]);
@@ -166,15 +281,20 @@ export function createMapState(
 	// Phases
 	let assigningToPhase = $state<string | null>(null);
 	let highlightedPhase = $state<string | null>(null);
-	const isDeclinedFilter = $derived(highlightedPhase === DECLINED_PHASE);
 
 	// AI
 	let aiEnabled = $state(true);
-	let aiNotification = $state<string | null>(null);
-	let aiNotificationTimeout: ReturnType<typeof setTimeout> | undefined;
+	let notices = $state<Notice[]>([]);
 
-	// Memo panel
+	// Memo panel (Cowork-Karte: ein eben geschriebenes KI-Memo)
 	let memoPanel = $state<MemoPanelData | null>(null);
+	// KI-Memos, die auf ein Urteil warten („presented") und diese Karte oder
+	// eines ihrer Namings betreffen. Aus „Map memos" lassen sie sich wieder als
+	// Karte öffnen — auch nachdem sie ohne Urteil geschlossen wurde.
+	let presentedMemos = $state<Array<MemoPanelData & { thread: { role: 'researcher' | 'ai'; content: string }[] }>>([]);
+	let memoPanelBusy = $state(false);
+	/** Gesprächsverlauf zum Memo in der Karte (Forscherin, KI), solange sie offen ist. */
+	let memoPanelThread = $state<{ role: 'researcher' | 'ai'; content: string }[]>([]);
 
 	// Outside participations
 	let outsideId = $state<string | null>(null);
@@ -196,12 +316,23 @@ export function createMapState(
 	let memoCreateTitle = $state('');
 	let memoCreateContent = $state('');
 	let memoCreateLinkedIds = $state<string[]>([]);
+	let memoCreateSaving = $state(false);
 
 	// Phase sidebar state
 	let showPhaseForm = $state(false);
 	let newPhaseLabel = $state('');
 	let expandedPhase = $state<string | null>(null);
-	let phaseContents = $state<any[]>([]);
+	// Phasen gehören dem Projekt (parentMapId zeigt auf den Grounding
+	// Workspace). Auf der Karte zählt und listet die Phase, was von ihr hier
+	// steht — aus den Kartendaten, ohne eigene Abfrage.
+	const phaseContents = $derived(
+		expandedPhase ? allItems.filter((n: any) => n.phase_ids?.includes(expandedPhase)) : []
+	);
+	const phaseCountsOnMap = $derived.by(() => {
+		const m = new Map<string, number>();
+		for (const n of allItems) for (const pid of n.phase_ids ?? []) m.set(pid, (m.get(pid) ?? 0) + 1);
+		return m;
+	});
 
 	// ─── Helpers ───
 
@@ -210,7 +341,7 @@ export function createMapState(
 	}
 
 	function isHiddenByFilter(node: any): boolean {
-		return isDeclinedFilter && isWithdrawn(node.properties);
+		return hideWithdrawn && isWithdrawn(node.properties);
 	}
 
 	function isUnresolved(node: any): boolean {
@@ -218,12 +349,11 @@ export function createMapState(
 		// Ausgeblendetes und Verworfenes ist abgeräumt und steht nicht mehr zur
 		// Platzierung an — auf dem Canvas bleibt es unberührt.
 		if ((isHidden(node) || isRejected(node)) && !showHidden) return false;
-		return !positionsRef.has(node.naming_id) && !isWithdrawn(node.properties);
+		return !hasPosition(node) && !isWithdrawn(node.properties);
 	}
 
 	function isPlaced(node: any): boolean {
-		if (!positionsRef) return true;
-		return positionsRef.has(node.naming_id);
+		return hasPosition(node);
 	}
 
 	function unresolvedCount(): number {
@@ -233,15 +363,10 @@ export function createMapState(
 
 	function filterItem(node: any): boolean {
 		if (listFilter === 'all') return true;
-		if (listFilter === 'declined') return isWithdrawn(node.properties);
+		if (listFilter === 'withdrawn') return isWithdrawn(node.properties);
 		if (listFilter === 'unresolved') return isUnresolved(node);
 		if (listFilter === 'placed') return isPlaced(node) && !isWithdrawn(node.properties);
 		return true;
-	}
-
-	async function declineNaming(namingId: string) {
-		await mapAction('toggleWithdraw', { namingId });
-		await reload();
 	}
 
 	function isPhaseHighlighted(node: any): boolean {
@@ -257,7 +382,7 @@ export function createMapState(
 			const tgt = node.directed_to || node.part_target_id;
 			const isIn = (id: string | null | undefined) => {
 				if (!id) return false;
-				const n = allItems.find((x: any) => x.naming_id === id);
+				const n = nodeIndex.get(id);
 				return !!n?.phase_ids?.includes(highlightedPhase);
 			};
 			if (isIn(src) && isIn(tgt)) return true;
@@ -269,8 +394,8 @@ export function createMapState(
 	}
 
 	function connectionOpacity(rel: any, srcNode: any, tgtNode: any): number {
-		if (isDeclinedFilter && isWithdrawn(rel.properties)) return 0;
-		if (isDeclinedFilter && (isWithdrawn(srcNode?.properties) || isWithdrawn(tgtNode?.properties))) return 0;
+		if (hideWithdrawn && isWithdrawn(rel.properties)) return 0;
+		if (hideWithdrawn && (isWithdrawn(srcNode?.properties) || isWithdrawn(tgtNode?.properties))) return 0;
 		if (isWithdrawn(rel.properties)) return 0.2;
 		return 1;
 	}
@@ -288,20 +413,32 @@ export function createMapState(
 	}
 
 	function findNode(namingId: string) {
-		return allItems.find((n: any) => n.naming_id === namingId);
+		return nodeIndex.get(namingId);
 	}
 
-	function findInscription(namingId: string): string {
+	/** Anzeigename eines Bezugs — die Karte selbst ist kein Knoten auf ihr. */
+	function linkLabel(id: string): string {
+		if (id === mapMeta.id) return mapMeta.label;
+		return findInscription(id);
+	}
+
+	/** Anzeigename eines Namings auf dieser Karte. Eine Relation ohne eigene
+	 *  Inschrift heißt nach ihren Endpunkten („Quelle —valenz→ Ziel"), nicht
+	 *  „(unnamed)" (shared/namingLabel.ts). */
+	function findInscription(namingId: string, depth = 0): string {
 		if (!namingId) return '?';
 		const node = findNode(namingId);
 		if (!node) return '?';
-		if (node.inscription) return node.inscription;
-		if (node.mode === 'relation') {
-			const src = findInscription(node.directed_from || node.part_source_id);
-			const tgt = findInscription(node.directed_to || node.part_target_id);
-			return `(${src} -> ${tgt})`;
+		if (node.mode === 'relation' && depth < 4) {
+			const [s, t] = endpointsOf(node);
+			return namingLabel(node.inscription, {
+				source: s ? findInscription(s, depth + 1) : null,
+				target: t ? findInscription(t, depth + 1) : null,
+				valence: node.valence,
+				directed: !!(node.directed_from && node.directed_to)
+			});
 		}
-		return '?';
+		return namingLabel(node.inscription, null);
 	}
 
 	function estimateNodeWidth(node: any): number {
@@ -320,8 +457,29 @@ export function createMapState(
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ action, ...body })
 		});
-		if (!res.ok) return null;
+		if (!res.ok) {
+			// Sagt der Server, was nicht ging, steht das in der Statusmeldung —
+			// sonst tat ein abgelehnter Klick still nichts.
+			const err = await res.json().catch(() => null);
+			if (typeof err?.error === 'string' && err.error.trim()) showServerError(err.error.trim());
+			return null;
+		}
 		return res.json();
+	}
+
+	/** Wie mapAction, aber mit Status und Fehlerkörper (etwa 409 „schon auf dieser Karte"). */
+	async function mapRequest(action: string, body: Record<string, unknown> = {}): Promise<MapResponse> {
+		try {
+			const res = await fetch(`/api/projects/${initialData.projectId}/maps/${mapMeta.id}`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ action, ...body })
+			});
+			const data = await res.json().catch(() => null);
+			return { ok: res.ok, status: res.status, data };
+		} catch {
+			return { ok: false, status: 0, data: null };
+		}
 	}
 
 	async function reload() {
@@ -339,10 +497,45 @@ export function createMapState(
 
 	// ─── Shared actions ───
 
-	async function showStack(namingId: string) {
-		if (stackId === namingId) { stackId = null; stackData = null; return; }
+	// Der Stack eines anderen Namings ersetzt den alten sofort (leer, bis er
+	// geladen ist) — nie steht für einen Moment der Stack des vorigen unter der
+	// neuen Zeile. Spät eintreffende Antworten für ein anderes Naming verfallen.
+	let stackRequest = 0;
+
+	async function loadStack(namingId: string) {
 		stackId = namingId;
-		stackData = await mapAction('getStack', { namingId });
+		stackData = null;
+		const req = ++stackRequest;
+		const data = await mapAction('getStack', { namingId });
+		if (req !== stackRequest || stackId !== namingId) return;
+		if (data) { stackData = data; return; }
+		stackId = null;
+		showError('Could not load the stack.');
+	}
+
+	/** Den offenen Stack neu laden, ohne ihn vorher zu leeren. */
+	async function refreshStack() {
+		const id = stackId;
+		if (!id) return;
+		const req = ++stackRequest;
+		const fresh = await mapAction('getStack', { namingId: id });
+		if (fresh && req === stackRequest && stackId === id) stackData = fresh;
+	}
+
+	/** Den Stack öffnen (ohne Umschalten: ist er schon offen, bleibt er offen). */
+	async function openStack(namingId: string) {
+		if (stackId === namingId) return;
+		await loadStack(namingId);
+	}
+
+	async function showStack(namingId: string) {
+		if (stackId === namingId) {
+			stackRequest++;
+			stackId = null;
+			stackData = null;
+			return;
+		}
+		await loadStack(namingId);
 	}
 
 	function keepMemoTip() {
@@ -357,6 +550,12 @@ export function createMapState(
 		if (delay <= 0) { memoTip = null; return; }
 		memoTipTimer = setTimeout(() => { memoTip = null; memoTipTimer = null; }, delay);
 	}
+	/** Die Vorschau dieses Namings ausblenden. Verglichen wird die ID, nicht das
+	 *  Objekt: nach jedem Neuladen ist der Knoten ein neues Objekt, und der
+	 *  Vergleich per Identität ließ die Vorschau stehen. */
+	function hideMemoTipFor(namingId: string) {
+		if (memoTip?.el?.naming_id === namingId) hideMemoTip();
+	}
 
 	async function submitAct() {
 		if (!actTarget) return;
@@ -364,24 +563,46 @@ export function createMapState(
 			await mapAction('rename', { namingId: actTarget, inscription: actNewValue, memoText: actMemo.trim() || undefined, linkedNamingIds: actLinkedIds.length > 0 ? actLinkedIds : undefined });
 		} else if (actType === 'designate') {
 			await mapAction('designate', { namingId: actTarget, designation: actNewValue, memoText: actMemo.trim() || undefined, linkedNamingIds: actLinkedIds.length > 0 ? actLinkedIds : undefined });
-		} else if (actType === 'relate') {
-			const links = [actTarget, ...actLinkedIds];
-			await fetch(`/api/projects/${initialData.projectId}/memos`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					label: `Relation: ${actNewValue || '(unnamed)'}`,
-					content: actMemo.trim(),
-					linkedElementIds: links
-				})
-			});
+		} else if (actType === 'relate' && actMemo.trim()) {
+			// Memo zur gerade gesetzten Relation: ein Akt in IHREM Stack (die
+			// Relation ist ein Naming), kein eigenes Memo-Naming.
+			await mapAction('note', { namingId: actTarget, memoText: actMemo.trim(), linkedNamingIds: actLinkedIds });
+		} else if (actType === 'mode') {
+			await commitModeAct(true);
+			return;
 		}
 		cancelAct();
 		await reload();
 	}
 
+	/** Moduswechsel auf dieser Map (Entität ↔ Relation), mit oder ohne Notiz —
+	 *  ein Akt im Stack des Namings (naming_acts.mode, migrations/009). */
+	async function commitModeAct(withMemo: boolean) {
+		if (!actTarget || actType !== 'mode') return;
+		const namingId = actTarget;
+		const mode = actNewValue === 'relation' ? 'relation' : 'entity';
+		const memoText = withMemo ? actMemo.trim() : '';
+		const res = await mapRequest('switchAppearanceMode', {
+			namingId,
+			mode,
+			...(mode === 'relation' && actModeEnds ? { sourceId: actModeEnds.sourceId, targetId: actModeEnds.targetId } : {}),
+			memoText: memoText || undefined,
+			linkedNamingIds: memoText && actLinkedIds.length > 0 ? actLinkedIds : undefined
+		});
+		const label = findInscription(namingId);
+		cancelAct();
+		if (!res.ok) {
+			// z. B. „These two namings are already related by another relation."
+			showRelateError(res, 'Not changed (server error)');
+			return;
+		}
+		await reload();
+		if (res.data?.lifted) showAiNotification(`The memo lifts “${label}” from cue to characterization.`);
+	}
+
 	async function skipAct() {
 		if (!actTarget) return;
+		if (actType === 'mode') { await commitModeAct(false); return; }
 		if (actType === 'rename') {
 			await mapAction('rename', { namingId: actTarget, inscription: actNewValue });
 		} else if (actType === 'designate') {
@@ -398,6 +619,7 @@ export function createMapState(
 
 	function cancelAct() {
 		actTarget = null;
+		actModeEnds = null;
 		actMemo = '';
 		actLinkedIds = [];
 		showActLinks = false;
@@ -433,6 +655,19 @@ export function createMapState(
 		loadActMemos(namingId);
 	}
 
+	/** „Show as entity / Show as relation (this map)": fragt wie Rename und
+	 *  Designation nach einer Notiz zum Akt („skip memo" bleibt). */
+	function startModeAct(namingId: string, mode: 'entity' | 'relation', ends: { sourceId: string; targetId: string } | null = null) {
+		actTarget = namingId;
+		actType = 'mode';
+		actNewValue = mode;
+		actModeEnds = ends;
+		actMemo = '';
+		actLinkedIds = [];
+		showActLinks = false;
+		loadActMemos(namingId);
+	}
+
 	function startRelating(fromId: string) {
 		relatingFrom = fromId;
 	}
@@ -456,40 +691,60 @@ export function createMapState(
 		if (id === reifySource) return;
 		const targetNamingId = reifyTarget;
 		const src = reifySource;
-		const tgt = id;
 		reifyTarget = null;
 		reifySource = null;
-		await mapAction('switchAppearanceMode', {
-			namingId: targetNamingId,
-			mode: 'relation',
-			sourceId: src,
-			targetId: tgt
-		});
-		await reload();
+		startModeAct(targetNamingId, 'relation', { sourceId: src, targetId: id });
 	}
 
-	async function switchToEntityOnMap(namingId: string) {
-		await mapAction('switchAppearanceMode', { namingId, mode: 'entity' });
-		await reload();
+	function switchToEntityOnMap(namingId: string) {
+		startModeAct(namingId, 'entity');
+	}
+
+	// Schon verbunden (409): die Meldung bleibt stehen. Steht die bestehende
+	// Relation auf dieser Karte, wird sie gezeigt und ihr Stack geöffnet — dort
+	// wird sie umbenannt oder neu designiert. Sonst sagt die Meldung, dass sie
+	// nicht hier steht, und führt in die Naming-Liste.
+	function showRelateError(res: MapResponse, fallback: string) {
+		const msg = responseError(res, fallback);
+		const existing = res.data?.alreadyRelated && typeof res.data.id === 'string' ? (res.data.id as string) : null;
+		if (existing && findNode(existing)) {
+			showError(msg);
+			revealNaming(existing, { stack: true });
+		} else if (existing) {
+			showError(`${msg} That relation is not on this map.`, { href: namingsHref(existing), label: 'Open it in Namings' });
+		} else {
+			showError(msg);
+		}
 	}
 
 	function completeRelating(toId: string) {
 		if (!relatingFrom || relatingFrom === toId) return;
+		// Zurückgezogenes steht nicht mehr zur Verfügung — erst wiederherstellen.
+		if (isWithdrawn(findNode(toId)?.properties)) {
+			showError('Withdrawn on this map — restore it first to relate it.');
+			return;
+		}
 		relatingTo = toId;
 	}
 
-	async function submitRelation(relInscription: string, relValence: string, relDirected: boolean) {
-		if (!relatingFrom || !relatingTo) return;
-		const result = await mapAction('relate', {
+	/** true, wenn die Relation steht. Geht es nicht, bleibt das Formular mit
+	 *  den Eingaben offen (Valenz, Name), und die Meldung bleibt stehen. */
+	async function submitRelation(relInscription: string, relValence: string, relDirected: boolean): Promise<boolean> {
+		if (!relatingFrom || !relatingTo) return false;
+		const res = await mapRequest('relate', {
 			sourceId: relatingFrom,
 			targetId: relatingTo,
 			inscription: relInscription.trim() || undefined,
 			valence: relValence.trim() || undefined,
 			symmetric: !relDirected
 		});
-		const relationId = result?.id;
+		if (!res.ok) {
+			showRelateError(res, 'Relation not created (server error)');
+			return false;
+		}
 		relatingFrom = null;
 		relatingTo = null;
+		const relationId = res.data?.id;
 		await reload();
 		if (relationId) {
 			actTarget = relationId;
@@ -500,6 +755,7 @@ export function createMapState(
 			showActLinks = false;
 			loadActMemos(relationId);
 		}
+		return true;
 	}
 
 	function cancelRelation() {
@@ -508,15 +764,107 @@ export function createMapState(
 	}
 
 	async function toggleWithdraw(namingId: string, currentlyWithdrawn: boolean) {
-		await mapAction('withdraw', { namingId, withdrawn: !currentlyWithdrawn });
+		// Sofort zeigen, was der Klick bewirkt; das Neuladen bestätigt oder
+		// korrigiert es. Geschrieben wird wie zuvor nur über `withdraw`.
+		const node = findNode(namingId);
+		const before = node?.properties;
+		if (node) node.properties = { ...(node.properties ?? {}), withdrawn: !currentlyWithdrawn };
+		const res = await mapAction('withdraw', { namingId, withdrawn: !currentlyWithdrawn });
+		if (!res && node) node.properties = before;
 		await reload();
 	}
 
-	// AI
+	// ─── Meldungen ───
+	// Hinweise verschwinden nach einigen Sekunden. Fehlermeldungen bleiben
+	// stehen, bis man sie schließt (×) — eine Meldung, die verschwindet, bevor
+	// man sie gelesen hat, sagt nichts. Hat der Server eben gesagt, was nicht
+	// ging, und meldet der Aufrufer gleich danach sein allgemeines „… not
+	// saved", wird daraus EINE Meldung: „Status not saved — <Grund>".
+	let noticeSeq = 0;
+	const noticeTimers = new Map<number, ReturnType<typeof setTimeout>>();
+	let lastServerError: { id: number; text: string; at: number } | null = null;
+
+	function clearNoticeTimer(id: number) {
+		const t = noticeTimers.get(id);
+		if (t) clearTimeout(t);
+		noticeTimers.delete(id);
+	}
+
+	function dismissNotice(id: number) {
+		clearNoticeTimer(id);
+		notices = notices.filter((n) => n.id !== id);
+	}
+
+	function pushNotice(text: string, kind: Notice['kind'], link?: Notice['link'], duration = 4000): number {
+		const same = notices.find((n) => n.text === text && n.kind === kind);
+		if (same) {
+			if (kind === 'info') {
+				clearNoticeTimer(same.id);
+				noticeTimers.set(same.id, setTimeout(() => dismissNotice(same.id), duration));
+			}
+			return same.id;
+		}
+		const n: Notice = { id: ++noticeSeq, text, kind, ...(link ? { link } : {}) };
+		// Zugleich höchstens drei Fehlermeldungen und ein Hinweis.
+		const all = [...notices, n];
+		const keep = new Set([
+			...all.filter((x) => x.kind === 'error').slice(-3).map((x) => x.id),
+			...all.filter((x) => x.kind === 'info').slice(-1).map((x) => x.id)
+		]);
+		for (const x of notices) if (!keep.has(x.id)) clearNoticeTimer(x.id);
+		notices = all.filter((x) => keep.has(x.id));
+		if (kind === 'info') noticeTimers.set(n.id, setTimeout(() => dismissNotice(n.id), duration));
+		return n.id;
+	}
+
+	// Folgt auf eine Serverantwort mit Grund gleich die allgemeine Meldung des
+	// Aufrufers, wird daraus eine: „<allgemein> — <Grund>".
+	function mergeWithServerError(text: string): boolean {
+		const recent = lastServerError && Date.now() - lastServerError.at < 400 ? lastServerError : null;
+		lastServerError = null;
+		if (!recent || !notices.some((n) => n.id === recent.id)) return false;
+		if (text !== recent.text) {
+			const merged = `${text.replace(/[.\s]+$/, '')} — ${recent.text}`;
+			notices = notices.map((n) => (n.id === recent.id ? { ...n, text: merged } : n));
+		}
+		return true;
+	}
+
+	function showServerError(text: string, link?: Notice['link']) {
+		const id = pushNotice(text, 'error', link);
+		lastServerError = { id, text, at: Date.now() };
+	}
+
+	/** Etwas ging nicht: die Meldung bleibt stehen, bis man sie schließt. */
+	function showError(text: string, link?: Notice['link']) {
+		if (mergeWithServerError(text)) return;
+		pushNotice(text, 'error', link);
+	}
+
+	/** Ein Hinweis, der nach einigen Sekunden verschwindet (kein Fehler). */
 	function showAiNotification(text: string) {
-		aiNotification = text;
-		clearTimeout(aiNotificationTimeout);
-		aiNotificationTimeout = setTimeout(() => { aiNotification = null; }, 4000);
+		pushNotice(text, 'info');
+	}
+
+	/** Weg zu einem Naming in der Naming-Liste, mit Rückweg auf diese Karte. */
+	function namingsHref(id: string): string {
+		const pid = initialData.projectId;
+		return viewHref(`/projects/${pid}/namings`, { focus: id, from: `/projects/${pid}/maps/${mapMeta.id}` });
+	}
+
+	// Ein Naming dieser Karte in den Blick holen. Die Seite meldet, wie (sie
+	// kennt Ausschnitt und Positionen); ohne sie wird es nur hervorgehoben.
+	let revealHandler: ((id: string, opts?: RevealOptions) => void) | null = null;
+	function revealNaming(id: string, opts: RevealOptions = {}) {
+		if (revealHandler) { revealHandler(id, opts); return; }
+		flash(id);
+		if (opts.stack) void openStack(id);
+	}
+
+	/** Fehlertext einer Map-Antwort, sonst der allgemeine. */
+	function responseError(res: MapResponse, fallback: string): string {
+		const e = res.data?.error;
+		return typeof e === 'string' && e.trim() ? e.trim() : fallback;
 	}
 
 	async function toggleAi() {
@@ -525,92 +873,172 @@ export function createMapState(
 		aiEnabled = next;
 	}
 
-	async function requestAnalysis() {
-		await mapAction('requestAnalysis');
-		showAiNotification('AI analysis requested');
-	}
-
 	// Discussion
 	async function submitDiscussion() {
 		if (!stackId || !discussInput.trim() || discussLoading) return;
 		discussLoading = true;
 		try {
 			const result = await mapAction('discussCue', { namingId: stackId, message: discussInput.trim() });
-			if (!result) { showAiNotification('Discussion failed (server error)'); return; }
+			if (!result) { showError('Discussion failed (server error)'); return; }
 			discussInput = '';
-			const freshStack = await mapAction('getStack', { namingId: stackId });
-			if (freshStack) stackData = freshStack;
+			await refreshStack();
 			await reload();
 		} catch {
-			showAiNotification('Discussion failed');
+			showError('Discussion failed');
 		} finally {
 			discussLoading = false;
 		}
 	}
 
-	async function submitMemoDiscussion(memoId: string) {
-		if (!memoDiscussInput.trim() || memoDiscussLoading) return;
+	/** Antwort der KI auf die Nachricht der Forscherin (oder null). */
+	async function submitMemoDiscussion(memoId: string): Promise<{ response?: string } | null> {
+		if (!memoDiscussInput.trim() || memoDiscussLoading) return null;
 		memoDiscussLoading = true;
+		const message = memoDiscussInput.trim();
 		try {
-			const result = await mapAction('discussMemo', { memoId, message: memoDiscussInput.trim() });
-			if (!result) { showAiNotification('Memo discussion failed'); return; }
+			const result = await mapAction('discussMemo', { memoId, message });
+			if (!result) { showError('Memo discussion failed'); return null; }
 			memoDiscussInput = '';
-			if (stackId) {
-				const freshStack = await mapAction('getStack', { namingId: stackId });
-				if (freshStack) stackData = freshStack;
+			if (memoPanel?.id === memoId) {
+				memoPanelThread = [
+					...memoPanelThread,
+					{ role: 'researcher', content: message },
+					...(result.response ? [{ role: 'ai' as const, content: String(result.response) }] : [])
+				];
 			}
+			await refreshStack();
+			return result;
 		} catch {
-			showAiNotification('Memo discussion failed');
+			showError('Memo discussion failed');
+			return null;
 		} finally {
 			memoDiscussLoading = false;
 		}
 	}
 
-	async function updateMemoStatus(memoId: string, status: string) {
-		await mapAction('updateMemoStatus', { memoId, status });
+	async function updateMemoStatus(memoId: string, status: string): Promise<boolean> {
+		const res = await mapAction('updateMemoStatus', { memoId, status });
+		if (!res) { showError('Status not saved'); return false; }
 		// Refresh stack to show updated status
-		if (stackId) {
-			const freshStack = await mapAction('getStack', { namingId: stackId });
-			if (freshStack) stackData = freshStack;
-		}
+		await refreshStack();
+		// Beurteilt (auch aus dem Stack): fällt aus „From Cowork, not yet judged".
+		void loadPresentedMemos();
+		return true;
 	}
 
-	async function promoteMemo(memoId: string) {
+	async function promoteMemo(memoId: string): Promise<boolean> {
 		const result = await mapAction('promoteMemo', { memoId });
-		if (!result) { showAiNotification('Promote failed'); return; }
+		if (!result) { showError('Promote failed'); return false; }
 		// Refresh stack and reload map (new naming on map)
-		if (stackId) {
-			const freshStack = await mapAction('getStack', { namingId: stackId });
-			if (freshStack) stackData = freshStack;
-		}
+		await refreshStack();
 		await reload();
+		void loadPresentedMemos();
+		return true;
+	}
+
+	// ─── Cowork-Karte: Urteil oder Schließen ohne Urteil ───
+	// Schließen (×, Escape, Klick daneben) lässt das Memo, wie es ist
+	// („presented"). Ein Urteil setzt den Status wirklich — dieselben Aktionen
+	// wie im Stack-Panel (ack, dismiss, promote; link und discuss ohne Urteil).
+	async function judgeMemoPanel(verdict: MemoVerdict) {
+		const p = memoPanel;
+		if (!p?.id || memoPanelBusy) return;
+		memoPanelBusy = true;
+		try {
+			const ok = verdict === 'promoted' ? await promoteMemo(p.id) : await updateMemoStatus(p.id, verdict);
+			if (!ok) return;
+			const word = verdict === 'acknowledged' ? 'acknowledged' : verdict === 'dismissed' ? 'dismissed' : 'promoted to a naming';
+			showAiNotification(`Memo ${word}.`);
+			if (memoPanel?.id === p.id) closeMemoPanel();
+			if (verdict !== 'promoted') await reload();
+		} finally {
+			memoPanelBusy = false;
+		}
 	}
 
 	async function createClarkeQuestionMemo(question: string, content: string) {
 		if (!stackId || !content.trim()) return;
-		// Create a memo linked to the element whose stack is open
-		await fetch(`/api/projects/${initialData.projectId}/memos`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				label: question.length > 80 ? question.slice(0, 77) + '...' : question,
-				content: content.trim(),
-				linkedElementIds: [stackId]
-			})
-		});
-		// Refresh stack to show new memo
-		const freshStack = await mapAction('getStack', { namingId: stackId });
-		if (freshStack) stackData = freshStack;
+		// Die Antwort auf eine Frage zu DIESEM Naming ist ein Memo zu ihm — ein
+		// Akt in seinem Stack, kein eigenes Memo-Naming (siehe noteOnNaming).
+		const res = await mapAction('note', { namingId: stackId, memoText: `${question}\n\n${content.trim()}` });
+		if (!res) { showError('Memo not saved'); return; }
 		clarkeFormOpen = false;
 		clarkeFormQuestion = '';
 		clarkeFormContent = '';
+		await afterNote();
 	}
 
-	function dismissMemoPanel() {
+	// Memo ZU einem Naming: das Stack-Panel öffnet sich mit offenem Memo-Feld.
+	// Der Akt geht in den Stack dieses Namings (Aktion `note`).
+	let noteOpenFor = $state<string | null>(null);
+
+	async function openNamingMemo(namingId: string) {
+		noteOpenFor = namingId;
+		if (stackId !== namingId) await loadStack(namingId);
+	}
+
+	/** Nach einem Memo-Akt: Stack neu laden, Karte neu laden (die Designation
+	 *  kann von cue auf characterization gestiegen sein). */
+	async function afterNote() {
+		noteOpenFor = null;
+		await refreshStack();
+		await reload();
+	}
+
+	/** Die Karte schließen, ohne zu urteilen — das Memo bleibt „presented". */
+	function closeMemoPanel() {
+		const id = memoPanel?.id;
 		memoPanel = null;
+		memoPanelThread = [];
+		if (id && memoDiscussTarget === id) memoDiscussTarget = null;
+		if (id && memoLinkTarget === id) cancelMemoLink();
+	}
+
+	/** KI-Memo in der Karte zeigen — neu (SSE ai:memo) oder wieder geöffnet
+	 *  aus MAP MEMOS, dann mit dem bisherigen Gespräch. */
+	function presentMemo(p: MemoPanelData, thread: { role: 'researcher' | 'ai'; content: string }[] = []) {
+		const title = p.title.replace(AI_MEMO_TITLE_PREFIX, '') || p.title;
+		memoPanel = { id: p.id, title, content: p.content, linkedIds: p.linkedIds, authorId: p.authorId };
+		memoPanelThread = thread;
+		if (p.id && !presentedMemos.some((m) => m.id === p.id)) {
+			presentedMemos = [{ ...memoPanel, thread }, ...presentedMemos];
+		}
+	}
+
+	/** Vorgelegte, noch nicht beurteilte Cowork-Memos dieser Map: mit der Map
+	 *  selbst oder mit einem Naming auf ihr verknüpft. */
+	async function loadPresentedMemos() {
+		const forMap = mapMeta.id;
+		try {
+			const res = await fetch(`/api/projects/${initialData.projectId}/memos`);
+			if (!res.ok || forMap !== mapMeta.id) return;
+			const all: any[] = await res.json();
+			const onMap = new Set<string>([forMap, ...elements.map((e: any) => e.naming_id), ...relations.map((r: any) => r.naming_id), ...silences.map((x: any) => x.naming_id)]);
+			presentedMemos = all
+				.filter((m) => m.isAiAuthored && m.status === 'presented' && (m.links ?? []).some((l: any) => onMap.has(l.id)))
+				.map((m) => ({
+					id: m.id as string,
+					title: String(m.label ?? '').replace(AI_MEMO_TITLE_PREFIX, '') || String(m.label ?? ''),
+					content: String(m.content ?? ''),
+					linkedIds: (m.links ?? []).map((l: any) => l.id as string),
+					authorId: String(m.created_by ?? ''),
+					thread: (m.discussion ?? [])
+						.filter((d: any) => typeof d.content === 'string' && d.content.trim())
+						.map((d: any) => ({ role: d.role === 'ai' ? ('ai' as const) : ('researcher' as const), content: d.content as string }))
+				}));
+		} catch {
+			// Ohne Netz bleibt die Liste, wie sie war.
+		}
 	}
 
 	function openMemoCreate(linkedIds: string[] = []) {
+		// Ein Memo zu genau EINEM Naming ist kein eigenes Naming, sondern ein Akt
+		// in dessen Stack. Das Memo-Formular hier bleibt den analytischen Memos:
+		// frei, zur Karte, zu einer Konstellation mehrerer Namings.
+		if (linkedIds.length === 1 && linkedIds[0] !== mapMeta.id && findNode(linkedIds[0])) {
+			void openNamingMemo(linkedIds[0]);
+			return;
+		}
 		memoCreateLinkedIds = linkedIds;
 		memoCreateTitle = '';
 		memoCreateContent = '';
@@ -618,21 +1046,30 @@ export function createMapState(
 	}
 
 	async function createMapMemo() {
-		if (!memoCreateTitle.trim()) return;
-		await fetch(`/api/projects/${initialData.projectId}/memos`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				label: memoCreateTitle.trim(),
-				content: memoCreateContent.trim(),
-				linkedElementIds: memoCreateLinkedIds
-			})
-		});
-		memoCreateOpen = false;
-		memoCreateTitle = '';
-		memoCreateContent = '';
-		memoCreateLinkedIds = [];
-		await reload();
+		if (!memoCreateTitle.trim() || memoCreateSaving) return;
+		memoCreateSaving = true;
+		try {
+			const res = await fetch(`/api/projects/${initialData.projectId}/memos`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					label: memoCreateTitle.trim(),
+					content: memoCreateContent.trim(),
+					linkedElementIds: memoCreateLinkedIds
+				})
+			});
+			if (!res.ok) { showError('Memo not saved'); return; }
+			const linked = memoCreateLinkedIds;
+			memoCreateOpen = false;
+			memoCreateTitle = '';
+			memoCreateContent = '';
+			memoCreateLinkedIds = [];
+			await reload();
+			// Das offene Stack-Panel zeigt das neue Memo sofort.
+			if (stackId && linked.includes(stackId)) await refreshStack();
+		} finally {
+			memoCreateSaving = false;
+		}
 	}
 
 	function cancelMemoCreate() {
@@ -663,7 +1100,7 @@ export function createMapState(
 	}
 
 	async function linkMemoToMemo(sourceMemoId: string, targetMemoId: string) {
-		await fetch(`/api/projects/${initialData.projectId}/memos`, {
+		const res = await fetch(`/api/projects/${initialData.projectId}/memos`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({
@@ -671,14 +1108,13 @@ export function createMapState(
 				content: '',
 				linkedElementIds: [sourceMemoId, targetMemoId]
 			})
-		});
+		}).catch(() => null);
 		memoLinkTarget = null;
 		memoLinkSearch = '';
 		memoLinkResults = [];
-		if (stackId) {
-			const freshStack = await mapAction('getStack', { namingId: stackId });
-			if (freshStack) stackData = freshStack;
-		}
+		if (res?.ok) showAiNotification('Memos linked.');
+		else showError('Link not saved');
+		await refreshStack();
 	}
 
 	function cancelMemoLink() {
@@ -715,42 +1151,26 @@ export function createMapState(
 		await reload();
 	}
 
+	// Zugehörigkeit sofort am Knoten zeigen (Punkt, Zähler, Liste); das
+	// Neuladen bestätigt sie. Geschrieben wird wie zuvor über die Map-Aktion.
 	async function assignToPhaseFn(phaseId: string, namingId: string) {
+		const node = findNode(namingId);
+		if (node && !node.phase_ids?.includes(phaseId)) node.phase_ids = [...(node.phase_ids ?? []), phaseId];
 		await mapAction('assignToPhase', { phaseId, namingId });
 		await reload();
-		if (expandedPhase === phaseId) {
-			const res = await fetch(`/api/projects/${initialData.projectId}/maps/${phaseId}`);
-			if (res.ok) {
-				const fresh = await res.json();
-				phaseContents = [...(fresh.elements || []), ...(fresh.relations || []), ...(fresh.silences || [])];
-			}
-		}
 	}
 
 	async function removeFromPhaseFn(phaseId: string, namingId: string) {
+		const node = findNode(namingId);
+		if (node?.phase_ids?.includes(phaseId)) node.phase_ids = node.phase_ids.filter((id: string) => id !== phaseId);
 		await mapAction('removeFromPhase', { phaseId, namingId });
 		await reload();
-		if (expandedPhase === phaseId) {
-			const res = await fetch(`/api/projects/${initialData.projectId}/maps/${phaseId}`);
-			if (res.ok) {
-				const fresh = await res.json();
-				phaseContents = [...(fresh.elements || []), ...(fresh.relations || []), ...(fresh.silences || [])];
-			}
-		}
 	}
 
-	async function togglePhase(phaseId: string) {
-		if (expandedPhase === phaseId) {
-			expandedPhase = null;
-			phaseContents = [];
-		} else {
-			expandedPhase = phaseId;
-			const res = await fetch(`/api/projects/${initialData.projectId}/maps/${phaseId}`);
-			if (res.ok) {
-				const fresh = await res.json();
-				phaseContents = [...(fresh.elements || []), ...(fresh.relations || []), ...(fresh.silences || [])];
-			}
-		}
+	// Eine Phase ist keine Karte: ihr Inhalt auf dieser Karte steht in den
+	// Kartendaten (phase_ids). Früher wurde /maps/<phaseId> abgefragt — 404.
+	function togglePhase(phaseId: string) {
+		expandedPhase = expandedPhase === phaseId ? null : phaseId;
 	}
 
 	// Perspectival collapse
@@ -766,6 +1186,12 @@ export function createMapState(
 
 	// ─── Sync data from page props ───
 	function syncData(data: any) {
+		// untrack: syncData läuft in einem Effekt und schreibt mapMeta selbst.
+		if (data.map.id !== untrack(() => mapMeta.id)) {
+			memoPanel = null;
+			memoPanelThread = [];
+			presentedMemos = [];
+		}
 		axes = data.axes || [];
 		elements = data.elements;
 		relations = data.relations;
@@ -789,9 +1215,12 @@ export function createMapState(
 		get allItems() { return allItems; },
 		get phaseColorMap() { return phaseColorMap; },
 		get isPrimary() { return isPrimary; },
-		get declinedCount() { return declinedCount; },
-		get isDeclinedFilter() { return isDeclinedFilter; },
-		DECLINED_PHASE,
+		get withdrawnCount() { return withdrawnCount; },
+		/** Zurückgezogene, aus der Lage abgeleitete Relationen (nicht gezeichnet). */
+		get withdrawnDerivedCount() { return withdrawnDerivedCount; },
+		get hideWithdrawn() { return hideWithdrawn; },
+		set hideWithdrawn(v: boolean) { hideWithdrawn = v; },
+		get designationCounts() { return designationCounts; },
 
 		// Ausgeblendet (Kern) / verworfen (ai-eval)
 		get hiddenCount() { return hiddenCount; },
@@ -811,14 +1240,20 @@ export function createMapState(
 		isPlaced,
 		unresolvedCount,
 		filterItem,
-		declineNaming,
+		endpointsOf,
+		requestReveal,
+		takeReveal,
 
 		// Interaction state (getters/setters)
 		get stackId() { return stackId; },
-		set stackId(v) { stackId = v; },
+		set stackId(v) { stackRequest++; stackId = v; },
 		get stackData() { return stackData; },
 		set stackData(v) { stackData = v; },
+		/** Ein Stack ist angefordert, aber noch nicht da. */
+		get stackLoading() { return stackId !== null && stackData === null; },
 		get memoTip() { return memoTip; },
+		get flashId() { return flashId; },
+		flash,
 		get editingId() { return editingId; },
 		set editingId(v) { editingId = v; },
 		get editingValue() { return editingValue; },
@@ -842,15 +1277,20 @@ export function createMapState(
 		get showActLinks() { return showActLinks; },
 		set showActLinks(v) { showActLinks = v; },
 		get actExistingMemos() { return actExistingMemos; },
+		/** Beim Moduswechsel zur Relation: die gewählten Enden. */
+		get actModeEnds() { return actModeEnds; },
 		get assigningToPhase() { return assigningToPhase; },
 		set assigningToPhase(v) { assigningToPhase = v; },
 		get highlightedPhase() { return highlightedPhase; },
 		set highlightedPhase(v) { highlightedPhase = v; },
 		get aiEnabled() { return aiEnabled; },
-		get aiNotification() { return aiNotification; },
-		set aiNotification(v) { aiNotification = v; },
+		/** Meldungen über der Karte: Hinweise verschwinden nach 4 s, Fehler
+		 *  bleiben, bis sie geschlossen werden. */
+		get notices() { return notices; },
+		dismissNotice,
 		get memoPanel() { return memoPanel; },
-		set memoPanel(v) { memoPanel = v; },
+		get memoPanelBusy() { return memoPanelBusy; },
+		get memoPanelThread() { return memoPanelThread; },
 		get outsideId() { return outsideId; },
 		set outsideId(v) { outsideId = v; },
 		get outsideData() { return outsideData; },
@@ -882,6 +1322,7 @@ export function createMapState(
 		set memoCreateContent(v) { memoCreateContent = v; },
 		get memoCreateLinkedIds() { return memoCreateLinkedIds; },
 		set memoCreateLinkedIds(v) { memoCreateLinkedIds = v; },
+		get memoCreateSaving() { return memoCreateSaving; },
 
 		// Memo-to-memo linking
 		get memoLinkTarget() { return memoLinkTarget; },
@@ -898,6 +1339,8 @@ export function createMapState(
 		set newPhaseLabel(v) { newPhaseLabel = v; },
 		get expandedPhase() { return expandedPhase; },
 		get phaseContents() { return phaseContents; },
+		/** Mitglieder einer Phase, die auf dieser Karte stehen. */
+		phaseCountOnMap(phaseId: string) { return phaseCountsOnMap.get(phaseId) ?? 0; },
 
 		// Helpers
 		isWithdrawn,
@@ -908,18 +1351,25 @@ export function createMapState(
 		designationLabel,
 		findNode,
 		findInscription,
+		linkLabel,
 		estimateNodeWidth,
 
 		// API
 		mapAction,
+		mapRequest,
+		revealNaming,
+		set revealHandler(fn: ((id: string, opts?: RevealOptions) => void) | null) { revealHandler = fn; },
 		reload,
 		syncData,
 
 		// Actions
 		showStack,
+		openStack,
+		refreshStack,
 		showMemoTip,
 		keepMemoTip,
 		hideMemoTip,
+		hideMemoTipFor,
 		submitAct,
 		skipAct,
 		loadActMemos,
@@ -937,15 +1387,24 @@ export function createMapState(
 		cancelRelation,
 		toggleWithdraw,
 		showAiNotification,
+		showError,
 		toggleAi,
-		requestAnalysis,
 		submitDiscussion,
 		submitMemoDiscussion,
 		updateMemoStatus,
 		promoteMemo,
 		createClarkeQuestionMemo,
-		dismissMemoPanel,
+		closeMemoPanel,
+		presentMemo,
+		judgeMemoPanel,
+		/** Vorgelegte Cowork-Memos dieser Map — aus MAP MEMOS wieder als Karte öffnen. */
+		get presentedMemos() { return presentedMemos; },
+		loadPresentedMemos,
 		openMemoCreate,
+		openNamingMemo,
+		afterNote,
+		get noteOpenFor() { return noteOpenFor; },
+		set noteOpenFor(v) { noteOpenFor = v; },
 		createMapMemo,
 		cancelMemoCreate,
 		searchMemosForLink,

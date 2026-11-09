@@ -60,13 +60,13 @@ async function getNamingsForSource(type: string, sourceId: string, projectId: st
 			return getDocNetGroundedNamings(sourceId, projectId);
 		case 'document':
 			return (await query(
-				`SELECT DISTINCT code.id, code.inscription as label
+				`SELECT DISTINCT nm.id, nm.inscription as label
 				 FROM appearances ann
 				 JOIN namings ann_n ON ann_n.id = ann.naming_id AND ann_n.deleted_at IS NULL
-				 JOIN namings code ON code.id = ann.directed_from AND code.deleted_at IS NULL
+				 JOIN namings nm ON nm.id = ann.directed_from AND nm.deleted_at IS NULL
 				 WHERE ann.directed_to = $1 AND ann.valence = 'codes'
 				   AND ann_n.project_id = $2
-				 ORDER BY code.inscription`,
+				 ORDER BY nm.inscription`,
 				[sourceId, projectId]
 			)).rows;
 		case 'map':

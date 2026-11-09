@@ -7,12 +7,14 @@ export const COLLAPSE_MODES = ['entity', 'relation', 'constellation', 'process',
 
 export const SW_ROLES = ['social-world', 'arena', 'discourse', 'organization'] as const;
 
-// Visual styles per formation role on SW/A maps
+// Visual styles per formation role on SW/A maps. BJ, Session 14: „Arenas are
+// gestrichelt, SW are dotted, ORGANIZATIONS are gestrichelt rectangulars,
+// discourses have solid lines, but transparent 50% (or grey)."
 export const SW_ROLE_STYLES = {
-	'social-world': { shape: 'ellipse' as const, dashArray: '3 3', fillOpacity: 0 },
-	'arena':        { shape: 'ellipse' as const, dashArray: '8 4', fillOpacity: 0 },
-	'organization': { shape: 'rect'    as const, dashArray: '8 4', fillOpacity: 0 },
-	'discourse':    { shape: 'ellipse' as const, dashArray: '',    fillOpacity: 0.15 },
+	'social-world': { shape: 'ellipse' as const, dashArray: '2 4', fillOpacity: 0, strokeOpacity: 1 },
+	'arena':        { shape: 'ellipse' as const, dashArray: '8 4', fillOpacity: 0, strokeOpacity: 1 },
+	'organization': { shape: 'rect'    as const, dashArray: '8 4', fillOpacity: 0, strokeOpacity: 1 },
+	'discourse':    { shape: 'ellipse' as const, dashArray: '',    fillOpacity: 0, strokeOpacity: 0.5 },
 } as const;
 
 // Default ellipse/rect radii per formation role

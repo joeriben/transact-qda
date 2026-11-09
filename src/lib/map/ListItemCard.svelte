@@ -5,10 +5,51 @@
 <script lang="ts">
 	import { getMapState } from './mapState.svelte.js';
 	import { viewHref } from '$lib/shared/rueckweg.js';
+	import InlineRename from '$lib/canvas/InlineRename.svelte';
+	import { hasOwnInscription } from '$lib/shared/namingLabel.js';
+	import { plural } from '$lib/shared/plural.js';
+	import { POS_AXIS_LEN } from './canvasPositions.svelte.js';
 
-	let { item, listGroupBy }: { item: any; listGroupBy: string } = $props();
+	let {
+		item,
+		listGroupBy,
+		pos = null
+	}: {
+		item: any;
+		listGroupBy: string;
+		/** Aktuelle Lage auf dem Canvas (nach dem Verschieben sofort, nicht erst nach dem Neuladen). */
+		pos?: { x: number; y: number } | null;
+	} = $props();
 
 	const ms = getMapState();
+
+	// Zurückgezogen: ansehen und wiederherstellen — Umbenennen, Designieren,
+	// Verbinden erst wieder nach dem Wiederherstellen (wie im Kontextmenü).
+	const withdrawn = $derived(ms.isWithdrawn(item.properties));
+	function startRename() {
+		if (withdrawn) return;
+		ms.editingId = item.naming_id;
+		ms.editingValue = item.inscription || '';
+	}
+	// Positionskarte: die Lage als Anteil der beiden Achsen (0 % am Ursprung
+	// „– – –", 100 % am Achsenende „+ + +"), nicht als Pixel des Diagramms.
+	const coord = $derived.by(() => {
+		const x = pos?.x ?? item.properties?.x;
+		const y = pos?.y ?? item.properties?.y;
+		if (typeof x !== 'number' || typeof y !== 'number') return null;
+		return { x: Math.round((x / POS_AXIS_LEN) * 100), y: Math.round((-y / POS_AXIS_LEN) * 100) };
+	});
+	const axisNames = $derived.by(() => {
+		const ax = ms.axes.find((a: any) => a.properties?.axisDimension === 'x');
+		const ay = ms.axes.find((a: any) => a.properties?.axisDimension === 'y');
+		return { x: ax ? ms.findInscription(ax.naming_id) : 'X axis', y: ay ? ms.findInscription(ay.naming_id) : 'Y axis' };
+	});
+	const coordTitle = $derived(
+		coord
+			? `Position along the axes (0 % at the origin “– – –”, 100 % at the axis end “+ + +”): ${axisNames.x} ${coord.x} %, ${axisNames.y} ${coord.y} %` +
+				(coord.x < 0 || coord.x > 100 || coord.y < 0 || coord.y > 100 ? ' — outside the diagram' : '')
+			: ''
+	);
 
 	// Rückweg-Adresse dieser Karte — Ziel jedes Sprungs, der von hier ausgeht.
 	const mapPath = $derived(`/projects/${ms.projectId}/maps/${ms.mapId}`);
@@ -32,7 +73,7 @@
 {#if item.mode === 'relation'}
 	{@const srcId = item.directed_from || item.part_source_id}
 	{@const tgtId = item.directed_to || item.part_target_id}
-	<div class="element-card relation-card" class:ai-suggested={item.properties?.aiSuggested === true} class:ai-withdrawn={ms.isWithdrawn(item.properties)} class:ai-rejected={ms.isRejected(item)} class:ai-hidden={ms.isHidden(item)} title={cardTitle}>
+	<div class="element-card relation-card" class:relating-source={ms.relatingFrom === item.naming_id} class:ai-suggested={item.properties?.aiSuggested === true} class:ai-withdrawn={ms.isWithdrawn(item.properties)} class:ai-rejected={ms.isRejected(item)} class:ai-hidden={ms.isHidden(item)} title={cardTitle}>
 		<div class="el-main">
 			{#if item.is_collapsed}<img class="collapsed-indicator" src="/icons/keep.svg" alt="pinned" title="Pinned to specific layer" />{/if}
 			<span class="designation-dot" style="background: {ms.designationColor(item.designation)}"></span>
@@ -44,13 +85,13 @@
 				<img class="provenance-indicator" src="/icons/question_mark.svg" alt="ungrounded" title="No grounding yet" />
 			{/if}
 			{#if item.memo_previews?.length > 0}
-				<span class="memo-count" title="{item.memo_previews.length} memo(s)">{item.memo_previews.length}</span>
+				<span class="memo-count" title={plural(item.memo_previews.length, 'memo')}>{item.memo_previews.length}</span>
 			{/if}
 			{#if listGroupBy !== 'mode'}<span class="mode-indicator" title="relation">↔</span>{/if}
 			{#if item.outside_participation_count > 0}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<span class="outside-badge" title="{item.outside_participation_count} relation(s) outside this map" onclick={() => ms.showOutsideParticipations(item.naming_id)}>
+				<span class="outside-badge" title="{plural(item.outside_participation_count, 'relation')} outside this map" onclick={() => ms.showOutsideParticipations(item.naming_id)}>
 					+{item.outside_participation_count}
 				</span>
 			{/if}
@@ -64,21 +105,17 @@
 			</span>
 			<span class="rel-target">{ms.findInscription(tgtId)}</span>
 			{#if ms.editingId === item.naming_id}
-				<form class="inline-rename" onsubmit={e => { e.preventDefault(); ms.confirmRename(); }}>
-					<input type="text" bind:value={ms.editingValue} />
-					<button type="submit" class="btn-xs">ok</button>
-					<button type="button" class="btn-xs" onclick={() => ms.editingId = null}>×</button>
-				</form>
-			{:else if item.inscription}
+				<InlineRename bind:value={ms.editingValue} onsubmit={ms.confirmRename} oncancel={() => ms.editingId = null} />
+			{:else if hasOwnInscription(item.inscription)}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<span class="rel-inscription editable" onclick={() => ms.showStack(item.naming_id)} ondblclick={() => { ms.editingId = item.naming_id; ms.editingValue = item.inscription || ''; }}>
+				<span class="rel-inscription editable" onclick={() => ms.showStack(item.naming_id)} ondblclick={startRename}>
 					{item.inscription}
 				</span>
 			{:else}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<span class="rel-inscription editable unnamed" onclick={() => ms.showStack(item.naming_id)} ondblclick={() => { ms.editingId = item.naming_id; ms.editingValue = item.inscription || ''; }}>
+				<span class="rel-inscription editable unnamed" onclick={() => ms.showStack(item.naming_id)} ondblclick={startRename}>
 					(name...)
 				</span>
 			{/if}
@@ -87,30 +124,34 @@
 			{/if}
 		</div>
 		<div class="el-actions">
-			<select value={item.designation || 'cue'} onchange={e => ms.startDesignation(item.naming_id, (e.target as HTMLSelectElement).value)}>
+			{#if !withdrawn}
+			<select value={item.designation || 'cue'} aria-label="Designation" onchange={e => ms.startDesignation(item.naming_id, (e.target as HTMLSelectElement).value)}>
 				<option value="cue">cue</option>
 				<option value="characterization">characterization</option>
 				<option value="specification">specification</option>
 			</select>
+			{/if}
 			<button class="btn-xs" title="naming stack" onclick={() => ms.showStack(item.naming_id)}>stack</button>
 			<a class="btn-xs btn-list"
 				href={viewHref(`/projects/${ms.projectId}/namings`, { focus: item.naming_id, from: mapPath })}
-				title="In der Naming-Liste öffnen — dort ist alles bearbeitbar; der Rückweg führt hierher zurück">list</a>
-			<button class="btn-xs btn-withdraw" onclick={() => ms.toggleWithdraw(item.naming_id, ms.isWithdrawn(item.properties))}>
-				{ms.isWithdrawn(item.properties) ? 'restore' : 'withdraw'}
+				title="Open in the naming list — everything is editable there; the way back leads here">list</a>
+			<button class="btn-xs btn-withdraw" onclick={() => ms.toggleWithdraw(item.naming_id, withdrawn)}>
+				{withdrawn ? 'restore' : 'withdraw'}
 			</button>
-			{#if ms.relatingFrom && !ms.relatingTo && ms.relatingFrom !== item.naming_id}
+			{#if withdrawn}
+				<!-- nichts weiter, bis es wiederhergestellt ist -->
+			{:else if ms.relatingFrom && !ms.relatingTo && ms.relatingFrom !== item.naming_id}
 				<button class="btn-sm btn-relate" onclick={() => { ms.completeRelating(item.naming_id); }}>connect</button>
 			{:else if !ms.relatingFrom}
 				<button class="btn-sm" onclick={() => { ms.relatingFrom = item.naming_id; ms.relatingTo = null; }}>relate</button>
 			{/if}
-			{#if ms.assigningToPhase}
+			{#if ms.assigningToPhase && !withdrawn}
 				<button class="btn-sm btn-phase" onclick={() => ms.assignToPhase(ms.assigningToPhase!, item.naming_id)}>+ phase</button>
 			{/if}
 		</div>
 	</div>
 {:else if item.mode === 'silence'}
-	<div class="element-card silence-card" class:ai-suggested={item.properties?.aiSuggested === true} class:ai-withdrawn={ms.isWithdrawn(item.properties)} class:ai-rejected={ms.isRejected(item)} class:ai-hidden={ms.isHidden(item)} title={cardTitle}>
+	<div class="element-card silence-card" class:relating-source={ms.relatingFrom === item.naming_id} class:ai-suggested={item.properties?.aiSuggested === true} class:ai-withdrawn={ms.isWithdrawn(item.properties)} class:ai-rejected={ms.isRejected(item)} class:ai-hidden={ms.isHidden(item)} title={cardTitle}>
 		<div class="el-main">
 			{#if item.has_document_anchor}
 				<img class="provenance-indicator" src="/icons/text_snippet.svg" alt="empirical" title="Empirically grounded" />
@@ -120,31 +161,37 @@
 				<img class="provenance-indicator" src="/icons/question_mark.svg" alt="ungrounded" title="No grounding yet" />
 			{/if}
 			{#if item.memo_previews?.length > 0}
-				<span class="memo-count" title="{item.memo_previews.length} memo(s)">{item.memo_previews.length}</span>
+				<span class="memo-count" title={plural(item.memo_previews.length, 'memo')}>{item.memo_previews.length}</span>
 			{/if}
 			{#if listGroupBy !== 'mode'}<span class="mode-indicator" title="silence">∅</span>{/if}
 			{#if item.outside_participation_count > 0}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<span class="outside-badge" title="{item.outside_participation_count} relation(s) outside this map" onclick={() => ms.showOutsideParticipations(item.naming_id)}>
+				<span class="outside-badge" title="{plural(item.outside_participation_count, 'relation')} outside this map" onclick={() => ms.showOutsideParticipations(item.naming_id)}>
 					+{item.outside_participation_count}
 				</span>
 			{/if}
-			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<span class="el-inscription editable" onclick={() => ms.showStack(item.naming_id)} ondblclick={() => { ms.editingId = item.naming_id; ms.editingValue = item.inscription || ''; }}>
-				{item.inscription}
-			</span>
+			{#if ms.editingId === item.naming_id}
+				<InlineRename bind:value={ms.editingValue} onsubmit={ms.confirmRename} oncancel={() => ms.editingId = null} />
+			{:else}
+				<!-- svelte-ignore a11y_click_events_have_key_events -->
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<span class="el-inscription editable" onclick={() => ms.showStack(item.naming_id)} ondblclick={startRename}>
+					{item.inscription}
+				</span>
+			{/if}
 		</div>
 		<div class="el-actions">
 			<button class="btn-xs" title="naming stack" onclick={() => ms.showStack(item.naming_id)}>stack</button>
 			<a class="btn-xs btn-list"
 				href={viewHref(`/projects/${ms.projectId}/namings`, { focus: item.naming_id, from: mapPath })}
-				title="In der Naming-Liste öffnen — dort ist alles bearbeitbar; der Rückweg führt hierher zurück">list</a>
-			<button class="btn-xs btn-withdraw" onclick={() => ms.toggleWithdraw(item.naming_id, ms.isWithdrawn(item.properties))}>
-				{ms.isWithdrawn(item.properties) ? 'restore' : 'withdraw'}
+				title="Open in the naming list — everything is editable there; the way back leads here">list</a>
+			<button class="btn-xs btn-withdraw" onclick={() => ms.toggleWithdraw(item.naming_id, withdrawn)}>
+				{withdrawn ? 'restore' : 'withdraw'}
 			</button>
-			{#if ms.relatingFrom && !ms.relatingTo && ms.relatingFrom !== item.naming_id}
+			{#if withdrawn}
+				<!-- nichts weiter, bis es wiederhergestellt ist -->
+			{:else if ms.relatingFrom && !ms.relatingTo && ms.relatingFrom !== item.naming_id}
 				<button class="btn-sm btn-relate" onclick={() => { ms.completeRelating(item.naming_id); }}>connect</button>
 			{:else if !ms.relatingFrom}
 				<button class="btn-sm" onclick={() => { ms.relatingFrom = item.naming_id; ms.relatingTo = null; }}>relate</button>
@@ -153,11 +200,11 @@
 	</div>
 {:else}
 	<!-- Entity (element) -->
-	<div class="element-card" class:ai-suggested={item.properties?.aiSuggested === true} class:ai-withdrawn={ms.isWithdrawn(item.properties)} class:ai-rejected={ms.isRejected(item)} class:ai-hidden={ms.isHidden(item)} class:pos-absent={ms.mapType === 'positional' && item.properties?.absent} class:unresolved={ms.isUnresolved(item)} title={cardTitle}>
+	<div class="element-card" class:relating-source={ms.relatingFrom === item.naming_id} class:ai-suggested={item.properties?.aiSuggested === true} class:ai-withdrawn={ms.isWithdrawn(item.properties)} class:ai-rejected={ms.isRejected(item)} class:ai-hidden={ms.isHidden(item)} class:pos-absent={ms.mapType === 'positional' && item.properties?.absent} class:unresolved={ms.isUnresolved(item)} title={cardTitle}>
 		<div class="el-main">
 			{#if item.is_collapsed}<img class="collapsed-indicator" src="/icons/keep.svg" alt="pinned" title="Pinned to specific layer" />{/if}
 			{#if ms.isPrimary}
-				<span class="placement-dot" title={ms.isPlaced(item) ? 'Placed on canvas' : ms.isWithdrawn(item.properties) ? 'Declined' : 'Unresolved — not yet placed'}>{ms.isPlaced(item) ? '●' : ms.isWithdrawn(item.properties) ? '—' : '○'}</span>
+				<span class="placement-dot" title={ms.isPlaced(item) ? 'Placed on canvas' : ms.isWithdrawn(item.properties) ? 'Withdrawn' : 'Unplaced — not yet on the canvas'}>{ms.isPlaced(item) ? '●' : ms.isWithdrawn(item.properties) ? '—' : '○'}</span>
 			{/if}
 			<span class="designation-dot" style="background: {ms.designationColor(item.designation)}" title={ms.designationLabel(item.designation)}></span>
 			{#if item.has_document_anchor}
@@ -168,7 +215,7 @@
 				<img class="provenance-indicator" src="/icons/question_mark.svg" alt="ungrounded" title="No grounding yet" />
 			{/if}
 			{#if item.memo_previews?.length > 0}
-				<span class="memo-count" title="{item.memo_previews.length} memo(s)">{item.memo_previews.length}</span>
+				<span class="memo-count" title={plural(item.memo_previews.length, 'memo')}>{item.memo_previews.length}</span>
 			{/if}
 			{#if ms.mapType === 'positional' && item.properties?.isAxis}
 				<span class="pos-axis-badge">{item.properties.axisDimension === 'x' ? 'X' : 'Y'}-axis</span>
@@ -179,24 +226,24 @@
 			{#if item.outside_participation_count > 0}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<span class="outside-badge" title="{item.outside_participation_count} relation(s) outside this map" onclick={() => ms.showOutsideParticipations(item.naming_id)}>
+				<span class="outside-badge" title="{plural(item.outside_participation_count, 'relation')} outside this map" onclick={() => ms.showOutsideParticipations(item.naming_id)}>
 					+{item.outside_participation_count}
 				</span>
 			{/if}
 			{#if ms.editingId === item.naming_id}
-				<form class="inline-rename" onsubmit={e => { e.preventDefault(); ms.confirmRename(); }}>
-					<input type="text" bind:value={ms.editingValue} />
-					<button type="submit" class="btn-xs">ok</button>
-					<button type="button" class="btn-xs" onclick={() => ms.editingId = null}>×</button>
-				</form>
+				<InlineRename bind:value={ms.editingValue} onsubmit={ms.confirmRename} oncancel={() => ms.editingId = null} />
 			{:else}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<span class="el-inscription editable" onclick={() => ms.showStack(item.naming_id)} ondblclick={() => { ms.editingId = item.naming_id; ms.editingValue = item.inscription || ''; }}>
+				<span class="el-inscription editable" onclick={() => ms.showStack(item.naming_id)} ondblclick={startRename}>
 					{item.inscription}
 				</span>
-				{#if ms.mapType === 'positional' && !item.properties?.isAxis && item.properties?.x != null}
-					<span class="pos-coord">({item.properties.x}, {Math.abs(item.properties.y || 0)})</span>
+				{#if ms.mapType === 'positional' && !item.properties?.isAxis}
+					{#if coord}
+						<span class="pos-coord" title={coordTitle}>x {coord.x} % · y {coord.y} %</span>
+					{:else}
+						<span class="pos-coord" title="Not yet placed in the diagram">(not placed)</span>
+					{/if}
 				{/if}
 				{#if item.is_collapsed && item.current_inscription && item.current_inscription !== item.inscription}
 					<span class="collapsed-current">currently: {item.current_inscription}</span>
@@ -204,24 +251,28 @@
 			{/if}
 		</div>
 		<div class="el-actions">
-			<select value={item.designation || 'cue'} onchange={e => ms.startDesignation(item.naming_id, (e.target as HTMLSelectElement).value)}>
+			{#if !withdrawn}
+			<select value={item.designation || 'cue'} aria-label="Designation" onchange={e => ms.startDesignation(item.naming_id, (e.target as HTMLSelectElement).value)}>
 				<option value="cue">cue</option>
 				<option value="characterization">characterization</option>
 				<option value="specification">specification</option>
 			</select>
+			{/if}
 			<button class="btn-xs" title="naming stack" onclick={() => ms.showStack(item.naming_id)}>stack</button>
 			<a class="btn-xs btn-list"
 				href={viewHref(`/projects/${ms.projectId}/namings`, { focus: item.naming_id, from: mapPath })}
-				title="In der Naming-Liste öffnen — dort ist alles bearbeitbar; der Rückweg führt hierher zurück">list</a>
-			<button class="btn-xs btn-withdraw" onclick={() => ms.toggleWithdraw(item.naming_id, ms.isWithdrawn(item.properties))}>
-				{ms.isWithdrawn(item.properties) ? 'restore' : 'withdraw'}
+				title="Open in the naming list — everything is editable there; the way back leads here">list</a>
+			<button class="btn-xs btn-withdraw" onclick={() => ms.toggleWithdraw(item.naming_id, withdrawn)}>
+				{withdrawn ? 'restore' : 'withdraw'}
 			</button>
-			{#if ms.relatingFrom && !ms.relatingTo && ms.relatingFrom !== item.naming_id}
+			{#if withdrawn}
+				<!-- nichts weiter, bis es wiederhergestellt ist -->
+			{:else if ms.relatingFrom && !ms.relatingTo && ms.relatingFrom !== item.naming_id}
 				<button class="btn-sm btn-relate" onclick={() => { ms.completeRelating(item.naming_id); }}>connect</button>
 			{:else if !ms.relatingFrom}
 				<button class="btn-sm" onclick={() => { ms.relatingFrom = item.naming_id; ms.relatingTo = null; }}>relate</button>
 			{/if}
-			{#if ms.assigningToPhase}
+			{#if ms.assigningToPhase && !withdrawn}
 				<button class="btn-sm btn-phase" onclick={() => ms.assignToPhase(ms.assigningToPhase!, item.naming_id)}>+ phase</button>
 			{/if}
 		</div>
@@ -229,11 +280,16 @@
 {/if}
 
 <style>
+	/* Zeile darf umbrechen: Quelle, Valenz, Ziel und Name blieben sonst unter
+	   dem Designations-Menü verdeckt (die Aktionen lagen über dem Text). */
 	.element-card {
 		display: flex; align-items: center; justify-content: space-between;
+		flex-wrap: wrap; gap: 0.35rem 0.75rem;
 		background: #161822; border: 1px solid #2a2d3a; border-radius: 6px;
 		padding: 0.5rem 0.75rem;
 	}
+	/* Ausgangspunkt einer Relation: eigene Farbe, nicht das Bernstein der Charakterisierung. */
+	.element-card.relating-source { border-color: var(--relate-hl, #38bdf8); box-shadow: 0 0 0 1px var(--relate-hl, #38bdf8); }
 	.element-card:hover { border-color: #3a3d4a; }
 	.element-card.ai-withdrawn { opacity: 0.4; }
 	.element-card.ai-withdrawn :global(.el-inscription) { text-decoration: line-through; }
@@ -246,9 +302,9 @@
 	.placement-dot { font-size: 0.65rem; color: #6b7280; flex-shrink: 0; width: 10px; text-align: center; }
 	.relation-card { background: #141620; }
 	.silence-card { border-style: dashed; opacity: 0.7; }
-	.el-main { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
-	.el-inscription { font-size: 0.9rem; color: #e1e4e8; }
-	.el-actions { display: flex; align-items: center; gap: 0.4rem; flex-shrink: 0; }
+	.el-main { display: flex; align-items: center; flex-wrap: wrap; gap: 0.3rem 0.5rem; min-width: 0; flex: 1 1 16rem; }
+	.el-inscription { font-size: 0.9rem; color: #e1e4e8; overflow-wrap: anywhere; }
+	.el-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem; margin-left: auto; }
 	.el-actions select {
 		background: #0f1117; border: 1px solid #2a2d3a; border-radius: 4px;
 		color: #8b8fa3; font-size: 0.7rem; padding: 0.2rem 0.3rem; cursor: pointer;
@@ -270,17 +326,12 @@
 		padding: 0 3px; cursor: pointer; flex-shrink: 0;
 	}
 	.outside-badge:hover { background: rgba(232, 165, 75, 0.25); }
-	.rel-source, .rel-target { font-size: 0.85rem; color: #c9cdd5; }
-	.rel-arrow { font-size: 0.8rem; color: #6b7280; margin: 0 0.25rem; }
-	.rel-inscription { font-size: 0.75rem; color: #8b8fa3; margin-left: 0.5rem; font-style: italic; }
+	.rel-source, .rel-target { font-size: 0.85rem; color: #c9cdd5; overflow-wrap: anywhere; }
+	.rel-arrow { font-size: 0.8rem; color: #6b7280; margin: 0 0.25rem; overflow-wrap: anywhere; }
+	.rel-inscription { font-size: 0.75rem; color: #8b8fa3; margin-left: 0.5rem; font-style: italic; overflow-wrap: anywhere; }
 	.editable { cursor: pointer; }
 	.editable:hover { text-decoration: underline dotted; text-underline-offset: 3px; }
 	.unnamed { color: #4b5563; font-style: italic; }
-	.inline-rename { display: flex; gap: 0.3rem; align-items: center; }
-	.inline-rename input {
-		background: #0f1117; border: 1px solid #8b9cf7; border-radius: 4px;
-		padding: 0.15rem 0.35rem; color: #e1e4e8; font-size: 0.85rem; width: 140px;
-	}
 	.btn-xs {
 		background: none; border: 1px solid #2a2d3a; border-radius: 4px;
 		color: #8b8fa3; font-size: 0.7rem; padding: 0.15rem 0.4rem; cursor: pointer;
@@ -294,7 +345,7 @@
 	.btn-sm:hover { border-color: #8b9cf7; color: #e1e4e8; }
 	.btn-withdraw { border-color: #6b7280; color: #6b7280; font-size: 0.65rem; }
 	.btn-withdraw:hover { background: rgba(107, 114, 128, 0.1); }
-	.btn-relate { border-color: #f59e0b; color: #f59e0b; }
+	.btn-relate { border-color: var(--relate-hl, #38bdf8); color: var(--relate-hl, #38bdf8); }
 	.btn-phase { border-color: #10b981; color: #10b981; }
 	.pos-coord { font-size: 0.65rem; color: #6b7280; margin-left: 0.4rem; font-family: monospace; }
 	.pos-axis-badge {
