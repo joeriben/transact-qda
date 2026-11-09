@@ -209,6 +209,43 @@ async function run() {
 		await post(N, { action: 'setValence', namingId: R, valence: 'fordert' });
 		const v = await lastAct(R);
 		record('Valenzänderung steht als Akt im Stack', v?.valence === 'fordert', JSON.stringify(v));
+		// Nachträglich benannt: steht, wo sie mit diesem Namen beim Anlegen
+		// gestanden hätte (Valenz + Name → specification); nur der erste Name hebt.
+		const rn1 = await post(N, { action: 'rename', namingId: r2.body.id, inscription: 'hält für zu laut' });
+		const d1 = await designationOf(r2.body.id);
+		const rn2 = await post(N, { action: 'rename', namingId: r2.body.id, inscription: 'hält für laut' });
+		const d2 = await lastAct(r2.body.id);
+		record('Relation nachträglich benannt: erster Name hebt wie beim Anlegen, weiterer nicht',
+			rn1.status === 200 && rn1.body.liftedTo === 'specification' && d1 === 'specification'
+				&& rn2.status === 200 && !rn2.body.liftedTo && d2?.designation === null,
+			JSON.stringify({ d1, lifted: rn1.body.liftedTo, again: rn2.body.liftedTo ?? null }));
+	}
+
+	// 5b. Freies Memo auf Namings beziehen und den Bezug wieder lösen
+	{
+		const mm = await post(`/api/projects/${P}/memos`, { label: 'Lärm im Haus', content: 'Wer klagt worüber?' });
+		const memoId = mm.body.id;
+		const MM = `/api/projects/${P}/memos/${memoId}`;
+		const before = await namingCount(P);
+		const l1 = await post(MM, { action: 'link', namingId: X });
+		const l2 = await post(MM, { action: 'link', namingId: X });
+		const linked = await one(
+			`SELECT count(*)::int AS c FROM participations p JOIN namings pn ON pn.id = p.id AND pn.deleted_at IS NULL
+			  WHERE (p.naming_id = $1 AND p.participant_id = $2) OR (p.naming_id = $2 AND p.participant_id = $1)`,
+			[memoId, X]
+		);
+		const listed = await one(
+			`SELECT count(*)::int AS c FROM appearances a JOIN appearances ms ON ms.naming_id = a.perspective_id
+			   AND ms.perspective_id = a.perspective_id AND ms.properties->>'role' = 'memo-system'
+			  WHERE a.naming_id = $1`,
+			[l1.body.id]
+		);
+		const u = await post(MM, { action: 'unlink', linkId: l1.body.id });
+		const gone = await one(`SELECT deleted_at IS NOT NULL AS soft FROM namings WHERE id = $1`, [l1.body.id]);
+		record('Freies Memo: Bezug als Participation (einmal), nur auf der Memo-Perspektive, Lösen markiert nur',
+			l1.status === 200 && l2.body.already === true && linked.c === 1 && listed.c >= 1
+				&& u.status === 200 && gone.soft === true && (await namingCount(P)) === before + 1,
+			JSON.stringify({ linked: linked.c, listed: listed.c, soft: gone.soft }));
 	}
 
 	// 6. Entität ↔ Relation auf einer Map
@@ -357,7 +394,8 @@ async function run() {
 			JSON.stringify({ status: D.status, df, dm }));
 	}
 
-	record('kein Memo-Naming im ganzen Ablauf', (await memoCount(P)) === 0, String(await memoCount(P)));
+	// Außer dem einen ausdrücklich angelegten freien Memo (5b) entsteht keines.
+	record('kein Memo-Naming im ganzen Ablauf (außer dem freien Memo)', (await memoCount(P)) === 1, String(await memoCount(P)));
 }
 
 // ---- Aufräumen --------------------------------------------------------------

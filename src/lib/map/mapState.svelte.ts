@@ -512,6 +512,14 @@ export function createMapState(
 		phases = fresh.phases;
 		docPhases = fresh.docPhases || [];
 		designationProfile = fresh.designationProfile;
+		// Ein offener Stack zeigt den neuen Akt gleich (Testlauf 11: nach dem
+		// Umbenennen in der Listenansicht stand er unverändert da).
+		if (stackId) {
+			const id = stackId;
+			const req = ++stackRequest;
+			const data = await mapAction('getStack', { namingId: id });
+			if (req === stackRequest && stackId === id && data) stackData = data;
+		}
 	}
 
 	// ─── Shared actions ───
@@ -583,7 +591,8 @@ export function createMapState(
 	async function submitAct() {
 		if (!actTarget) return;
 		if (actType === 'rename') {
-			await mapAction('rename', { namingId: actTarget, inscription: actNewValue, memoText: actMemo.trim() || undefined, linkedNamingIds: actLinkedIds.length > 0 ? actLinkedIds : undefined });
+			const r = await mapAction('rename', { namingId: actTarget, inscription: actNewValue, memoText: actMemo.trim() || undefined, linkedNamingIds: actLinkedIds.length > 0 ? actLinkedIds : undefined });
+			if (r?.liftedTo) showAiNotification(`“${r.inscription}” is now a ${r.liftedTo}.`);
 		} else if (actType === 'designate') {
 			await mapAction('designate', { namingId: actTarget, designation: actNewValue, memoText: actMemo.trim() || undefined, linkedNamingIds: actLinkedIds.length > 0 ? actLinkedIds : undefined });
 		} else if (actType === 'relate' && actMemo.trim()) {
@@ -629,7 +638,8 @@ export function createMapState(
 		if (!actTarget) return;
 		if (actType === 'mode') { await commitModeAct(false); return; }
 		if (actType === 'rename') {
-			await mapAction('rename', { namingId: actTarget, inscription: actNewValue });
+			const r = await mapAction('rename', { namingId: actTarget, inscription: actNewValue });
+			if (r?.liftedTo) showAiNotification(`“${r.inscription}” is now a ${r.liftedTo}.`);
 		} else if (actType === 'designate') {
 			await mapAction('designate', { namingId: actTarget, designation: actNewValue });
 		}

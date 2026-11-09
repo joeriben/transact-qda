@@ -6,7 +6,7 @@
 	import { page } from '$app/stores';
 	import { marked } from 'marked';
 	import { getCoachState } from './coachState.svelte.js';
-	import { stepLabel } from './aiStream.js';
+	import { stepLabel, elapsedLabel } from './aiStream.js';
 
 	const coach = getCoachState();
 
@@ -171,7 +171,11 @@
 					<span class="msg-label">Coach</span>
 					<div class="msg-content msg-loading">
 						<span class="loading-dots" aria-hidden="true"><span></span><span></span><span></span></span>
-						<span>{stepLabel(coach.step)}… <span class="loading-seconds">{elapsed} s</span></span>
+						<span>{stepLabel(coach.step)}… <span class="loading-seconds">{elapsedLabel(elapsed)}</span></span>
+						{#if elapsed >= 20}
+							<!-- Testlauf 11: zwei Minuten „Thinking…" ohne Hinweis. -->
+							<span class="loading-hint">The coach looks at the map and the manual before it answers; that often takes a minute or two.</span>
+						{/if}
 					</div>
 				</div>
 			{/if}
@@ -420,10 +424,12 @@
 
 	.msg-loading {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
 		gap: 0.55rem;
 		color: #a5b4fc;
 	}
+	.loading-hint { display: block; flex-basis: 100%; font-size: 0.72rem; color: #6b7280; margin-top: 0.25rem; }
 	.loading-seconds {
 		color: #6b7280;
 		font-variant-numeric: tabular-nums;

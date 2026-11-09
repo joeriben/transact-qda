@@ -160,7 +160,7 @@
 											? 'A relation stands between its endpoints: drag it onto the canvas or use the button to place them'
 											: 'Drag onto the canvas to place, or use the button for the middle of the view'}
 							>
-								<span class="up-mode" data-mode={it.mode}></span>
+								<span class="up-mode" data-mode={it.mode} title={it.mode}></span>
 								<!-- svelte-ignore a11y_click_events_have_key_events -->
 								<!-- svelte-ignore a11y_no_static_element_interactions -->
 								<span class="up-label" title={itLabel} onclick={() => ms.showStack(it.naming_id)}>
@@ -281,9 +281,12 @@
 		width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
 		background: #6b7280;
 	}
+	/* Der Modus als Form, nicht als Farbe: Orange ist die Farbe der
+	   Characterization (Testlauf 11). Entität Punkt, Relation Strich, Stille
+	   leerer Kreis. */
 	.up-mode[data-mode="entity"] { background: #8b9cf7; }
-	.up-mode[data-mode="relation"] { background: #f59e0b; }
-	.up-mode[data-mode="silence"] { background: #4b5563; }
+	.up-mode[data-mode="relation"] { width: 10px; height: 2px; border-radius: 1px; background: #8b9cf7; }
+	.up-mode[data-mode="silence"] { background: transparent; border: 1px dashed #8b9cf7; box-sizing: border-box; }
 	.up-label {
 		flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 		cursor: pointer; color: #e1e4e8;

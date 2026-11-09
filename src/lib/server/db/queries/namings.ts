@@ -223,7 +223,31 @@ export async function renameNaming(
 	// Umschreiben MIT Notiz ist ein reflektierter Akt: auf einem Cue trägt er
 	// die Characterization (siehe noteLiftsCue). Ohne Notiz bleibt die
 	// Designation, wie sie ist.
-	const lift = noteText(note) ? await noteLiftsCue(namingId) : false;
+	let lift: string | null = noteText(note) && (await noteLiftsCue(namingId)) ? 'characterization' : null;
+	// Eine Relation, die erst nachträglich ihre eigene Inschrift bekommt, steht
+	// danach, wo sie mit dieser Inschrift beim Anlegen gestanden hätte
+	// (relateElements; S09: Valenz ohne eigene Inscription bleibt Cue): eigene
+	// Inschrift → characterization, Inschrift und Valenz → specification.
+	// Nur der erste Name, nur aufwärts, nur durch Forschende.
+	if (userId !== AI_SYSTEM_USER_ID && inscription.trim()) {
+		const rel = await queryOne<{ named_before: boolean; valence: string | null; designation: string | null }>(
+			`SELECT EXISTS (SELECT 1 FROM naming_acts na WHERE na.naming_id = p.id
+			                AND NULLIF(btrim(na.inscription), '') IS NOT NULL)
+			        OR NULLIF(btrim(n.inscription), '') IS NOT NULL AS named_before,
+			        (SELECT a.valence FROM appearances a WHERE a.naming_id = p.id AND a.mode = 'relation'
+			          AND a.valence IS NOT NULL AND a.valence <> 'codes' LIMIT 1) AS valence,
+			        (SELECT na.designation FROM naming_acts na WHERE na.naming_id = p.id
+			          AND na.designation IS NOT NULL ORDER BY na.seq DESC LIMIT 1) AS designation
+			   FROM participations p JOIN namings n ON n.id = p.id
+			  WHERE p.id = $1 AND n.project_id = $2`,
+			[namingId, projectId]
+		);
+		if (rel && !rel.named_before) {
+			const target = rel.valence?.trim() ? 'specification' : 'characterization';
+			const rank = (d: string | null) => ['cue', 'characterization', 'specification'].indexOf(d ?? 'cue');
+			if (rank(target) > rank(rel.designation) && rank(target) > rank(lift)) lift = target;
+		}
+	}
 
 	return transaction(async (client) => {
 		// Was bisher dastand, festhalten, BEVOR es überschrieben wird. Namings aus
@@ -271,10 +295,11 @@ export async function renameNaming(
 		await client.query(
 			`INSERT INTO naming_acts (naming_id, by, inscription, memo_text, linked_naming_ids, designation)
 			 VALUES ($1, $2, $3, $4, $5, $6)`,
-			[namingId, researcherNamingId, inscription, noteText(note), noteLinks(note), lift ? 'characterization' : null]
+			[namingId, researcherNamingId, inscription, noteText(note), noteLinks(note), lift]
 		);
 
-		return result.rows[0];
+		// liftedTo: was der Akt designiert hat, damit die Oberfläche es sagt.
+		return result.rows[0] ? { ...result.rows[0], liftedTo: lift } : result.rows[0];
 	});
 }
 
@@ -757,8 +782,12 @@ export async function getAggregatedNaming(namingId: string, projectId: string) {
 				((a.kind ?? 'act') === 'act' && a.by_researcher && !!a.memo_text?.trim()) ||
 				(Array.isArray(a.absorbed) && hasNoteAct(a.absorbed))
 		);
+	// Dieselbe Regel wie Liste und Map (researcherMemoSql) — die Detailseite
+	// zählte Verweise aus Notizen anderer Namings nicht mit (Testlauf 11).
 	const hasMemoLink =
-		(stack.memos ?? []).some((m: any) => !m.isAiAuthored || m.status === 'promoted') || hasNoteAct(stack.acts ?? []);
+		(stack.memos ?? []).some((m: any) => !m.isAiAuthored || m.status === 'promoted') ||
+		hasNoteAct(stack.acts ?? []) ||
+		!!(await queryOne<{ m: boolean }>(`SELECT ${researcherMemoSql('n.id')} AS m FROM namings n WHERE n.id = $1`, [namingId]))?.m;
 
 	// Mode (from any appearance)
 	const primaryMode = appearances.rows.find(a => ['entity', 'relation', 'silence'].includes(a.mode))?.mode || 'entity';

@@ -60,6 +60,38 @@
 		}
 	}
 
+	// Verweise auf Namings (Testlauf 11): Ein analytisches Memo bezieht sich
+	// auf beliebig viele Namings, ohne selbst eines zu werden.
+	let linkQuery = $state('');
+	let linkBusy = $state(false);
+	let linkError = $state<string | null>(null);
+	const linkedIds = $derived(new Set<string>(data.memo.links.map((l: any) => l.target_id)));
+	const linkMatches = $derived.by(() => {
+		const q = linkQuery.trim().toLocaleLowerCase();
+		if (!q) return [];
+		return (data.linkable ?? [])
+			.filter((n: any) => !linkedIds.has(n.id) && n.label.toLocaleLowerCase().includes(q))
+			.slice(0, 8);
+	});
+	async function linkAction(body: Record<string, string>) {
+		if (linkBusy) return;
+		linkBusy = true;
+		linkError = null;
+		try {
+			const res = await fetch(url, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(body)
+			});
+			const out = await res.json().catch(() => ({}));
+			if (!res.ok) { linkError = out.error || `Not saved (${res.status})`; return; }
+			linkQuery = '';
+			await invalidateAll();
+		} finally {
+			linkBusy = false;
+		}
+	}
+
 	function onInput() {
 		clearTimeout(saveTimeout);
 		saveTimeout = setTimeout(save, 800);
@@ -153,16 +185,44 @@
 		<div class="links-panel">
 			<h3>Linked namings</h3>
 			{#if data.memo.links.length === 0}
-				<p class="empty">Not linked to any naming. Memos for a naming are written from the naming itself (+ Memo).</p>
+				<p class="empty">{data.memo.is_ai ? 'Not linked to any naming.' : 'Not linked to any naming yet. Refer to namings below; a memo ON a single naming is written from the naming itself (+ Memo).'}</p>
 			{:else}
 				{#each data.memo.links as link}
-					<a class="link-item" href="/projects/{data.projectId}/namings/{link.target_id}">
-						{#if link.target_mode && link.target_mode !== 'entity'}
-							<span class="link-kind">{link.target_mode}</span>
+					<div class="link-row">
+						<a class="link-item" href="/projects/{data.projectId}/namings/{link.target_id}">
+							{#if link.target_mode && link.target_mode !== 'entity'}
+								<span class="link-kind">{link.target_mode}</span>
+							{/if}
+							<span>{link.target_label}</span>
+						</a>
+						{#if !data.memo.is_ai}
+							<button class="link-remove" onclick={() => linkAction({ action: 'unlink', linkId: link.id })} disabled={linkBusy}
+								aria-label="Remove the reference to {link.target_label}" title="Remove this reference (the naming stays)">×</button>
 						{/if}
-						<span>{link.target_label}</span>
-					</a>
+					</div>
 				{/each}
+			{/if}
+			{#if !data.memo.is_ai}
+				<div class="link-add">
+					<input type="text" placeholder="refer to a naming…" aria-label="Refer this memo to a naming"
+						bind:value={linkQuery} disabled={linkBusy}
+						onkeydown={(e) => {
+							if (e.key === 'Enter' && linkMatches.length > 0) { e.preventDefault(); linkAction({ action: 'link', namingId: linkMatches[0].id }); }
+							else if (e.key === 'Escape' && linkQuery) { e.stopPropagation(); linkQuery = ''; }
+						}} />
+					{#if linkMatches.length > 0}
+						<div class="link-suggest" role="listbox" aria-label="Namings">
+							{#each linkMatches as n (n.id)}
+								<button role="option" aria-selected="false" onclick={() => linkAction({ action: 'link', namingId: n.id })}>
+									{#if n.mode !== 'entity'}<span class="link-kind">{n.mode}</span>{/if}{n.label}
+								</button>
+							{/each}
+						</div>
+					{:else if linkQuery.trim()}
+						<p class="mk-note">No naming of that name in the naming list.</p>
+					{/if}
+					{#if linkError}<p class="mk-note" role="alert">{linkError}</p>{/if}
+				</div>
 			{/if}
 			{#if !data.memo.is_ai}
 				<div class="mk-row">
@@ -245,6 +305,29 @@
 		padding: 0.35rem 0; font-size: 0.85rem; color: #c9cdd5; text-decoration: none;
 	}
 	.link-item:hover { color: #8b9cf7; }
+	.link-row { display: flex; align-items: center; gap: 0.4rem; }
+	.link-row .link-item { flex: 1; min-width: 0; }
+	.link-remove {
+		background: none; border: none; color: #6b7280; cursor: pointer;
+		font-size: 0.95rem; line-height: 1; padding: 0.1rem 0.3rem; border-radius: 4px;
+	}
+	.link-remove:hover { color: #e1e4e8; background: #2a2d3a; }
+	.link-add { margin-top: 0.5rem; position: relative; }
+	.link-add input {
+		width: 100%; background: #0f1117; border: 1px solid #2a2d3a; border-radius: 5px;
+		padding: 0.35rem 0.5rem; color: #e1e4e8; font-size: 0.8rem;
+	}
+	.link-add input:focus { outline: none; border-color: #8b9cf7; }
+	.link-suggest {
+		display: flex; flex-direction: column; margin-top: 0.2rem;
+		background: #1e2030; border: 1px solid #3a3d4a; border-radius: 5px; overflow: hidden;
+	}
+	.link-suggest button {
+		display: flex; align-items: center; gap: 0.4rem; text-align: left;
+		background: none; border: none; color: #c9cdd5; font-size: 0.8rem;
+		padding: 0.3rem 0.5rem; cursor: pointer;
+	}
+	.link-suggest button:hover, .link-suggest button:focus-visible { background: #2a2d3a; outline: none; }
 	.link-kind {
 		font-size: 0.7rem; color: #6b7280; text-transform: uppercase;
 		background: #1e2030; padding: 0.1rem 0.35rem; border-radius: 3px;

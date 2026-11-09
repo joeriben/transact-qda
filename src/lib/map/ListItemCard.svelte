@@ -116,8 +116,8 @@
 			{:else}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<span class="rel-inscription editable unnamed" onclick={() => ms.showStack(item.naming_id)} ondblclick={startRename}>
-					(name...)
+				<span class="rel-inscription editable unnamed" title="No own name yet — double-click (or F2) to name this relation" onclick={() => ms.showStack(item.naming_id)} ondblclick={startRename}>
+					unnamed
 				</span>
 			{/if}
 			{#if item.is_collapsed && item.current_inscription && item.current_inscription !== item.inscription}

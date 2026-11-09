@@ -96,6 +96,10 @@
 	}
 
 	const withdrawn = $derived(!!actions.isWithdrawn?.(namingId, item.properties));
+	// Was die KI gesetzt hat, ist in der Liste als solches erkennbar — wie auf
+	// der Map (Handbuch: „they are marked as AI cues"; Testlauf 11).
+	const AI_PERSONA_LABEL: Record<string, string> = { cowork: 'Cowork', autonoma: 'Autonoma', 'coding-run': 'Naming-Run' };
+	const aiBy = $derived(item.ai_persona ? (AI_PERSONA_LABEL[item.ai_persona] ?? 'AI') : null);
 	// Relation, deren eines Ende zurückgezogen ist: bleibt stehen, wird aber
 	// gekennzeichnet (Testlauf 09.11.: sie wirkte unverändert aktiv).
 	const endWithdrawn = $derived(
@@ -213,6 +217,7 @@
 					>{titleText}</span>
 				{/if}
 			</div>
+			{#if aiBy}<span class="tag tag-ai" title="Placed by {aiBy} as a cue (AI writes only cues). Designate or withdraw it like anything else.">AI · {aiBy}</span>{/if}
 			{#if withdrawn}<span class="tag tag-withdrawn" title="Withdrawn — restore brings it back">withdrawn</span>{/if}
 		</div>
 		{#if !isCompact}
@@ -281,6 +286,7 @@
 					{item.current_inscription || item.inscription || ''}
 				</span>
 			{/if}
+			{#if aiBy}<span class="tag tag-ai" title="Placed by {aiBy} as a cue (AI writes only cues). Designate or withdraw it like anything else.">AI · {aiBy}</span>{/if}
 			{#if withdrawn}<span class="tag tag-withdrawn" title="Withdrawn — restore brings it back">withdrawn</span>{/if}
 		</div>
 		{#if !isCompact}
@@ -371,6 +377,7 @@
 					title="A researcher as a naming of this project: their acts are attributed to it. It cannot be merged or withdrawn.">researcher</span>
 			{/if}
 			{#if axis}<span class="tag tag-axis" title={axis.title}>{axis.text}</span>{/if}
+			{#if aiBy}<span class="tag tag-ai" title="Placed by {aiBy} as a cue (AI writes only cues). Designate or withdraw it like anything else.">AI · {aiBy}</span>{/if}
 			{#if withdrawn}<span class="tag tag-withdrawn" title="Withdrawn — restore brings it back">withdrawn</span>{/if}
 			{#if endWithdrawn}<span class="tag tag-withdrawn" title="One of its ends is withdrawn; the relation itself still stands">end withdrawn</span>{/if}
 		</div>
@@ -473,6 +480,7 @@
 		padding: 0.05rem 0.35rem; border-radius: 3px; border: 1px solid;
 		flex-shrink: 0; cursor: help; line-height: 1.4;
 	}
+	.tag-ai { color: #a78bfa; border-color: rgba(167, 139, 250, 0.4); background: rgba(167, 139, 250, 0.08); }
 	.tag-researcher { color: #10b981; border-color: rgba(16, 185, 129, 0.4); background: rgba(16, 185, 129, 0.08); }
 	.tag-axis { color: #8b9cf7; border-color: rgba(139, 156, 247, 0.4); background: rgba(139, 156, 247, 0.08); }
 	.tag-withdrawn { color: #9ca3af; border-color: #4b5563; }

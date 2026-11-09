@@ -78,6 +78,7 @@ export async function runAiStream(
 }
 
 const STEP_LABELS: Record<string, string> = {
+	thinking: 'Thinking over what it found',
 	search_manual: 'Searching the manual',
 	search_namings: 'Searching namings',
 	search_memos: 'Searching memos',
@@ -95,6 +96,14 @@ const STEP_LABELS: Record<string, string> = {
 	suggest_axis_refinement: 'Writing a memo',
 	create_phase: 'Proposing a phase'
 };
+
+/** Sekunden als „m:ss" (ab einer Minute) oder „n s". */
+export function elapsedLabel(seconds: number): string {
+	if (seconds < 60) return `${seconds} s`;
+	const m = Math.floor(seconds / 60);
+	const r = seconds % 60;
+	return `${m}:${String(r).padStart(2, '0')} min`;
+}
 
 /** Lesbare Beschreibung eines Werkzeugschritts. */
 export function stepLabel(tool: string | null | undefined): string {

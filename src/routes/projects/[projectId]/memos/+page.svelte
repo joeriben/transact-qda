@@ -39,12 +39,15 @@
 		if (what) hiddenNotice = what;
 	});
 	// Abbrechen verwirft den Entwurf — wie beim Projekt- und Map-Formular.
+	// Schließen (Escape, Knopf) verwirft nichts: Titel und Text bleiben als
+	// Entwurf stehen, bis man wieder „New memo" öffnet (Testlauf 11: Escape
+	// verwarf einen getippten Titel ohne Rückfrage). Nach dem Anlegen führt die
+	// Seite ohnehin zum neuen Memo.
 	function closeCreate() {
 		showCreate = false;
 		createError = '';
-		newLabel = '';
-		newContent = '';
 	}
+	const hasDraft = $derived(!showCreate && !!(newLabel.trim() || newContent.trim()));
 	let expandedId = $state<string | null>(null);
 
 	// Discussion
@@ -136,8 +139,11 @@
 			const body = await res.json().catch(() => ({}));
 			alert(body.error || `Status not saved (${res.status})`);
 		} else if (status === 'promoted') {
+			// Der Name, den das neue Naming trägt (ohne „Cowork:"), nicht der
+			// Memo-Titel (Testlauf 11).
+			const body = await res.json().catch(() => ({}));
 			const m = (data.memos as { id: string; label: string }[]).find((x) => x.id === memoId);
-			promotedNotice = m?.label ?? 'The memo';
+			promotedNotice = body.inscription || m?.label || 'The memo';
 		}
 		await refreshMemos();
 	}
@@ -230,7 +236,7 @@
 	<PageHeader title="Memos">
 		{#snippet actions()}
 			<button class="btn-primary" onclick={() => (showCreate ? closeCreate() : (showCreate = true))}>
-				{showCreate ? 'Cancel' : 'New memo'}
+				{showCreate ? 'Close' : hasDraft ? 'New memo (draft)' : 'New memo'}
 			</button>
 		{/snippet}
 		{#snippet filterBar()}
@@ -263,7 +269,13 @@
 							rows="4" bind:value={newContent}></textarea>
 						{#if createError}<span class="create-error" role="alert">{createError}</span>{/if}
 					</div>
-					<button type="submit" class="btn-primary" disabled={creating || !newLabel.trim()} title="Create (⌘↵)">Create</button>
+					<div class="create-actions">
+						<button type="submit" class="btn-primary" disabled={creating || !newLabel.trim()} title="Create (⌘↵)">Create</button>
+						{#if newLabel.trim() || newContent.trim()}
+							<button type="button" class="btn-link-sm" onclick={() => { newLabel = ''; newContent = ''; closeCreate(); }}>discard draft</button>
+						{/if}
+						<span class="create-hint">⌘↵ saves · Esc keeps the draft</span>
+					</div>
 				</form>
 			{/if}
 		{/snippet}
@@ -489,6 +501,10 @@
 	}
 	.create-form input:focus, .create-form textarea:focus { outline: none; border-color: #8b9cf7; }
 	.create-form { align-items: flex-start; }
+	.create-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 0.35rem; }
+	.create-hint { font-size: 0.72rem; color: #6b7280; white-space: nowrap; }
+	.btn-link-sm { background: none; border: none; color: #9ca3af; font-size: 0.75rem; cursor: pointer; padding: 0; text-decoration: underline; text-underline-offset: 2px; }
+	.btn-link-sm:hover { color: #e1e4e8; }
 	.create-fields { flex: 1; display: flex; flex-direction: column; gap: 0.5rem; }
 	.create-form textarea {
 		background: #0f1117; border: 1px solid #2a2d3a; border-radius: 6px;

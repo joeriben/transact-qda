@@ -929,8 +929,27 @@ export async function getNamingStack(
 			        -- (Testlauf 09.11.: „through relation Eigentümergesellschaft"
 			        -- für einen Akt, der „Immobilienfonds" galt).
 			        COALESCE((SELECT json_agg(DISTINCT jsonb_build_object('id', t.id, 'label', t.label))
-			                  FROM (SELECT l.id, ${namingLabelSql('l')} AS label
+			                  -- Unter dem Namen, den es zur Zeit des Akts trug; heißt es
+			                  -- heute anders, steht der heutige dahinter (Testlauf 11:
+			                  -- „through relation Zwischenmiete" für eine damals
+			                  -- unbenannte Relation).
+			                  FROM (SELECT l.id,
+			                               CASE WHEN lt.then_label IS NULL OR lt.then_label = ${namingLabelSql('l')}
+			                                    THEN ${namingLabelSql('l')}
+			                                    ELSE lt.then_label || ' (now “' || ${namingLabelSql('l')} || '”)'
+			                               END AS label
 			                          FROM namings l
+			                          LEFT JOIN LATERAL (
+			                            SELECT COALESCE(
+			                                     (SELECT NULLIF(btrim(la.inscription), '') FROM naming_acts la
+			                                       WHERE la.naming_id = l.id AND la.inscription IS NOT NULL
+			                                         AND la.created_at <= na.created_at
+			                                       ORDER BY la.seq DESC LIMIT 1),
+			                                     (SELECT ${namingLabelSql('lx')} FROM (SELECT l.id, NULL::text AS inscription) lx)) AS then_label
+			                             WHERE EXISTS (SELECT 1 FROM naming_acts la
+			                                            WHERE la.naming_id = l.id AND la.inscription IS NOT NULL
+			                                              AND la.created_at > na.created_at)
+			                          ) lt ON true
 			                         WHERE l.id = ANY(na.linked_naming_ids) AND l.deleted_at IS NULL
 			                        UNION
 			                        SELECT sv.id, ${namingLabelSql('l')} || ' (now merged into “' || ${namingLabelSql('sv')} || '”)' AS label
@@ -1055,11 +1074,17 @@ export async function getNamingStack(
 					created_at: string;
 					by_inscription: string;
 				}>(
-					`SELECT na.seq, na.naming_id AS on_id, ${namingLabelSql('o')} AS on_label,
+					`SELECT na.seq, COALESCE(${mergedIntoSql('o')}, na.naming_id) AS on_id,
+					        ${namingLabelSql('o')} || CASE WHEN o.deleted_at IS NOT NULL
+					          THEN ' (now merged into “' || (SELECT ${namingLabelSql('sv')} FROM namings sv WHERE sv.id = ${mergedIntoSql('o')}) || '”)'
+					          ELSE '' END AS on_label,
 					        na.memo_text, na.designation, na.inscription, na.created_at,
 					        b.inscription AS by_inscription
 					   FROM naming_acts na
-					   JOIN namings o ON o.id = na.naming_id AND o.project_id = $2 AND o.deleted_at IS NULL
+					   -- Auch Notizen eines inzwischen aufgenommenen Namings: Sie stehen
+					   -- im Stack des Überlebenden (Testlauf 11: der Verweis fehlte).
+					   JOIN namings o ON o.id = na.naming_id AND o.project_id = $2
+					    AND (o.deleted_at IS NULL OR ${mergedIntoSql('o')} IS NOT NULL)
 					   JOIN namings b ON b.id = na.by
 					  WHERE na.linked_naming_ids && $3::uuid[] AND na.naming_id <> $1
 					    AND na.memo_text IS NOT NULL AND btrim(na.memo_text) <> ''

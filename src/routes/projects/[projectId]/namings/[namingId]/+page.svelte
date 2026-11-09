@@ -256,7 +256,14 @@
 							<a class="part-label" href="/projects/{data.projectId}/namings/{part.relation_id}" title={isSilencePattern ? 'Open this participation' : 'Open this relation'}>
 								{part.relation_inscription && !part.relation_inscription.includes('↔') ? `via ${quoted(part.relation_inscription)}` : isSilencePattern ? 'participation' : part.partner_is_silence ? 'silence: absent from this pattern' : 'relation'}
 							</a>
-							{#if part.relation_designation}
+							<!-- Bei einer Stille ist die Participation kein eigener Bezug mit
+							     Designation; dort zählt, wie weit das Naming im Muster steht
+							     (Testlauf 11: „participation · cue" las sich wie dessen Designation). -->
+							{#if isSilencePattern || part.partner_is_silence}
+								{#if isSilencePattern && part.partner_designation}
+									<span class="part-designation" title="Designation of {quoted(part.partner_inscription)}" style="color: {designationColor(part.partner_designation)}">{part.partner_designation}</span>
+								{/if}
+							{:else if part.relation_designation}
 								<span class="part-designation" title="Designation of the relation" style="color: {designationColor(part.relation_designation)}">{part.relation_designation}</span>
 							{/if}
 							{#if part.is_withdrawn}

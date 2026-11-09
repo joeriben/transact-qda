@@ -484,6 +484,75 @@ export async function getMemo(memoId: string, projectId: string) {
 	};
 }
 
+/**
+ * Ein analytisches oder Organisationsmemo verweist nachträglich auf ein
+ * Naming — dieselbe Participation wie beim Anlegen (createMemo). Das Memo wird
+ * dadurch kein Naming (S16); es bezieht sich auf eines. Gibt es den Verweis
+ * schon, geschieht nichts.
+ */
+export async function linkMemoToNaming(memoId: string, projectId: string, userId: string, namingId: string) {
+	return transaction(async (client) => {
+		const existing = await client.query(
+			`SELECT p.id FROM participations p JOIN namings pn ON pn.id = p.id AND pn.deleted_at IS NULL
+			  WHERE (p.naming_id = $1 AND p.participant_id = $2) OR (p.naming_id = $2 AND p.participant_id = $1)
+			  LIMIT 1`,
+			[memoId, namingId]
+		);
+		if (existing.rows.length > 0) return { id: existing.rows[0].id as string, already: true };
+		const perspectiveId = await getOrCreateMemoSystemPerspective(projectId, userId);
+		const partNaming = await client.query(
+			`INSERT INTO namings (project_id, inscription, created_by)
+			 VALUES ($1, $2, $3) RETURNING id`,
+			[projectId, `memo ${memoId} ↔ ${namingId}`, userId]
+		);
+		const id = partNaming.rows[0].id as string;
+		await client.query(
+			`INSERT INTO participations (id, naming_id, participant_id) VALUES ($1, $2, $3)`,
+			[id, memoId, namingId]
+		);
+		await client.query(
+			`INSERT INTO appearances (naming_id, perspective_id, mode, directed_from, directed_to, valence, properties)
+			 VALUES ($1, $2, 'relation', $3, $4, 'references', '{}')`,
+			[id, perspectiveId, memoId, namingId]
+		);
+		return { id, already: false };
+	});
+}
+
+/** Einen Verweis des Memos lösen: Markierung, kein Löschen (append-only). */
+export async function unlinkMemo(memoId: string, projectId: string, participationId: string): Promise<boolean> {
+	const r = await query(
+		`UPDATE namings pn SET deleted_at = now()
+		   FROM participations p
+		  WHERE pn.id = p.id AND p.id = $3 AND pn.project_id = $2 AND pn.deleted_at IS NULL
+		    AND (p.naming_id = $1 OR p.participant_id = $1)`,
+		[memoId, projectId, participationId]
+	);
+	return (r.rowCount ?? 0) > 0;
+}
+
+/** Namings, auf die ein Memo verweisen kann: was in der Naming-Liste steht. */
+export async function getLinkableNamings(projectId: string) {
+	return (
+		await query<{ id: string; inscription: string | null; rel: RelationEnds | null; mode: string }>(
+			`SELECT n.id, ${currentInscriptionSql('n')} AS inscription, ${relationEndsSql('n')} AS rel, a.mode
+			   FROM namings n
+			   JOIN LATERAL (SELECT a.mode FROM appearances a
+			                  WHERE a.naming_id = n.id AND a.mode IN ('entity','relation','silence')
+			                    AND NOT EXISTS (SELECT 1 FROM appearances ms
+			                                     WHERE ms.naming_id = a.perspective_id AND ms.perspective_id = a.perspective_id
+			                                       AND ms.properties->>'role' = 'memo-system')
+			                  ORDER BY (a.mode = 'entity') DESC LIMIT 1) a ON true
+			  WHERE n.project_id = $1 AND n.deleted_at IS NULL
+			    AND NOT EXISTS (SELECT 1 FROM memo_content mc WHERE mc.naming_id = n.id)`,
+			[projectId]
+		)
+	).rows
+		.map((r) => ({ id: r.id, mode: r.mode, label: namingLabel(r.inscription, r.rel) }))
+		.filter((r) => r.label.trim() !== '' && r.label !== '(unnamed)')
+		.sort((a, b) => a.label.localeCompare(b.label, 'de'));
+}
+
 export async function getMemosForNaming(namingId: string, projectId: string) {
 	return (
 		await query(

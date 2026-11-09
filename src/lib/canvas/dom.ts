@@ -38,10 +38,15 @@ export function keepInWindow(node: HTMLElement, pos: { x: number; y: number }) {
 		const r = node.getBoundingClientRect();
 		const W = window.innerWidth;
 		const H = window.innerHeight;
+		// Oben endet der freie Raum an der App-Leiste: ein nach oben
+		// aufklappendes Menü verschwand sonst mit seinem Kopf darunter
+		// (Testlauf 11).
+		const T = Math.max(M, (document.querySelector('.app-header')?.getBoundingClientRect().bottom ?? 0) + M);
 		let x = p.x;
 		let y = p.y;
 		if (x + r.width > W - M) x = p.x - r.width >= M ? p.x - r.width : Math.max(M, W - r.width - M);
-		if (y + r.height > H - M) y = p.y - r.height >= M ? p.y - r.height : Math.max(M, H - r.height - M);
+		if (y + r.height > H - M) y = p.y - r.height >= T ? p.y - r.height : Math.max(T, H - r.height - M);
+		if (y < T) y = T;
 		node.style.left = `${x}px`;
 		node.style.top = `${y}px`;
 	}

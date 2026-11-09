@@ -185,23 +185,55 @@
 		const el = canvasContainerEl;
 		if (!el) return;
 		const c = el.getBoundingClientRect();
-		const r = el.querySelector<HTMLElement>('.unplaced-panel')?.getBoundingClientRect();
-		let right = 0;
-		let left = 0;
-		let top = 0;
-		if (r && r.width > 0 && r.top - c.top < 140) {
-			const onRight = (r.left + r.right) / 2 > c.left + c.width / 2;
-			const side = onRight ? Math.max(0, c.right - r.left + 8) : Math.max(0, r.right - c.left + 8);
-			if (c.width - side - 32 >= 340) {
-				if (onRight) right = side; else left = side;
-			} else {
-				top = Math.max(0, r.bottom - c.top + 8);
+		// Panels oben in der Fläche: Unplaced, Stack (Testlauf 11: „… is already
+		// on this map." lag über seinem Titel) und das offene Feld „New
+		// naming/formation", das aus der Werkzeugleiste hereinhängt (Testlauf 11:
+		// die Duplikat-Meldung lag halb dahinter).
+		type Box = { r: DOMRect; stack: boolean };
+		const boxes: Box[] = [
+			...[...el.querySelectorAll<HTMLElement>('.unplaced-panel, .canvas-stack-panel')]
+				.map((p) => ({ r: p.getBoundingClientRect(), stack: p.matches('.canvas-stack-panel') })),
+			...[...document.querySelectorAll<HTMLElement>('.naming-pop')].map((p) => ({ r: p.getBoundingClientRect(), stack: false }))
+		].filter(({ r }) => r.width > 0 && r.bottom > c.top && r.top - c.top < 140);
+		const onRight = (r: DOMRect) => (r.left + r.right) / 2 > c.left + c.width / 2;
+		const beside = (list: Box[]) => {
+			let right = 0;
+			let left = 0;
+			for (const { r } of list) {
+				if (onRight(r)) right = Math.max(right, c.right - r.left + 8);
+				else left = Math.max(left, r.right - c.left + 8);
 			}
-		}
+			return { right, left };
+		};
+		const below = (list: Box[]) => Math.max(0, ...list.map(({ r }) => r.bottom - c.top + 8));
+		const fits = (o: { right: number; left: number; top: number }) =>
+			c.width - o.left - o.right - 32 >= 340 && o.top <= c.height * 0.5;
+		const stacks = boxes.filter((b) => b.stack);
+		const others = boxes.filter((b) => !b.stack);
+		const sameSide = (b: Box) => stacks.some((st) => onRight(st.r) === onRight(b.r));
+		// Der Reihe nach: neben allen Panels; neben dem Stack und unter den
+		// übrigen; unter allen; neben/unter den übrigen (der Stack liegt dann
+		// darüber — besser als eine Leiste außer Sicht).
+		const options = [
+			{ ...beside(boxes), top: 0 },
+			{ ...beside([...stacks, ...others.filter(sameSide)]), top: below(others.filter((b) => !sameSide(b))) },
+			{ right: 0, left: 0, top: below(boxes) },
+			{ ...beside(others), top: 0 },
+			{ right: 0, left: 0, top: below(others) }
+		];
+		const chosen = boxes.length === 0 ? { right: 0, left: 0, top: 0 } : options.find(fits) ?? { right: 0, left: 0, top: 0 };
+		const { right, left, top } = chosen;
 		if (right !== overlayRight) overlayRight = right;
 		if (left !== overlayLeft) overlayLeft = left;
 		if (top !== overlayTop) overlayTop = top;
 	}
+	// Eine neue Meldung oder ein geöffneter Stack misst die Leiste oben neu.
+	$effect(() => {
+		void ms.notices.length;
+		void ms.stackId;
+		const t = setTimeout(measureOverlayRight, 30);
+		return () => clearTimeout(t);
+	});
 	function maybeReframe() {
 		measureOverlayRight();
 		if (viewMode !== 'canvas' || !canvasContainerEl) return;
@@ -258,13 +290,19 @@
 		});
 		ro.observe(el);
 		const isPanel = (n: Node) => n instanceof Element && n.matches('.unplaced-panel');
+		// Der Stack verschiebt nur die Leiste oben, er rahmt die Karte nicht neu.
+		const isStack = (n: Node) => n instanceof Element && n.matches('.canvas-stack-panel');
+		let stackTimer: ReturnType<typeof setTimeout> | undefined;
 		const mo = new MutationObserver((records) => {
+			let stack = false;
 			for (const r of records) {
 				if (r.type === 'childList' ? [...r.addedNodes, ...r.removedNodes].some(isPanel) : isPanel(r.target)) {
 					schedule();
 					return;
 				}
+				if (r.type === 'childList' ? [...r.addedNodes, ...r.removedNodes].some(isStack) : isStack(r.target)) stack = true;
 			}
+			if (stack) { clearTimeout(stackTimer); stackTimer = setTimeout(measureOverlayRight, 30); }
 		});
 		mo.observe(el, { childList: true, attributes: true, attributeFilter: ['style', 'class'], subtree: true });
 		return () => {
@@ -272,6 +310,7 @@
 			mo.disconnect();
 			if (raf) cancelAnimationFrame(raf);
 			clearTimeout(fallback);
+			clearTimeout(stackTimer);
 			if (reframeRaf) cancelAnimationFrame(reframeRaf);
 		};
 	});
@@ -1163,7 +1202,9 @@
 				</div>
 			{/if}
 
-			{#if ms.stackId}
+			<!-- Je Ansicht genau ein Stack: der verborgenen Ansicht ihren nicht
+			     mitrendern (Testlauf 11: zwei Memo-Formulare, eines unsichtbar). -->
+			{#if ms.stackId && viewMode === 'canvas'}
 				<StackPanel mode="floating" />
 				{#if ms.stackLoading}
 					<div class="stack-loading-float" role="status">Loading stack…</div>
@@ -1210,7 +1251,7 @@
 							<div data-naming-id={item.naming_id}>
 								<ListItemCard {item} {listGroupBy} pos={cp.positions.get(item.naming_id) ?? null} />
 							</div>
-							{#if ms.stackId === item.naming_id}
+							{#if ms.stackId === item.naming_id && viewMode === 'list'}
 								<div class="inline-stack" data-stack-for={item.naming_id}>
 									{#if ms.stackData}
 										<StackPanel mode="inline" {item} />

@@ -63,15 +63,15 @@
 	let namings = $derived<NamingRow[]>(data.namings);
 	let phases = $derived<any[]>(data.phases ?? []);
 	// Schmales Fenster: Phasen-Leiste eingeklappt, die Liste behält ihre Breite.
-	let phasesCollapsed = $state(false);
-	// Erst im Browser entscheidbar: der Server kennt die Fensterbreite nicht,
-	// und der beim Laden gerenderte Zustand bliebe sonst stehen (Testlauf 09.11.).
-	// Auch beim Verkleinern des Fensters: bei schmaler Breite eingeklappt
-	// (Testlauf 09.11.: nach dem Verkleinern verdeckte sie „merge" und „withdraw").
+	// null = nach Fensterbreite (CSS entscheidet, schon beim ersten Zeichnen:
+	// vorher klappte das Panel nach dem Laden zu und die Zeilen sprangen unter
+	// dem Mauszeiger weg, Testlauf 11); true/false = von Hand umgeschaltet.
+	// Ändert sich die Fensterbreite, gilt wieder die Breite (Testlauf 09.11.:
+	// nach dem Verkleinern verdeckte sie „merge" und „withdraw").
+	let phasesCollapsed = $state<boolean | null>(null);
 	onMount(() => {
 		const narrow = window.matchMedia('(max-width: 1099px)');
-		phasesCollapsed = narrow.matches;
-		const onChange = (e: MediaQueryListEvent) => (phasesCollapsed = e.matches);
+		const onChange = () => (phasesCollapsed = null);
 		narrow.addEventListener('change', onChange);
 		return () => narrow.removeEventListener('change', onChange);
 	});
@@ -425,6 +425,10 @@
 			return;
 		}
 		creatingNaming = true;
+		// Eine alte Duplikat-Meldung gilt nach erfolgreichem Anlegen nicht mehr
+		// (Testlauf 11: sie blieb über 20 s stehen).
+		actionError = null;
+		actionErrorOpen = null;
 		await apiAction('create', { inscription: newNamingValue.trim() });
 		newNamingValue = '';
 		creatingNaming = false;
@@ -575,6 +579,7 @@
 			});
 		}
 		showActionError(res);
+		showLift(res);
 
 		actTarget = null;
 		actMemo = '';
@@ -597,6 +602,7 @@
 			res = await apiAction('designate', { namingId: actTarget, designation: actNewValue });
 		}
 		showActionError(res);
+		showLift(res);
 
 		actTarget = null;
 		actMemo = '';
@@ -612,6 +618,12 @@
 		actTarget = null;
 		actMemo = '';
 		actLinkedIds = [];
+	}
+
+	/** Hat das Umschreiben designiert (Notiz auf einem Cue, erster eigener Name
+	 *  einer Relation), sagt die Liste es — sonst springt das Abzeichen stumm. */
+	function showLift(res: any) {
+		if (res?.liftedTo) showInfo(`“${res.inscription}” is now a ${res.liftedTo}.`);
 	}
 
 	/** Escape im Akt-Dialog: verwerfen wie „cancel", aber nicht still. */
@@ -1254,12 +1266,13 @@
 
 <!-- Phase Panel (right sidebar). Bei schmalem Fenster eingeklappt zu einem
      Reiter wie auf der Map; sonst nahm es die halbe Breite (Testlauf 09.11.). -->
-{#if phasesCollapsed}
-<button class="phase-tab" onclick={() => (phasesCollapsed = false)} title="Show phases" aria-expanded="false">
+{#if phasesCollapsed !== false}
+<button class="phase-tab" class:auto={phasesCollapsed === null} onclick={() => (phasesCollapsed = false)} title="Show phases" aria-expanded="false">
 	<span>Phases ({phases.length})</span>
 </button>
-{:else}
-<div class="phase-panel">
+{/if}
+{#if phasesCollapsed !== true}
+<div class="phase-panel" class:auto={phasesCollapsed === null}>
 	<div class="phase-panel-header">
 		<h3>Phases</h3>
 		<span class="phase-head-actions">
@@ -1382,6 +1395,11 @@
 		writing-mode: vertical-rl; font-size: 0.75rem; letter-spacing: 0.03em;
 	}
 	.phase-tab:hover { color: #e1e4e8; background: #1a1d29; }
+	.phase-tab.auto { display: none; }
+	@media (max-width: 1099px) {
+		.phase-tab.auto { display: block; }
+		.phase-panel.auto { display: none; }
+	}
 	.phase-head-actions { display: inline-flex; gap: 0.25rem; }
 	.phase-panel {
 		width: clamp(220px, 26vw, 320px);

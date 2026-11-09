@@ -35,6 +35,7 @@
 	let linkQuery = $state('');
 	let saving = $state(false);
 	let failed = $state(false);
+	let emptyTried = $state(false);
 
 	const suggestions = $derived.by(() => {
 		const q = linkQuery.trim().toLowerCase();
@@ -58,6 +59,7 @@
 	}
 
 	function reset() {
+		emptyTried = false;
 		open = false;
 		text = '';
 		linked = [];
@@ -71,7 +73,10 @@
 	}
 
 	async function save() {
-		if (!text.trim() || saving) return;
+		// ⌘↵ auf leerem Memo tat still nichts (Testlauf 11) — jetzt sagt es, warum.
+		if (!text.trim()) { emptyTried = true; return; }
+		if (saving) return;
+		emptyTried = false;
 		saving = true;
 		failed = false;
 		try {
@@ -98,6 +103,7 @@
 
 {#if open}
 	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<form class="nmf" onsubmit={(e) => { e.preventDefault(); save(); }} onclick={(e) => e.stopPropagation()}>
 		<textarea class="nmf-text" placeholder="Memo on this naming" aria-label="Memo on this naming" rows="5" bind:value={text} use:focusOnMount
 			onkeydown={(e) => {
@@ -130,6 +136,7 @@
 			<button type="button" class="nmf-cancel" onclick={cancel}>Cancel</button>
 			<span class="nmf-hint">⌘↵ saves</span>
 			{#if failed}<span class="nmf-error">Not saved.</span>{/if}
+			{#if emptyTried && !text.trim()}<span class="nmf-error">Write the memo first.</span>{/if}
 		</div>
 	</form>
 {:else}

@@ -8,7 +8,7 @@
 	import CoachPanel from '$lib/coach/CoachPanel.svelte';
 	import Rueckweg from '$lib/components/Rueckweg.svelte';
 	import { createCoachState, setCoachState } from '$lib/coach/coachState.svelte.js';
-	import { runAiStream, stepLabel } from '$lib/coach/aiStream.js';
+	import { runAiStream, stepLabel, elapsedLabel } from '$lib/coach/aiStream.js';
 	import { docOutline, type OutlineEntry } from '$lib/stores/docOutline.svelte.js';
 
 	let { data, children }: { data: any; children: Snippet } = $props();
@@ -134,6 +134,7 @@
 	};
 	let coworkRunning = $state(false);
 	let coworkStep = $state<string | null>(null);
+	let coworkSteps = $state(0);
 	let coworkStartedAt = $state(0);
 	let coworkNow = $state(0);
 	// Das Ergebnis des letzten Laufs überlebt ein Neuladen (pro Projekt, nur
@@ -176,12 +177,16 @@
 		const mapId = currentMapId;
 		coworkRunning = true;
 		coworkStep = null;
+		coworkSteps = 0;
 		setCoworkResult(null);
 		coworkStartedAt = Date.now();
 		coworkAbort = new AbortController();
 		try {
 			const last = await runAiStream(`/api/projects/${p.id}/cowork`, { mapId }, (event) => {
-				if (event.kind === 'step' && typeof event.tool === 'string') coworkStep = event.tool;
+				if (event.kind === 'step' && typeof event.tool === 'string') {
+					coworkStep = event.tool;
+					if (event.tool !== 'thinking') coworkSteps++;
+				}
 			}, coworkAbort.signal);
 			const outcome = last.kind === 'done' ? (last.outcome as Omit<CoworkResult, 'mapId'> | undefined) : undefined;
 			setCoworkResult(last.kind === 'cancelled'
@@ -380,10 +385,10 @@
 					onclick={askCowork}
 					disabled={coworkRunning}
 					title="Ask Cowork to look at the current map (on demand)"
-				>{coworkRunning ? `Cowork… ${coworkSeconds} s` : 'Cowork'}</button>
+				>{coworkRunning ? `Cowork… ${elapsedLabel(coworkSeconds)}` : 'Cowork'}</button>
 			{/if}
 			{#if coworkRunning}
-				<span class="cowork-step" role="status" aria-live="polite">{stepLabel(coworkStep)}…</span>
+				<span class="cowork-step" role="status" aria-live="polite">{stepLabel(coworkStep)}…{#if coworkSteps > 0} <span class="cowork-count">({coworkSteps} {coworkSteps === 1 ? 'step' : 'steps'} so far)</span>{/if}</span>
 				<!-- Ein Lauf liest erst die ganze Map, bevor er etwas schreibt; das dauert
 				     mit hoher Reasoning-Stärke Minuten. Testlauf 09.11.: nach sechs Minuten
 				     „Thinking…" ohne jeden Hinweis brach die Testerin ab. -->
@@ -712,6 +717,7 @@
 		padding: 0.1rem 0.5rem 0.2rem;
 		line-height: 1.35;
 	}
+	.cowork-count { color: #6b7280; }
 	.cowork-step {
 		display: block;
 		font-size: 0.7rem;

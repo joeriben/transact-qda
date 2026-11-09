@@ -227,6 +227,10 @@ async function runToolLoop(o: ToolLoopOptions): Promise<ToolLoopResult> {
 		}
 		// Was die Schlussrunde noch anfordert, ist ausgeführt; gefragt wird nicht mehr.
 		if (concluding || o.doneAfter?.(steps.slice(roundStart))) break;
+		// Zwischen den Werkzeugrunden denkt das Modell nach — oft minutenlang.
+		// Die Oberfläche sagt das, statt beim letzten Werkzeug stehen zu bleiben
+		// (Testlauf 11: 9,5 Minuten „Searching namings...").
+		o.onStep?.('thinking');
 
 		messages.push({
 			role: 'assistant',

@@ -126,7 +126,7 @@
 	async function submitNaming() {
 		const name = draftName.trim();
 		if (!name) return;
-		if (draftOnMap && !draining) { const id = draftOnMap.id; cancelNaming(); revealOnMap(id); return; }
+		if (draftOnMap && !draining) { const id = draftOnMap.id; cancelNaming(); revealOnMap(id, true); return; }
 		draftName = '';
 		draftExisting = null;
 		clearTimeout(draftDebounce);
@@ -196,11 +196,16 @@
 		else addElement();
 	}
 
-	function revealOnMap(id: string) {
+	/** Zeigt ein Naming der Karte. Aus der Suche heißt das „gezeigt", beim
+	 *  Anlegen eines vorhandenen Namens „schon auf dieser Karte" (Testlauf 11:
+	 *  die Suche meldete „already on this map", obwohl man es zeigen wollte). */
+	function revealOnMap(id: string, adding = false) {
 		closePlacementDropdown();
 		newInscription = '';
 		const label = ms.findInscription(id);
-		ms.showAiNotification(`${quoted(label)} is already on this map.${whereNote(id)}`);
+		ms.showAiNotification(adding
+			? `${quoted(label)} is already on this map.${whereNote(id)}`
+			: `Showing ${quoted(label)}.${whereNote(id)}`);
 		onreveal?.(id);
 	}
 
@@ -249,7 +254,7 @@
 		const name = newInscription.trim();
 		if (!name || adding) return;
 		// Steht der Name schon auf dieser Karte: dorthin, statt ein zweites anzulegen.
-		if (exactOnMap) { revealOnMap(exactOnMap.id); return; }
+		if (exactOnMap) { revealOnMap(exactOnMap.id, true); return; }
 		await createNaming(name);
 	}
 

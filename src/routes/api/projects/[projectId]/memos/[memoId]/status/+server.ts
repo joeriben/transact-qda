@@ -25,7 +25,7 @@ export const PUT: RequestHandler = async ({ params, request, locals }) => {
 		try {
 			const primaryMapId = await getOrCreatePrimarySitMap(params.projectId, locals.user!.id);
 			const naming = await promoteMemoToNaming(params.projectId, locals.user!.id, params.memoId, primaryMapId);
-			return json({ ok: true, status, namingId: naming.id });
+			return json({ ok: true, status, namingId: naming.id, inscription: naming.inscription });
 		} catch (error) {
 			return json({ error: error instanceof Error ? error.message : String(error) }, { status: 409 });
 		}

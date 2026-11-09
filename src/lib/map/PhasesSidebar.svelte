@@ -91,9 +91,9 @@
 					onclick={() => ms.assigningToPhase = ms.assigningToPhase === phase.id ? null : phase.id}>
 					{ms.assigningToPhase === phase.id ? 'done' : 'assign'}
 				</button>
-				{#if ms.assigningToPhase === phase.id}
-					<p class="assign-hint">Click namings on the map (or “+ phase” in the list) to add them.</p>
-				{/if}
+				<!-- Der Hinweis zum Zuordnen steht oben auf der Map („Adding to phase …"),
+				     nicht in der Karte: er schob die übrigen Phasen nach unten, und nach
+				     „done" saß das nächste „assign" woanders (Testlauf 11). -->
 				{#if ms.expandedPhase === phase.id}
 					<div class="phase-contents">
 						{#if ms.phaseContents.length === 0}
@@ -205,7 +205,6 @@
 	.phase-label.clickable:focus-visible { outline: 1px solid #8b9cf7; outline-offset: 2px; border-radius: 2px; }
 	.phase-count { font-size: 0.7rem; color: #6b7280; }
 	.phase-total { color: #4b5563; }
-	.assign-hint { font-size: 0.7rem; color: #10b981; margin: 0.3rem 0 0; line-height: 1.35; }
 	.phase-contents { border-top: 1px solid #2a2d3a; padding-top: 0.3rem; margin-top: 0.25rem; }
 	.phase-element {
 		display: flex; align-items: center; gap: 0.3rem;
