@@ -6,11 +6,11 @@
 // Den Loop selbst besitzt jetzt orchestrator.ts (Run-Persistenz,
 // Pause/Resume, Cancel-Intent, Stuck-Watchdog-Anker). Diese
 // Datei ist nur noch:
-//   * das Vokabular (H1Code, H2Verdict, H1Reaction, Survivor, SequenceTrace,
-//     CodingRunResult, CodingRunEvent), das orchestrator, +server.ts und die
+//   * das Vokabular (H1Naming, H2Verdict, H1Reaction, Survivor, SequenceTrace,
+//     NamingRunResult, NamingRunEvent), das orchestrator, +server.ts und die
 //     UI gemeinsam lesen,
 //   * die kleinen reinen Helfer (parseJsonArray, resolveSurvivors) und die
-//     beiden DB-Lookups (loadDocumentTitle, loadExistingCodeLabels), die der
+//     beiden DB-Lookups (loadDocumentTitle, loadExistingNamingLabels), die der
 //     Loop pro Run-Aufruf einmal braucht.
 //
 // Die Methode (eine einzige, fixe Strategie pro Run — keine User-Auswahl):
@@ -283,7 +283,7 @@ export function resolveSurvivors(h1: H1Naming[], verdicts: H2Verdict[], reaction
  * Title-Only-Lookup für den Loop. Der Volltext wird vom Loop NICHT mehr
  * gelesen — orchestrator.startOrResumeRun macht die Segmentation einmal beim
  * fresh Start und persistiert die Sequenz-Liste in segmentation_snapshot;
- * runCodingRunLoop liest aus dem Snapshot.
+ * runNamingRunLoop liest aus dem Snapshot.
  *
  * Verwirft den Fall „Document not found in this project" (vor allem für die
  * Wiederaufnahme nach gelöschten Dokumenten — der Loop soll dann nicht

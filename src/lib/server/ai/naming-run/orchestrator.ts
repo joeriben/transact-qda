@@ -29,9 +29,9 @@
 //     Snapshot statt re-segmentation — sonst würde eine Tunable-Änderung
 //     oder ein Embedding-Drift das current_index-Mapping zerstören.
 //   * sequence_status: Per-Sequenz-Done-Flags, geschrieben vom Loop nach
-//     jedem erfolgreichen commitCodedPassage. Resume skippt erledigte
+//     jedem erfolgreichen commitNamedPassage. Resume skippt erledigte
 //     Sequenzen, ohne die LLM-Calls neu zu fahren. Server-seitige
-//     Idempotenz in commitCodedPassage ist die zweite Linie.
+//     Idempotenz in commitNamedPassage ist die zweite Linie.
 //   * chatWithEmptyRetry pro H1/H2-Step (siehe chat-with-retry.ts):
 //     leere/unparseable Antwort → eine zweite Primary-Probe → wenn auch
 //     diese leer ist, einmal Eskalation auf resolveFallback(tier) (Ziel
@@ -435,9 +435,9 @@ async function loadRunCheckpoint(
  * 'cancelled' framet +server.ts.
  *
  * Idempotenz: skippt Sequenzen, deren Index in sequence_status='done' steht
- * (Resume-Skip). commitCodedPassage ist server-seitig zusätzlich idempotent
+ * (Resume-Skip). commitNamedPassage ist server-seitig zusätzlich idempotent
  * (write.ts) — Doppel-Linie für den Fall, dass ein Crash zwischen
- * commitCodedPassage und sequence_status-Update liegt.
+ * commitNamedPassage und sequence_status-Update liegt.
  */
 export async function runNamingRunLoop(
 	runId: string,
@@ -680,7 +680,7 @@ export async function runNamingRunLoop(
 			// trägt die Hermeneutik in die STRUKTUR (Aktantenwechsel +
 			// strukturell erzwungenes Nicht-Wissen pro Pass), nicht in
 			// einen einzelnen Prompt. CName-Namings landen via
-			// commitCodedPassage auf der primären Situational Map und
+			// commitNamedPassage auf der primären Situational Map und
 			// erscheinen unresolved in der Namings-Spalte rechts neben
 			// dem Dokument. Modell-Tier: H2 — Reasoning-Klasse, dieselbe
 			// Schärfe wie H2-Comprehension.

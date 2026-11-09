@@ -27,12 +27,12 @@
 //     commitNamedPassage-Idempotenz vor Doppel-Schreiben geschützt — ein neuer
 //     Run nach cancel startet sauber, der cancelled-Eintrag bleibt in der Historie.
 //
-// SSE-Events (Wire-Format: data: <json>\n\n; siehe CodingRunEvent — Typ und
+// SSE-Events (Wire-Format: data: <json>\n\n; siehe NamingRunEvent — Typ und
 // Feldnamen gehören zur Schnittstelle des eingefrorenen orchestrator.ts):
 //   { type: 'run-init', runId }
 //   { type: 'segmented', total, method }
 //   { type: 'sequence-start', index, total, seq }
-//   { type: 'sequence-done',  index, total, seq, codesCommitted, tokens, cumulativeTokens }
+//   { type: 'sequence-done',  index, total, seq, namingsCommitted, tokens, cumulativeTokens }
 //   { type: 'paused', runId }
 //   { type: 'cancelled', runId }
 //   { type: 'completed', result }
