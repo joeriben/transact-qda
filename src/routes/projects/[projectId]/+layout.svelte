@@ -255,7 +255,7 @@
 		<button class="sidebar-rail" onclick={() => { sidebarOpen = true; }} title="Show menu">⟩</button>
 	{/if}
 	<div class="project-sidebar" class:sidebar-hidden={!sidebarOpen} style="width: {sidebarWidth}px;">
-		<!-- Der Rückweg zu den Projekten steht oben; unten war er inkonsistent (BJ, 03.08.2026). -->
+		<!-- Der Rückweg zu den Projekten steht oben (BJ, 03.08.2026: „das Menü-Layout ist ohnehin immer noch inkonsistent ("<- Projects" unten)"). -->
 		<a href="/projects" class="back-link">← Projects</a>
 		<h2>
 			<a href={base} class:active={pathname === base} class="project-name-link">{p.name}</a>
@@ -266,7 +266,7 @@
 		{/if}
 
 		<nav>
-			<!-- Ordnung nach BJ, Sitzung 08 (11.03.2026): „flaches Menü unterhalb der
+			<!-- Ordnung nach BJ, Sitzung 08 (11.03.2026): „flachem Menü unterhalb der
 			     "project"-Ebene … Sit Map, SW Map, Pos Map, Namings, Memos, Documents." -->
 			<a href="{base}/maps" class:active={pathname === `${base}/maps`}>Maps</a>
 

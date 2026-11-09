@@ -4,8 +4,8 @@
 
   Der Stack eines Namings: jeder Akt, chronologisch, mit dem, was er setzt
   (Inskription, Designation, Modus, Valenz) und dem Memo, das in ihm steht.
-  Ein Naming IST diese Schichtung (Session 01: „seine eigene Blockchain";
-  Session 03: „das Element IST diese Schichtung seiner Veränderungen").
+  Ein Naming IST diese Schichtung (Session 01: „jedes Naming IST diese Geschichte als Datenobjekt, also seine eigenen Blockchain";
+  Session 03: „das ELement IST diese Schichtung seiner Veränderungen").
 -->
 <script lang="ts">
 	import { CCS_CUE, CCS_CHAR, CCS_SPEC } from '$lib/shared/tokens.js';

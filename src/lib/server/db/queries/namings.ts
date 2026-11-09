@@ -810,7 +810,7 @@ export async function getAllProjectNamings(projectId: string) {
 			   AND (
 			     -- Was in die Liste gehört (Session 09; „Gegenstands-Namings" war der
 			     -- Begriff des Assistenten, BJ entschied: „Es macht keinen pragmatischen
-			     -- Sinn, Maps als Namings in der Liste zu repräsentieren … es macht
+			     -- Sinn, Maps als Namings in der Liste zu repräsentieren … es mahct
 			     -- jedoch Sinn den Forschenden als Naming aufzunehmen"; Phasen „eher so
 			     -- wie Memos"): Entitäten, Relationen, Silences, Forschende.
 			     -- Nicht: Memos und ihre Verweise — sie erscheinen nur auf der
