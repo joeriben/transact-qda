@@ -3,7 +3,7 @@
   SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 <script lang="ts">
-	import type { Snippet } from 'svelte';
+	import { untrack, type Snippet } from 'svelte';
 	import { page } from '$app/stores';
 	import CoachPanel from '$lib/coach/CoachPanel.svelte';
 	import Rueckweg from '$lib/components/Rueckweg.svelte';
@@ -36,11 +36,31 @@
 			// defekter Eintrag → Defaults stehen lassen
 		}
 	});
+	// Im schmalen Fenster klappt die Menüspalte von selbst ein und beim Breiter-
+	// werden wieder auf (Testlauf 09.11.: bei 800 px blieb neben Spalte und
+	// Panels kaum Karte). Gespeichert wird nur, was die Forscherin selbst
+	// wählt, nicht das Einklappen durch die Breite.
+	let autoCollapsed = $state(false);
+	$effect(() => {
+		if (typeof window === 'undefined' || !window.matchMedia) return;
+		const mq = window.matchMedia('(max-width: 899px)');
+		const apply = () => untrack(() => {
+			if (mq.matches) {
+				if (sidebarOpen) { sidebarOpen = false; autoCollapsed = true; }
+			} else if (autoCollapsed) {
+				sidebarOpen = true;
+				autoCollapsed = false;
+			}
+		});
+		apply();
+		mq.addEventListener('change', apply);
+		return () => mq.removeEventListener('change', apply);
+	});
 	$effect(() => {
 		if (typeof window === 'undefined') return;
 		window.localStorage?.setItem(
 			'project-sidebar',
-			JSON.stringify({ open: sidebarOpen, width: sidebarWidth })
+			JSON.stringify({ open: autoCollapsed ? true : sidebarOpen, width: sidebarWidth })
 		);
 	});
 
@@ -248,18 +268,22 @@
 	const mapTypeOrder = ['situational', 'social-worlds', 'positional'];
 </script>
 
+<!-- Ein laufender Cowork-Lauf endet, wenn der Tab neu lädt oder schließt —
+     der Browser fragt vorher nach (Testlauf 09.11.). -->
+<svelte:window onbeforeunload={(e) => { if (coworkRunning) e.preventDefault(); }} />
+
 <!-- --content-left: linke Kante des Inhaltsbereichs. Der Rückweg (unten links,
      fest) muss die Menüspalte kennen, deren Breite ziehbar und einklappbar ist. -->
 <div class="project-layout" style="--content-left: {sidebarOpen ? sidebarWidth + 5 : 18}px;">
 	{#if !sidebarOpen}
-		<button class="sidebar-rail" onclick={() => { sidebarOpen = true; }} title="Show menu">⟩</button>
+		<button class="sidebar-rail" onclick={() => { sidebarOpen = true; autoCollapsed = false; }} title="Show menu">⟩</button>
 	{/if}
 	<div class="project-sidebar" class:sidebar-hidden={!sidebarOpen} style="width: {sidebarWidth}px;">
 		<!-- Der Rückweg zu den Projekten steht oben (BJ, 03.08.2026: „das Menü-Layout ist ohnehin immer noch inkonsistent ("<- Projects" unten)"). -->
 		<a href="/projects" class="back-link">← Projects</a>
 		<h2>
 			<a href={base} class:active={pathname === base} class="project-name-link">{p.name}</a>
-			<button class="sidebar-hide" onclick={() => { sidebarOpen = false; }} title="Hide menu">⟨</button>
+			<button class="sidebar-hide" onclick={() => { sidebarOpen = false; autoCollapsed = false; }} title="Hide menu">⟨</button>
 		</h2>
 		{#if p.description}
 			<p class="desc">{p.description}</p>
@@ -360,6 +384,12 @@
 			{/if}
 			{#if coworkRunning}
 				<span class="cowork-step" role="status" aria-live="polite">{stepLabel(coworkStep)}…</span>
+				<!-- Ein Lauf liest erst die ganze Map, bevor er etwas schreibt; das dauert
+				     mit hoher Reasoning-Stärke Minuten. Testlauf 09.11.: nach sechs Minuten
+				     „Thinking…" ohne jeden Hinweis brach die Testerin ab. -->
+				{#if coworkSeconds >= 20}
+					<span class="cowork-hint">A run reads the whole map first and often takes a few minutes. You can keep working; closing or reloading this tab stops it.</span>
+				{/if}
 				<button class="cowork-stop" onclick={stopCowork} title="Stop this Cowork run">Stop</button>
 			{:else if coworkResult}
 				<div
@@ -674,6 +704,13 @@
 	.cowork-toggle:disabled {
 		opacity: 0.6;
 		cursor: progress;
+	}
+	.cowork-hint {
+		display: block;
+		font-size: 0.66rem;
+		color: #6b7280;
+		padding: 0.1rem 0.5rem 0.2rem;
+		line-height: 1.35;
 	}
 	.cowork-step {
 		display: block;

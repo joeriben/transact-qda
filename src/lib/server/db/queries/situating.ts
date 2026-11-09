@@ -124,10 +124,11 @@ export async function setWithdrawnFlag(
  * back?". Project-scoped: a member of one project must not read the history of
  * a naming in another.
  */
-export async function getSituatingActs(namingId: string, projectId: string) {
+/** absorbed: Akte eines aufgenommenen (soft-gelöschten) Namings, gezeigt unter dem Merge-Akt des Überlebenden. */
+export async function getSituatingActs(namingId: string, projectId: string, opts?: { absorbed?: boolean }) {
 	const owns = await queryOne(
-		`SELECT 1 FROM namings WHERE id = $1 AND project_id = $2 AND deleted_at IS NULL`,
-		[namingId, projectId]
+		`SELECT 1 FROM namings WHERE id = $1 AND project_id = $2 AND (deleted_at IS NULL OR $3)`,
+		[namingId, projectId, !!opts?.absorbed]
 	);
 	if (!owns) return [];
 

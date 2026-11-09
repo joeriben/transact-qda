@@ -129,6 +129,7 @@
 		const z = viewport.zoom; // geklemmt
 		viewport.x = (ins.left + pad + (availW - bw * z) / 2) / z - b.minX;
 		viewport.y = (ins.top + pad + (availH - bh * z) / 2) / z - b.minY;
+		framedSeq = viewTouchSeq;
 	}
 
 	// Fit positional map: origin at bottom-left, the whole axis extent and every
@@ -154,6 +155,9 @@
 	// bis die Forscherin die Ansicht selbst bewegt.
 	let viewTouchSeq = 0;
 	function noteViewTouched() { viewTouchSeq++; }
+	// Stand der Ansicht beim letzten Einrahmen: Hat die Forscherin seither nicht
+	// selbst verschoben oder gezoomt, rahmt eine Größenänderung des Fensters neu.
+	let framedSeq = -1;
 	let autoFrameUntil = 0;
 	let autoFrameSeq = -1;
 	let containerW = $state(0);
@@ -168,7 +172,24 @@
 		autoFrameUntil = performance.now() + 2500;
 		autoFrameSeq = viewTouchSeq;
 	}
+	// Die Leiste oben (Snapshots, Akt-Dialog, Hinweise) weicht dem offenen
+	// Unplaced-Panel oben rechts aus, statt unter oder über ihm zu liegen
+	// (Testlauf 09.11.: Snapshot-Panel überlappte Unplaced).
+	let overlayRight = $state(0);
+	function measureOverlayRight() {
+		const el = canvasContainerEl;
+		if (!el) return;
+		const c = el.getBoundingClientRect();
+		const r = el.querySelector<HTMLElement>('.unplaced-panel:not(.collapsed)')?.getBoundingClientRect();
+		let right = 0;
+		if (r && r.width > 0 && r.top - c.top < 140 && (r.left + r.right) / 2 > c.left + c.width / 2) {
+			right = Math.max(0, c.right - r.left + 8);
+			if (c.width - right - 32 < 340) right = 0; // zu wenig Platz daneben: dann wie bisher mittig
+		}
+		if (right !== overlayRight) overlayRight = right;
+	}
 	function maybeReframe() {
+		measureOverlayRight();
 		if (viewMode !== 'canvas' || !canvasContainerEl) return;
 		if (performance.now() > autoFrameUntil || viewTouchSeq !== autoFrameSeq) return;
 		frameMap();
@@ -183,9 +204,32 @@
 			if (raf) return;
 			raf = requestAnimationFrame(() => { raf = 0; maybeReframe(); });
 		};
+		// Fenster oder Menüspalte ändern die Größe der Fläche (Testlauf 09.11.:
+		// nach dem Verkleinern nicht neu gerahmt, die Zoom-Leiste über einem
+		// Knoten). Unberührt seit dem letzten Einrahmen → neu einrahmen; sonst
+		// bleibt die Mitte des Ausschnitts, wo sie war.
+		let lastW = 0;
+		let lastH = 0;
+		let reframeRaf = 0;
 		const ro = new ResizeObserver(() => {
-			containerW = el.clientWidth;
-			containerH = el.clientHeight;
+			const w = el.clientWidth;
+			const h = el.clientHeight;
+			const dw = w - lastW;
+			const dh = h - lastH;
+			const first = lastW === 0 && lastH === 0;
+			lastW = w;
+			lastH = h;
+			containerW = w;
+			containerH = h;
+			if (!first && w > 0 && h > 0 && (Math.abs(dw) > 1 || Math.abs(dh) > 1)
+				&& viewMode === 'canvas' && performance.now() > autoFrameUntil) {
+				if (viewTouchSeq === framedSeq) {
+					if (!reframeRaf) reframeRaf = requestAnimationFrame(() => { reframeRaf = 0; if (viewTouchSeq === framedSeq) frameMap(); });
+				} else {
+					viewport.x += dw / (2 * viewport.zoom);
+					viewport.y += dh / (2 * viewport.zoom);
+				}
+			}
 			schedule();
 		});
 		ro.observe(el);
@@ -203,6 +247,7 @@
 			ro.disconnect();
 			mo.disconnect();
 			if (raf) cancelAnimationFrame(raf);
+			if (reframeRaf) cancelAnimationFrame(reframeRaf);
 		};
 	});
 
@@ -726,6 +771,20 @@
 	let toolbarRef = $state<MapToolbar | null>(null);
 
 	function handleKeydown(e: KeyboardEvent) {
+		// F2 benennt das ausgewählte Naming um, wie in Dateimanagern und Tabellen
+		// (Testlauf 09.11.); Doppelklick bleibt der Stack.
+		if (e.key === 'F2') {
+			const t = e.target as HTMLElement | null;
+			if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+			if (selection.count !== 1 || ms.actTarget || ms.editingId) return;
+			const id = [...selection.ids][0];
+			const node = ms.findNode(id);
+			if (!node || ms.isWithdrawn(node.properties)) return;
+			e.preventDefault();
+			ctxMenuId = null;
+			ctxRename(id);
+			return;
+		}
 		if (e.key === 'Escape') {
 			if (toolbarRef?.closeDropdowns()) return;
 			// Der Stack schließt erst, wenn nichts Flüchtigeres mehr offen ist:
@@ -738,10 +797,11 @@
 				|| ctxMenuId || canvasCtxMenu || layoutAsk || showTopoPanel);
 			if (!transientOpen && ms.stackId) { ms.stackId = null; ms.stackData = null; return; }
 			// Im Memo-Dialog nach Umbenennen, Designieren oder Moduswechsel heißt
-			// Escape „skip memo": der Akt gilt, nur ohne Memo — wie nach dem
-			// Verbinden. Vorher verwarf Escape die eingetippte Umbenennung still
-			// (Testlauf 09.11.). Verwerfen bleibt der Knopf „cancel".
-			if (ms.actTarget && ms.actType !== 'relate') { void ms.skipAct(); return; }
+			// Escape „cancel", wie in jedem Dialog — mit einer Meldung, dass nichts
+			// geändert wurde (früher verwarf es still; danach übernahm es den Akt,
+			// was im neunten Testlauf als falsch auffiel). Nach dem Verbinden steht
+			// die Relation schon; dort schließt Escape nur die Notiz.
+			if (ms.actTarget) { ms.discardAct(); return; }
 			ms.cancelMapReify();
 			ms.cancelRelation();
 			ms.cancelAct();
@@ -781,7 +841,7 @@
 		<div class="map-stage">
 		<!-- Hinweise und Formulare liegen ÜBER der Karte: sie schieben sie nicht
 		     nach unten (vorher rückte die Karte um 23–160 px). -->
-		<div class="map-overlays" bind:this={overlaysEl}>
+		<div class="map-overlays" bind:this={overlaysEl} style="--ov-right: {overlayRight}px;">
 			{#if showTopoPanel && viewMode === 'canvas'}
 				<TopoPanel
 					snapshots={topoSnapshots}
@@ -841,9 +901,13 @@
 							aria-label="Close this message" title="Close">×</button>
 					</div>
 				{:else}
-					<div class="map-notice" class:has-link={!!n.link} role="status">
+					<div class="map-notice" class:has-link={!!n.link || !!n.action} role="status">
 						<span class="notice-text">{n.text}</span>
 						{#if n.link}<a class="notice-link" href={n.link.href}>{n.link.label}</a>{/if}
+						{#if n.action}
+							<!-- Die Handlung vor dem Schließen festhalten (danach ist die Meldung weg). -->
+							<button class="notice-link notice-action" onclick={() => { const run = n.action?.run; ms.dismissNotice(n.id); run?.(); }}>{n.action.label}</button>
+						{/if}
 					</div>
 				{/if}
 			{/each}
@@ -1163,8 +1227,10 @@
 	/* z 960: über der Cowork-Karte (950) — Meldungen, Akt-Abfrage und
 	   Relationsformular bleiben lesbar. */
 	.map-overlays {
-		position: absolute; top: 0.6rem; left: 50%; transform: translateX(-50%);
-		z-index: 960; width: min(560px, calc(100% - 2rem));
+		/* Mittig in der Fläche links vom offenen Unplaced-Panel (--ov-right). */
+		position: absolute; top: 0.6rem; left: 1rem; right: calc(1rem + var(--ov-right, 0px));
+		margin-inline: auto; max-width: 560px;
+		z-index: 960;
 		display: flex; flex-direction: column; gap: 0.4rem;
 		pointer-events: none;
 	}
@@ -1232,6 +1298,7 @@
 	.map-notice.notice-error { border-color: #f87171; padding-right: 0.35rem; }
 	.notice-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 	.notice-link { color: #8b9cf7; font-size: 0.78rem; white-space: nowrap; }
+	.notice-action { background: none; border: none; padding: 0; cursor: pointer; text-decoration: underline; font-family: inherit; }
 	.notice-close {
 		background: none; border: none; color: #8b8fa3; cursor: pointer;
 		font-size: 1rem; line-height: 1; padding: 0 0.3rem; border-radius: 4px; flex-shrink: 0;

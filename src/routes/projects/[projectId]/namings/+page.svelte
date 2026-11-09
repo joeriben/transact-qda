@@ -166,15 +166,21 @@
 	const RECENTLY_TOUCHED_MS = 8000;
 	let recentlyTouched = $state<Set<string>>(new Set());
 
+	// Solange der Zeiger über der Liste steht, verschwindet keine Zeile: sonst
+	// rückte die nächste Zeile samt ihrem „withdraw" unter den Zeiger
+	// (Testlauf 09.11.: Gefahr eines Fehlklicks). Sie geht, sobald er die Liste verlässt.
+	let pointerInList = false;
 	function markTouched(namingId: string) {
 		const next = new Set(recentlyTouched);
 		next.add(namingId);
 		recentlyTouched = next;
-		setTimeout(() => {
+		const release = () => {
+			if (pointerInList) { setTimeout(release, 500); return; }
 			const after = new Set(recentlyTouched);
 			after.delete(namingId);
 			recentlyTouched = after;
-		}, RECENTLY_TOUCHED_MS);
+		};
+		setTimeout(release, RECENTLY_TOUCHED_MS);
 	}
 
 	// ---- Rückweg: ?focus=<namingId> schlägt die Liste bei einem Naming auf ----
@@ -595,6 +601,14 @@
 		actLinkedIds = [];
 	}
 
+	/** Escape im Akt-Dialog: verwerfen wie „cancel", aber nicht still. */
+	function discardAct() {
+		if (!actTarget) return;
+		const what = actType === 'rename' ? `Rename to “${actNewValue}”` : actType === 'designate' ? `Designation as ${actNewValue}` : 'Change';
+		cancelAct();
+		showInfo(`${what} discarded — nothing changed.`);
+	}
+
 	// ---- Memo Status ----
 	// Satz IV: ein KI-Memo gehört erst zu den Memos des Namings, wenn der
 	// Mensch es hereinholt (promote); „ack" ist ein Verdikt — wie im Map-Stack.
@@ -769,7 +783,9 @@
 		{
 			key: 'grounding',
 			label: 'Grounding',
-			// S08: nur ein Dokumentanker erdet; ein Memo ist Reflexion, keine Erdung.
+			// Nur ein Dokumentanker erdet, ein Memo ist Reflexion: Formel des
+			// Assistenten in S08 („Grounding = document anchor. Period."), von BJ
+			// mit „document first, then refactor" übernommen.
 			title: 'Grounding is a document anchor. A memo is reflection, not grounding.',
 			value: filterGrounding,
 			options: [
@@ -884,8 +900,9 @@
 				<div class="action-info" role="status">
 					<span>{infoNotice}</span>
 					{#if infoUndo}
-						{@const undo = infoUndo}
-						<button class="btn-xs" onclick={() => { infoNotice = null; infoUndo = null; undo.run(); }}>{undo.label}</button>
+						<!-- Die Rückgängig-Aktion vor dem Schließen festhalten: {@const}
+						     folgte infoUndo und war danach null (Testlauf 9). -->
+						<button class="btn-xs" onclick={() => { const run = infoUndo?.run; infoNotice = null; infoUndo = null; run?.(); }}>{infoUndo.label}</button>
 					{/if}
 					<button class="btn-xs" onclick={() => { infoNotice = null; infoUndo = null; }} aria-label="Dismiss message">×</button>
 				</div>
@@ -956,8 +973,9 @@
 						{/if}
 					</div>
 					<!-- Fokus ins Feld wie auf der Map: sonst geht eine getippte
-					     Begründung ins Leere (Testlauf 09.11.). Esc übernimmt ohne
-					     Memo, Strg/⌘+Enter mit. -->
+					     Begründung ins Leere (Testlauf 09.11.). Esc verwirft wie
+					     „cancel" und sagt es (verwarf früher still); Strg/⌘+Enter
+					     übernimmt mit Memo. -->
 					<textarea
 						placeholder="What influenced this act? What changed in your understanding?"
 						aria-label="Memo on this act"
@@ -965,7 +983,7 @@
 						rows="2"
 						use:focusSelect
 						onkeydown={(e) => {
-							if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); void skipAct(); }
+							if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); discardAct(); }
 							else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (actMemo.trim()) void submitAct(); }
 						}}
 					></textarea>
@@ -996,8 +1014,8 @@
 						<div class="act-actions">
 							<button class="btn-primary btn-sm-primary" onclick={submitAct} disabled={!actMemo.trim()}
 								title={actMemo.trim() ? 'Apply with this memo (Ctrl/⌘+Enter)' : 'Write a memo first — or apply without one'}>Apply + memo</button>
-							<button class="btn-link" onclick={skipAct} title="Apply without a memo (Esc)">skip memo</button>
-							<button class="btn-link" onclick={cancelAct} title="Discard this {actType === 'rename' ? 'rename' : 'designation'}">cancel</button>
+							<button class="btn-link" onclick={skipAct} title="Apply without a memo">skip memo</button>
+							<button class="btn-link" onclick={cancelAct} title="Discard this {actType === 'rename' ? 'rename' : 'designation'} (Esc)">cancel</button>
 						</div>
 					</div>
 				</div>
@@ -1150,7 +1168,8 @@
 	{#if entitiesAndRelations.length > 0}
 		<div class="section">
 			<h2 class="section-label">Namings <span class="section-count">{sectionCount(entitiesAndRelations)}</span></h2>
-			<div class="naming-list">
+			<!-- svelte-ignore a11y_no_static_element_interactions (nur: steht der Zeiger über der Liste?) -->
+			<div class="naming-list" onpointerenter={() => { pointerInList = true; }} onpointerleave={() => { pointerInList = false; }}>
 				{#each entitiesAndRelations as n (n.naming_id)}
 					<div data-naming-id={n.naming_id} class:focused={focusId === n.naming_id}>
 						<NamingRow
@@ -1188,7 +1207,8 @@
 	{#if silences.length > 0}
 		<div class="section">
 			<h2 class="section-label">Silences <span class="section-count">{sectionCount(silences)}</span></h2>
-			<div class="naming-list">
+			<!-- svelte-ignore a11y_no_static_element_interactions (nur: steht der Zeiger über der Liste?) -->
+			<div class="naming-list" onpointerenter={() => { pointerInList = true; }} onpointerleave={() => { pointerInList = false; }}>
 				{#each silences as n (n.naming_id)}
 					<div data-naming-id={n.naming_id} class:focused={focusId === n.naming_id}>
 						<NamingRow

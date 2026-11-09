@@ -28,7 +28,9 @@
 				Designation: <strong>{actLabel}</strong> →
 				<span style="color: {ms.designationColor(ms.actNewValue)}">{ms.actNewValue}</span>
 			{:else if ms.actType === 'relate'}
-				Relation: <strong>{actLabel !== '?' ? actLabel : ms.actNewValue || '(unnamed)'}</strong>
+				<!-- Die Relation steht schon; hier geht es nur noch um die Notiz zu ihr
+				     (Testlauf 09.11.: Escape schien sie „ohne Memo zu übernehmen"). -->
+				Relation created: <strong>{actLabel !== '?' ? actLabel : ms.actNewValue || '(unnamed)'}</strong> — a memo on it (optional)
 			{:else if ms.actType === 'mode'}
 				{#if ms.actNewValue === 'relation' && ms.actModeEnds}
 					Show as relation (this map): <strong>{actLabel}</strong> —
@@ -75,8 +77,8 @@
 		<div class="act-actions">
 			<button class="btn-primary btn-sm-primary" onclick={ms.submitAct} disabled={!ms.actMemo.trim()}
 				title={ms.actMemo.trim() ? 'Ctrl/⌘+Enter' : ms.actType === 'relate' ? 'Write a memo first' : 'Write a memo first — or apply without one'}>{ms.actType === 'relate' ? 'Save memo' : 'Apply + memo'}</button>
-			<button class="btn-link" onclick={ms.skipAct} title="Apply without a memo (Esc)">skip memo</button>
-			{#if ms.actType !== 'relate'}<button class="btn-link" onclick={ms.cancelAct} title="Discard this {ms.actType === 'rename' ? 'rename' : ms.actType === 'designate' ? 'designation' : 'change'}">cancel</button>{/if}
+			<button class="btn-link" onclick={ms.skipAct} title={ms.actType === 'relate' ? 'Keep the relation without a memo (Esc)' : 'Apply without a memo'}>skip memo</button>
+			{#if ms.actType !== 'relate'}<button class="btn-link" onclick={ms.cancelAct} title="Discard this {ms.actType === 'rename' ? 'rename' : ms.actType === 'designate' ? 'designation' : 'change'} (Esc)">cancel</button>{/if}
 		</div>
 	</div>
 {/if}

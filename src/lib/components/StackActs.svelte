@@ -33,6 +33,8 @@
 		merged_from?: string | null;
 		/** Merge: der Stack des aufgenommenen Namings, unverändert (Zeiten, Autorinnen, Kontexte). */
 		absorbed?: Act[];
+		/** Merge: Enden des aufgenommenen Namings, falls es einmal Relation war. */
+		absorbed_ends?: { source: string; target: string; directed: boolean } | null;
 	};
 </script>
 
@@ -137,7 +139,7 @@
 			{#if a.absorbed && a.absorbed.length > 0}
 				<details class="sa-absorbed" open>
 					<summary>stack of {quoted(a.merged_from ?? '')} until the merge ({a.absorbed.length})</summary>
-					<StackActs acts={a.absorbed} {currentMap} {onlinked} />
+					<StackActs acts={a.absorbed} {currentMap} {onlinked} ends={a.absorbed_ends ?? null} />
 				</details>
 			{/if}
 			{#if a.memo_text}

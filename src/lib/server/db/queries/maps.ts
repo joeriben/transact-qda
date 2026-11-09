@@ -1020,11 +1020,12 @@ export async function getNamingStack(
 	// seinen eigenen Zeiten, Autorinnen und Kontexten (Testlauf 09.11.:
 	// Kopien trugen die Zeit des Merge und verloren „as relation").
 	const depth = opts?.depth ?? 0;
-	const absorbedStacks = new Map<string, any[]>();
+	const absorbedStacks = new Map<string, { acts: any[]; ends: unknown }>();
 	if (projectId && depth < 4) {
 		for (const id of absorbedLabels.keys()) {
 			const sub = await getNamingStack(id, projectId, { absorbed: true, depth: depth + 1 });
-			absorbedStacks.set(id, sub.acts);
+			// Mit seinen Enden, falls es einmal Relation war (Testlauf 09.11.: „as relation" ohne Enden).
+			absorbedStacks.set(id, { acts: sub.acts, ends: sub.relationEnds });
 		}
 	}
 
@@ -1074,7 +1075,7 @@ export async function getNamingStack(
 	// Wiederherstellen (situating_acts, migrations/034 und 038) stehen
 	// chronologisch im selben Stack: Auch sie sind Akte an diesem Naming,
 	// mit Zeit und Autorin. Sie tragen keine Designation.
-	const situating = projectId ? await getSituatingActs(namingId, projectId) : [];
+	const situating = projectId ? await getSituatingActs(namingId, projectId, { absorbed: !!opts?.absorbed }) : [];
 	// Zuordnung zu einer Phase und ihre Aufhebung (phase_memberships,
 	// migrations/006, append-only) sind ebenso Akte an diesem Naming.
 	const phaseActs = (
@@ -1133,7 +1134,10 @@ export async function getNamingStack(
 			map_inscription: null as string | null,
 			phase_label: null as string | null,
 			sw_role: null as string | null,
-			absorbed: (a.absorbed_id && a.merged_from ? absorbedStacks.get(a.absorbed_id) : undefined) as any[] | undefined
+			absorbed: (a.absorbed_id && a.merged_from ? absorbedStacks.get(a.absorbed_id)?.acts : undefined) as any[] | undefined,
+			absorbed_ends: (a.absorbed_id && a.merged_from ? absorbedStacks.get(a.absorbed_id)?.ends ?? null : null) as
+				| { source: string; target: string; directed: boolean }
+				| null
 		})),
 		...situatingEntries,
 		...phaseEntries
@@ -1165,13 +1169,21 @@ export async function getNamingStack(
 	const relationEnds = (
 		await query<{ source: string; target: string; directed: boolean; current: boolean }>(
 			`SELECT ${namingLabelSql('s')} AS source, ${namingLabelSql('t')} AS target,
-			        EXISTS (SELECT 1 FROM appearances a WHERE a.naming_id = p.id AND a.mode = 'relation'
-			                  AND a.directed_from IS NOT NULL AND a.directed_to IS NOT NULL) AS directed,
+			        (d.directed_from IS NOT NULL) AS directed,
 			        -- Steht es gerade als Relation (sonst: Endpunkte aus einer früheren Phase als Relation)
 			        EXISTS (SELECT 1 FROM appearances a WHERE a.naming_id = p.id AND a.mode = 'relation') AS current
 			   FROM participations p
-			   JOIN namings s ON s.id = p.naming_id
-			   JOIN namings t ON t.id = p.participant_id
+			   -- Die Richtung steht an der Erscheinung und bleibt dort, wenn das
+			   -- Naming wieder als Entität erscheint (switchAppearanceMode). Nur auf
+			   -- die aktuelle Relation-Erscheinung zu schauen zeigte nach dem
+			   -- Zurückwechseln „↔" für eine gerichtet angelegte Relation (Testlauf 09.11.).
+			   LEFT JOIN LATERAL (
+			     SELECT a.directed_from, a.directed_to FROM appearances a
+			      WHERE a.naming_id = p.id AND a.directed_from IS NOT NULL AND a.directed_to IS NOT NULL
+			      ORDER BY (a.mode = 'relation') DESC, a.updated_at DESC LIMIT 1
+			   ) d ON true
+			   JOIN namings s ON s.id = COALESCE(d.directed_from, p.naming_id)
+			   JOIN namings t ON t.id = COALESCE(d.directed_to, p.participant_id)
 			  WHERE p.id = $1
 			  LIMIT 1`,
 			[namingId]
@@ -1270,6 +1282,13 @@ export async function getMapAppearances(mapId: string, projectId: string) {
 			     SELECT 1 FROM naming_acts nam
 			     JOIN researcher_namings rnm ON rnm.naming_id = nam.by
 			     WHERE nam.naming_id = a.naming_id AND nam.memo_text IS NOT NULL AND btrim(nam.memo_text) <> ''
+			   ) OR EXISTS (
+			     -- … oder im Stack eines in dieses aufgenommenen Namings (Merge)
+			     SELECT 1 FROM naming_acts mg
+			     JOIN naming_acts nam ON nam.naming_id = ANY(mg.linked_naming_ids)
+			     JOIN researcher_namings rnm ON rnm.naming_id = nam.by
+			     WHERE mg.naming_id = a.naming_id AND ${mergeActSql('mg')}
+			       AND nam.memo_text IS NOT NULL AND btrim(nam.memo_text) <> ''
 			   ) OR EXISTS (
 			     SELECT 1 FROM participations mp
 			     JOIN memo_content mc ON mc.naming_id = CASE

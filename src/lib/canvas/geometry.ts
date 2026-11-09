@@ -175,7 +175,10 @@ export function labelAtToPoint(a: Point, b: Point, at: LabelAt): Point {
 	return { x: a.x + at.t * f.dx + at.d * f.uy, y: a.y + at.t * f.dy - at.d * f.ux };
 }
 
-/** Gespeicherte Lage für einen Rautenmittelpunkt; t bleibt zwischen den Endpunkten. */
+/** Gespeicherte Lage für einen Rautenmittelpunkt — genau dort, wo sie abgelegt
+ *  wurde. Früher wurde t auf die Strecke zwischen den Endpunkten begrenzt; eine
+ *  neben der Linie abgelegte Raute sprang dann an deren Anfang oder Ende
+ *  (Testlauf 09.11.: „Gezogene Rauten landen nicht am Ablageort"). */
 export function pointToLabelAt(a: Point, b: Point, p: Point): LabelAt {
 	const f = chordFrame(a, b);
 	const px = p.x - a.x;
@@ -183,7 +186,7 @@ export function pointToLabelAt(a: Point, b: Point, p: Point): LabelAt {
 	const t = (px * f.ux + py * f.uy) / f.len;
 	const d = px * f.uy - py * f.ux;
 	return {
-		t: Math.round(Math.min(1, Math.max(0, Number.isFinite(t) ? t : 0.5)) * 1000) / 1000,
+		t: Math.round((Number.isFinite(t) ? t : 0.5) * 1000) / 1000,
 		d: Math.round(Number.isFinite(d) ? d : 0)
 	};
 }

@@ -687,7 +687,9 @@ export async function getAggregatedNaming(namingId: string, projectId: string) {
 	// Memo: ein Memo einer Forscherin im Stack (Akt mit memo_text) oder ein
 	// verweisendes Memo-Naming — wie auf Map und in der Liste. KI-Memos zählen
 	// erst, wenn die Forscherin sie hereinholt (Satz IV). Ein Memo ist
-	// Reflexion, kein Grounding (S08); es wird nur getrennt ausgewiesen.
+	// Reflexion, kein Grounding — Formel des Assistenten in S08 („Grounding =
+	// document anchor. Period."), von BJ mit „document first, then refactor"
+	// übernommen; es wird nur getrennt ausgewiesen.
 	// Memos im Stack eines aufgenommenen Namings (unter dem Merge-Akt) zählen mit.
 	const hasNoteAct = (acts: any[]): boolean =>
 		acts.some(
@@ -780,6 +782,13 @@ export async function getAllProjectNamings(projectId: string) {
 			   (EXISTS(SELECT 1 FROM naming_acts na
 			      JOIN researcher_namings rn ON rn.naming_id = na.by
 			      WHERE na.naming_id = n.id AND na.memo_text IS NOT NULL AND btrim(na.memo_text) <> '')
+			    -- … oder im Stack eines in dieses aufgenommenen Namings (Merge): Er
+			    -- steht unter dem Merge-Akt in seinem Stack (Testlauf 09.11.).
+			    OR EXISTS(SELECT 1 FROM naming_acts mg
+			      JOIN naming_acts na ON na.naming_id = ANY(mg.linked_naming_ids)
+			      JOIN researcher_namings rn ON rn.naming_id = na.by
+			      WHERE mg.naming_id = n.id AND ${mergeActSql('mg')}
+			        AND na.memo_text IS NOT NULL AND btrim(na.memo_text) <> '')
 			    OR EXISTS(SELECT 1 FROM participations mp
 			    JOIN namings pn ON pn.id = mp.id AND pn.deleted_at IS NULL
 			    JOIN memo_content mc ON mc.naming_id = CASE
@@ -960,8 +969,34 @@ export async function mergeNamings(
 		// Kollidierende Erscheinungen (beide standen auf derselben Map) bleiben am
 		// aufgenommenen Naming, das unten soft-gelöscht wird — wie die nicht
 		// übertragbaren Participations oben. Nichts wird hart gelöscht („we do
-		// only soft-delete, but not hard-delete", S08); Lage, Rolle und
+		// aonly soft-delete, but not hard-delete", S08); Lage, Rolle und
 		// Rückzugsstand auf dieser Map bleiben nachvollziehbar.
+		// Stand das Überlebende auf einer dieser Maps unplatziert, das aufgenommene
+		// aber platziert, übernimmt es dessen Lage (und auf der SW/A-Map Form und
+		// Rolle) — sonst fiel es mit dem Merge von der Map (Testlauf 09.11.). Das
+		// ist ein Eintreten in die Situation dieser Map und steht als 'situate' im
+		// Stack des Überlebenden (situating_acts, migrations/034).
+		await client.query(
+			`WITH placed AS (
+			   UPDATE appearances s
+			      SET properties = COALESCE(s.properties, '{}'::jsonb) || (
+			            SELECT COALESCE(jsonb_object_agg(e.k, e.v), '{}'::jsonb)
+			              FROM jsonb_each(m.properties) AS e(k, v)
+			             WHERE e.k IN ('x', 'y', 'rx', 'ry', 'rotation', 'swRole')
+			               AND NOT (COALESCE(s.properties, '{}'::jsonb) ? e.k))
+			     FROM appearances m
+			    WHERE s.naming_id = $1 AND m.naming_id = $2
+			      AND s.perspective_id = m.perspective_id
+			      AND (s.properties->>'x' IS NULL OR s.properties->>'y' IS NULL)
+			      AND m.properties->>'x' IS NOT NULL AND m.properties->>'y' IS NOT NULL
+			   RETURNING s.perspective_id,
+			             (m.properties->>'x')::float8 AS x,
+			             (m.properties->>'y')::float8 AS y
+			 )
+			 INSERT INTO situating_acts (map_id, naming_id, by, act, x, y)
+			 SELECT perspective_id, $1, $3, 'situate', x, y FROM placed`,
+			[survivorId, mergedId, researcherNamingId]
+		);
 
 		// 3. Update directed_from/directed_to references in other appearances
 		await client.query(

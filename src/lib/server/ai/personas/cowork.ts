@@ -53,7 +53,7 @@ Individual elements:
 - "What are the hybrid human/nonhuman moments in this element?" (questions boundaries)
 
 Relations and absences:
-- "What is the relational pattern around this absence?" (constellation grounding)
+- "What is the relational pattern around this absence?" (a silence arises from the pattern of relationings; its relations do not make it grounded)
 - "What does the boundary between these elements do? What falls between them?"
 
 Provenance:

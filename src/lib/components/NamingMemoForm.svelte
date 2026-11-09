@@ -112,7 +112,9 @@
 				<input class="nmf-link-input" type="text" placeholder="refer to a naming…" aria-label="Refer to a naming" bind:value={linkQuery}
 					onkeydown={(e) => {
 						if (e.key === 'Escape') { e.stopPropagation(); linkQuery = ''; }
-						if (e.key === 'Enter') { e.preventDefault(); if (suggestions[0]) { linked = [...linked, suggestions[0]]; linkQuery = ''; } }
+						// ⌘↵ speichert auch von hier aus (Testlauf 09.11.), ↵ übernimmt den ersten Vorschlag.
+						else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); save(); }
+						else if (e.key === 'Enter') { e.preventDefault(); if (suggestions[0]) { linked = [...linked, suggestions[0]]; linkQuery = ''; } }
 					}} />
 				{#if suggestions.length > 0}
 					<div class="nmf-suggest">

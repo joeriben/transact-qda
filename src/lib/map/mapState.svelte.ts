@@ -83,6 +83,8 @@ export type Notice = {
 	text: string;
 	kind: 'info' | 'error';
 	link?: { href: string; label: string };
+	/** Eine Handlung direkt in der Meldung (z. B. „restore" nach dem Zurückziehen). */
+	action?: { label: string; run: () => void };
 };
 
 /** Ein Naming in den Blick holen; mit `stack` auch seinen Stack öffnen. */
@@ -619,6 +621,8 @@ export function createMapState(
 		}
 		await reload();
 		if (res.data?.lifted) showAiNotification(`The memo lifts “${label}” from cue to characterization.`);
+		const ends = (res.data?.liftedEnds ?? []) as string[];
+		if (ends.length > 0) showAiNotification(`Relating lifts “${ends.join('” and “')}” from cue to characterization.`);
 	}
 
 	async function skipAct() {
@@ -636,6 +640,20 @@ export function createMapState(
 	async function loadActMemos(namingId: string) {
 		const res = await mapAction('getMemosForNaming', { namingId });
 		actExistingMemos = res?.memos || [];
+	}
+
+	/** Escape im Akt-Dialog: verwerfen wie „cancel", aber nicht still
+	 *  (früher verwarf Escape eine getippte Umbenennung ohne Hinweis). Nach dem
+	 *  Verbinden steht die Relation schon; dort schließt Escape nur die Notiz. */
+	function discardAct() {
+		if (!actTarget) return;
+		if (actType !== 'relate') {
+			const what = actType === 'rename' ? `Rename to “${actNewValue}”`
+				: actType === 'designate' ? `Designation as ${actNewValue}`
+				: actNewValue === 'relation' ? 'Showing it as a relation' : 'Showing it as an entity';
+			showAiNotification(`${what} discarded — nothing changed.`);
+		}
+		cancelAct();
 	}
 
 	function cancelAct() {
@@ -814,6 +832,11 @@ export function createMapState(
 		const res = await mapAction('withdraw', { namingId, withdrawn: !currentlyWithdrawn });
 		if (!res && node) node.properties = before;
 		await reload();
+		// Rückmeldung mit dem Weg zurück — abgedunkelt allein sagte es nichts (Testlauf 09.11.).
+		if (res && !currentlyWithdrawn) {
+			pushNotice(`“${findInscription(namingId)}” withdrawn — it stays in its stack.`, 'info', undefined, 9000,
+				{ label: 'restore', run: () => { void toggleWithdraw(namingId, true); } });
+		}
 	}
 
 	// ─── Meldungen ───
@@ -837,8 +860,8 @@ export function createMapState(
 		notices = notices.filter((n) => n.id !== id);
 	}
 
-	function pushNotice(text: string, kind: Notice['kind'], link?: Notice['link'], duration = 4000): number {
-		const same = notices.find((n) => n.text === text && n.kind === kind);
+	function pushNotice(text: string, kind: Notice['kind'], link?: Notice['link'], duration = 4000, action?: Notice['action']): number {
+		const same = notices.find((n) => n.text === text && n.kind === kind && !action);
 		if (same) {
 			if (kind === 'info') {
 				clearNoticeTimer(same.id);
@@ -846,7 +869,7 @@ export function createMapState(
 			}
 			return same.id;
 		}
-		const n: Notice = { id: ++noticeSeq, text, kind, ...(link ? { link } : {}) };
+		const n: Notice = { id: ++noticeSeq, text, kind, ...(link ? { link } : {}), ...(action ? { action } : {}) };
 		// Zugleich höchstens drei Fehlermeldungen und ein Hinweis.
 		const all = [...notices, n];
 		const keep = new Set([
@@ -1319,6 +1342,7 @@ export function createMapState(
 		get reifySource() { return reifySource; },
 		get actTarget() { return actTarget; },
 		set actTarget(v) { actTarget = v; },
+		discardAct,
 		get actType() { return actType; },
 		set actType(v) { actType = v; },
 		get actNewValue() { return actNewValue; },

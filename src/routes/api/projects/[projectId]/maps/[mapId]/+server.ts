@@ -547,6 +547,10 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			).rows[0];
 			if (!current) return json({ error: 'This naming is not on this map.' }, { status: 404 });
 			if (current.mode === mode) return json({ ok: true, unchanged: true });
+			// Erst beim ersten Verbinden dieser beiden: dann heben sich ihre Cues
+			// wie beim Ziehen einer Relation (relateElements). Ein Zurückwechseln
+			// in eine schon bestehende Relation verbindet nichts neu.
+			let newlyRelated = false;
 			if (mode === 'relation') {
 				if (!sourceId || !targetId) {
 					return json({ error: 'sourceId and targetId required for relation' }, { status: 400 });
@@ -592,6 +596,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 						`INSERT INTO participations (id, naming_id, participant_id) VALUES ($1, $2, $3)`,
 						[namingId, sourceId, targetId]
 					);
+					newlyRelated = true;
 				}
 				// Strukturelle Integrität wie bei relateElements: beide Enden erscheinen hier.
 				for (const endpointId of [sourceId, targetId]) {
@@ -631,7 +636,30 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 				[namingId, by, mode, mode === 'relation' ? valence?.trim() || null : null,
 				 note, links.length > 0 ? links : null, lift ? 'characterization' : null]
 			);
-			return json({ ok: true, lifted: lift });
+			// Wie beim Ziehen einer Relation (relateElements): verbundene Cues steigen
+			// auf characterization, der Akt nennt die Relation, die sie hebt
+			// (Testlauf 09.11.: „Anders als Relate hebt es die Enden nicht").
+			const liftedEnds: string[] = [];
+			if (newlyRelated) {
+				for (const endId of [sourceId, targetId]) {
+					const cur = (
+						await dbQuery<{ designation: string; inscription: string }>(
+							`SELECT na.designation, n.inscription FROM naming_acts na JOIN namings n ON n.id = na.naming_id
+							  WHERE na.naming_id = $1 AND na.designation IS NOT NULL ORDER BY na.seq DESC LIMIT 1`,
+							[endId]
+						)
+					).rows[0];
+					if (cur?.designation === 'cue') {
+						await dbQuery(
+							`INSERT INTO naming_acts (naming_id, designation, by, linked_naming_ids)
+							 VALUES ($1, 'characterization', $2, $3)`,
+							[endId, by, [namingId]]
+						);
+						liftedEnds.push(cur.inscription);
+					}
+				}
+			}
+			return json({ ok: true, lifted: lift, liftedEnds });
 		}
 
 		case 'updatePosition': {

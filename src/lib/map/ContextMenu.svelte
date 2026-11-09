@@ -39,6 +39,31 @@
 	// gerade nicht gilt.
 	const withdrawn = $derived(ms.isWithdrawn(node?.properties));
 	const label = $derived(ms.findInscription(namingId));
+	// Mit der Tastatur bedienbar wie ein Menü: Fokus auf den ersten Eintrag,
+	// ↑/↓ wandern (umlaufend), Pos1/Ende springen; Escape schließt über die Seite
+	// (Testlauf 09.11.: „Das Kontextmenü reagiert nicht auf Pfeiltasten").
+	function menuKeys(el: HTMLElement) {
+		const items = () => Array.from(el.querySelectorAll<HTMLElement>('button.ctx-item, a.ctx-item'));
+		const first = () => { if (!el.contains(document.activeElement)) items()[0]?.focus({ preventScroll: true }); };
+		const raf = requestAnimationFrame(first);
+		const t = setTimeout(first, 30);
+		const onKey = (e: KeyboardEvent) => {
+			const list = items();
+			if (list.length === 0) return;
+			const i = list.indexOf(document.activeElement as HTMLElement);
+			let next = -1;
+			if (e.key === 'ArrowDown') next = (i + 1) % list.length;
+			else if (e.key === 'ArrowUp') next = i <= 0 ? list.length - 1 : i - 1;
+			else if (e.key === 'Home') next = 0;
+			else if (e.key === 'End') next = list.length - 1;
+			if (next < 0) return;
+			e.preventDefault();
+			e.stopPropagation();
+			list[next].focus({ preventScroll: true });
+		};
+		el.addEventListener('keydown', onKey);
+		return { destroy() { cancelAnimationFrame(raf); clearTimeout(t); el.removeEventListener('keydown', onKey); } };
+	}
 	const designations = [
 		{ value: 'cue', label: 'cue', color: 'var(--ccs-cue)' },
 		{ value: 'characterization', label: 'characterization', color: 'var(--ccs-char)' },
@@ -50,7 +75,7 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <!-- Öffnet am Zeiger, bleibt aber im Fenster (nach oben/links, wenn unten
      bzw. rechts kein Platz ist). -->
-<div class="context-menu" use:keepInWindow={position}
+<div class="context-menu" use:keepInWindow={position} use:menuKeys role="menu" tabindex="-1" aria-label={label}
 	onclick={(e) => e.stopPropagation()}>
 	<div class="ctx-header" title={label}>{label}{#if withdrawn}<span class="ctx-state"> · withdrawn</span>{/if}</div>
 	{#if withdrawn}
@@ -67,7 +92,7 @@
 		<div class="ctx-separator"></div>
 		<button class="ctx-item" onclick={() => { ms.toggleWithdraw(namingId, true); onclose(); }}>Restore</button>
 	{:else}
-	<button class="ctx-item" onclick={() => { onrename(namingId); onclose(); }}>Rename</button>
+	<button class="ctx-item" onclick={() => { onrename(namingId); onclose(); }}>Rename <span class="ctx-key">F2</span></button>
 	<div class="ctx-separator"></div>
 	{#each designations as d (d.value)}
 		{#if d.value === current}
@@ -171,7 +196,8 @@
 		width: 100%; background: none; border: none; color: #c9cdd5;
 		padding: 0.35rem 0.75rem; font-size: 0.8rem; cursor: pointer; text-align: left;
 	}
-	.ctx-item:hover { background: #2a2d3a; }
+	.ctx-item:hover, .ctx-item:focus-visible { background: #2a2d3a; outline: none; }
+	.ctx-key { margin-left: auto; font-size: 0.68rem; color: #6b7280; }
 	a.ctx-item { text-decoration: none; }
 	.ctx-separator { height: 1px; background: #2a2d3a; margin: 0.2rem 0; }
 	.designation-dot-sm { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
