@@ -18,7 +18,7 @@
 	<div class="memo-create-form" onclick={(e) => e.stopPropagation()}>
 		<div class="mcf-header">
 			<span class="mcf-title">Write Memo</span>
-			<button class="btn-link" onclick={() => ms.cancelMemoCreate()}>cancel</button>
+			<button class="btn-link" title="Close; what you typed stays as a draft" onclick={() => ms.cancelMemoCreate()}>close</button>
 		</div>
 		{#if ms.memoCreateLinkedIds.length > 0}
 			<div class="mcf-linked">
@@ -62,8 +62,10 @@
 				<button type="submit" class="btn-primary" disabled={!ms.memoCreateTitle.trim() || ms.memoCreateSaving}>
 					{ms.memoCreateSaving ? 'Saving…' : 'Create'}
 				</button>
-				<button type="button" class="btn-sm" onclick={() => ms.cancelMemoCreate()}>Cancel</button>
-				<span class="mcf-hint">⌘↵ saves</span>
+				{#if ms.memoCreateTitle.trim() || ms.memoCreateContent.trim()}
+					<button type="button" class="btn-sm" onclick={() => ms.discardMemoCreate()}>Discard draft</button>
+				{/if}
+				<span class="mcf-hint">⌘↵ saves · Esc keeps the draft</span>
 			</div>
 		</form>
 	</div>

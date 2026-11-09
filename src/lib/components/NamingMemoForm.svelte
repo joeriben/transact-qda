@@ -178,8 +178,11 @@
 		font-size: 0.75rem; padding: 0.25rem 0.5rem; cursor: pointer;
 	}
 	.nmf-suggest button:hover { background: #1e2030; color: #e1e4e8; }
-	.nmf-actions { display: flex; align-items: center; gap: 0.4rem; }
-	.nmf-hint { font-size: 0.68rem; color: #4b5060; }
+	/* Knöpfe brechen nicht in sich um; reicht die Breite nicht, rückt der
+	   Hinweis in die nächste Zeile (Testlauf 12, Stack bei 1024 px). */
+	.nmf-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+	.nmf-actions button { white-space: nowrap; }
+	.nmf-hint { font-size: 0.68rem; color: #4b5060; white-space: nowrap; }
 	.nmf-save {
 		background: #8b9cf7; color: #0f1117; border: none; border-radius: 4px;
 		font-size: 0.75rem; font-weight: 600; padding: 0.25rem 0.6rem; cursor: pointer;

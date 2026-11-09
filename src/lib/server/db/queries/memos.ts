@@ -3,7 +3,7 @@
 
 import { query, queryOne, transaction } from '../index.js';
 import { createNaming, setAppearance, getOrCreateResearcherNaming, mergedIntoSql } from './namings.js';
-import { namingLabel, type RelationEnds } from '$lib/shared/namingLabel.js';
+import { namingLabel, hasOwnInscription, relationLabel, type RelationEnds } from '$lib/shared/namingLabel.js';
 
 // Was die Memo-Seite zeigt und die Projektübersicht zählt — eine Definition
 // für beide (n = Naming, na = Akt; $1 = Projekt):
@@ -479,6 +479,11 @@ export async function getMemo(memoId: string, projectId: string) {
 			id: r.id,
 			target_id: r.target_id,
 			target_label: namingLabel(r.target_inscription, r.target_relation),
+			// Eine benannte Relation nennt ihre Enden mit (sonst stand nur „fordert Aufsicht").
+			target_ends:
+				r.target_relation && hasOwnInscription(r.target_inscription) && (r.target_relation.source || r.target_relation.target)
+					? relationLabel({ ...r.target_relation, valence: null })
+					: null,
 			target_mode: r.target_mode
 		}))
 	};

@@ -336,7 +336,7 @@ The AI is not an external tool that responds on command. It is a **naming in the
 
 The AI's operational constraint: it only produces **cues**. Every AI suggestion enters the map as a cue. Only the researcher moves a cue to characterization or specification, or leaves it a cue. Designation remains with the researcher; cue production is shared. Every AI act can be identified, hidden, and taken back.
 
-**When Cowork runs.** Cowork has no input field. It runs when you press **Cowork** in the map sidebar, and — only if *Cowork: react automatically* is switched on in the project overview — after each of your acts on a map. A run can take several minutes.
+**When Cowork runs.** Cowork has no input field. It runs when you press **Cowork** in the map sidebar, and — only if *Cowork: react automatically* is switched on in the project overview — after each of your acts on a map. A run can take from a few to more than ten minutes, depending on the model chosen in Settings; the sidebar shows the elapsed time and the steps so far.
 
 **What you get.** Mostly memos: questions, observations, reminders. A new memo appears as a card on the map; you can acknowledge it, dismiss it, or make it a naming of its own, and you can discuss it. Acknowledging or dismissing judges it; neither makes it a memo of your namings. In a naming's stack Cowork's memos stand apart under **From Cowork**. The memo stays on the Memos page with its status. Cowork may also place cues (namings, relations, silences, phases); they are marked as AI cues and can be withdrawn like anything else.
 

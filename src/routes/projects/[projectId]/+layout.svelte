@@ -393,7 +393,7 @@
 				     mit hoher Reasoning-Stärke Minuten. Testlauf 09.11.: nach sechs Minuten
 				     „Thinking…" ohne jeden Hinweis brach die Testerin ab. -->
 				{#if coworkSeconds >= 20}
-					<span class="cowork-hint">A run reads the whole map first and often takes a few minutes. You can keep working; closing or reloading this tab stops it.</span>
+					<span class="cowork-hint">A run reads the whole map first; depending on the model chosen in Settings it takes from a few to more than ten minutes, and a single step can take several minutes. You can keep working; closing or reloading this tab stops it.</span>
 				{/if}
 				<button class="cowork-stop" onclick={stopCowork} title="Stop this Cowork run">Stop</button>
 			{:else if coworkResult}

@@ -177,16 +177,25 @@
 							{/if}
 							<div class="memo-actions">
 								<a href="/projects/{data.projectId}/memos/{memo.id}" class="btn-xs btn-edit">{memo.isAiAuthored ? 'open' : 'edit'}</a>
-								{#if memo.status === 'active' || memo.status === 'presented' || memo.status === 'discussed'}
-									<button class="btn-xs" onclick={() => setMemoStatus(memo.id, 'acknowledged')}>ack</button>
-									<button class="btn-xs" onclick={() => setMemoStatus(memo.id, 'dismissed')}>dismiss</button>
-									<button class="btn-xs btn-promote" onclick={() => setMemoStatus(memo.id, 'promoted')}>promote</button>
-								{/if}
-								{#if memo.status === 'acknowledged'}
-									<button class="btn-xs" onclick={() => setMemoStatus(memo.id, 'dismissed')}>dismiss</button>
-								{/if}
-								{#if memo.status === 'dismissed'}
-									<button class="btn-xs" onclick={() => setMemoStatus(memo.id, 'presented')}>restore</button>
+								<!-- Urteilen (ack, dismiss, promote) gilt den Memos der KI; ein eigenes
+								     Memo bearbeitet man oder macht es dezidiert zu einem Naming (S16) —
+								     wie auf der Memo-Seite (Testlauf 12: eigene Memos trugen KI-Knöpfe). -->
+								{#if memo.isAiAuthored}
+									{#if memo.status === 'active' || memo.status === 'presented' || memo.status === 'discussed'}
+										<button class="btn-xs" title="Acknowledge: judged as worth keeping; it does not ground this naming" onclick={() => setMemoStatus(memo.id, 'acknowledged')}>ack</button>
+										<button class="btn-xs" title="Dismiss: judged as not helpful" onclick={() => setMemoStatus(memo.id, 'dismissed')}>dismiss</button>
+										<button class="btn-xs btn-promote" title="Promote: make it a naming of its own (unplaced on the situational map); the memo stays" onclick={() => setMemoStatus(memo.id, 'promoted')}>promote</button>
+									{/if}
+									{#if memo.status === 'acknowledged'}
+										<button class="btn-xs" title="Dismiss: judged as not helpful" onclick={() => setMemoStatus(memo.id, 'dismissed')}>dismiss</button>
+										<button class="btn-xs btn-promote" title="Promote: make it a naming of its own (unplaced on the situational map); the memo stays" onclick={() => setMemoStatus(memo.id, 'promoted')}>promote</button>
+									{/if}
+									{#if memo.status === 'dismissed'}
+										<button class="btn-xs" title="Bring it back to be judged again" onclick={() => setMemoStatus(memo.id, 'presented')}>restore</button>
+									{/if}
+								{:else if memo.status !== 'promoted'}
+									<button class="btn-xs btn-promote" onclick={() => setMemoStatus(memo.id, 'promoted')}
+										title="Make this memo a naming of its own. The memo stays; the new naming stands unplaced on the situational map.">make naming</button>
 								{/if}
 							</div>
 						</div>

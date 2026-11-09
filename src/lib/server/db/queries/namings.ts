@@ -755,6 +755,10 @@ export async function getAggregatedNaming(namingId: string, projectId: string) {
 			     SELECT 1 FROM appearances aa
 			      WHERE aa.naming_id IN (p.naming_id, p.participant_id)
 			        AND aa.mode = 'relation' AND aa.properties ? 'anchorType')
+			   -- Der Bezug eines Memos ist keine Relation zwischen Namings: Das Memo
+			   -- steht unter „Memos referring to this" (Testlauf 12: es stand auch
+			   -- unter Relations als „references relation").
+			   AND NOT EXISTS (SELECT 1 FROM memo_content mc WHERE mc.naming_id = partner.id)
 			 ORDER BY ${WITHDRAWN_SQL('pn')} ASC, pn.created_at DESC`,
 			[namingId]
 		)

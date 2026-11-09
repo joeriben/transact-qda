@@ -12,6 +12,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { beforeNavigate, goto, invalidateAll } from '$app/navigation';
+	import { quoted } from '$lib/shared/namingLabel.js';
 	import TechnicalErrorButton from '$lib/components/TechnicalErrorButton.svelte';
 	import { memoText } from '$lib/shared/memoText.js';
 	import { formatWhen } from '$lib/shared/dates.js';
@@ -57,6 +58,31 @@
 			}
 		} finally {
 			making = false;
+		}
+	}
+
+	// Cowork-Memos hier bewerten (Testlauf 12: die Seite schickte dafür auf die
+	// Memo-Seite). Satz IV: ack ist ein Verdikt, promote holt es herein.
+	let judging = $state(false);
+	let judgeNote = $state<string | null>(null);
+	async function judge(status: 'acknowledged' | 'dismissed' | 'promoted' | 'presented') {
+		if (judging) return;
+		judging = true;
+		judgeNote = null;
+		try {
+			const res = await fetch(`/api/projects/${data.projectId}/memos/${data.memo.id}/status`, {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ status })
+			});
+			const body = await res.json().catch(() => ({}));
+			if (!res.ok) { judgeNote = body.error || `Not changed (${res.status})`; return; }
+			if (status === 'promoted') {
+				judgeNote = `${quoted(body.inscription || data.memo.label)} is now a naming of its own, unplaced on the situational map. The memo stays here.`;
+			}
+			await invalidateAll();
+		} finally {
+			judging = false;
 		}
 	}
 
@@ -165,10 +191,28 @@
 				not edited here; write a memo of your own to the new naming.
 			{:else}
 				Written by Cowork (AI){data.memo.status ? ` — ${data.memo.status}` : ''}. It stays Cowork's text and is
-				not edited here: judge it on the <a href="/projects/{data.projectId}/memos">Memos page</a> or on the map
-				(ack, dismiss, promote), or write a memo of your own.
+				not edited here: judge it, or write a memo of your own.
 			{/if}
 		</p>
+		<div class="judge-row" role="group" aria-label="Judge this Cowork memo">
+			{#if data.memo.status === 'presented' || data.memo.status === 'discussed'}
+				<button class="mk-btn" onclick={() => judge('acknowledged')} disabled={judging}
+					title="Acknowledge: you have read it and it is to the point. It stays Cowork's hint; promote takes it in.">ack</button>
+				<button class="mk-btn mk-quiet" onclick={() => judge('dismissed')} disabled={judging}
+					title="Dismiss: not to the point. It stays here, greyed out, and can be restored.">dismiss</button>
+				<button class="mk-btn" onclick={() => judge('promoted')} disabled={judging}
+					title="Take it in: it becomes a naming of your own, unplaced on the situational map.">promote</button>
+			{:else if data.memo.status === 'acknowledged'}
+				<button class="mk-btn mk-quiet" onclick={() => judge('dismissed')} disabled={judging}
+					title="Dismiss: not to the point after all. It can be restored.">dismiss</button>
+				<button class="mk-btn" onclick={() => judge('promoted')} disabled={judging}
+					title="Acknowledged is not taken in — promote takes it in: it becomes a naming of your own, unplaced on the situational map.">promote</button>
+			{:else if data.memo.status === 'dismissed'}
+				<button class="mk-btn mk-quiet" onclick={() => judge('presented')} disabled={judging}
+					title="Restore it as an open hint">restore</button>
+			{/if}
+			{#if judgeNote}<p class="mk-note" role="status">{judgeNote} <a href="/projects/{data.projectId}/namings">Naming list</a></p>{/if}
+		</div>
 	{/if}
 	<div class="editor-container">
 		<div class="editor-main">
@@ -189,11 +233,13 @@
 			{:else}
 				{#each data.memo.links as link}
 					<div class="link-row">
-						<a class="link-item" href="/projects/{data.projectId}/namings/{link.target_id}">
+						<a class="link-item" href="/projects/{data.projectId}/namings/{link.target_id}"
+							aria-label="{link.target_mode && link.target_mode !== 'entity' ? link.target_mode + ': ' : ''}{link.target_label}{link.target_ends ? ` (${link.target_ends})` : ''}">
 							{#if link.target_mode && link.target_mode !== 'entity'}
 								<span class="link-kind">{link.target_mode}</span>
 							{/if}
 							<span>{link.target_label}</span>
+							{#if link.target_ends}<span class="link-ends">{link.target_ends}</span>{/if}
 						</a>
 						{#if !data.memo.is_ai}
 							<button class="link-remove" onclick={() => linkAction({ action: 'unlink', linkId: link.id })} disabled={linkBusy}
@@ -332,6 +378,10 @@
 		font-size: 0.7rem; color: #6b7280; text-transform: uppercase;
 		background: #1e2030; padding: 0.1rem 0.35rem; border-radius: 3px;
 	}
+	.link-ends { font-size: 0.75rem; color: #8b8fa3; }
+	.judge-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin: 0 0 0.75rem; }
+	.judge-row .mk-note { flex-basis: 100%; margin: 0.25rem 0 0; }
+	.mk-btn.mk-quiet { border-color: #4b5563; color: #9ca3af; }
 	.mk-row { margin-top: 0.75rem; }
 	.mk-btn {
 		background: none; border: 1px solid #10b981; border-radius: 4px; color: #10b981;

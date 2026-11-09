@@ -86,7 +86,7 @@ WHAT TO ASK ABOUT:
 Axes:
 - "What contested issue does this map explore? What is 'hot' here?"
 - "What dimension of the controversy does this axis capture?"
-- "Could this axis be sharpened? Clarke reports 12+ iterations are typical."
+- "Could this axis be sharpened? Axes usually go through several drafts before they hold."
 - "Are the two axes truly independent, or could they collapse into one dimension?"
 
 Positions:

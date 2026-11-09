@@ -183,6 +183,16 @@
 		setTimeout(release, RECENTLY_TOUCHED_MS);
 	}
 
+	// Wer selbst einen anderen Filter wählt, will sehen, was er durchlässt: Die
+	// eben bearbeiteten Zeilen halten dann nicht mehr fest (Testlauf 12: ein eben
+	// wiederhergestelltes Naming stand unter „Doc anchor", ohne Dokument).
+	let filterKey = '';
+	$effect(() => {
+		const key = [filterCCS, filterGrounding, filterMode, searchQuery, hideWithdrawn].join('|');
+		if (filterKey && key !== filterKey && recentlyTouched.size > 0) recentlyTouched = new Set();
+		filterKey = key;
+	});
+
 	// ---- Rückweg: ?focus=<namingId> schlägt die Liste bei einem Naming auf ----
 	//
 	// Der Fokus überlebt die Filter (siehe keepTouched unten) und läuft nicht ab.
@@ -681,8 +691,8 @@
 			const label = labelOf(findNaming(namingId));
 			if (next) showInfo(
 				hideWithdrawn
-					? `Withdrawn ${quoted(label)}. “Hide withdrawn” takes it out of the list in a moment. Nothing was deleted.`
-					: `Withdrawn ${quoted(label)}. Nothing was deleted.`,
+					? `Withdrawn ${quoted(label)}. “Hide withdrawn” takes it out of the list in a moment. Nothing was deleted; it stays in its stack.`
+					: `Withdrawn ${quoted(label)}. Nothing was deleted; it stays in its stack.`,
 				{ label: 'restore', run: () => withdraw(namingId, true) }
 			);
 			else showInfo(`Restored ${quoted(label)}.`);
@@ -991,7 +1001,9 @@
 				<div class="act-prompt-bar">
 					<div class="act-header">
 						{#if actType === 'rename'}
-							Rename: <strong>{targetLabel}</strong> → <strong>{actNewValue}</strong>
+							<!-- Anführungszeichen statt eines zweiten Pfeils: der Name einer
+				     Relation trägt selbst schon einen (Testlauf 12). -->
+				Rename <strong>{quoted(targetLabel)}</strong> to <strong>{quoted(actNewValue)}</strong>
 						{:else if actType === 'designate'}
 							Designation: <strong>{targetLabel}</strong> →
 							<span style="color: {designationColor(actNewValue)}">{actNewValue}</span>

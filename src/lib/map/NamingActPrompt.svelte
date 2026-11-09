@@ -5,16 +5,23 @@
 <script lang="ts">
 	import { getMapState } from './mapState.svelte.js';
 	import { focusSelect } from '$lib/canvas/dom.js';
+	import { quoted } from '$lib/shared/namingLabel.js';
 
 	const ms = getMapState();
 
-	// Strg/⌘+Enter übernimmt, wie der Knopf.
+	// Strg/⌘+Enter übernimmt, wie der Knopf. Ohne Text sagt es, warum nichts
+	// geschieht (Testlauf 12: nach Relate blieb ⌘↵ stumm).
+	let emptyTried = $state(false);
 	function onKeydown(e: KeyboardEvent) {
 		if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
 			e.preventDefault();
 			if (ms.actMemo.trim()) ms.submitAct();
+			else emptyTried = true;
 		}
 	}
+	$effect(() => {
+		if (ms.actMemo.trim() || !ms.actTarget) emptyTried = false;
+	});
 </script>
 
 {#if ms.actTarget}
@@ -26,7 +33,9 @@
 	<div class="act-prompt-bar" onkeydown={onKeydown}>
 		<div class="act-header">
 			{#if ms.actType === 'rename'}
-				Rename: <strong>{actLabel}</strong> → <strong>{ms.actNewValue}</strong>
+				<!-- Anführungszeichen statt eines zweiten Pfeils: der Name einer
+				     Relation trägt selbst schon einen (Testlauf 12). -->
+				Rename <strong>{quoted(actLabel)}</strong> to <strong>{quoted(ms.actNewValue)}</strong>
 			{:else if ms.actType === 'designate'}
 				Designation: <strong>{actLabel}</strong> →
 				<span style="color: {ms.designationColor(ms.actNewValue)}">{ms.actNewValue}</span>
@@ -82,7 +91,11 @@
 				title={ms.actMemo.trim() ? 'Ctrl/⌘+Enter' : ms.actType === 'relate' ? 'Write a memo first' : 'Write a memo first — or apply without one'}>{ms.actType === 'relate' ? 'Save memo' : 'Apply + memo'}</button>
 			<button class="btn-link" onclick={ms.skipAct} title={ms.actType === 'relate' ? 'Keep the relation without a memo (Esc)' : 'Apply without a memo'}>skip memo</button>
 			{#if ms.actType !== 'relate'}<button class="btn-link" onclick={ms.cancelAct} title="Discard this {ms.actType === 'rename' ? 'rename' : ms.actType === 'designate' ? 'designation' : 'change'} (Esc)">cancel</button>{/if}
-			<span class="act-hint">⌘↵ saves · Esc {ms.actType === 'relate' ? 'skips the memo' : 'cancels'}</span>
+			{#if emptyTried}
+				<span class="act-hint act-empty" role="status">Write the memo first{ms.actType === 'relate' ? ' — or skip it (Esc)' : ' — or apply without one (skip memo)'}.</span>
+			{:else}
+				<span class="act-hint">⌘↵ saves · Esc {ms.actType === 'relate' ? 'skips the memo' : 'cancels'}</span>
+			{/if}
 		</div>
 	</div>
 {/if}
@@ -115,6 +128,7 @@
 	}
 	.act-prompt-bar textarea:focus { outline: none; border-color: #8b9cf7; }
 	.act-hint { margin-left: auto; font-size: 0.7rem; color: #6b7280; white-space: nowrap; }
+	.act-hint.act-empty { color: #f59e0b; white-space: normal; }
 	.act-links-toggle { margin-top: 0.35rem; }
 	.act-links-list {
 		display: flex; flex-direction: column; gap: 0.15rem;
@@ -129,7 +143,7 @@
 	}
 	.act-link-item:hover { background: #1e2030; }
 	.act-link-item input[type="checkbox"] { accent-color: #8b9cf7; }
-	.act-actions { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.4rem; }
+	.act-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.4rem; }
 	.designation-dot-sm { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
 	.btn-xs {
 		background: none; border: 1px solid #2a2d3a; border-radius: 4px;

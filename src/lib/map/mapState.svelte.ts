@@ -844,7 +844,7 @@ export function createMapState(
 		await reload();
 		// Rückmeldung mit dem Weg zurück — abgedunkelt allein sagte es nichts (Testlauf 09.11.).
 		if (res && !currentlyWithdrawn) {
-			pushNotice(`“${findInscription(namingId)}” withdrawn — it stays in its stack.`, 'info', undefined, 15000,
+			pushNotice(`Withdrawn ${quoted(findInscription(namingId))}. Nothing was deleted; it stays in its stack.`, 'info', undefined, 15000,
 				{ label: 'restore', run: () => { void toggleWithdraw(namingId, true); } });
 		}
 	}
@@ -1128,11 +1128,21 @@ export function createMapState(
 			void openNamingMemo(linkedIds[0]);
 			return;
 		}
+		// Ein liegengelassener Entwurf für dasselbe Ziel kommt zurück (Testlauf 12:
+		// Escape verwarf einen angefangenen Titel; auf der Memo-Seite bleibt er).
+		const key = [...linkedIds].sort().join(',');
+		if (memoDraft && memoDraft.key === key) {
+			memoCreateTitle = memoDraft.title;
+			memoCreateContent = memoDraft.content;
+		} else {
+			memoCreateTitle = '';
+			memoCreateContent = '';
+		}
+		memoDraft = null;
 		memoCreateLinkedIds = linkedIds;
-		memoCreateTitle = '';
-		memoCreateContent = '';
 		memoCreateOpen = true;
 	}
+	let memoDraft = $state<{ key: string; title: string; content: string } | null>(null);
 
 	async function createMapMemo() {
 		if (!memoCreateTitle.trim() || memoCreateSaving) return;
@@ -1169,7 +1179,18 @@ export function createMapState(
 		}
 	}
 
+	/** Schließt das Formular; Getipptes bleibt als Entwurf für dasselbe Ziel. */
 	function cancelMemoCreate() {
+		if (memoCreateOpen && (memoCreateTitle.trim() || memoCreateContent.trim())) {
+			memoDraft = { key: [...memoCreateLinkedIds].sort().join(','), title: memoCreateTitle, content: memoCreateContent };
+		}
+		memoCreateOpen = false;
+		memoCreateTitle = '';
+		memoCreateContent = '';
+		memoCreateLinkedIds = [];
+	}
+	function discardMemoCreate() {
+		memoDraft = null;
 		memoCreateOpen = false;
 		memoCreateTitle = '';
 		memoCreateContent = '';
@@ -1510,6 +1531,7 @@ export function createMapState(
 		set noteOpenFor(v) { noteOpenFor = v; },
 		createMapMemo,
 		cancelMemoCreate,
+		discardMemoCreate,
 		searchMemosForLink,
 		linkMemoToMemo,
 		cancelMemoLink,

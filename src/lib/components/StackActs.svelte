@@ -35,6 +35,8 @@
 		absorbed?: Act[];
 		/** Merge: Enden des aufgenommenen Namings, falls es einmal Relation war. */
 		absorbed_ends?: { source: string; target: string; directed: boolean } | null;
+		/** Moduswechsel zur Relation: ihre Enden unter den damaligen Namen. */
+		mode_ends?: { source: string; target: string; directed: boolean } | null;
 	};
 </script>
 
@@ -123,7 +125,7 @@
 					{#if a.inscription}<span class="sa-ins">{quoted(a.inscription)}</span>{/if}
 					{#if renamedFrom.has(String(a.seq))}<span class="sa-tag">renamed from {quoted(renamedFrom.get(String(a.seq)) ?? '')}</span>{/if}
 					{#if a.designation}<span class="sa-des" style="color: {color(a.designation)}">{a.designation}</span>{/if}
-					{#if a.mode}<span class="sa-tag">as {a.mode}{a.mode === 'relation' && ends ? `: ${ends.source} ${ends.directed ? '→' : '↔'} ${ends.target}` : ''}</span>{/if}
+					{#if a.mode}{@const me = a.mode_ends ?? ends}<span class="sa-tag">as {a.mode}{a.mode === 'relation' && me ? `: ${me.source} ${me.directed ? '→' : '↔'} ${me.target}` : ''}</span>{/if}
 					{#if a.valence}<span class="sa-tag">valence: {a.valence}</span>{:else if a.valence === ''}<span class="sa-tag">valence removed</span>{/if}
 					{#if !a.inscription && !a.designation && !a.mode && !a.valence && a.memo_text}<span class="sa-tag">memo</span>{/if}
 				</span>

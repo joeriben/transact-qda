@@ -349,7 +349,7 @@ export const POSITIONAL_TOOLS: ToolDef[] = [
 	{
 		name: 'suggest_axis_refinement',
 		description:
-			'Suggest a refinement of an axis label. Axes iterate — Clarke reports 12+ iterations are typical. This creates a memo with your suggestion; the researcher decides whether to rename. Do NOT use this to correct — use it to sharpen the analytical dimension.',
+			'Suggest a refinement of an axis label. Axes usually go through several drafts before they hold. This creates a memo with your suggestion; the researcher decides whether to rename. Do NOT use this to correct — use it to sharpen the analytical dimension.',
 		input_schema: {
 			type: 'object' as const,
 			properties: {

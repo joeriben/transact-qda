@@ -845,7 +845,20 @@
 		if (e.key === 'F2') {
 			const t = e.target as HTMLElement | null;
 			if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
-			if (selection.count !== 1 || ms.actTarget || ms.editingId) return;
+			if (ms.actTarget || ms.editingId) return;
+			// In der Listenansicht gilt das Naming mit offenem Stack, nicht eine
+			// unsichtbare Auswahl auf der Karte (Testlauf 12: F2 benannte dort
+			// „Schulamt" statt der aufgeklappten Relation um).
+			if (viewMode === 'list') {
+				const id = ms.stackId;
+				const node = id ? ms.findNode(id) : null;
+				if (!id || !node || ms.isWithdrawn(node.properties)) return;
+				e.preventDefault();
+				ms.editingId = id;
+				ms.editingValue = node.inscription || '';
+				return;
+			}
+			if (selection.count !== 1) return;
 			const id = [...selection.ids][0];
 			const node = ms.findNode(id);
 			if (!node || ms.isWithdrawn(node.properties)) return;

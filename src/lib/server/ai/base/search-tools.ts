@@ -252,7 +252,16 @@ async function searchNamings(projectId: string, searchQuery: string, limit: numb
 			        ) as designation,
 			        array_agg(DISTINCT a.mode) FILTER (WHERE a.mode IS NOT NULL) as modes,
 			        array_agg(DISTINCT p_map.inscription) FILTER (WHERE p_map.inscription IS NOT NULL) as map_names,
-			        (SELECT count(*) FROM unnest($2::text[]) AS p(pat) WHERE n.inscription ILIKE p.pat)::int AS hits
+			        (SELECT count(*) FROM unnest($2::text[]) AS p(pat) WHERE n.inscription ILIKE p.pat)::int AS hits,
+			        -- Was es ist, wenn es kein Element auf einer Map ist: Map, Memo,
+			        -- Dokument, Forscher- oder KI-Naming (Testlauf 12: Cowork hielt die
+			        -- Positionsmap „Positionen Öffnung" für einen Cue auf keiner Map).
+			        (SELECT pa.properties->>'mapType' FROM appearances pa
+			          WHERE pa.naming_id = n.id AND pa.perspective_id = n.id AND pa.mode = 'perspective' LIMIT 1) AS map_type,
+			        EXISTS (SELECT 1 FROM memo_content mc WHERE mc.naming_id = n.id) AS is_memo,
+			        EXISTS (SELECT 1 FROM document_content dc WHERE dc.naming_id = n.id) AS is_document,
+			        EXISTS (SELECT 1 FROM researcher_namings rn WHERE rn.naming_id = n.id) AS is_researcher,
+			        EXISTS (SELECT 1 FROM ai_namings an WHERE an.naming_id = n.id) AS is_ai_actant
 			 FROM namings n
 			 LEFT JOIN appearances a ON a.naming_id = n.id AND a.mode IN ('entity','relation','silence')
 			 LEFT JOIN namings p_map ON p_map.id = a.perspective_id AND p_map.id != n.id
@@ -270,6 +279,21 @@ async function searchNamings(projectId: string, searchQuery: string, limit: numb
 
 		const parts = [`Found ${results.rows.length} naming(s) for any of: ${terms.join(', ')} (most matching terms first):\n`];
 		for (const row of results.rows) {
+			const kind = row.map_type
+				? `a map (${row.map_type}), not an element on one`
+				: row.is_memo
+					? 'a memo, not an element (search_memos reads it)'
+					: row.is_document
+						? 'a document, not an element'
+						: row.is_researcher
+							? 'a researcher of this project'
+							: row.is_ai_actant
+								? 'an AI actant of this project'
+								: null;
+			if (kind) {
+				parts.push(`  "${row.inscription}" — ${kind}`);
+				continue;
+			}
 			const modes = row.modes?.join(', ') || 'no appearances';
 			const maps = row.map_names?.join(', ') || 'no maps';
 			parts.push(`  [${row.designation}] "${row.inscription}" — ${modes} — on: ${maps}`);

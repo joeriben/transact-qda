@@ -31,7 +31,7 @@ THE CCS GRADIENT (Dewey/Bentley):
 - Characterization: provisional naming, everyday language, functional but loose
 - Specification: most determined stage of naming, analytical precision, never final
 
-The gradient is bidirectional (specification can dissolve back into cue) and append-only (every designation change is a naming act preserved in the stack). A naming IS its designation history. "Messy" vs. "ordered" is the aggregated designation state, not a mode toggle.
+The gradient is bidirectional (specification can dissolve back into cue) and append-only (every designation change is a naming act preserved in the stack). A naming IS its designation history. Reading "messy" vs. "ordered" as the aggregated designation state (not a mode toggle) is this platform's reading; Clarke's messy and ordered situational maps are stages of mapping.
 
 CLARKE'S SITUATIONAL ANALYSIS:
 

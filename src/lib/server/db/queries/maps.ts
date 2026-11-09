@@ -39,6 +39,52 @@ export function namingLabelSql(alias: string): string {
 	  '(unnamed)')`;
 }
 
+/** Inschrift eines Namings zum Zeitpunkt `ts` (letzter Inskriptions-Akt bis
+ *  dahin); ohne solchen Akt die heutige Beschriftung. */
+export function inscriptionAtSql(alias: string, ts: string): string {
+	return `COALESCE((SELECT NULLIF(btrim(ia_.inscription), '') FROM naming_acts ia_
+	                   WHERE ia_.naming_id = ${alias}.id AND ia_.inscription IS NOT NULL
+	                     AND ia_.created_at <= ${ts}
+	                   ORDER BY ia_.seq DESC LIMIT 1),
+	                 ${namingLabelSql(alias)})`;
+}
+
+/** Beschriftung eines Namings, wie sie zum Zeitpunkt `ts` lautete — bei einer
+ *  damals unbenannten Relation aus den damaligen Namen ihrer Enden. */
+export function namingLabelAtSql(alias: string, ts: string): string {
+	return `COALESCE(
+	  (SELECT NULLIF(btrim(ia_.inscription), '') FROM naming_acts ia_
+	    WHERE ia_.naming_id = ${alias}.id AND ia_.inscription IS NOT NULL AND ia_.created_at <= ${ts}
+	    ORDER BY ia_.seq DESC LIMIT 1),
+	  CASE WHEN NOT EXISTS (SELECT 1 FROM naming_acts ib_ WHERE ib_.naming_id = ${alias}.id
+	                          AND NULLIF(btrim(ib_.inscription), '') IS NOT NULL)
+	       THEN NULLIF(btrim(${alias}.inscription), '') END,
+	  (SELECT ${inscriptionAtSql('s_', ts)}
+	          || CASE WHEN ra_.valence IS NOT NULL AND btrim(ra_.valence) <> ''
+	                  THEN ' —' || ra_.valence || CASE WHEN ra_.directed_from IS NOT NULL THEN '→ ' ELSE '— ' END
+	                  ELSE CASE WHEN ra_.directed_from IS NOT NULL THEN ' → ' ELSE ' ↔ ' END
+	             END
+	          || ${inscriptionAtSql('t_', ts)}
+	     FROM participations p_
+	     -- Ausrichtung wie namingLabelSql, damit damals und heute vergleichbar bleiben.
+	     JOIN namings s_ ON s_.id = p_.naming_id
+	     JOIN namings t_ ON t_.id = p_.participant_id
+	     LEFT JOIN LATERAL (SELECT a_.valence, a_.directed_from
+	                          FROM appearances a_
+	                         WHERE a_.naming_id = ${alias}.id AND a_.mode = 'relation'
+	                         ORDER BY (a_.valence IS NULL), a_.created_at
+	                         LIMIT 1) ra_ ON true
+	    WHERE p_.id = ${alias}.id
+	    LIMIT 1),
+	  '(unnamed)')`;
+}
+
+/** Damalige Beschriftung; heißt es heute anders, steht der heutige Name dahinter. */
+export function labelThenNowSql(alias: string, ts: string): string {
+	return `(SELECT CASE WHEN x_.at_ = x_.now_ THEN x_.now_ ELSE x_.at_ || ' (now “' || x_.now_ || '”)' END
+	           FROM (SELECT ${namingLabelAtSql(alias, ts)} AS at_, ${namingLabelSql(alias)} AS now_) x_)`;
+}
+
 // ---- Primary Situational Map ----
 
 /**
@@ -902,6 +948,7 @@ export async function getNamingStack(
 			inferred_cause: { id: string; label: string }[] | null;
 			merged_from: string | null;
 			absorbed_id: string | null;
+			mode_ends: { source: string; target: string; directed: boolean } | null;
 			from_memo: string | null;
 		}>(
 			`SELECT na.seq, na.created_at, na.inscription, na.designation, na.mode, na.valence,
@@ -913,6 +960,23 @@ export async function getNamingStack(
 			             THEN (SELECT string_agg(${namingLabelSql('l')}, ', ') FROM namings l WHERE l.id = ANY(na.linked_naming_ids))
 			        END AS merged_from,
 			        CASE WHEN ${mergeActSql('na')} THEN na.linked_naming_ids[1] END AS absorbed_id,
+			        -- „as relation: X → Y" unter den Namen der Enden zur Zeit des
+			        -- Akts (Testlauf 12: der verschachtelte Stack nannte die heutigen).
+			        CASE WHEN na.mode = 'relation' THEN (
+			          SELECT json_build_object('source', ${labelThenNowSql('es', 'na.created_at')},
+			                                   'target', ${labelThenNowSql('et', 'na.created_at')},
+			                                   'directed', ed.directed_from IS NOT NULL)
+			            FROM participations ep
+			            LEFT JOIN LATERAL (
+			              SELECT a.directed_from, a.directed_to FROM appearances a
+			               WHERE a.naming_id = ep.id AND a.directed_from IS NOT NULL AND a.directed_to IS NOT NULL
+			               ORDER BY (a.mode = 'relation') DESC, a.updated_at DESC LIMIT 1
+			            ) ed ON true
+			            JOIN namings es ON es.id = COALESCE(ed.directed_from, ep.naming_id)
+			            JOIN namings et ON et.id = COALESCE(ed.directed_to, ep.participant_id)
+			           WHERE ep.id = na.naming_id
+			           LIMIT 1)
+			        END AS mode_ends,
 			        -- Aus einem Memo gemacht (promoteMemoToNaming): der erste Akt
 			        -- verweist auf das übernommene Memo.
 			        CASE WHEN na.inscription IS NOT NULL
@@ -933,23 +997,8 @@ export async function getNamingStack(
 			                  -- heute anders, steht der heutige dahinter (Testlauf 11:
 			                  -- „through relation Zwischenmiete" für eine damals
 			                  -- unbenannte Relation).
-			                  FROM (SELECT l.id,
-			                               CASE WHEN lt.then_label IS NULL OR lt.then_label = ${namingLabelSql('l')}
-			                                    THEN ${namingLabelSql('l')}
-			                                    ELSE lt.then_label || ' (now “' || ${namingLabelSql('l')} || '”)'
-			                               END AS label
+			                  FROM (SELECT l.id, ${labelThenNowSql('l', 'na.created_at')} AS label
 			                          FROM namings l
-			                          LEFT JOIN LATERAL (
-			                            SELECT COALESCE(
-			                                     (SELECT NULLIF(btrim(la.inscription), '') FROM naming_acts la
-			                                       WHERE la.naming_id = l.id AND la.inscription IS NOT NULL
-			                                         AND la.created_at <= na.created_at
-			                                       ORDER BY la.seq DESC LIMIT 1),
-			                                     (SELECT ${namingLabelSql('lx')} FROM (SELECT l.id, NULL::text AS inscription) lx)) AS then_label
-			                             WHERE EXISTS (SELECT 1 FROM naming_acts la
-			                                            WHERE la.naming_id = l.id AND la.inscription IS NOT NULL
-			                                              AND la.created_at > na.created_at)
-			                          ) lt ON true
 			                         WHERE l.id = ANY(na.linked_naming_ids) AND l.deleted_at IS NULL
 			                        UNION
 			                        SELECT sv.id, ${namingLabelSql('l')} || ' (now merged into “' || ${namingLabelSql('sv')} || '”)' AS label
@@ -1187,7 +1236,16 @@ export async function getNamingStack(
 	const silencePattern = isSilence
 		? (
 				await query<{ id: string; label: string }>(
-					`SELECT DISTINCT o.id, ${namingLabelSql('o')} AS label
+					// Eine benannte Relation trägt ihre Enden mit, sonst stand im Muster
+					// nur „fordert Aufsicht" ohne die beiden, zwischen denen sie läuft.
+					`SELECT DISTINCT o.id,
+					        ${namingLabelSql('o')}
+					        || COALESCE((SELECT ' (' || sx.inscription || ' – ' || tx.inscription || ')'
+					                       FROM participations px
+					                       JOIN namings sx ON sx.id = px.naming_id
+					                       JOIN namings tx ON tx.id = px.participant_id
+					                      WHERE px.id = o.id AND NULLIF(btrim(o.inscription), '') IS NOT NULL
+					                      LIMIT 1), '') AS label
 					   FROM participations p
 					   JOIN namings pn ON pn.id = p.id AND pn.deleted_at IS NULL
 					   JOIN namings o ON o.id = CASE WHEN p.naming_id = $1 THEN p.participant_id ELSE p.naming_id END
@@ -1352,7 +1410,7 @@ export async function getMapAppearances(mapId: string, projectId: string) {
 			      -- dieses verweisen.
 			      UNION ALL
 			      SELECT json_build_object(
-			        'label', 'from merged “' || nmg.inscription || '”',
+			        'label', 'from merged “' || ${namingLabelSql('nmg')} || '”',
 			        'content', nag.memo_text,
 			        'isAi', false,
 			        'status', 'active'
@@ -1365,7 +1423,8 @@ export async function getMapAppearances(mapId: string, projectId: string) {
 			        AND nag.memo_text IS NOT NULL AND btrim(nag.memo_text) <> ''
 			      UNION ALL
 			      SELECT json_build_object(
-			        'label', 'on “' || nro.inscription || '”',
+			        -- Unbenannte Relation: ihre Enden statt eines leeren Namens (Testlauf 12).
+			        'label', 'on “' || ${namingLabelSql('nro')} || '”',
 			        'content', nar.memo_text,
 			        'isAi', false,
 			        'status', 'active'

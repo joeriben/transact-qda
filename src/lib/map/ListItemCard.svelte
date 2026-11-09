@@ -28,9 +28,18 @@
 	// Verbinden erst wieder nach dem Wiederherstellen (wie im Kontextmenü).
 	const withdrawn = $derived(ms.isWithdrawn(item.properties));
 	function startRename() {
+		clearTimeout(clickTimer);
 		if (withdrawn) return;
 		ms.editingId = item.naming_id;
 		ms.editingValue = item.inscription || '';
+	}
+	// Ein Klick klappt den Stack auf oder zu und verschiebt damit die Zeilen
+	// darunter; der zweite Klick eines Doppelklicks traf dann etwas anderes
+	// (Testlauf 12). Der Stack folgt deshalb erst, wenn kein zweiter Klick kommt.
+	let clickTimer: ReturnType<typeof setTimeout> | undefined;
+	function clickStack() {
+		clearTimeout(clickTimer);
+		clickTimer = setTimeout(() => ms.showStack(item.naming_id), 250);
 	}
 	// Positionskarte: die Lage als Anteil der beiden Achsen (0 % am Ursprung
 	// „– – –", 100 % am Achsenende „+ + +"), nicht als Pixel des Diagramms.
@@ -110,13 +119,13 @@
 			{:else if hasOwnInscription(item.inscription)}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<span class="rel-inscription editable" onclick={() => ms.showStack(item.naming_id)} ondblclick={startRename}>
+				<span class="rel-inscription editable" onclick={clickStack} ondblclick={startRename}>
 					{item.inscription}
 				</span>
 			{:else}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<span class="rel-inscription editable unnamed" title="No own name yet — double-click (or F2) to name this relation" onclick={() => ms.showStack(item.naming_id)} ondblclick={startRename}>
+				<span class="rel-inscription editable unnamed" title="No own name yet — double-click to name this relation (F2 names the one whose stack is open)" onclick={clickStack} ondblclick={startRename}>
 					unnamed
 				</span>
 			{/if}
@@ -177,7 +186,7 @@
 			{:else}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<span class="el-inscription editable" onclick={() => ms.showStack(item.naming_id)} ondblclick={startRename}>
+				<span class="el-inscription editable" onclick={clickStack} ondblclick={startRename}>
 					{item.inscription}
 				</span>
 			{/if}
@@ -240,7 +249,7 @@
 			{:else}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<span class="el-inscription editable" onclick={() => ms.showStack(item.naming_id)} ondblclick={startRename}>
+				<span class="el-inscription editable" onclick={clickStack} ondblclick={startRename}>
 					{item.inscription}
 				</span>
 				{#if ms.mapType === 'positional' && !item.properties?.isAxis}
