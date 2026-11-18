@@ -62,7 +62,7 @@ A DocNet, like any naming, has its own CCS gradient: "these belong together" (cu
 
 DocNets relate to Phases on SitMaps: both are grouping mechanisms. The difference is the basis of grouping:
 
-- **Phase**: Groups namings on a map by analytical affinity (Clarke's in-vivo categories, or emergent themes)
+- **Phase**: Groups namings on a map by analytical affinity and holds each at the layer of its stack at the moment of assignment — otherwise it would be a cluster (BJ, 18.11.2026; see `manual.md` 5.5) (Clarke's in-vivo categories, or emergent themes)
 - **DocNet**: Groups documents by provenance, project, data type, sampling logic, or any other criterion the researcher finds relevant
 
 On a SitMap, a DocNet can function **like a Phase**: "show me the namings grounded in this DocNet's documents." A single document can function the same way.

@@ -109,6 +109,16 @@ export async function collapsePerspective(params: {
 	);
 	if (!app || !app.kind) throw new StackLayerError('This naming does not appear on that map or phase.', 404);
 	if (app.read_only) throw new StackLayerError('This map is read-only (template). Copy the project to make changes.', 403);
+	// Eine Phase hält eine Schicht — die der Zuordnung, oder eine, die die
+	// Forschende ausdrücklich wählt. Eine Phase, die jeder Änderung folgt, wäre
+	// keine Phase mehr (BJ, 18.11.2026: „das war ja gerade der Sinn von den
+	// "Phases"; deswegen heißen sie so; osonst wären sie "Cluster"."; S03).
+	if (app.kind === 'phase' && seq === null) {
+		throw new StackLayerError(
+			'A phase holds a layer: the one of the assignment, or one you choose. Choose a layer — the current topmost is one of them.',
+			409
+		);
+	}
 
 	let state: LayerState | null = null;
 	if (seq !== null) {

@@ -94,6 +94,8 @@ Commit f0081be routed namings by a kind stated at the naming act (element of the
 
 A **Doc-Phase** is a query-based phase that shows all namings on the Situational Map grounded in a specific document. It is not manually assigned — it is derived from the document-anchor relationship.
 
+> **Open (18.11.2026).** A phase holds each naming at the layer of its assignment; BJ: „das war ja gerade der Sinn von den "Phases"; deswegen heißen sie so; osonst wären sie "Cluster"." A Doc-Phase is derived by query and holds no layer — by that statement it behaves like a cluster, not a phase. Whether it should hold layers (e.g. the layer at the time of anchoring) or be named differently is not decided.
+
 ```
 Manual Phase:  phase_memberships → naming_ids → highlight on map
 Doc-Phase:     annotations WHERE document = X → naming_ids → highlight on map

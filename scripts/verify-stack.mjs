@@ -22,7 +22,8 @@
  *     obersten Schicht stehen als Akt im Situierungs-Protokoll. Die Map zeigt
  *     die kollabierte Schicht, die Liste die oberste. Schichten folgen der
  *     Zeit der Akte, nicht der seq. Fremde Schichten und fremde Projekte
- *     werden abgewiesen.
+ *     werden abgewiesen. Eine Phase hält ihre Schicht und folgt nie still der
+ *     obersten — sonst wäre sie ein Cluster (BJ, 18.11.2026).
  *
  * Legt einen Wegwerf-Nutzer `stacktest_…` mit einem Projekt an und löscht am
  * Ende nur, was es selbst angelegt hat.
@@ -723,6 +724,42 @@ async function run() {
 		record('Phase zeigt die Schicht der Zuordnung, daneben die oberste',
 			mD?.inscription === 'Hofaufsicht' && mD?.is_collapsed === true && mD?.current_inscription === 'Aufsicht im Hof',
 			JSON.stringify(mD ? { ins: mD.inscription, c: mD.is_collapsed, now: mD.current_inscription } : null));
+
+		// 10k. Eine Phase hält ihre Schicht — sonst wäre sie ein Cluster (BJ,
+		//      18.11.2026). Nochmals zuordnen (über Map und Phasen-Route) zieht
+		//      sie nicht nach und schreibt keinen zweiten Akt; „der obersten
+		//      folgen" ist für eine Phase abgewiesen; eine spätere Schicht geht
+		//      nur ausdrücklich.
+		await post(M, { action: 'assignToPhase', phaseId: ph, namingId: D });
+		await post(`/api/projects/${P}/phases`, { action: 'assign', phaseId: ph, namingId: D });
+		const mD2 = ((await post(`/api/projects/${P}/phases`, { action: 'getMembers', phaseId: ph })).body?.members ?? [])
+			.find((m) => m.naming_id === D);
+		const assigns = await one(
+			`SELECT count(*)::int AS c FROM phase_memberships WHERE phase_id = $1 AND naming_id = $2 AND action = 'assign'`, [ph, D]
+		);
+		const follow = await post(N, { action: 'setCollapse', namingId: D, perspectiveId: ph, collapseAt: null });
+		const topD = await one(
+			`SELECT seq::text AS seq FROM naming_acts WHERE naming_id = $1
+			  ORDER BY date_trunc('milliseconds', created_at) DESC, seq DESC LIMIT 1`, [D]
+		);
+		const later = await post(N, { action: 'setCollapse', namingId: D, perspectiveId: ph, collapseAt: topD?.seq });
+		const mD3 = ((await post(`/api/projects/${P}/phases`, { action: 'getMembers', phaseId: ph })).body?.members ?? [])
+			.find((m) => m.naming_id === D);
+		// Die Detailseite bietet „der obersten folgen" für Maps an, für Phasen nicht.
+		const html = await (await fetch(`${APP_URL}/projects/${P}/namings/${D}`, { headers: { cookie } })).text();
+		const selectOf = (label) => {
+			const i = html.indexOf(`aria-label="Layer shown on ${label}"`);
+			return i < 0 ? null : html.slice(i, html.indexOf('</select>', i));
+		};
+		const phaseSel = selectOf('phase Zweite Runde');
+		const mapSel = selectOf('Primary');
+		record('Detailseite: Phase ohne „follows every change", Map mit',
+			!!phaseSel && !phaseSel.includes('follows every change') && !!mapSel && mapSel.includes('follows every change'),
+			JSON.stringify({ phase: phaseSel ? !phaseSel.includes('follows every change') : 'fehlt', map: mapSel ? mapSel.includes('follows every change') : 'fehlt' }));
+		record('Phase hält ihre Schicht: nochmals zuordnen zieht nicht nach, „der obersten folgen" → 409, spätere Schicht nur ausdrücklich',
+			mD2?.inscription === 'Hofaufsicht' && assigns?.c === 1 && follow.status === 409
+				&& later.status === 200 && mD3?.inscription === 'Aufsicht im Hof',
+			JSON.stringify({ ins: mD2?.inscription, assigns: assigns?.c, follow: follow.status, later: later.status, after: mD3?.inscription }));
 		const map2 = (await post(`/api/projects/${P}/maps`, { label: 'Vorlage', mapType: 'situational' })).body?.id;
 		await post(`/api/projects/${P}/maps/${map2}`, { action: 'placeExisting', namingId: D, mode: 'entity', properties: { x: 0, y: 0 } });
 		await pool.query(

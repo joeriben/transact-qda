@@ -203,9 +203,13 @@
 								<span class="pl-shows">shows</span>
 								<select class="pl-select" value={p.layerSeq ?? ''} aria-label="Layer shown on {p.kind === 'phase' ? `phase ${p.label}` : p.label}"
 									disabled={p.readOnly || layerBusy}
-									title={p.readOnly ? 'This map is read-only (template).' : p.recorded === false ? 'This layer was set before such changes were recorded as acts.' : undefined}
+									title={p.readOnly ? 'This map is read-only (template).' : p.kind === 'phase' ? 'A phase holds the layer of its assignment; you can choose another layer here.' : p.recorded === false ? 'This layer was set before such changes were recorded as acts.' : undefined}
 									onchange={(e) => setPerspectiveLayer(p, e.currentTarget as HTMLSelectElement)}>
-									<option value="">the topmost layer (follows every change)</option>
+									{#if p.kind !== 'phase'}
+										<option value="">the topmost layer (follows every change)</option>
+									{:else if !p.layerSeq}
+										<option value="" disabled>no layer held (assigned before phases held layers)</option>
+									{/if}
 									{#each [...stateLayers].reverse() as a (a.seq)}
 										<option value={String(a.seq)}>{layerOptionLabel(a)}</option>
 									{/each}

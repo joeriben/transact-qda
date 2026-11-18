@@ -787,10 +787,23 @@ export async function assignToPhase(
 	properties?: Record<string, unknown>,
 	byNamingId?: string
 ) {
-	// Die oberste Schicht zur Zeit der Zuweisung (S03: „Phases sollten als
-	// default immer den aktuellen Index der Zuweisung speichern"). In Zeitfolge
-	// der Akte, nicht nach höchster seq: Nachträge tragen eine höhere seq als
-	// ihre Zeit (naming_state_at, migrations/040).
+	// Eine Phase hält die Schicht ihrer Zuordnung — darin unterscheidet sie
+	// sich von einem Cluster (BJ, 18.11.2026: „das war ja gerade der Sinn von
+	// den "Phases"; deswegen heißen sie so; osonst wären sie "Cluster"."; S03:
+	// „Phases sollten als default immer den aktuellen Index der Zuweisung
+	// speichern, nicht etwa einen späteren Index (zumindest nicht ohne
+	// Abfrage)"). Ist das Naming schon in der Phase, bleibt es bei seiner
+	// Schicht: kein stilles Nachziehen, kein zweiter Akt. Eine spätere Schicht
+	// nur ausdrücklich, über collapsePerspective (stackLayers.ts).
+	const existing = await queryOne(
+		`SELECT * FROM appearances WHERE naming_id = $1 AND perspective_id = $2`,
+		[namingId, phaseId]
+	);
+	if (existing) return existing;
+
+	// Die oberste Schicht zur Zeit der Zuordnung, in Zeitfolge der Akte, nicht
+	// nach höchster seq: Nachträge tragen eine höhere seq als ihre Zeit
+	// (naming_state_at, migrations/040).
 	const currentSeq = await queryOne<{ seq: string }>(
 		`SELECT COALESCE((SELECT seq FROM naming_acts WHERE naming_id = $1
 		                  ORDER BY date_trunc('milliseconds', created_at) DESC, seq DESC LIMIT 1), 0) as seq`,
