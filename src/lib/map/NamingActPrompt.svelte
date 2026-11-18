@@ -25,7 +25,11 @@
 </script>
 
 {#if ms.actTarget}
-	{@const actLabel = ms.findInscription(ms.actTarget)}
+	{@const actNode = ms.findNode(ms.actTarget) as any}
+	<!-- Zeigt diese Map eine frühere Schicht, geht der Akt trotzdem auf die
+	     oberste: der Dialog nennt sie, und die Map folgt ihr danach. -->
+	{@const collapsedHere = !!actNode?.is_collapsed && (ms.actType === 'rename' || ms.actType === 'designate')}
+	{@const actLabel = collapsedHere && actNode.current_inscription ? actNode.current_inscription : ms.findInscription(ms.actTarget)}
 	{@const allMapNamings = [...ms.elements, ...ms.relations].filter((e: any) => e.naming_id !== ms.actTarget)}
 	<!-- ⌘↵ übernimmt von überall im Dialog, auch aus der Liste der
 	     Namings (Testlauf 10). -->
@@ -37,7 +41,8 @@
 				     Relation trägt selbst schon einen (Testlauf 12). -->
 				Rename <strong>{quoted(actLabel)}</strong> to <strong>{quoted(ms.actNewValue)}</strong>
 			{:else if ms.actType === 'designate'}
-				Designation: <strong>{actLabel}</strong> →
+				Designation: <strong>{actLabel}</strong>
+				{#if collapsedHere}<span style="color: {ms.designationColor(actNode.current_designation)}">{actNode.current_designation}</span>{/if} →
 				<span style="color: {ms.designationColor(ms.actNewValue)}">{ms.actNewValue}</span>
 			{:else if ms.actType === 'relate'}
 				<!-- Die Relation steht schon; hier geht es nur noch um die Notiz zu ihr
@@ -51,6 +56,12 @@
 				{:else}
 					Show as entity (this map): <strong>{actLabel}</strong>
 				{/if}
+			{/if}
+			{#if collapsedHere}
+				<div class="act-collapsed-note">
+					This map shows an earlier layer ({quoted(actNode.inscription || '')}, {actNode.designation}). The change goes on top of the
+					stack, and this map then follows the topmost layer.
+				</div>
 			{/if}
 		</div>
 		{#if ms.actExistingMemos.length > 0}
@@ -108,6 +119,7 @@
 		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
 	}
 	.act-header { font-size: 0.85rem; color: #c9cdd5; margin-bottom: 0.4rem; }
+	.act-collapsed-note { font-size: 0.72rem; color: #b98a2e; margin-top: 0.25rem; }
 	.act-existing-memos {
 		background: #0f1117; border: 1px solid #2a2d3a; border-radius: 5px;
 		padding: 0.4rem 0.5rem; margin-bottom: 0.4rem;

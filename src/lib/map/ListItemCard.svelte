@@ -10,6 +10,7 @@
 	import { plural } from '$lib/shared/plural.js';
 	import { SW_ROLE_LABELS } from '$lib/shared/constants.js';
 	import { POS_AXIS_LEN } from './canvasPositions.svelte.js';
+	import { formatWhen } from '$lib/shared/dates.js';
 
 	let {
 		item,
@@ -27,6 +28,15 @@
 	// Zurückgezogen: ansehen und wiederherstellen — Umbenennen, Designieren,
 	// Verbinden erst wieder nach dem Wiederherstellen (wie im Kontextmenü).
 	const withdrawn = $derived(ms.isWithdrawn(item.properties));
+	// Designieren setzt eine neue oberste Schicht: die Auswahl zeigt deren
+	// Stufe, auch wenn diese Map eine frühere Schicht zeigt.
+	const topDesignation = $derived((item.is_collapsed ? item.current_designation : item.designation) || 'cue');
+	const collapseHint = $derived.by(() => {
+		const ins = item.current_inscription && item.current_inscription !== item.inscription ? item.current_inscription : '';
+		const des = item.current_designation && item.current_designation !== item.designation ? item.current_designation : '';
+		const now = [ins, des].filter(Boolean).join(', ');
+		return `layer of ${formatWhen(item.collapse_layer_at)}${now ? ` · now: ${now}` : ''}`;
+	});
 	function startRename() {
 		clearTimeout(clickTimer);
 		if (withdrawn) return;
@@ -40,6 +50,15 @@
 	function clickStack() {
 		clearTimeout(clickTimer);
 		clickTimer = setTimeout(() => ms.showStack(item.naming_id), 250);
+	}
+	// Mit der Tastatur: Enter/Leertaste öffnet den Stack (mit „show here",
+	// „keep here", „activate"), F2 benennt um (Testlauf 17.11.: der Stack der
+	// Karte war nur mit der Maus erreichbar).
+	function stackKey(e: KeyboardEvent) {
+		if (e.key === 'Enter' || e.key === ' ') {
+			e.preventDefault();
+			ms.showStack(item.naming_id);
+		}
 	}
 	// Positionskarte: die Lage als Anteil der beiden Achsen (0 % am Ursprung
 	// „– – –", 100 % am Achsenende „+ + +"), nicht als Pixel des Diagramms.
@@ -119,23 +138,27 @@
 			{:else if hasOwnInscription(item.inscription)}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<span class="rel-inscription editable" onclick={clickStack} ondblclick={startRename}>
+				<span class="rel-inscription editable" onclick={clickStack} ondblclick={startRename}
+					role="button" tabindex="0" aria-label="Stack of {quoted(ms.findInscription(item.naming_id))}" aria-expanded={ms.stackId === item.naming_id}
+					onkeydown={stackKey}>
 					{item.inscription}
 				</span>
 			{:else}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<span class="rel-inscription editable unnamed" title="No own name yet — double-click to name this relation (F2 names the one whose stack is open)" onclick={clickStack} ondblclick={startRename}>
+				<span class="rel-inscription editable unnamed" title="No own name yet — double-click to name this relation (F2 names the one whose stack is open)" onclick={clickStack} ondblclick={startRename}
+					role="button" tabindex="0" aria-label="Stack of {quoted(ms.findInscription(item.naming_id))}" aria-expanded={ms.stackId === item.naming_id}
+					onkeydown={stackKey}>
 					unnamed
 				</span>
 			{/if}
-			{#if item.is_collapsed && item.current_inscription && item.current_inscription !== item.inscription}
-				<span class="collapsed-current">currently: {item.current_inscription}</span>
+			{#if item.is_collapsed}
+				<span class="collapsed-current">{collapseHint}</span>
 			{/if}
 		</div>
 		<div class="el-actions">
 			{#if !withdrawn}
-			<select value={item.designation || 'cue'} aria-label="Designation of {quoted(ms.findInscription(item.naming_id))}" onchange={e => ms.startDesignation(item.naming_id, (e.target as HTMLSelectElement).value)}>
+			<select value={topDesignation} aria-label="Designation of {quoted(ms.findInscription(item.naming_id))}{item.is_collapsed ? ' (topmost layer; this map shows an earlier one)' : ''}" onchange={e => ms.startDesignation(item.naming_id, (e.target as HTMLSelectElement).value)}>
 				<option value="cue">cue</option>
 				<option value="characterization">characterization</option>
 				<option value="specification">specification</option>
@@ -186,7 +209,9 @@
 			{:else}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<span class="el-inscription editable" onclick={clickStack} ondblclick={startRename}>
+				<span class="el-inscription editable" onclick={clickStack} ondblclick={startRename}
+					role="button" tabindex="0" aria-label="Stack of {quoted(ms.findInscription(item.naming_id))}" aria-expanded={ms.stackId === item.naming_id}
+					onkeydown={stackKey}>
 					{item.inscription}
 				</span>
 			{/if}
@@ -249,7 +274,9 @@
 			{:else}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<span class="el-inscription editable" onclick={clickStack} ondblclick={startRename}>
+				<span class="el-inscription editable" onclick={clickStack} ondblclick={startRename}
+					role="button" tabindex="0" aria-label="Stack of {quoted(ms.findInscription(item.naming_id))}" aria-expanded={ms.stackId === item.naming_id}
+					onkeydown={stackKey}>
 					{item.inscription}
 				</span>
 				{#if ms.mapType === 'positional' && !item.properties?.isAxis}
@@ -259,14 +286,14 @@
 						<span class="pos-coord" title="Not yet placed in the diagram">(not placed)</span>
 					{/if}
 				{/if}
-				{#if item.is_collapsed && item.current_inscription && item.current_inscription !== item.inscription}
-					<span class="collapsed-current">currently: {item.current_inscription}</span>
+				{#if item.is_collapsed}
+					<span class="collapsed-current">{collapseHint}</span>
 				{/if}
 			{/if}
 		</div>
 		<div class="el-actions">
 			{#if !withdrawn}
-			<select value={item.designation || 'cue'} aria-label="Designation of {quoted(ms.findInscription(item.naming_id))}" onchange={e => ms.startDesignation(item.naming_id, (e.target as HTMLSelectElement).value)}>
+			<select value={topDesignation} aria-label="Designation of {quoted(ms.findInscription(item.naming_id))}{item.is_collapsed ? ' (topmost layer; this map shows an earlier one)' : ''}" onchange={e => ms.startDesignation(item.naming_id, (e.target as HTMLSelectElement).value)}>
 				<option value="cue">cue</option>
 				<option value="characterization">characterization</option>
 				<option value="specification">specification</option>

@@ -275,12 +275,16 @@ export async function getNamingMemosByProject(projectId: string): Promise<Naming
 			        CASE WHEN h.id <> n.id THEN ${currentInscriptionSql('n')} END AS merged_from,
 			        na.inscription AS act_inscription, na.designation AS act_designation,
 			        na.mode AS act_mode, na.valence AS act_valence,
+			        -- Was vor diesem Akt galt: in Zeitfolge der Akte, wie der Stack
+			        -- sie ordnet (naming_state_at, migrations/040), nicht nach seq.
 			        (SELECT p.inscription FROM naming_acts p
-			          WHERE p.naming_id = na.naming_id AND p.seq < na.seq AND p.inscription IS NOT NULL
-			          ORDER BY p.seq DESC LIMIT 1) AS prev_inscription,
+			          WHERE p.naming_id = na.naming_id AND p.inscription IS NOT NULL
+			            AND (date_trunc('milliseconds', p.created_at), p.seq) < (date_trunc('milliseconds', na.created_at), na.seq)
+			          ORDER BY date_trunc('milliseconds', p.created_at) DESC, p.seq DESC LIMIT 1) AS prev_inscription,
 			        (SELECT p.designation FROM naming_acts p
-			          WHERE p.naming_id = na.naming_id AND p.seq < na.seq AND p.designation IS NOT NULL
-			          ORDER BY p.seq DESC LIMIT 1) AS prev_designation,
+			          WHERE p.naming_id = na.naming_id AND p.designation IS NOT NULL
+			            AND (date_trunc('milliseconds', p.created_at), p.seq) < (date_trunc('milliseconds', na.created_at), na.seq)
+			          ORDER BY date_trunc('milliseconds', p.created_at) DESC, p.seq DESC LIMIT 1) AS prev_designation,
 			        ${currentInscriptionSql('h')} AS naming_inscription,
 			        ${relationEndsSql('h')} AS naming_relation,
 			        b.inscription AS by_label,

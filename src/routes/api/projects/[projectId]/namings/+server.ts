@@ -16,6 +16,7 @@ import {
 } from '$lib/server/db/queries/namings.js';
 import { relateElements, getNamingStack, getOrCreatePrimarySitMap } from '$lib/server/db/queries/maps.js';
 import { getMemosForNaming } from '$lib/server/db/queries/memos.js';
+import { activateLayer, collapsePerspective, getTopState, parseSeq, StackLayerError } from '$lib/server/db/queries/stackLayers.js';
 import { discussCue } from '$lib/server/ai/runtime/index.js';
 import { query } from '$lib/server/db/index.js';
 import { setWithdrawnFlag, logWithdrawal } from '$lib/server/db/queries/situating.js';
@@ -96,6 +97,10 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			if (!namingId || !designation) return json({ error: 'namingId and designation required' }, { status: 400 });
 			// Scope the body UUID to this project (must not designate a foreign naming)
 			if (!(await getNaming(namingId, projectId))) return json({ error: 'naming not found in project' }, { status: 404 });
+			// Dieselbe Stufe noch einmal setzt keine Schicht.
+			if ((await getTopState(namingId))?.designation === designation) {
+				return json({ error: `This naming is already a ${designation}.` }, { status: 409 });
+			}
 			const researcherNamingId = await getOrCreateResearcherNaming(projectId, userId);
 			const result = await designate(namingId, designation, researcherNamingId, {
 				text: memoText,
@@ -128,6 +133,52 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 				linkedNamingIds: await scopeNamingIds(linkedNamingIds, projectId)
 			});
 			return json(result);
+		}
+
+		case 'activateLayer': {
+			// Eine frühere Schicht des Stacks wieder zur obersten machen: ein
+			// neuer Akt, der sie aufnimmt (stackLayers.ts). Perspektiven mit
+			// eigenem Index behalten ihn (S09).
+			const { namingId, seq: rawSeq, memoText, linkedNamingIds } = body;
+			const seq = parseSeq(rawSeq);
+			if (!namingId || seq === null) return json({ error: 'namingId and a numeric seq required' }, { status: 400 });
+			try {
+				const result = await activateLayer({
+					namingId,
+					projectId,
+					userId,
+					seq,
+					note: { text: memoText, linkedNamingIds: await scopeNamingIds(linkedNamingIds, projectId) }
+				});
+				return json(result);
+			} catch (e) {
+				if (e instanceof StackLayerError) return json({ error: e.message }, { status: e.status });
+				throw e;
+			}
+		}
+
+		case 'setCollapse': {
+			// Eine Perspektive (Map oder Phase), unter der das Naming erscheint,
+			// auf eine Schicht kollabieren (seq) oder der obersten folgen lassen
+			// (null) — von der Liste und der Detailseite aus.
+			const { namingId, perspectiveId, collapseAt } = body;
+			if (!namingId || !perspectiveId) return json({ error: 'namingId and perspectiveId required' }, { status: 400 });
+			if (collapseAt !== null && collapseAt !== undefined && parseSeq(collapseAt) === null) {
+				return json({ error: 'collapseAt must be a layer (seq) or null' }, { status: 400 });
+			}
+			try {
+				const result = await collapsePerspective({
+					namingId,
+					perspectiveId,
+					projectId,
+					userId,
+					seq: collapseAt ?? null
+				});
+				return json(result);
+			} catch (e) {
+				if (e instanceof StackLayerError) return json({ error: e.message }, { status: e.status });
+				throw e;
+			}
 		}
 
 		case 'withdraw': {

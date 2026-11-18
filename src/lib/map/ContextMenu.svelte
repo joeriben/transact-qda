@@ -33,7 +33,10 @@
 	// Achsen der Positionskarte: benennen, designieren, Memo — keine Relation,
 	// kein Zentrieren, kein Zurückziehen.
 	const isAxis = $derived(node?.properties?.isAxis === true);
-	const current = $derived(node?.designation || 'cue');
+	// Designieren setzt eine neue oberste Schicht: verglichen wird mit der
+	// obersten, auch wenn diese Map eine frühere zeigt (dann sagt der Kopf es).
+	const collapsed = $derived(!!node?.is_collapsed);
+	const current = $derived((collapsed ? node?.current_designation : node?.designation) || 'cue');
 	// Zurückgezogen: ansehen und wiederherstellen, sonst nichts — Umbenennen,
 	// Designieren oder Verbinden setzte an etwas an, das auf dieser Karte
 	// gerade nicht gilt.
@@ -77,7 +80,7 @@
      bzw. rechts kein Platz ist). -->
 <div class="context-menu" use:keepInWindow={position} use:menuKeys role="menu" tabindex="-1" aria-label={label}
 	onclick={(e) => e.stopPropagation()}>
-	<div class="ctx-header" title={label}>{label}{#if withdrawn}<span class="ctx-state">{' · withdrawn'}</span>{/if}</div>
+	<div class="ctx-header" title={label}>{label}{#if withdrawn}<span class="ctx-state">{' · withdrawn'}</span>{/if}{#if collapsed && !withdrawn}<span class="ctx-state" title="This map shows an earlier layer; renaming and designating act on the topmost layer{node?.current_inscription && node.current_inscription !== node.inscription ? ` (“${node.current_inscription}”)` : ''}">{' · earlier layer'}</span>{/if}</div>
 	{#if withdrawn}
 		<button class="ctx-item" onclick={() => { ms.showStack(namingId); onclose(); }}>Stack</button>
 		<a class="ctx-item"
@@ -96,7 +99,7 @@
 	<div class="ctx-separator"></div>
 	{#each designations as d (d.value)}
 		{#if d.value === current}
-			<div class="ctx-item ctx-current" title="Current designation">
+			<div class="ctx-item ctx-current" title={collapsed ? 'Designation of the topmost layer' : 'Current designation'}>
 				<span class="designation-dot-sm" style="background: {d.color}"></span> {d.label}
 				<span class="ctx-check" aria-label="current">✓</span>
 			</div>

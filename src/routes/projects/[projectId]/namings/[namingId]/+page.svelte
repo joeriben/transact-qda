@@ -79,6 +79,72 @@
 		return '◆';
 	}
 
+	// ---- Schichten des Stacks aktivieren (stackLayers.ts) ----
+	let layerNotice = $state<string | null>(null);
+	let layerError = $state<string | null>(null);
+	async function namingAction(action: string, body: Record<string, unknown>) {
+		const res = await fetch(`/api/projects/${data.projectId}/namings`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ action, ...body })
+		});
+		const out = await res.json().catch(() => ({}));
+		if (!res.ok && !out?.error) out.error = `${action} did not go through (${res.status}).`;
+		return out;
+	}
+	/** Im Datenraum: die Schicht wird wieder die oberste (neuer Akt). */
+	async function activateLayer(seq: string, note: { text: string }): Promise<string | null> {
+		const res = await namingAction('activateLayer', { namingId: n.id, seq, memoText: note.text });
+		if (res?.error) return String(res.error);
+		layerError = null;
+		await invalidateAll();
+		layerNotice = `Activated: ${res.inscription ? quoted(res.inscription) : 'the layer without a name of its own'} is the topmost layer again (${res.designation}).${res.liftedTo ? ' With your memo, the cue became a characterization.' : ''}`;
+		return null;
+	}
+	/** Eine Map oder Phase auf eine Schicht kollabieren ('' = der obersten folgen). */
+	let layerBusy = $state(false);
+	async function setPerspectiveLayer(p: { id: string; label: string; layerSeq: string | null }, select: HTMLSelectElement) {
+		const value = select.value;
+		if (layerBusy) { select.value = p.layerSeq ?? ''; return; }
+		layerBusy = true;
+		try {
+			const res = await namingAction('setCollapse', { namingId: n.id, perspectiveId: p.id, collapseAt: value === '' ? null : value });
+			if (res?.error) {
+				// Nichts geändert: die Auswahl zeigt wieder, was gilt.
+				select.value = p.layerSeq ?? '';
+				layerError = String(res.error);
+				layerNotice = null;
+				return;
+			}
+			layerError = null;
+			await invalidateAll();
+			layerNotice = res.changed
+				? value === '' ? `${p.label} follows the topmost layer again.` : `${p.label} now shows ${res.state?.inscription ? quoted(res.state.inscription) : 'the layer without a name of its own'} as ${res.state?.designation}.`
+				: null;
+		} finally {
+			layerBusy = false;
+		}
+	}
+	/** Die Schichten, auf die eine Perspektive kollabieren kann: jede, die
+	 *  Inschrift, Designation oder Valenz setzt — auch die eines aufgenommenen
+	 *  Namings (unter dem Merge-Akt). */
+	const stateLayers = $derived.by(() => {
+		const out: any[] = [];
+		const walk = (acts: any[]) => {
+			for (const a of acts ?? []) {
+				if ((!a.kind || a.kind === 'act') && (a.inscription !== null || a.designation !== null || a.valence !== null)) out.push(a);
+				if (a.absorbed) walk(a.absorbed);
+			}
+		};
+		walk(stack.acts ?? []);
+		return out.sort((x, y) => new Date(x.created_at).getTime() - new Date(y.created_at).getTime());
+	});
+	function layerOptionLabel(a: any): string {
+		const name = a.state?.inscription?.trim() ? quoted(a.state.inscription) : '(without a name of its own)';
+		const val = a.state?.valence ? ` · valence: ${a.state.valence}` : '';
+		return `${formatWhen(a.created_at)} · ${name} · ${a.state?.designation ?? ''}${val}`;
+	}
+
 	async function setMemoStatus(memoId: string, status: string) {
 		await fetch(`/api/projects/${data.projectId}/memos/${memoId}/status`, {
 			method: 'PUT',
@@ -124,6 +190,32 @@
 			<!-- Der Stack: jeder Akt mit seinem Memo -->
 			<section class="detail-section">
 				<h2>Stack ({stack.acts?.length ?? 0})</h2>
+				<p class="stack-lead">The naming is this layering. Every layer can be made the topmost again (<em>activate</em>); each map and phase can show a layer of its own.</p>
+				{#if (stack.perspectives?.length ?? 0) > 0}
+					<!-- Welche Schicht jede Perspektive zeigt (S03: Index je Naming,
+					     Default die oberste; S09: Maps behalten ihre Indizes). -->
+					<div class="perspective-layers">
+						{#each stack.perspectives as p (p.id)}
+							<div class="pl-row">
+								<a class="pl-name" href={p.kind === 'phase'
+									? `/projects/${data.projectId}/namings?phase=${p.id}`
+									: `/projects/${data.projectId}/maps/${p.id}?focus=${n.id}`}>{p.kind === 'phase' ? `phase ${p.label}` : p.label}</a>
+								<span class="pl-shows">shows</span>
+								<select class="pl-select" value={p.layerSeq ?? ''} aria-label="Layer shown on {p.kind === 'phase' ? `phase ${p.label}` : p.label}"
+									disabled={p.readOnly || layerBusy}
+									title={p.readOnly ? 'This map is read-only (template).' : p.recorded === false ? 'This layer was set before such changes were recorded as acts.' : undefined}
+									onchange={(e) => setPerspectiveLayer(p, e.currentTarget as HTMLSelectElement)}>
+									<option value="">the topmost layer (follows every change)</option>
+									{#each [...stateLayers].reverse() as a (a.seq)}
+										<option value={String(a.seq)}>{layerOptionLabel(a)}</option>
+									{/each}
+								</select>
+							</div>
+						{/each}
+					</div>
+				{/if}
+				{#if layerNotice}<div class="layer-notice" role="status">{layerNotice} <button class="btn-link" onclick={() => (layerNotice = null)} aria-label="Dismiss">×</button></div>{/if}
+				{#if layerError}<div class="layer-error" role="alert">{layerError} <button class="btn-link" onclick={() => (layerError = null)} aria-label="Dismiss">×</button></div>{/if}
 				{#if (stack.derivedFrom?.length ?? 0) > 0}
 					<div class="derived-note">Derived from the placement on {stack.derivedFrom.join(', ')} — moving the formations there updates it.</div>
 				{/if}
@@ -140,6 +232,9 @@
 					<div class="rel-ends">Relation: {stack.relationEnds.source} {stack.relationEnds.directed ? '→' : '↔'} {stack.relationEnds.target}</div>
 				{/if}
 				<StackActs acts={stack.acts ?? []} ends={stack.relationEnds ?? null}
+					currentLayerSeq={stack.currentLayerSeq ?? null}
+					perspectives={stack.perspectives ?? []}
+					onactivate={activateLayer}
 					onlinked={(id) => goto(`/projects/${data.projectId}/namings/${id}`)} />
 				<NamingMemoForm projectId={data.projectId} namingId={n.id}
 					candidates={data.memoCandidates ?? []}
@@ -552,4 +647,15 @@
 	}
 	.sp-chip:hover { border-color: #8b9cf7; color: #e1e4e8; }
 	.rel-ends { font-size: 0.78rem; color: #8b8fa3; margin-bottom: 0.4rem; }
+	.stack-lead { margin: -0.2rem 0 0.5rem; font-size: 0.74rem; color: #8b8fa3; }
+	.perspective-layers { display: flex; flex-direction: column; gap: 0.25rem; margin-bottom: 0.6rem;
+		padding: 0.4rem 0.5rem; border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 5px; background: rgba(245, 158, 11, 0.04); }
+	.pl-row { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; font-size: 0.75rem; }
+	.pl-name { color: #fbbf24; text-decoration: none; }
+	.pl-name:hover { text-decoration: underline; }
+	.pl-shows { color: #8b8fa3; }
+	.pl-select { flex: 1; min-width: 12rem; max-width: 100%; background: #12141c; color: #e1e4e8; border: 1px solid #2a2d3a; border-radius: 4px; font-size: 0.74rem; padding: 0.1rem 0.3rem; }
+	.layer-notice { font-size: 0.74rem; color: #c4c8d4; background: rgba(139, 156, 247, 0.08); border: 1px solid rgba(139, 156, 247, 0.35); border-radius: 4px; padding: 0.25rem 0.45rem; margin-bottom: 0.5rem; }
+	.layer-error { font-size: 0.74rem; color: #f87171; border: 1px solid rgba(248, 113, 113, 0.4); border-radius: 4px; padding: 0.25rem 0.45rem; margin-bottom: 0.5rem; }
+	.btn-link { background: none; border: none; color: #8b8fa3; cursor: pointer; font-size: 0.8rem; padding: 0 0.2rem; }
 </style>

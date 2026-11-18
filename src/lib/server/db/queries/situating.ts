@@ -16,7 +16,9 @@ import { query, queryOne } from '../index.js';
  * diese Akte sind seine Geschichte.
  */
 
-export type SituatingAct = 'situate' | 'unsituate' | 'withdraw' | 'restore';
+/** collapse/release: eine Perspektive kollabiert den Stack auf eine Schicht
+ *  oder folgt wieder der obersten (migrations/040, stackLayers.ts). */
+export type SituatingAct = 'situate' | 'unsituate' | 'withdraw' | 'restore' | 'collapse' | 'release';
 
 /** Current stored position of a naming on a map, or null if it is unplaced. */
 export async function getStoredPosition(
@@ -134,9 +136,13 @@ export async function getSituatingActs(namingId: string, projectId: string, opts
 
 	return (
 		await query(
-			`SELECT sa.act, sa.x, sa.y, sa.created_at,
+			`SELECT sa.act, sa.x, sa.y, sa.created_at, sa.map_id, sa.collapse_at,
 			        actor.inscription AS by_inscription,
 			        m.inscription     AS map_inscription,
+			        -- Kollaps auf eine Schicht (migrations/040): welche, mit ihrem Zustand.
+			        (SELECT json_build_object('at', s.layer_at, 'inscription', s.inscription, 'designation', s.designation, 'valence', s.valence)
+			           FROM naming_state_at(sa.naming_id, sa.collapse_at) s
+			          WHERE sa.collapse_at IS NOT NULL) AS collapse_layer,
 			        -- Auf der SW/A-Map erscheint das Naming in einer Rolle
 			        -- (Arena, Soziale Welt, Organisation, Diskurs): an der Erscheinung.
 			        ap.properties->>'swRole' AS sw_role

@@ -16,6 +16,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	if (action === 'duplicate') {
 		if (!sourceMapId) return json({ error: 'sourceMapId required' }, { status: 400 });
 		const map = await duplicateMap(params.projectId, locals.user!.id, sourceMapId, label || 'Copy');
+		if (!map) return json({ error: 'Not found' }, { status: 404 });
 		return json(map, { status: 201 });
 	}
 

@@ -6,6 +6,7 @@ import type { MapType, DesignationStage } from '$lib/shared/types/index.js';
 import { getOrCreateResearcherNaming, mergeActSql, mergedIntoSql, researcherMemoSql } from './namings.js';
 import { getAnnotationsByNaming } from './annotations.js';
 import { getSituatingActs } from './situating.js';
+import { getPerspectiveIndices } from './stackLayers.js';
 
 // A map IS a naming that serves as a perspective.
 // Everything "on the map" has an appearance from this perspective.
@@ -243,12 +244,16 @@ export async function duplicateMap(
 		const researcherNamingId = await getOrCreateResearcherNaming(projectId, userId);
 
 		// 1. Get source map's perspective appearance (for mapType + properties)
+		// Nur eine Map dieses Projekts (Datenisolation: sonst ließ sich jede
+		// Map jedes Projekts samt ihren Phasen in ein eigenes kopieren).
 		const srcApp = (await client.query(
-			`SELECT properties FROM appearances
-			 WHERE naming_id = $1 AND perspective_id = $1 AND mode = 'perspective'`,
-			[sourceMapId]
+			`SELECT a.properties FROM appearances a
+			   JOIN namings m ON m.id = a.naming_id AND m.project_id = $2 AND m.deleted_at IS NULL
+			 WHERE a.naming_id = $1 AND a.perspective_id = $1 AND a.mode = 'perspective'
+			   AND a.properties ? 'mapType'`,
+			[sourceMapId, projectId]
 		)).rows[0];
-		if (!srcApp) throw new Error('Source map not found');
+		if (!srcApp) return null;
 
 		// 2. Create new map naming
 		const mapRes = await client.query(
@@ -282,6 +287,17 @@ export async function duplicateMap(
 			   AND mode != 'perspective'`,
 			[sourceMapId, newMapId]
 		);
+		// Die Kopie übernimmt die Indizes der Quelle (welche Schicht sie von
+		// welchem Naming zeigt) — als Akt, wie jeder Kollaps (migrations/040).
+		const logCopiedCollapses = (perspectiveId: string) =>
+			client.query(
+				`INSERT INTO situating_acts (map_id, naming_id, by, act, collapse_at)
+				 SELECT $1, naming_id, $2, 'collapse', collapse_seq(properties)
+				   FROM appearances
+				  WHERE perspective_id = $1 AND naming_id != $1 AND collapse_seq(properties) IS NOT NULL`,
+				[perspectiveId, researcherNamingId]
+			);
+		await logCopiedCollapses(newMapId);
 
 		// 6. Copy phases (sub-perspectives): each phase is its own naming
 		const srcPhases = (await client.query(
@@ -332,6 +348,7 @@ export async function duplicateMap(
 				 WHERE perspective_id = $1 AND naming_id != $1`,
 				[phase.naming_id, newPhaseId]
 			);
+			await logCopiedCollapses(newPhaseId);
 		}
 
 		return { ...mapRes.rows[0], properties: srcApp.properties };
@@ -770,9 +787,13 @@ export async function assignToPhase(
 	properties?: Record<string, unknown>,
 	byNamingId?: string
 ) {
-	// Get the current highest seq for this naming's acts
+	// Die oberste Schicht zur Zeit der Zuweisung (S03: „Phases sollten als
+	// default immer den aktuellen Index der Zuweisung speichern"). In Zeitfolge
+	// der Akte, nicht nach höchster seq: Nachträge tragen eine höhere seq als
+	// ihre Zeit (naming_state_at, migrations/040).
 	const currentSeq = await queryOne<{ seq: string }>(
-		`SELECT COALESCE(MAX(seq), 0) as seq FROM naming_acts WHERE naming_id = $1`,
+		`SELECT COALESCE((SELECT seq FROM naming_acts WHERE naming_id = $1
+		                  ORDER BY date_trunc('milliseconds', created_at) DESC, seq DESC LIMIT 1), 0) as seq`,
 		[namingId]
 	);
 	const collapseAt = currentSeq ? parseInt(currentSeq.seq) : null;
@@ -839,32 +860,8 @@ export async function getPhaseMembershipHistory(phaseId: string) {
 	).rows;
 }
 
-// Set the collapse point for a naming in a perspective.
-// collapseAt = global seq value → shows inscription + designation as of that seq.
-// Pass null to clear (return to showing latest).
-export async function setCollapse(
-	namingId: string,
-	perspectiveId: string,
-	collapseAt: number | null
-) {
-	if (collapseAt === null) {
-		// Remove collapseAt from properties
-		return queryOne(
-			`UPDATE appearances
-			 SET properties = properties - 'collapseAt', updated_at = now()
-			 WHERE naming_id = $1 AND perspective_id = $2
-			 RETURNING *`,
-			[namingId, perspectiveId]
-		);
-	}
-	return queryOne(
-		`UPDATE appearances
-		 SET properties = properties || $3::jsonb, updated_at = now()
-		 WHERE naming_id = $1 AND perspective_id = $2
-		 RETURNING *`,
-		[namingId, perspectiveId, JSON.stringify({ collapseAt })]
-	);
-}
+// Kollabieren einer Perspektive auf eine Schicht des Stacks: siehe
+// stackLayers.ts (collapsePerspective) — als Akt protokolliert (migrations/040).
 
 // Get the full stack of a naming: all inscription and designation layers.
 // This is not "history" — it IS the naming's constitution.
@@ -888,6 +885,8 @@ export async function getNamingStack(
 				inscriptions: [],
 				designations: [],
 				acts: [],
+				currentLayerSeq: null,
+				perspectives: [],
 				derivedFrom: [] as string[],
 				memos: [],
 				referringNotes: [],
@@ -1030,9 +1029,20 @@ export async function getNamingStack(
 			absorbed_id: string | null;
 			mode_ends: { source: string; target: string; directed: boolean } | null;
 			from_memo: string | null;
+			activates_seq: string | null;
+			activates: { at: string; inscription: string | null; designation: string; valence: string | null } | null;
+			state: { inscription: string | null; designation: string; valence: string | null } | null;
 		}>(
 			`SELECT na.seq, na.created_at, na.inscription, na.designation, na.mode, na.valence,
-			        na.memo_text, na.linked_naming_ids,
+			        na.memo_text, na.linked_naming_ids, na.activates_seq,
+			        -- Dieser Akt aktiviert eine frühere Schicht (activateLayer): welche, mit ihrem Zustand.
+			        (SELECT json_build_object('at', s.layer_at, 'inscription', s.inscription, 'designation', s.designation, 'valence', s.valence)
+			           FROM naming_state_at(na.naming_id, na.activates_seq) s
+			          WHERE na.activates_seq IS NOT NULL) AS activates,
+			        -- Zustand des Namings auf dieser Schicht (Inschrift + Designation,
+			        -- S03: ein Index) — was eine Perspektive zeigt, die hier kollabiert.
+			        (SELECT json_build_object('inscription', s.inscription, 'designation', s.designation, 'valence', s.valence)
+			           FROM naming_state_at(na.naming_id, na.seq) s) AS state,
 			        -- Merge (mergeNamings): ein Akt, der nichts setzt und nur auf das
 			        -- aufgenommene, soft-gelöschte Naming verweist.
 			        CASE WHEN ${mergeActSql('na')}
@@ -1089,6 +1099,7 @@ export async function getNamingStack(
 			        -- ihre Ursache nicht: Sie entstanden in derselben Transaktion wie
 			        -- die Relation, also mit demselben Zeitstempel wie deren erster Akt.
 			        CASE WHEN na.linked_naming_ids IS NULL AND na.memo_text IS NULL
+			                  AND na.activates_seq IS NULL
 			                  AND na.inscription IS NULL AND na.designation IS NOT NULL
 			             THEN (SELECT json_agg(json_build_object('id', l.id, 'label', ${namingLabelSql('l')}))
 			                   FROM participations p
@@ -1244,8 +1255,21 @@ export async function getNamingStack(
 	// Zuordnung zu einer Phase und ihre Aufhebung (phase_memberships,
 	// migrations/006, append-only) sind ebenso Akte an diesem Naming.
 	const phaseActs = (
-		await query<{ action: 'assign' | 'remove'; created_at: string; phase_label: string; by_inscription: string }>(
-			`SELECT pm.action, pm.created_at, ph.inscription AS phase_label, b.inscription AS by_inscription
+		await query<{
+			action: 'assign' | 'remove';
+			created_at: string;
+			phase_id: string;
+			phase_label: string;
+			by_inscription: string;
+			collapse_layer: { at: string; inscription: string | null; designation: string; valence: string | null } | null;
+		}>(
+			// Beim Zuordnen hält die Phase die damals oberste Schicht fest (S03);
+			// der Stack sagt, welche.
+			`SELECT pm.action, pm.created_at, pm.phase_id, ph.inscription AS phase_label, b.inscription AS by_inscription,
+			        (SELECT json_build_object('at', s.layer_at, 'inscription', s.inscription,
+			                                  'designation', s.designation, 'valence', s.valence)
+			           FROM naming_state_at(pm.naming_id, collapse_seq(pm.properties)) s
+			          WHERE pm.action = 'assign' AND collapse_seq(pm.properties) IS NOT NULL) AS collapse_layer
 			 FROM phase_memberships pm
 			 JOIN namings ph ON ph.id = pm.phase_id
 			 JOIN namings b ON b.id = pm.by
@@ -1269,11 +1293,17 @@ export async function getNamingStack(
 		through: false,
 		basis: null as string | null,
 		kind: (pa.action === 'assign' ? 'phase-assign' : 'phase-remove') as 'phase-assign' | 'phase-remove',
+		collapse_layer: pa.collapse_layer ?? null,
+		map_id: pa.phase_id as string | null,
 		map_inscription: null as string | null,
 		phase_label: pa.phase_label as string | null,
 		sw_role: null as string | null
 	}));
 	const situatingEntries = (situating as any[]).map((sa, i) => ({
+		collapse_layer: (sa.collapse_layer ?? null) as
+			| { at: string; inscription: string | null; designation: string; valence: string | null }
+			| null,
+		map_id: (sa.map_id ?? null) as string | null,
 		seq: `s${i}-${new Date(sa.created_at).getTime()}`,
 		created_at: sa.created_at,
 		inscription: null,
@@ -1287,7 +1317,7 @@ export async function getNamingStack(
 		linked: [] as { id: string; label: string }[],
 		through: false,
 		basis: null as string | null,
-		kind: sa.act as 'situate' | 'unsituate' | 'withdraw' | 'restore',
+		kind: sa.act as 'situate' | 'unsituate' | 'withdraw' | 'restore' | 'collapse' | 'release',
 		map_inscription: sa.map_inscription as string,
 		phase_label: null as string | null,
 		sw_role: (sa.sw_role ?? null) as string | null
@@ -1306,7 +1336,25 @@ export async function getNamingStack(
 		})),
 		...situatingEntries,
 		...phaseEntries
-	].sort((x, y) => new Date(x.created_at).getTime() - new Date(y.created_at).getTime());
+	].sort((x, y) => {
+		// Zeitfolge auf die Millisekunde, bei gleicher Zeit die seq der Akte —
+		// wie naming_state_at (migrations/040) die Schichten ordnet.
+		const d = new Date(x.created_at).getTime() - new Date(y.created_at).getTime();
+		if (d !== 0) return d;
+		if (x.kind === 'act' && y.kind === 'act') return Number(BigInt(String(x.seq)) - BigInt(String(y.seq)));
+		return 0;
+	});
+
+	// Die oberste Schicht: der letzte Akt in Zeitfolge, der Inschrift,
+	// Designation oder Valenz setzt — der Default-Kollaps (S03: „default ist
+	// das oberste"), den die Liste und jede Perspektive ohne eigenen Index zeigt.
+	const stateLayers = history.filter(
+		(h) => h.kind === 'act' && (h.inscription !== null || h.designation !== null || h.valence !== null)
+	);
+	const currentLayerSeq = stateLayers.length > 0 ? String(stateLayers[stateLayers.length - 1].seq) : null;
+	// Unter welchen Perspektiven das Naming erscheint und welche Schicht jede
+	// zeigt (S09: Maps „behalten ihre Indizes/Stack-Positionen").
+	const perspectives = projectId && !opts?.absorbed ? await getPerspectiveIndices(namingId, projectId) : [];
 
 	// Eine Stille ist ein Muster der Nicht-Präsenz: Participations ohne
 	// Appearances (S11: „Participations suffice"). Der Stack nennt die
@@ -1366,6 +1414,15 @@ export async function getNamingStack(
 		inscriptions: inscriptions.rows,
 		designations: designations.rows,
 		acts: history,
+		currentLayerSeq,
+		perspectives: perspectives.map((p) => ({
+			id: p.id,
+			label: p.label,
+			kind: p.kind,
+			layerSeq: p.layer_seq !== null ? String(p.layer_seq) : null,
+			recorded: p.recorded,
+			readOnly: p.read_only
+		})),
 		derivedFrom,
 		silencePattern,
 		relationEnds,
@@ -1396,28 +1453,30 @@ export async function getMapAppearances(mapId: string, projectId: string) {
 	return (
 		await query(
 			`SELECT a.*,
-			   -- Inscription: collapsed (at collapseAt seq) or current
-			   COALESCE(
-			     (SELECT na.inscription FROM naming_acts na
-			      WHERE na.naming_id = a.naming_id AND na.inscription IS NOT NULL
-			        AND (a.properties->>'collapseAt' IS NULL
-			             OR na.seq <= (a.properties->>'collapseAt')::bigint)
-			      ORDER BY na.seq DESC LIMIT 1),
-			     n.inscription
-			   ) as inscription,
+			   -- Inschrift: auf der Schicht, auf die diese Map den Stack
+			   -- kollabiert (collapseAt, naming_state_at in Zeitfolge der Akte),
+			   -- sonst die oberste (S03: „default ist das oberste").
+			   CASE WHEN cs.layer_seq IS NOT NULL THEN COALESCE(cs.inscription, '')
+			        ELSE COALESCE(top.inscription, n.inscription)
+			   END as inscription,
 			   n.inscription as current_inscription,
 			   n.created_at as naming_created_at,
-			   -- Designation: collapsed or current
-			   COALESCE(
-			     (SELECT na.designation FROM naming_acts na
-			      WHERE na.naming_id = a.naming_id AND na.designation IS NOT NULL
-			        AND (a.properties->>'collapseAt' IS NULL
-			             OR na.seq <= (a.properties->>'collapseAt')::bigint)
-			      ORDER BY na.seq DESC LIMIT 1),
-			     'cue'
-			   ) as designation,
-			   -- Whether this appearance is collapsed (pinned) or showing latest
-			   (a.properties->>'collapseAt') IS NOT NULL as is_collapsed,
+			   -- Designation: auf derselben Schicht oder die oberste
+			   CASE WHEN cs.layer_seq IS NOT NULL THEN cs.designation
+			        ELSE COALESCE(top.designation, 'cue')
+			   END as designation,
+			   -- Die oberste Designation, damit die Karte sagt, wenn sie abweicht
+			   COALESCE(top.designation, 'cue') as current_designation,
+			   -- Valenz: auf der Schicht, falls dort eine erfasst ist ('' = keine);
+			   -- überschreibt a.valence aus a.* (die spätere Spalte gilt).
+			   CASE WHEN cs.layer_seq IS NOT NULL AND cs.valence IS NOT NULL THEN NULLIF(cs.valence, '')
+			        ELSE a.valence
+			   END as valence,
+			   a.valence as current_valence,
+			   -- Kollabiert diese Map den Stack auf eine Schicht?
+			   cs.layer_seq IS NOT NULL as is_collapsed,
+			   cs.layer_at as collapse_layer_at,
+			   cs.state_seq as collapse_layer_seq,
 			   -- Provenance: empirical grounding (has document annotations)
 			   -- Valenzen wie in getAnnotationsByNaming ('codes' UND 'thematizes'): 'codes'
 			   -- allein liess jedes nur thematisierend verankerte Naming als
@@ -1576,6 +1635,15 @@ export async function getMapAppearances(mapId: string, projectId: string) {
 			 FROM appearances a
 			 JOIN namings n ON n.id = a.naming_id
 			 LEFT JOIN participations p ON p.id = a.naming_id
+			 -- Die oberste Schicht in Zeitfolge der Akte (naming_state_at).
+			 LEFT JOIN LATERAL (
+			   SELECT s.inscription, s.designation FROM naming_acts na
+			   CROSS JOIN LATERAL naming_state_at(na.naming_id, na.seq) s
+			    WHERE na.naming_id = a.naming_id
+			    ORDER BY date_trunc('milliseconds', na.created_at) DESC, na.seq DESC LIMIT 1
+			 ) top ON true
+			 LEFT JOIN LATERAL naming_state_at(a.naming_id, collapse_seq(a.properties)) cs
+			   ON collapse_seq(a.properties) IS NOT NULL
 			 WHERE a.perspective_id = $1
 			   AND a.naming_id != $1
 			   AND n.project_id = $2
@@ -1726,17 +1794,22 @@ export async function getMapDesignationProfile(mapId: string, projectId: string)
 		await query(
 			`SELECT * FROM (
 			   SELECT
-			     COALESCE(
-			       (SELECT na.designation FROM naming_acts na
-			        WHERE na.naming_id = a.naming_id AND na.designation IS NOT NULL
-			          AND (a.properties->>'collapseAt' IS NULL
-			               OR na.seq <= (a.properties->>'collapseAt')::bigint)
-			        ORDER BY na.seq DESC LIMIT 1),
-			       'cue'
-			     ) as designation,
+			     -- Auf der Schicht, auf die diese Map kollabiert, sonst die oberste
+			     -- (wie getMapAppearances).
+			     CASE WHEN cs.layer_seq IS NOT NULL THEN cs.designation
+			          ELSE COALESCE(top.designation, 'cue')
+			     END as designation,
 			     count(*) as count
 			   FROM appearances a
 			   JOIN namings n ON n.id = a.naming_id
+			   LEFT JOIN LATERAL (
+			     SELECT s.designation FROM naming_acts na
+			     CROSS JOIN LATERAL naming_state_at(na.naming_id, na.seq) s
+			      WHERE na.naming_id = a.naming_id
+			      ORDER BY date_trunc('milliseconds', na.created_at) DESC, na.seq DESC LIMIT 1
+			   ) top ON true
+			   LEFT JOIN LATERAL naming_state_at(a.naming_id, collapse_seq(a.properties)) cs
+			     ON collapse_seq(a.properties) IS NOT NULL
 			   WHERE a.perspective_id = $1
 			     AND a.naming_id != $1
 			     AND a.mode != 'perspective'
@@ -1874,16 +1947,31 @@ export async function getProjectPhases(projectId: string) {
 export async function getPhaseMembers(phaseId: string) {
 	return (
 		await query(
-			`SELECT a.naming_id, n.inscription,
-			   (SELECT na.designation FROM naming_acts na
-			    WHERE na.naming_id = n.id AND na.designation IS NOT NULL
-			    ORDER BY na.seq DESC LIMIT 1) as designation,
+			// Eine Phase zeigt ihre Mitglieder auf der Schicht, die sie hält
+			// (S03: „Phases sollten als default immer den aktuellen Index der
+			// Zuweisung speichern"); ohne Index die oberste. Daneben die oberste.
+			`SELECT a.naming_id,
+			   COALESCE(cs.inscription, n.inscription) AS inscription,
+			   COALESCE(cs.designation, top.designation, 'cue') AS designation,
+			   n.inscription AS current_inscription,
+			   COALESCE(top.designation, 'cue') AS current_designation,
+			   cs.layer_seq IS NOT NULL AS is_collapsed,
+			   cs.layer_at AS collapse_layer_at,
+			   cs.state_seq AS collapse_layer_seq,
 			   a.mode, a.properties
 			 FROM appearances a
 			 JOIN namings n ON n.id = a.naming_id AND n.deleted_at IS NULL
+			 LEFT JOIN LATERAL (
+			   SELECT s.designation FROM naming_acts na
+			   CROSS JOIN LATERAL naming_state_at(na.naming_id, na.seq) s
+			    WHERE na.naming_id = n.id
+			    ORDER BY date_trunc('milliseconds', na.created_at) DESC, na.seq DESC LIMIT 1
+			 ) top ON true
+			 LEFT JOIN LATERAL naming_state_at(a.naming_id, collapse_seq(a.properties)) cs
+			   ON collapse_seq(a.properties) IS NOT NULL
 			 WHERE a.perspective_id = $1
 			   AND a.naming_id != $1
-			 ORDER BY n.inscription`,
+			 ORDER BY COALESCE(cs.inscription, n.inscription)`,
 			[phaseId]
 		)
 	).rows;

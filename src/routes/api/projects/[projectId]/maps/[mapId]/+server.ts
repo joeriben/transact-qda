@@ -18,9 +18,9 @@ import {
 	assignToPhase,
 	removeFromPhase,
 	getPhaseMembershipHistory,
-	setCollapse,
 	getNamingStack
 } from '$lib/server/db/queries/maps.js';
+import { activateLayer, collapsePerspective, followTopmostOn, getTopState, parseSeq, StackLayerError } from '$lib/server/db/queries/stackLayers.js';
 import {
 	designate,
 	getOrCreateResearcherNaming,
@@ -57,6 +57,12 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const { action } = body;
 	const { projectId, mapId } = params;
 	const userId = locals.user!.id;
+
+	// Welche Schicht eine Map zeigt, setzt nur der Kollaps (setCollapse), als
+	// Akt im Stack — nicht ein Eigenschafts-Objekt vom Client (migrations/040).
+	if (body?.properties && typeof body.properties === 'object' && !Array.isArray(body.properties)) {
+		delete body.properties.collapseAt;
+	}
 
 	// Scope the map UUID (from the URL) to this project: membership only proves
 	// the caller belongs to projectId, not that mapId lives in it. A map is a
@@ -331,12 +337,18 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			if (!namingId || !designation) return json({ error: 'namingId and designation required' }, { status: 400 });
 			// Scope the body UUID to this project (must not designate a foreign naming)
 			if (!(await getNaming(namingId, projectId))) return json({ error: 'naming not found in project' }, { status: 404 });
+			// Dieselbe Stufe noch einmal setzt keine Schicht (oberste Schicht in
+			// Zeitfolge der Akte, naming_state_at).
+			if ((await getTopState(namingId))?.designation === designation) {
+				return json({ error: `This naming is already a ${designation}.` }, { status: 409 });
+			}
 			const researcherNamingId = await getOrCreateResearcherNaming(projectId, userId);
 			const result = await designate(namingId, designation, researcherNamingId, {
 				text: memoText,
 				linkedNamingIds: await scopeNamingIds(linkedNamingIds, projectId)
 			});
-			return json(result);
+			const followed = await followTopmostOn({ namingId, mapId, projectId, userId });
+			return json({ ...result, followed });
 		}
 
 		case 'note': {
@@ -348,7 +360,9 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 				text: memoText,
 				linkedNamingIds: await scopeNamingIds(linkedNamingIds, projectId)
 			});
-			return json(act);
+			// Hebt das Memo einen Cue, ist das eine neue Schicht: die Map folgt ihr.
+			const followed = act?.designation ? await followTopmostOn({ namingId, mapId, projectId, userId }) : false;
+			return json({ ...act, followed });
 		}
 
 		case 'rename': {
@@ -361,7 +375,8 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 				text: memoText,
 				linkedNamingIds: await scopeNamingIds(linkedNamingIds, projectId)
 			});
-			return json(result);
+			const followed = await followTopmostOn({ namingId, mapId, projectId, userId });
+			return json({ ...result, followed });
 		}
 
 		case 'getHistory': {
@@ -389,11 +404,50 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			return json({ ...stack, situating });
 		}
 
+		case 'activateLayer': {
+			// Eine frühere Schicht im Datenraum wieder zur obersten machen (ein
+			// neuer Akt im Stack, stackLayers.ts) — auch von der Karte aus.
+			const { namingId, seq: rawSeq, memoText, linkedNamingIds } = body;
+			const seq = parseSeq(rawSeq);
+			if (!namingId || seq === null) return json({ error: 'namingId and a numeric seq required' }, { status: 400 });
+			try {
+				const result = await activateLayer({
+					namingId,
+					projectId,
+					userId,
+					seq,
+					note: { text: memoText, linkedNamingIds: await scopeNamingIds(linkedNamingIds, projectId) }
+				});
+				// Aktiviert auf dieser Map: sie zeigt danach die aktivierte Schicht.
+				const followed = await followTopmostOn({ namingId, mapId, projectId, userId });
+				return json({ ...result, followed });
+			} catch (e) {
+				if (e instanceof StackLayerError) return json({ error: e.message }, { status: e.status });
+				throw e;
+			}
+		}
+
 		case 'setCollapse': {
+			// Diese Map auf eine Schicht des Stacks kollabieren oder wieder der
+			// obersten folgen lassen — als Akt (stackLayers.ts, migrations/040).
 			const { namingId, collapseAt } = body;
 			if (!namingId) return json({ error: 'namingId required' }, { status: 400 });
-			const result = await setCollapse(namingId, mapId, collapseAt ?? null);
-			return json(result || { ok: true });
+			if (collapseAt !== null && collapseAt !== undefined && parseSeq(collapseAt) === null) {
+				return json({ error: 'collapseAt must be a layer (seq) or null' }, { status: 400 });
+			}
+			try {
+				const result = await collapsePerspective({
+					namingId,
+					perspectiveId: mapId,
+					projectId,
+					userId: locals.user!.id,
+					seq: collapseAt ?? null
+				});
+				return json(result);
+			} catch (e) {
+				if (e instanceof StackLayerError) return json({ error: e.message }, { status: e.status });
+				throw e;
+			}
 		}
 
 		case 'withdraw': {

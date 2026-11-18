@@ -25,7 +25,8 @@ export function isResearcherNamingSql(namingIdExpr: string): string {
  */
 export function mergeActSql(a: string): string {
 	return `(${a}.memo_text IS NULL AND ${a}.inscription IS NULL AND ${a}.designation IS NULL
-	         AND ${a}.mode IS NULL AND ${a}.valence IS NULL AND cardinality(${a}.linked_naming_ids) > 0)`;
+	         AND ${a}.mode IS NULL AND ${a}.valence IS NULL AND ${a}.activates_seq IS NULL
+	         AND cardinality(${a}.linked_naming_ids) > 0)`;
 }
 
 /** Das Naming, in das ein (soft-gelöschtes) Naming aufgenommen wurde, sonst NULL. */
@@ -857,12 +858,14 @@ export async function getAllProjectNamings(projectId: string) {
 			   -- Endpunkte, falls das Naming eine Relation ist (je Richtung eine).
 			   (SELECT p.naming_id FROM participations p WHERE p.id = n.id) AS part_source_id,
 			   (SELECT p.participant_id FROM participations p WHERE p.id = n.id) AS part_target_id,
-			   -- Current designation (latest non-NULL in stack)
+			   -- Die oberste Schicht: in Zeitfolge der Akte (auf die Millisekunde,
+			   -- dann seq), wie der Stack sie ordnet (naming_state_at, migrations/040).
 			   (SELECT na.designation FROM naming_acts na
-			    WHERE na.naming_id = n.id AND na.designation IS NOT NULL ORDER BY na.seq DESC LIMIT 1) as designation,
-			   -- Current inscription (latest non-NULL in stack)
+			    WHERE na.naming_id = n.id AND na.designation IS NOT NULL
+			    ORDER BY date_trunc('milliseconds', na.created_at) DESC, na.seq DESC LIMIT 1) as designation,
 			   (SELECT na.inscription FROM naming_acts na
-			    WHERE na.naming_id = n.id AND na.inscription IS NOT NULL ORDER BY na.seq DESC LIMIT 1) as current_inscription,
+			    WHERE na.naming_id = n.id AND na.inscription IS NOT NULL
+			    ORDER BY date_trunc('milliseconds', na.created_at) DESC, na.seq DESC LIMIT 1) as current_inscription,
 			   -- Grounding: has document anchor. Valenzen wie in getAnnotationsByNaming
 			   -- ('codes' UND 'thematizes') — mit 'codes' allein galt jedes nur
 			   -- thematisierend verankerte Naming als ungegroundet, und die Liste
@@ -915,14 +918,20 @@ export async function getAllProjectNamings(projectId: string) {
 			   -- ohne den Filter bekam jedes in-vivo- und vom Naming-Run angelegte Naming einen
 			   -- Chip "Grounding Workspace", der die Infrastruktur-Perspektive als
 			   -- Karte öffnete.
-			   (SELECT json_agg(json_build_object('id', mp.id, 'label', mp.inscription))
-			    FROM (SELECT DISTINCT m.id, m.inscription
+			   -- Zeigt eine Map eine frühere Schicht (Kollaps), sagt der Chip welche:
+			   -- die Nicht-Identität steht in der Zeile, nicht erst im Stack.
+			   (SELECT json_agg(json_build_object('id', mp.id, 'label', mp.inscription,
+			                    'layer', (SELECT json_build_object('inscription', s.inscription,
+			                                                       'designation', s.designation, 'at', s.layer_at)
+			                                FROM naming_state_at(n.id, mp.cs) s WHERE mp.cs IS NOT NULL)))
+			    FROM (SELECT DISTINCT ON (m.id) m.id, m.inscription, collapse_seq(a2.properties) AS cs
 			          FROM appearances a2
 			          JOIN namings m ON m.id = a2.perspective_id
 			          JOIN appearances ms ON ms.naming_id = m.id AND ms.perspective_id = m.id
 			            AND ms.mode = 'perspective' AND ms.properties ? 'mapType'
 			          WHERE a2.naming_id = n.id AND a2.perspective_id != n.id
-			            AND m.deleted_at IS NULL) mp) as appears_on_maps
+			            AND m.deleted_at IS NULL
+			          ORDER BY m.id) mp) as appears_on_maps
 			 FROM namings n
 			 WHERE n.project_id = $1
 			   AND n.deleted_at IS NULL

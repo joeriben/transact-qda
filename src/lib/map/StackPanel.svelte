@@ -139,9 +139,13 @@
 			Open in Namings &rarr;
 		</a>
 		{#if stackNode?.is_collapsed}
-			<button class="btn-xs btn-unpin" onclick={() => ms.unpinLayer(ms.stackId!)}>
-				unpin (show latest)
-			</button>
+			<!-- Diese Karte kollabiert den Stack auf eine Schicht (S03); Liste und
+			     andere Karten können eine andere zeigen (S09). -->
+			<div class="collapse-note">
+				This map shows the layer of {formatWhen(stackNode.collapse_layer_at)}{#if stackNode.current_inscription && stackNode.current_inscription !== stackNode.inscription}; the topmost layer is “{stackNode.current_inscription}”{/if}{#if stackNode.current_designation && stackNode.current_designation !== stackNode.designation} ({stackNode.current_designation}){/if}.
+				<button class="btn-xs btn-unpin" onclick={() => ms.unpinLayer(ms.stackId!)}
+					title="Let this map follow the topmost layer of the stack again">follow topmost</button>
+			</div>
 		{/if}
 		<div class="history-section">
 			<span class="history-label">Stack</span>
@@ -165,8 +169,13 @@
 			{/if}
 			<StackActs acts={ms.stackData.acts ?? []} ends={ms.stackData.relationEnds ?? null}
 				currentMap={ms.mapLabel ?? null}
-				pinnedSeq={stackNode?.is_collapsed ? stackNode?.properties?.collapseAt : null}
+				currentLayerSeq={ms.stackData.currentLayerSeq ?? null}
+				perspectives={ms.stackData.perspectives ?? []}
+				currentPerspectiveId={ms.mapId}
+				pinnedSeq={stackNode?.is_collapsed ? (stackNode?.collapse_layer_seq ?? stackNode?.properties?.collapseAt) : null}
 				onpin={(seq) => ms.pinToLayer(ms.stackId!, seq)}
+				onrelease={() => ms.unpinLayer(ms.stackId!)}
+				onactivate={(seq, note) => ms.activateLayer(ms.stackId!, seq, note)}
 				onlinked={(id) => { if (ms.findNode(id)) ms.revealNaming(id, { stack: true }); }} />
 			{#key ms.stackId + ':' + (ms.noteOpenFor === ms.stackId)}
 				<NamingMemoForm projectId={ms.projectId} namingId={ms.stackId!}
@@ -507,7 +516,8 @@
 	/* Pin/unpin */
 	.btn-pin { margin-left: auto; border-color: #f59e0b; color: #f59e0b; }
 	.btn-pin:hover { background: rgba(245, 158, 11, 0.1); }
-	.btn-unpin { border-color: #f59e0b; color: #f59e0b; margin-bottom: 0.4rem; }
+	.btn-unpin { border-color: #f59e0b; color: #f59e0b; margin-left: 0.3rem; }
+	.collapse-note { font-size: 0.72rem; color: #fbbf24; background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 4px; padding: 0.25rem 0.4rem; margin-bottom: 0.4rem; line-height: 1.4; }
 	.btn-unpin:hover { background: rgba(245, 158, 11, 0.1); }
 	.pinned-layer { background: rgba(245, 158, 11, 0.1); border-radius: 3px; padding: 0.1rem 0.3rem; }
 

@@ -15,6 +15,14 @@
  *     S09; dasselbe Paar ein zweites Mal → 409 statt Serverfehler.
  *   - Entität/Relation-Wechsel und Valenzänderung = Akt (migrations/009).
  *   - Zusammenführen = Akt im Stack des Überlebenden, kein hartes Löschen.
+ *   - Jede Schicht des Stacks ist aktivierbar (migrations/040, BJ 17.11.2026):
+ *     im Datenraum durch einen neuen Akt, der die Schicht aufnimmt
+ *     (activates_seq, kein neues Naming, nichts überschrieben); unter einer
+ *     Perspektive (Map, Phase) durch Kollaps, und Kollaps wie Rückkehr zur
+ *     obersten Schicht stehen als Akt im Situierungs-Protokoll. Die Map zeigt
+ *     die kollabierte Schicht, die Liste die oberste. Schichten folgen der
+ *     Zeit der Akte, nicht der seq. Fremde Schichten und fremde Projekte
+ *     werden abgewiesen.
  *
  * Legt einen Wegwerf-Nutzer `stacktest_…` mit einem Projekt an und löscht am
  * Ende nur, was es selbst angelegt hat.
@@ -27,7 +35,10 @@
 
 import pg from 'pg';
 import { randomUUID } from 'node:crypto';
+import * as devalue from 'devalue';
 import { loadEnv } from './lib/load-env.js';
+import { readdir, rm } from 'node:fs/promises';
+import { join } from 'node:path';
 
 loadEnv();
 
@@ -65,6 +76,18 @@ async function register() {
 }
 
 let cookie = '';
+/** Daten einer Seite, wie die Oberfläche sie lädt (SvelteKit __data.json). */
+async function pageData(path) {
+	const res = await fetch(`${APP_URL}${path}/__data.json`, { headers: { cookie } });
+	const body = await res.json().catch(() => ({}));
+	return (body.nodes ?? []).map((n) => (n?.type === 'data' ? devalue.unflatten(n.data) : null));
+}
+/** Ein Naming in einer Liste der Seitendaten (z. B. elements, namings). */
+function rowOf(nodes, key, namingId) {
+	const page = nodes[nodes.length - 1] ?? {};
+	return (page[key] ?? []).find((r) => r.naming_id === namingId) ?? null;
+}
+
 async function post(path, body) {
 	const res = await fetch(`${APP_URL}${path}`, {
 		method: 'POST',
@@ -394,6 +417,342 @@ async function run() {
 			JSON.stringify({ status: D.status, df, dm }));
 	}
 
+	// 9. Jede Schicht des Stacks aktivieren (migrations/040, BJ 17.11.2026).
+	//    „jedes Naming erhält eben einen INdex (default ist das oberste), und
+	//    diser INdex ist sein Collapse" (S03). Die Map behält ihren Index (S09).
+	{
+		const S = await make('Lehrerzimmer');
+		await post(N, { action: 'rename', namingId: S, inscription: 'Kollegium' });
+		await post(N, { action: 'note', namingId: S, memoText: 'Wer trifft sich dort?' });
+		await post(N, { action: 'rename', namingId: S, inscription: 'Konferenz' });
+		const stackOf = async (id) => (await post(N, { action: 'getStack', namingId: id })).body ?? {};
+		const layer = (st, ins, des) =>
+			(st.acts ?? []).find((a) => a.kind === 'act' && a.inscription === ins && (des === undefined || a.designation === des));
+		let st = await stackOf(S);
+		const L0 = layer(st, 'Lehrerzimmer', 'cue');
+		const L1 = layer(st, 'Kollegium');
+		const L3 = layer(st, 'Konferenz');
+		record('Stack zeigt jede Schicht mit ihrem Zustand, oberste Schicht benannt',
+			!!L0 && !!L1 && !!L3 && st.currentLayerSeq === String(L3.seq)
+				&& L0.state?.inscription === 'Lehrerzimmer' && L0.state?.designation === 'cue'
+				&& L1.state?.inscription === 'Kollegium' && L1.state?.designation === 'cue'
+				&& L3.state?.designation === 'characterization',
+			JSON.stringify({ L0: L0?.state, L1: L1?.state, L3: L3?.state, top: st.currentLayerSeq, L3seq: L3?.seq }));
+
+		// 9a. Im Datenraum: frühere Schicht wird wieder die oberste, als neuer Akt.
+		const before = { n: await namingCount(P), m: await memoCount(P), acts: await actCount(S) };
+		const earlier = (await pool.query(
+			`SELECT seq, inscription, designation, memo_text FROM naming_acts WHERE naming_id = $1 ORDER BY seq`, [S]
+		)).rows;
+		const a1 = await post(N, { action: 'activateLayer', namingId: S, seq: L0.seq });
+		const act1 = await one(
+			`SELECT seq, inscription, designation, activates_seq, by FROM naming_acts WHERE naming_id = $1 ORDER BY seq DESC LIMIT 1`, [S]
+		);
+		const now = await one(`SELECT inscription FROM namings WHERE id = $1`, [S]);
+		const unchanged = (await pool.query(
+			`SELECT seq, inscription, designation, memo_text FROM naming_acts WHERE naming_id = $1 AND seq <= $2 ORDER BY seq`,
+			[S, earlier[earlier.length - 1].seq]
+		)).rows;
+		record('Schicht aktivieren: neuer Akt nimmt Inschrift und Designation der Schicht auf (activates_seq), Naming heißt wieder so',
+			a1.status === 200 && act1?.activates_seq === String(L0.seq) && act1?.inscription === 'Lehrerzimmer'
+				&& act1?.designation === 'cue' && now?.inscription === 'Lehrerzimmer',
+			JSON.stringify({ status: a1.status, body: a1.body?.error, act1, now }));
+		record('Schicht aktivieren: kein neues Naming, kein Memo-Naming, frühere Akte unverändert',
+			(await namingCount(P)) === before.n && (await memoCount(P)) === before.m && (await actCount(S)) === before.acts + 1
+				&& JSON.stringify(unchanged) === JSON.stringify(earlier),
+			JSON.stringify({ namings: [before.n, await namingCount(P)], acts: [before.acts, await actCount(S)] }));
+		st = await stackOf(S);
+		const shownAct = (st.acts ?? []).find((a) => String(a.seq) === String(act1?.seq));
+		record('Stack zeigt den Aktivierungsakt mit der aufgenommenen Schicht als oberste',
+			st.currentLayerSeq === String(act1?.seq) && shownAct?.activates_seq === String(L0.seq)
+				&& shownAct?.activates?.inscription === 'Lehrerzimmer',
+			JSON.stringify({ top: st.currentLayerSeq, act: act1?.seq, activates: shownAct?.activates }));
+
+		const a2 = await post(N, { action: 'activateLayer', namingId: S, seq: L0.seq });
+		record('dieselbe Schicht noch einmal → 409, kein Akt', a2.status === 409 && (await actCount(S)) === before.acts + 1, `status ${a2.status}`);
+
+		const a3 = await post(M, { action: 'activateLayer', namingId: S, seq: L1.seq, memoText: 'Doch eher die Leute als der Raum.' });
+		const act3 = await lastAct(S);
+		record('Schicht mit Memo aktivieren (auch von der Map aus): Memo im selben Akt, Cue gehoben',
+			a3.status === 200 && act3?.inscription === 'Kollegium' && act3?.memo_text === 'Doch eher die Leute als der Raum.'
+				&& act3?.designation === 'characterization' && a3.body?.liftedTo === 'characterization',
+			JSON.stringify({ status: a3.status, act3, lifted: a3.body?.liftedTo }));
+
+		const foreign = await one(`SELECT seq FROM naming_acts WHERE naming_id = $1 ORDER BY seq LIMIT 1`, [X]);
+		const a4 = await post(N, { action: 'activateLayer', namingId: S, seq: foreign.seq });
+		record('Schicht eines anderen Namings → 404', a4.status === 404, `status ${a4.status}`);
+
+		// 9b. Unter einer Perspektive: die Map kollabiert auf eine Schicht.
+		const situated = async (act) => (await one(
+			`SELECT count(*)::int AS c FROM situating_acts WHERE naming_id = $1 AND map_id = $2 AND act = $3`, [S, mapId, act]
+		)).c;
+		const topNow = (await stackOf(S)).currentLayerSeq;
+		const c1 = await post(M, { action: 'setCollapse', namingId: S, collapseAt: L3.seq });
+		const app = await one(
+			`SELECT properties->>'collapseAt' AS at FROM appearances WHERE naming_id = $1 AND perspective_id = $2`, [S, mapId]
+		);
+		const cAct = await one(
+			`SELECT sa.collapse_at, sa.by, n.inscription AS by_label FROM situating_acts sa JOIN namings n ON n.id = sa.by
+			  WHERE sa.naming_id = $1 AND sa.map_id = $2 AND sa.act = 'collapse' ORDER BY sa.created_at DESC LIMIT 1`,
+			[S, mapId]
+		);
+		record('Map auf eine Schicht kollabieren: Index an der Erscheinung, Kollaps als Akt mit Schicht und Urheber',
+			c1.status === 200 && app?.at === String(L3.seq) && cAct?.collapse_at === String(L3.seq) && !!cAct?.by,
+			JSON.stringify({ status: c1.status, at: app?.at, cAct }));
+		const c2 = await post(M, { action: 'setCollapse', namingId: S, collapseAt: L3.seq });
+		record('derselbe Kollaps noch einmal ist kein zweiter Akt', c2.status === 200 && (await situated('collapse')) === 1,
+			`status ${c2.status}, collapse acts ${await situated('collapse')}`);
+
+		// Was die Oberfläche lädt: die Map zeigt die kollabierte Schicht, die
+		// oberste daneben; die Liste die oberste.
+		const mapData = await pageData(`/projects/${P}/maps/${mapId}`);
+		const el = rowOf(mapData, 'elements', S);
+		record('Map zeigt die kollabierte Schicht und daneben die oberste',
+			el?.inscription === 'Konferenz' && el?.designation === 'characterization' && el?.is_collapsed === true
+				&& el?.current_inscription === 'Kollegium',
+			JSON.stringify(el ? { ins: el.inscription, des: el.designation, collapsed: el.is_collapsed, now: el.current_inscription } : null));
+		st = await stackOf(S);
+		const persp = (st.perspectives ?? []).find((p) => p.id === mapId);
+		const cEntry = (st.acts ?? []).find((a) => a.kind === 'collapse');
+		record('Stack nennt die Perspektive mit ihrer Schicht und den Kollaps-Akt',
+			persp?.layerSeq === String(L3.seq) && st.currentLayerSeq === topNow && cEntry?.collapse_layer?.inscription === 'Konferenz',
+			JSON.stringify({ persp, top: st.currentLayerSeq, cEntry: cEntry?.collapse_layer }));
+		const listData = await pageData(`/projects/${P}/namings`);
+		const row = rowOf(listData, 'namings', S);
+		record('Liste zeigt die oberste Schicht', row?.inscription === 'Kollegium' && row?.designation === 'characterization',
+			JSON.stringify(row ? { ins: row.inscription, des: row.designation } : null));
+
+		const c3 = await post(M, { action: 'setCollapse', namingId: S, collapseAt: null });
+		const app2 = await one(
+			`SELECT properties ? 'collapseAt' AS has FROM appearances WHERE naming_id = $1 AND perspective_id = $2`, [S, mapId]
+		);
+		const el2 = rowOf(await pageData(`/projects/${P}/maps/${mapId}`), 'elements', S);
+		record('Map folgt wieder der obersten Schicht: Index entfernt, Rückkehr als Akt, Map zeigt die oberste',
+			c3.status === 200 && app2?.has === false && (await situated('release')) === 1
+				&& el2?.inscription === 'Kollegium' && el2?.is_collapsed === false,
+			JSON.stringify({ status: c3.status, has: app2?.has, release: await situated('release'), ins: el2?.inscription }));
+
+		const c4 = await post(M, { action: 'setCollapse', namingId: S, collapseAt: foreign.seq });
+		record('Kollaps auf die Schicht eines anderen Namings → 404, kein Akt',
+			c4.status === 404 && (await situated('collapse')) === 1, `status ${c4.status}`);
+
+		// 9c. Phase: speichert den Index zur Zeit der Zuweisung (S03), behält ihn.
+		const ph = await post(M, { action: 'createPhase', inscription: 'Erste Runde' });
+		const phaseId = ph.body?.id;
+		await post(M, { action: 'assignToPhase', phaseId, namingId: S });
+		const topAtAssign = (await stackOf(S)).currentLayerSeq;
+		await post(N, { action: 'rename', namingId: S, inscription: 'Gesamtkonferenz' });
+		st = await stackOf(S);
+		const pPhase = (st.perspectives ?? []).find((p) => p.id === phaseId);
+		const pc = await post(N, { action: 'setCollapse', namingId: S, perspectiveId: phaseId, collapseAt: L0.seq });
+		const pPhase2 = ((await stackOf(S)).perspectives ?? []).find((p) => p.id === phaseId);
+		record('Phase behält die Schicht der Zuweisung, lässt sich (aus der Liste) auf eine andere kollabieren',
+			!!phaseId && pPhase?.kind === 'phase' && pPhase?.layerSeq === topAtAssign && st.currentLayerSeq !== topAtAssign
+				&& pc.status === 200 && pPhase2?.layerSeq === String(L0.seq),
+			JSON.stringify({ phase: pPhase, topAtAssign, top: st.currentLayerSeq, after: pPhase2, status: pc.status }));
+
+		// 9d. Schichten folgen der Zeit, nicht der seq: ein Nachtrag mit
+		//     früherem Datum (wie renameNaming ihn schreibt) ist nicht die oberste.
+		const T = await make('Alpha');
+		await new Promise((r) => setTimeout(r, 20));
+		await post(N, { action: 'rename', namingId: T, inscription: 'Beta' });
+		const t0 = await one(`SELECT created_at, by FROM naming_acts WHERE naming_id = $1 ORDER BY seq LIMIT 1`, [T]);
+		const late = await one(
+			`INSERT INTO naming_acts (naming_id, by, inscription, created_at)
+			 VALUES ($1, $2, 'Gamma', $3::timestamptz + interval '1 millisecond') RETURNING seq`,
+			[T, t0.by, t0.created_at]
+		);
+		const stT = await stackOf(T);
+		const beta = layer(stT, 'Beta');
+		const gamma = (stT.acts ?? []).find((a) => String(a.seq) === String(late.seq));
+		const z1 = await post(N, { action: 'activateLayer', namingId: T, seq: beta?.seq });
+		const z2 = await post(N, { action: 'activateLayer', namingId: T, seq: late.seq });
+		record('Schichten in Zeitfolge: der spätere Nachtrag mit früherem Datum ist nicht die oberste, lässt sich aber aktivieren',
+			stT.currentLayerSeq === String(beta?.seq) && gamma?.state?.inscription === 'Gamma' && z1.status === 409
+				&& z2.status === 200 && (await one(`SELECT inscription FROM namings WHERE id = $1`, [T]))?.inscription === 'Gamma',
+			JSON.stringify({ top: stT.currentLayerSeq, beta: beta?.seq, gamma: gamma?.state, z1: z1.status, z2: z2.status }));
+
+		// 9e. Fremdes Projekt: weder aktivieren noch kollabieren.
+		const P2 = (await post('/api/projects', { name: `${PREFIX}${stamp}_b` })).body?.id;
+		if (P2) created.projectIds.push(P2);
+		const f1 = await post(`/api/projects/${P2}/namings`, { action: 'activateLayer', namingId: S, seq: L1.seq });
+		const f2 = await post(`/api/projects/${P2}/namings`, { action: 'setCollapse', namingId: S, perspectiveId: mapId, collapseAt: L1.seq });
+		const map2 = P2 ? (await one(
+			`SELECT n.id FROM namings n JOIN appearances a ON a.naming_id = n.id AND a.perspective_id = n.id
+			  WHERE n.project_id = $1 AND a.mode = 'perspective' AND a.properties ? 'mapType' LIMIT 1`, [P2]
+		))?.id : null;
+		const f3 = map2 ? await post(`/api/projects/${P2}/maps/${map2}`, { action: 'setCollapse', namingId: S, collapseAt: L1.seq }) : { status: 0 };
+		const f4 = map2 ? await post(`/api/projects/${P2}/maps/${map2}`, { action: 'activateLayer', namingId: S, seq: L1.seq }) : { status: 0 };
+		record('aus einem anderen Projekt: weder aktivieren noch kollabieren',
+			!!P2 && [f1, f2, f3, f4].every((r) => r.status === 404 || r.status === 403) && (await situated('collapse')) === 1,
+			JSON.stringify([f1.status, f2.status, f3.status, f4.status]));
+	}
+
+	// 10. Befunde der adversarialen Prüfung (17.11.2026)
+	{
+		const stackOf = async (id) => (await post(N, { action: 'getStack', namingId: id })).body ?? {};
+		const firstAct = (st) => (st.acts ?? []).find((a) => a.kind === 'act');
+
+		// 10a. Relation ohne eigenen Namen, später benannt, mit Valenz: die
+		//      erste Schicht zurückholen nimmt den Namen weg und die Valenz zurück.
+		const A = await make('Hausordnung');
+		const B = await make('Schülervertretung');
+		const rel = (await post(M, { action: 'relate', sourceId: A, targetId: B, valence: 'kritisiert' })).body.id;
+		await post(N, { action: 'rename', namingId: rel, inscription: 'fordert Änderung' });
+		await post(N, { action: 'setValence', namingId: rel, valence: 'unterstützt' });
+		let st = await stackOf(rel);
+		const r0 = firstAct(st);
+		const ra = await post(N, { action: 'activateLayer', namingId: rel, seq: r0?.seq });
+		const after = await one(
+			`SELECT n.inscription, (SELECT valence FROM appearances WHERE naming_id = n.id AND mode = 'relation' LIMIT 1) AS valence
+			   FROM namings n WHERE n.id = $1`, [rel]
+		);
+		const ract = await lastAct(rel);
+		record('Relation: Schicht ohne eigenen Namen aktivieren nimmt den Namen weg, holt Stufe und Valenz zurück',
+			ra.status === 200 && r0?.state?.inscription === '' && after.inscription === '' && after.valence === 'kritisiert'
+				&& ract?.inscription === '' && ract?.designation === 'cue' && ract?.valence === 'kritisiert',
+			JSON.stringify({ status: ra.status, err: ra.body?.error, r0: r0?.state, after, ract }));
+
+		// 10b. Dieselbe Schicht ohne Memo: nichts zu tun (409). Mit Memo hebt
+		//      sie den Cue (ein reflektierter Cue ist mindestens eine
+		//      Characterization) — danach ändert sie auch mit Memo nichts mehr.
+		const before = await actCount(rel);
+		const rb0 = await post(N, { action: 'activateLayer', namingId: rel, seq: r0?.seq });
+		const rb1 = await post(N, { action: 'activateLayer', namingId: rel, seq: r0?.seq, memoText: 'Wer fordert hier?' });
+		const rb2 = await post(N, { action: 'activateLayer', namingId: rel, seq: r0?.seq, memoText: 'noch einmal' });
+		record('dieselbe Schicht: ohne Memo 409; mit Memo hebt sie den Cue; dann auch mit Memo 409 (kein Memo-Akt als „Aktivierung")',
+			rb0.status === 409 && rb1.status === 200 && rb1.body?.liftedTo === 'characterization' && rb2.status === 409
+				&& (await actCount(rel)) === before + 1,
+			`${rb0.status}/${rb1.status}/${rb2.status}`);
+
+		// 10c. Dieselbe Stufe noch einmal designieren setzt keine leere Schicht.
+		const D = await make('Pausenaufsicht');
+		await post(N, { action: 'designate', namingId: D, designation: 'characterization' });
+		const d0 = await actCount(D);
+		const dm = await post(M, { action: 'designate', namingId: D, designation: 'characterization' });
+		const dn = await post(N, { action: 'designate', namingId: D, designation: 'characterization' });
+		record('dieselbe Stufe noch einmal designieren → 409 (Map und Liste), keine leere Schicht',
+			dm.status === 409 && dn.status === 409 && (await actCount(D)) === d0, `${dm.status}/${dn.status}`);
+
+		// 10d. Zwei gleichzeitige Klicks auf „show here" sind ein Akt.
+		const D0 = (await stackOf(D)).acts.find((a) => a.kind === 'act' && a.designation === 'cue');
+		const [c1, c2] = await Promise.all([
+			post(M, { action: 'setCollapse', namingId: D, collapseAt: D0.seq }),
+			post(M, { action: 'setCollapse', namingId: D, collapseAt: D0.seq })
+		]);
+		const nCollapse = (await one(
+			`SELECT count(*)::int AS c FROM situating_acts WHERE naming_id = $1 AND map_id = $2 AND act = 'collapse'`, [D, mapId]
+		)).c;
+		record('zwei gleichzeitige Kollaps-Klicks schreiben einen Akt', c1.status === 200 && c2.status === 200 && nCollapse === 1,
+			`${c1.status}/${c2.status}, acts ${nCollapse}`);
+
+		// 10e. Ein Akt auf einer Map, die eine frühere Schicht zeigt: die Map
+		//      folgt danach der obersten (Rückkehr als Akt); andere behalten ihren Index.
+		const rn = await post(M, { action: 'rename', namingId: D, inscription: 'Hofaufsicht' });
+		const rel1 = (await one(
+			`SELECT count(*)::int AS c FROM situating_acts WHERE naming_id = $1 AND map_id = $2 AND act = 'release'`, [D, mapId]
+		)).c;
+		const elD = rowOf(await pageData(`/projects/${P}/maps/${mapId}`), 'elements', D);
+		record('Umbenennen auf einer Map mit früherer Schicht: Map folgt danach der obersten, als Akt',
+			rn.status === 200 && rn.body?.followed === true && rel1 === 1 && elD?.inscription === 'Hofaufsicht' && elD?.is_collapsed === false,
+			JSON.stringify({ status: rn.status, followed: rn.body?.followed, rel1, ins: elD?.inscription }));
+
+		// 10f. Der Index kommt nur über den Kollaps: Eigenschaften vom Client
+		//      setzen ihn nicht, und ein Nicht-seq wird abgewiesen.
+		const up = await post(M, { action: 'updateProperties', namingId: D, properties: { collapseAt: 'x', note: 1 } });
+		const has = await one(`SELECT properties ? 'collapseAt' AS has FROM appearances WHERE naming_id = $1 AND perspective_id = $2`, [D, mapId]);
+		const bad1 = await post(M, { action: 'setCollapse', namingId: D, collapseAt: 'x' });
+		const bad2 = await post(N, { action: 'activateLayer', namingId: D, seq: '1; drop' });
+		const mapOk = (await fetch(`${APP_URL}/projects/${P}/maps/${mapId}/__data.json`, { headers: { cookie } })).status;
+		record('collapseAt über Eigenschaften ignoriert, Nicht-seq → 400, Map lädt',
+			up.status === 200 && has.has === false && bad1.status === 400 && bad2.status === 400 && mapOk === 200,
+			JSON.stringify({ up: up.status, has: has.has, bad1: bad1.status, bad2: bad2.status, mapOk }));
+
+		// 10g. Zusammenführen: Eine Map, die eine Schicht des Aufgenommenen
+		//      zeigte, zeigt sie weiter; die Schicht ist im Stack des Überlebenden
+		//      aktivierbar.
+		const mapK = (await post(`/api/projects/${P}/maps`, { label: 'Lehrmittel', mapType: 'situational' })).body?.id;
+		const MK = `/api/projects/${P}/maps/${mapK}`;
+		const K1 = await make('Lehrbuch');
+		const K2 = (await post(MK, { action: 'addElement', inscription: 'Lehrwerk', properties: { x: 10, y: 10 } })).body.id;
+		await post(N, { action: 'rename', namingId: K2, inscription: 'Schulbuch' });
+		const k2first = firstAct(await stackOf(K2));
+		await post(MK, { action: 'setCollapse', namingId: K2, collapseAt: k2first.seq });
+		const mg = await post(N, { action: 'merge', survivorId: K1, mergedId: K2 });
+		const elK = rowOf(await pageData(`/projects/${P}/maps/${mapK}`), 'elements', K1);
+		const kst = await stackOf(K1);
+		const kp = (kst.perspectives ?? []).find((p) => p.id === mapK);
+		const ka = await post(N, { action: 'activateLayer', namingId: K1, seq: k2first.seq });
+		const kname = await one(`SELECT inscription FROM namings WHERE id = $1`, [K1]);
+		record('Zusammenführen: Map zeigt die Schicht des Aufgenommenen weiter; sie ist im Stack des Überlebenden aktivierbar',
+			mg.status < 300 && elK?.inscription === 'Lehrwerk' && elK?.is_collapsed === true && kp?.layerSeq === String(k2first.seq)
+				&& ka.status === 200 && kname?.inscription === 'Lehrwerk',
+			JSON.stringify({ merge: mg.status, el: elK ? { ins: elK.inscription, c: elK.is_collapsed } : null, kp, ka: ka.status, err: ka.body?.error, kname }));
+
+		// 10h. Nachtrag mit auf die Millisekunde gekürzter Zeit (renameNaming
+		//      hält die alte Inschrift mit der Zeit des Namings fest): die frühe
+		//      Schicht behält ihre Stufe.
+		const by = (await one(`SELECT naming_id FROM researcher_namings WHERE project_id = $1 LIMIT 1`, [P])).naming_id;
+		const legacy = await one(
+			`WITH n AS (INSERT INTO namings (project_id, inscription, created_by)
+			            VALUES ($1, 'Machtmechanismus', $2) RETURNING id, created_at),
+			      a AS (INSERT INTO naming_acts (naming_id, by, designation, created_at)
+			            SELECT id, $3, 'specification', created_at FROM n RETURNING naming_id)
+			 SELECT id FROM n`,
+			[P, created.userIds[0], by]
+		);
+		await pool.query(
+			`INSERT INTO appearances (naming_id, perspective_id, mode, properties) VALUES ($1, $2, 'entity', '{}')`, [legacy.id, mapId]
+		);
+		await post(N, { action: 'rename', namingId: legacy.id, inscription: 'Disziplinarmacht' });
+		const lst = await stackOf(legacy.id);
+		const backfill = (lst.acts ?? []).find((a) => a.kind === 'act' && a.inscription === 'Machtmechanismus');
+		const first = firstAct(lst);
+		record('Nachtrag mit gekürzter Zeit: frühe Schicht heißt wie damals und behält ihre Stufe',
+			backfill?.state?.designation === 'specification' && first?.state?.inscription === 'Machtmechanismus'
+				&& first?.state?.designation === 'specification',
+			JSON.stringify({ first: first?.state, backfill: backfill?.state }));
+
+		// 10i. Phase zeigt ihre Schicht; eine Vorlagen-Map lässt sich nicht
+		//      kollabieren, eine Infrastruktur-Perspektive auch nicht.
+		const ph = (await post(M, { action: 'createPhase', inscription: 'Zweite Runde' })).body?.id;
+		await post(M, { action: 'assignToPhase', phaseId: ph, namingId: D });
+		await post(N, { action: 'rename', namingId: D, inscription: 'Aufsicht im Hof' });
+		const members = (await post(`/api/projects/${P}/phases`, { action: 'getMembers', phaseId: ph })).body?.members ?? [];
+		const mD = members.find((m) => m.naming_id === D);
+		record('Phase zeigt die Schicht der Zuordnung, daneben die oberste',
+			mD?.inscription === 'Hofaufsicht' && mD?.is_collapsed === true && mD?.current_inscription === 'Aufsicht im Hof',
+			JSON.stringify(mD ? { ins: mD.inscription, c: mD.is_collapsed, now: mD.current_inscription } : null));
+		const map2 = (await post(`/api/projects/${P}/maps`, { label: 'Vorlage', mapType: 'situational' })).body?.id;
+		await post(`/api/projects/${P}/maps/${map2}`, { action: 'placeExisting', namingId: D, mode: 'entity', properties: { x: 0, y: 0 } });
+		await pool.query(
+			`UPDATE appearances SET properties = properties || '{"readOnly": true}' WHERE naming_id = $1 AND perspective_id = $1`, [map2]
+		);
+		const ro = await post(N, { action: 'setCollapse', namingId: D, perspectiveId: map2, collapseAt: D0.seq });
+		const infra = await one(
+			`SELECT a.perspective_id FROM appearances a JOIN appearances ps ON ps.naming_id = a.perspective_id
+			   AND ps.perspective_id = a.perspective_id AND NOT (ps.properties ? 'mapType') AND COALESCE(ps.properties->>'role','') <> 'phase'
+			  WHERE a.naming_id = $1 AND a.perspective_id <> a.naming_id LIMIT 1`, [D]
+		);
+		const inf = infra ? await post(N, { action: 'setCollapse', namingId: D, perspectiveId: infra.perspective_id, collapseAt: D0.seq }) : { status: 404 };
+		record('Vorlagen-Map → 403, Infrastruktur-Perspektive → 404', ro.status === 403 && inf.status === 404,
+			`${ro.status}/${inf.status}${infra ? '' : ' (keine Infrastruktur-Perspektive)'}`);
+
+		// 10j. Map kopieren: die Indizes gehen mit, als Akt; eine fremde Map
+		//      lässt sich nicht kopieren.
+		await post(M, { action: 'setCollapse', namingId: D, collapseAt: D0.seq });
+		const dup = await post(`/api/projects/${P}/maps`, { action: 'duplicate', sourceMapId: mapId, label: 'Kopie' });
+		const dupActs = dup.body?.id ? (await one(
+			`SELECT count(*)::int AS c FROM situating_acts WHERE map_id = $1 AND naming_id = $2 AND act = 'collapse'`, [dup.body.id, D]
+		)).c : 0;
+		const P3 = (await post('/api/projects', { name: `${PREFIX}${stamp}_c` })).body?.id;
+		if (P3) created.projectIds.push(P3);
+		const foreignDup = await post(`/api/projects/${P3}/maps`, { action: 'duplicate', sourceMapId: mapId, label: 'fremd' });
+		record('Map kopieren: Index als Akt übernommen; fremde Map kopieren → 404',
+			dup.status === 201 && dupActs === 1 && foreignDup.status === 404,
+			JSON.stringify({ dup: dup.status, dupActs, foreign: foreignDup.status }));
+	}
+
 	// Außer dem einen ausdrücklich angelegten freien Memo (5b) entsteht keines.
 	record('kein Memo-Naming im ganzen Ablauf (außer dem freien Memo)', (await memoCount(P)) === 1, String(await memoCount(P)));
 }
@@ -414,6 +773,20 @@ async function cleanup() {
 		}
 	} catch (err) {
 		console.error('[cleanup] WARNING:', err instanceof Error ? err.message : err);
+	}
+	// Die Projekt-Synchronisation legt für die Wegwerf-Projekte Ordner unter
+	// projekte/ an (stacktest-<stamp>…). Nur diese Ordner dieses Laufs gehen weg;
+	// liegt der Zustandsordner des Servers woanders, findet sich hier nichts.
+	try {
+		const dir = join(process.env.TQDA_STATE_DIR?.trim() || process.cwd(), 'projekte');
+		const own = `${PREFIX.replace(/_+$/, '')}-${stamp}`;
+		for (const e of await readdir(dir, { withFileTypes: true }).catch(() => [])) {
+			if (e.isDirectory() && (e.name === own || e.name.startsWith(`${own}-`))) {
+				await rm(join(dir, e.name), { recursive: true, force: true });
+			}
+		}
+	} catch (err) {
+		console.error('[cleanup] WARNING (projekte/):', err instanceof Error ? err.message : err);
 	}
 }
 

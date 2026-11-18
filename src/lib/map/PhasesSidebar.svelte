@@ -7,6 +7,7 @@
 	import { regionColor } from '$lib/canvas/regions.js';
 	import { focusSelect } from '$lib/canvas/dom.js';
 	import { plural } from '$lib/shared/plural.js';
+	import { formatWhen } from '$lib/shared/dates.js';
 
 	// Die Auswahl stand hier als Liste aus Punkt und Namen — ohne Link, ohne
 	// Handlung. Der Knoten auf dem Canvas ist bereits sichtbar markiert; die
@@ -100,9 +101,17 @@
 							<span class="empty-small">None of its namings is on this map.</span>
 						{/if}
 						{#each ms.phaseContents as pc}
+							{@const pl = ms.phaseLayers[pc.naming_id]}
+							{@const held = pl?.is_collapsed ? pl : null}
 							<div class="phase-element">
-								<span class="designation-dot-sm" style="background: {ms.designationColor(pc.designation)}"></span>
-								<span class="phase-el-label">{ms.findInscription(pc.naming_id)}</span>
+								<span class="designation-dot-sm" style="background: {ms.designationColor(held ? held.designation : pc.designation)}"
+									title={held ? held.designation : pc.designation}></span>
+								<span class="phase-el-label" title={held ? `The phase holds the layer of ${formatWhen(held.collapse_layer_at)}${held.current_inscription !== held.inscription || held.current_designation !== held.designation ? `; topmost: “${held.current_inscription}”, ${held.current_designation}` : ''}` : undefined}>
+									{held && held.inscription ? held.inscription : ms.findInscription(pc.naming_id)}
+									{#if held && (held.current_inscription !== held.inscription || held.current_designation !== held.designation)}
+										<span class="phase-el-now">now: {held.current_inscription !== held.inscription ? held.current_inscription : held.current_designation}</span>
+									{/if}
+								</span>
 								<button class="btn-xs btn-remove" title="Remove from phase" aria-label="Remove from phase"
 									onclick={() => ms.removeFromPhase(phase.id, pc.naming_id)}>×</button>
 							</div>
@@ -211,6 +220,7 @@
 		padding: 0.15rem 0; font-size: 0.75rem; color: #c9cdd5;
 	}
 	.phase-el-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.phase-el-now { font-size: 0.65rem; color: #b98a2e; font-style: italic; margin-left: 0.25rem; }
 	.designation-dot-sm { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
 	.btn-sm {
 		background: #1e2030; border: 1px solid #2a2d3a; border-radius: 4px;

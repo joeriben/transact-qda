@@ -23,6 +23,7 @@
 	import { scrollIntoViewStable } from '$lib/shared/rueckweg.js';
 	import { memoText } from '$lib/shared/memoText.js';
 	import NamingMemoForm from '$lib/components/NamingMemoForm.svelte';
+	import StackActs from '$lib/components/StackActs.svelte';
 
 	let { data } = $props();
 	const doc = $derived(data.document);
@@ -31,7 +32,7 @@
 	const isImage = $derived(doc.mime_type?.startsWith('image/'));
 
 	// Live-Refresh-Throttling: bei jedem committed-Sequence-Event des Naming-Runs
-	// wird invalidateAll() aufgerufen, damit candidates / annotations / namingStacks
+	// wird invalidateAll() aufgerufen, damit candidates und annotations
 	// neu vom Server geladen werden und in der Liste sofort sichtbar sind.
 	// Wir batchen mit 600ms-Trailing-Debounce, damit drei schnelle Verankerungen in einer
 	// Sequenz nur EIN load() auslösen.
@@ -167,16 +168,6 @@
 
 	// Annotation highlight on hover
 	let highlightedAnnotationId = $state<string | null>(null);
-
-	// Naming stacks (designation history + memos) keyed by naming ID
-	const namingStacks = $derived.by(() => {
-		const map = new Map<string, Array<{ designation: string | null; inscription: string | null; memo_text: string | null; seq: number; linked_naming_ids: string[] | null }>>();
-		for (const act of (data.namingStacks || [])) {
-			if (!map.has(act.naming_id)) map.set(act.naming_id, []);
-			map.get(act.naming_id)!.push(act);
-		}
-		return map;
-	});
 
 	// Scope: 'this' = current document, 'all' = all documents, or a specific document ID
 	let namingsScope = $state<string>('this');
@@ -321,6 +312,33 @@
 	let namingDragStartY = $state(0);
 	// Namings panel: expanded naming (shows memos)
 	let expandedNamingId = $state<string | null>(null);
+	// Der Stack eines aufgeklappten Namings — vollständig und aktivierbar wie
+	// in der Naming-Liste und auf der Detailseite (Ein Naming IST sein Stack).
+	let readerStacks = $state<Record<string, any>>({});
+	async function loadReaderStack(namingId: string) {
+		const res = await fetch(`/api/projects/${data.projectId}/namings`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ action: 'getStack', namingId })
+		});
+		if (res.ok) readerStacks = { ...readerStacks, [namingId]: await res.json() };
+	}
+	$effect(() => {
+		const id = expandedNamingId;
+		if (id) untrack(() => void loadReaderStack(id));
+	});
+	async function activateInReader(namingId: string, seq: string, note: { text: string }): Promise<string | null> {
+		const res = await fetch(`/api/projects/${data.projectId}/namings`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ action: 'activateLayer', namingId, seq, memoText: note.text })
+		});
+		const out = await res.json().catch(() => ({}));
+		if (!res.ok) return String(out?.error ?? 'The layer could not be activated.');
+		await loadReaderStack(namingId);
+		await invalidateAll();
+		return null;
+	}
 	// Memos, die über eine Participation am Naming hängen (wie auf der Map und
 	// in der Naming-Liste) — geladen, sobald ein Naming aufgeklappt wird.
 	let namingMemos = $state<Record<string, Array<{ id: string; label: string; content: string }>>>({});
@@ -1603,25 +1621,30 @@
 										<button
 											class="naming-action"
 											class:has-memos={scopedAnnotations.some((a) => a.naming_id === c.id && (a.stack_memo || a.properties?.comment))}
-											title="Show memos"
+											title="Stack and memos"
+											aria-label={`Stack of “${c.label}”`}
+											aria-expanded={expandedNamingId === c.id}
 											onclick={(e) => { e.stopPropagation(); expandedNamingId = expandedNamingId === c.id ? null : c.id; }}
 										>{expandedNamingId === c.id ? '▽' : '▼'}</button>
 									</div>
 									{#if expandedNamingId === c.id}
 										{#each [scopedAnnotations.filter((a) => a.naming_id === c.id)] as namingAnns}
-											{#each [namingStacks.get(c.id) || []] as stack}
 												<div class="naming-detail">
 													<span class="naming-stat">{namingAnns.length} passage{namingAnns.length !== 1 ? 's' : ''}</span>
-													{#if stack.some(a => a.designation || a.inscription)}
-														<div class="naming-section-label">Stack</div>
-														{#each stack as act}
-															{#if act.designation || act.inscription}
-																<div class="naming-stack-entry">
-																	{#if act.designation}<span class="stack-ccs">{act.designation}</span>{/if}
-																	{#if act.inscription}<span class="stack-inscription">{act.inscription}</span>{/if}
-																</div>
-															{/if}
-														{/each}
+													<div class="naming-section-label">
+														Stack
+														<a class="naming-stack-details" href="/projects/{data.projectId}/namings/{c.id}" title="The naming with its whole stack and the layer each map and phase shows">details</a>
+													</div>
+													{#if readerStacks[c.id]}
+														{@const rs = readerStacks[c.id]}
+														<div class="naming-stack-full">
+															<StackActs acts={rs.acts ?? []} ends={rs.relationEnds ?? null}
+																currentLayerSeq={rs.currentLayerSeq ?? null}
+																perspectives={rs.perspectives ?? []}
+																onactivate={(seq, note) => activateInReader(c.id, seq, note)} />
+														</div>
+													{:else}
+														<span class="naming-stat">loading the stack…</span>
 													{/if}
 													<div class="naming-section-label">Memos</div>
 													{#each namingMemos[c.id] ?? [] as m (m.id)}
@@ -1630,19 +1653,13 @@
 															{#if m.content}<span class="naming-memo-text">{memoText(m.content)}</span>{/if}
 														</div>
 													{/each}
-													{#each stack as act}
-														{#if act.memo_text && !(act.linked_naming_ids && act.linked_naming_ids.length > 0)}
-															<div class="naming-memo">{act.memo_text}</div>
-														{/if}
-													{/each}
 													{#each namingAnns as ann}
 														{#if ann.stack_memo || ann.properties?.comment}
 															<div class="naming-memo">{ann.stack_memo || ann.properties.comment}</div>
 														{/if}
 													{/each}
-													<NamingMemoForm projectId={data.projectId} namingId={c.id} oncreated={() => loadNamingMemos(c.id)} />
+													<NamingMemoForm projectId={data.projectId} namingId={c.id} oncreated={() => { loadNamingMemos(c.id); void loadReaderStack(c.id); }} />
 												</div>
-											{/each}
 										{/each}
 									{/if}
 								</div>
@@ -2748,6 +2765,8 @@
 		letter-spacing: 0.04em;
 		margin-top: 0.2rem;
 	}
+	.naming-stack-full { margin: 0.2rem 0 0.4rem; }
+	.naming-stack-details { margin-left: 0.4rem; font-size: 0.66rem; color: #8b9cf7; text-transform: none; letter-spacing: 0; }
 	.naming-stack-entry {
 		font-size: 0.65rem;
 		color: #9ca3af;

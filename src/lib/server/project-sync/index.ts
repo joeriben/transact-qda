@@ -129,6 +129,18 @@ const PROJECT_TABLES: {
 		copyFromTable: 'phase_memberships',
 		sequences: [{ table: 'phase_memberships', column: 'seq' }]
 	},
+	// 10b. Situierungs-Protokoll: Platzieren, Zurückziehen, Wiederherstellen,
+	//     Kollaps einer Map/Phase auf eine Schicht und Rückkehr zur obersten
+	//     (migrations/034, 038, 040) — Akte im Stack, append-only wie naming_acts.
+	{
+		file: 'situating_acts.copy',
+		copyToQuery: (pid) => `COPY (
+			SELECT sa.* FROM situating_acts sa
+			JOIN namings n ON n.id = sa.naming_id
+			WHERE n.project_id = '${pid}'
+		) TO STDOUT`,
+		copyFromTable: 'situating_acts'
+	},
 	// 11. Topology snapshots
 	{
 		file: 'topology_snapshots.copy',

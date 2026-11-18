@@ -3,6 +3,7 @@
   SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 <script lang="ts">
+	import { formatWhen } from '$lib/shared/dates.js';
 	import { getMapState } from './mapState.svelte.js';
 	import type { CanvasPositions } from './canvasPositions.svelte.js';
 	import { plural } from '$lib/shared/plural.js';
@@ -73,8 +74,14 @@
 	<!-- Umbenennen: das Feld legt die Karten-Seite über den Knoten, außerhalb
 	     der skalierten Ebene (bleibt bei jedem Zoom lesbar). -->
 	<span class="node-label" class:renaming={ms.editingId === el.naming_id}>{el.inscription}</span>
-	{#if el.is_collapsed && el.current_inscription && el.current_inscription !== el.inscription}
-		<span class="collapsed-hint">now: {el.current_inscription}</span>
+	<!-- Diese Karte kollabiert den Stack auf eine Schicht (S03); was die
+	     oberste Schicht sagt, steht darunter, wenn es abweicht. -->
+	{#if el.is_collapsed}
+		{@const insDiffers = !!el.current_inscription && el.current_inscription !== el.inscription}
+		{@const desDiffers = !!el.current_designation && el.current_designation !== el.designation}
+		<span class="collapsed-hint" title="This map shows an earlier layer of the stack; open the stack to change it">
+			layer of {formatWhen(el.collapse_layer_at)}{#if insDiffers || desDiffers} · now: {insDiffers ? el.current_inscription : ''}{insDiffers && desDiffers ? ', ' : ''}{desDiffers ? el.current_designation : ''}{/if}
+		</span>
 	{/if}
 </div>
 
@@ -118,7 +125,7 @@
 	.phase-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
 	.node-label { font-size: 0.85rem; color: #e1e4e8; word-break: break-word; display: block; }
 	.node-label.renaming { opacity: 0.35; }
-	.collapsed-hint { font-size: 0.65rem; color: #4b5563; font-style: italic; }
+	.collapsed-hint { display: block; font-size: 0.65rem; color: #b98a2e; font-style: italic; }
 	.memo-badge {
 		font-size: 0.6rem; font-weight: 700; color: #f59e0b; background: rgba(245, 158, 11, 0.15);
 		border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 8px;

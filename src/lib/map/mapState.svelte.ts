@@ -31,6 +31,10 @@ export type StackData = {
 	/** Der Stack: jeder Akt mit allen Dimensionen und seiner Notiz (Memo zu
 	 *  diesem Naming), chronologisch. */
 	acts?: StackAct[];
+	/** Die oberste Schicht (Default-Kollaps, S03). */
+	currentLayerSeq?: string | null;
+	/** Maps und Phasen, unter denen das Naming erscheint, mit ihrer Schicht (null = oberste). */
+	perspectives?: { id: string; label: string; kind: 'map' | 'phase'; layerSeq: string | null }[];
 	memos: any[];
 	annotations?: any[];
 	/** Akte, die nur eine Begründung tragen (memo_text ohne Inschrift/
@@ -517,6 +521,7 @@ export function createMapState(
 		phases = fresh.phases;
 		docPhases = fresh.docPhases || [];
 		designationProfile = fresh.designationProfile;
+		if (expandedPhase) void loadPhaseLayers(expandedPhase);
 		// Ein offener Stack zeigt den neuen Akt gleich (Testlauf 11: nach dem
 		// Umbenennen in der Listenansicht stand er unverändert da).
 		if (stackId) {
@@ -539,6 +544,9 @@ export function createMapState(
 
 	async function loadStack(namingId: string) {
 		if (stackHint && stackHint.id !== namingId) stackHint = null;
+		// Die Vorschau verdeckte sonst den Stack, der gerade aufgeht
+		// (Testlauf 17.11.: „show here" war darunter nicht zu sehen).
+		hideMemoTip();
 		stackId = namingId;
 		stackData = null;
 		const req = ++stackRequest;
@@ -579,6 +587,8 @@ export function createMapState(
 	}
 	function showMemoTip(el: any, rect: DOMRect) {
 		keepMemoTip();
+		// Ist der Stack dieses Namings offen, steht dort mehr als in der Vorschau.
+		if (stackId && el?.naming_id === stackId) return;
 		memoTip = { el, rect };
 	}
 	function hideMemoTip(delay = 0) {
@@ -597,9 +607,13 @@ export function createMapState(
 		if (!actTarget) return;
 		if (actType === 'rename') {
 			const r = await mapAction('rename', { namingId: actTarget, inscription: actNewValue, memoText: actMemo.trim() || undefined, linkedNamingIds: actLinkedIds.length > 0 ? actLinkedIds : undefined });
-			if (r?.liftedTo) showAiNotification(`“${r.inscription}” is now a ${r.liftedTo}.`);
+			if (!r) return; // abgelehnt: Dialog und Memo bleiben
+			if (r.liftedTo) showAiNotification(`“${r.inscription}” is now a ${r.liftedTo}.`);
+			noteFollowed(r);
 		} else if (actType === 'designate') {
-			await mapAction('designate', { namingId: actTarget, designation: actNewValue, memoText: actMemo.trim() || undefined, linkedNamingIds: actLinkedIds.length > 0 ? actLinkedIds : undefined });
+			const r = await mapAction('designate', { namingId: actTarget, designation: actNewValue, memoText: actMemo.trim() || undefined, linkedNamingIds: actLinkedIds.length > 0 ? actLinkedIds : undefined });
+			if (!r) return;
+			noteFollowed(r);
 		} else if (actType === 'relate' && actMemo.trim()) {
 			// Memo zur gerade gesetzten Relation: ein Akt in IHREM Stack (die
 			// Relation ist ein Naming), kein eigenes Memo-Naming.
@@ -643,14 +657,24 @@ export function createMapState(
 		if (ends.length > 0) showAiNotification(`Relating lifts “${ends.join('” and “')}” from cue to characterization.`);
 	}
 
+	/** Zeigte diese Map eine frühere Schicht, folgt sie nach einem Akt hier der
+	 *  obersten (stackLayers.ts, followTopmostOn) — das sagt die Meldung. */
+	function noteFollowed(r: any) {
+		if (r?.followed) showAiNotification('This map showed an earlier layer; it now follows the topmost layer, where your change went.');
+	}
+
 	async function skipAct() {
 		if (!actTarget) return;
 		if (actType === 'mode') { await commitModeAct(false); return; }
 		if (actType === 'rename') {
 			const r = await mapAction('rename', { namingId: actTarget, inscription: actNewValue });
-			if (r?.liftedTo) showAiNotification(`“${r.inscription}” is now a ${r.liftedTo}.`);
+			if (!r) return; // abgelehnt: der Dialog bleibt, die Meldung sagt warum
+			if (r.liftedTo) showAiNotification(`“${r.inscription}” is now a ${r.liftedTo}.`);
+			noteFollowed(r);
 		} else if (actType === 'designate') {
-			await mapAction('designate', { namingId: actTarget, designation: actNewValue });
+			const r = await mapAction('designate', { namingId: actTarget, designation: actNewValue });
+			if (!r) return;
+			noteFollowed(r);
 		}
 		cancelAct();
 		await reload();
@@ -1324,17 +1348,57 @@ export function createMapState(
 	// Kartendaten (phase_ids). Früher wurde /maps/<phaseId> abgefragt — 404.
 	function togglePhase(phaseId: string) {
 		expandedPhase = expandedPhase === phaseId ? null : phaseId;
+		if (expandedPhase) void loadPhaseLayers(expandedPhase);
+	}
+	// Eine Phase hält die Schicht, die bei der Zuordnung oben lag (S03: „Phases
+	// sollten als default immer den aktuellen Index der Zuweisung speichern"):
+	// ihre Liste zeigt diese Schicht, nicht die der Karte.
+	let phaseLayers = $state<Record<string, { inscription: string; designation: string; is_collapsed: boolean;
+		current_inscription: string; current_designation: string; collapse_layer_at: string | null }>>({});
+	async function loadPhaseLayers(phaseId: string) {
+		try {
+			const res = await fetch(`/api/projects/${initialData.projectId}/phases`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ action: 'getMembers', phaseId })
+			});
+			if (!res.ok || expandedPhase !== phaseId) return;
+			const members = ((await res.json()).members ?? []) as any[];
+			phaseLayers = Object.fromEntries(members.map((m) => [m.naming_id, m]));
+		} catch {
+			/* die Liste zeigt dann die Schicht der Karte */
+		}
 	}
 
-	// Perspectival collapse
-	async function pinToLayer(namingId: string, seq: number) {
-		await mapAction('setCollapse', { namingId, collapseAt: seq });
+	// Perspektivischer Kollaps (S03): diese Karte zeigt das Naming auf einer
+	// Schicht seines Stacks; ohne Index die oberste. Beides ist ein Akt
+	// (stackLayers.ts, migrations/040).
+	async function pinToLayer(namingId: string, seq: number | string) {
+		const res = await mapRequest('setCollapse', { namingId, collapseAt: seq });
+		if (!res.ok) { showError(responseError(res, 'This map could not be set to that layer.')); return; }
 		await reload();
+		const st = res.data?.state;
+		if (res.data?.changed && st) {
+			showAiNotification(`This map now shows ${st.inscription ? `“${st.inscription}”` : 'the unnamed layer'} as ${st.designation}. The list and other maps keep their own layer.`);
+		}
 	}
 
 	async function unpinLayer(namingId: string) {
-		await mapAction('setCollapse', { namingId, collapseAt: null });
+		const res = await mapRequest('setCollapse', { namingId, collapseAt: null });
+		if (!res.ok) { showError(responseError(res, 'This map could not return to the topmost layer.')); return; }
 		await reload();
+		if (res.data?.changed) showAiNotification('This map follows the topmost layer of the stack again.');
+	}
+
+	/** Eine frühere Schicht im Datenraum wieder zur obersten machen (neuer Akt).
+	 *  Gibt eine Fehlermeldung zurück oder null. */
+	async function activateLayer(namingId: string, seq: number | string, note: { text?: string; linkedNamingIds?: string[] } = {}): Promise<string | null> {
+		const res = await mapRequest('activateLayer', { namingId, seq, memoText: note.text ?? '', linkedNamingIds: note.linkedNamingIds ?? [] });
+		if (!res.ok) return responseError(res, 'The layer could not be activated.');
+		await reload();
+		const d = res.data;
+		showAiNotification(`Activated: ${d?.inscription ? `“${d.inscription}”` : 'the layer without a name of its own'} is the topmost layer again (${d?.designation}).${d?.liftedTo ? ' With your memo, the cue became a characterization.' : ''}${d?.followed ? ' This map showed an earlier layer; it now follows the topmost.' : ''}`);
+		return null;
 	}
 
 	// ─── Sync data from page props ───
@@ -1499,6 +1563,7 @@ export function createMapState(
 		set newPhaseLabel(v) { newPhaseLabel = v; },
 		get expandedPhase() { return expandedPhase; },
 		get phaseContents() { return phaseContents; },
+		get phaseLayers() { return phaseLayers; },
 		/** Mitglieder einer Phase, die auf dieser Karte stehen. */
 		phaseCountOnMap(phaseId: string) { return phaseCountsOnMap.get(phaseId) ?? 0; },
 
@@ -1579,6 +1644,7 @@ export function createMapState(
 		togglePhase,
 		pinToLayer,
 		unpinLayer,
+		activateLayer,
 
 		// Data needed for API URLs
 		projectId: initialData.projectId,

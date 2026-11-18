@@ -12,6 +12,7 @@
 	import { viewHref, scrollIntoViewStable } from '$lib/shared/rueckweg.js';
 	import { memoText } from '$lib/shared/memoText.js';
 	import { namingLabel, quoted } from '$lib/shared/namingLabel.js';
+	import { formatWhen } from '$lib/shared/dates.js';
 	import NamingMemoForm from '$lib/components/NamingMemoForm.svelte';
 	import StackActs from '$lib/components/StackActs.svelte';
 	import { focusSelect } from '$lib/canvas/dom.js';
@@ -35,7 +36,7 @@
 		has_memo_link: boolean;
 		properties: Record<string, any> | null;
 		ai_persona?: string | null;
-		appears_on_maps: { id: string; label: string }[] | null;
+		appears_on_maps: { id: string; label: string; layer?: { inscription: string | null; designation: string; at: string } | null }[] | null;
 		created_at: string;
 		seq: string;
 		part_source_id?: string | null;
@@ -46,6 +47,10 @@
 		inscriptions: any[];
 		designations: any[];
 		acts?: any[];
+		/** Die oberste Schicht (Default-Kollaps, S03). */
+		currentLayerSeq?: string | null;
+		/** Maps und Phasen, unter denen das Naming erscheint, mit ihrer Schicht (null = oberste). */
+		perspectives?: { id: string; label: string; kind: 'map' | 'phase'; layerSeq: string | null }[];
 		memos: any[];
 		/** Memos in anderen Stacks, die auf dieses Naming verweisen. */
 		referringNotes?: any[];
@@ -214,6 +219,18 @@
 			const el = document.querySelector(`[data-naming-id="${id}"]`);
 			if (el) scrollIntoViewStable(el);
 		});
+	});
+
+	// ?phase=<phaseId> (von der Detailseite eines Namings): die Phase aufschlagen.
+	const phaseParam = $derived($page.url.searchParams.get('phase'));
+	let phaseOpenedFor: string | null = null;
+	$effect(() => {
+		const id = phaseParam;
+		if (!id || phaseOpenedFor === id) return;
+		if (!phases.some((p: any) => p.id === id)) return;
+		phaseOpenedFor = id;
+		phasesCollapsed = false;
+		if (selectedPhaseId !== id) void selectPhase(id);
 	});
 
 	// Worauf ein Memo verweisen kann: die Namings dieses Projekts.
@@ -428,40 +445,64 @@
 	}
 
 	// ---- Create ----
+	// Wer schnell hintereinander Namen eingibt, verliert keinen: das Feld
+	// bleibt bedienbar und wird sofort geleert, die Namen werden der Reihe nach
+	// angelegt (Testlauf 17.11.: der zweite verschwand spurlos, weil das Feld
+	// während des Anlegens gesperrt war und danach geleert wurde).
+	const createQueue: string[] = [];
 	async function createNaming() {
-		if (!newNamingValue.trim() || creatingNaming) return;
-		// Gleicher Name (ohne Groß-/Kleinschreibung): wie auf der Map kein
-		// zweites Naming, sondern der Weg zum vorhandenen — ein zweites
-		// gleichen Namens spaltete seine Geschichte (Testlauf 09.11.).
-		const wanted = newNamingValue.trim().toLocaleLowerCase();
-		const same = namings.find(
-			(n) => !researcherIds.has(n.naming_id) && (n.current_inscription || n.inscription || '').trim().toLocaleLowerCase() === wanted
-		);
-		if (same) {
-			// Kein Fehler, sondern ein Hinweis: das vorhandene Naming wird gleich
-			// aufgeschlagen (Testlauf 14: rot wie ein Fehler, öffnen erst per Klick).
-			newNamingValue = '';
-			await openExisting(same.naming_id);
-			showInfo(`“${labelOf(same)}” already exists in this project, so nothing new was created. It is opened here with its stack.`);
-			return;
-		}
-		creatingNaming = true;
-		// Eine alte Duplikat-Meldung gilt nach erfolgreichem Anlegen nicht mehr
-		// (Testlauf 11: sie blieb über 20 s stehen).
-		actionError = null;
-		actionErrorOpen = null;
-		await apiAction('create', { inscription: newNamingValue.trim() });
+		const value = newNamingValue.trim();
+		if (!value) return;
 		newNamingValue = '';
-		creatingNaming = false;
-		const module = await import('$app/navigation');
-		module.invalidateAll();
+		createQueue.push(value);
+		if (creatingNaming) return;
+		creatingNaming = true;
+		const { invalidateAll } = await import('$app/navigation');
+		try {
+			while (createQueue.length > 0) {
+				const next = createQueue.shift()!;
+				// Gleicher Name (ohne Groß-/Kleinschreibung): wie auf der Map kein
+				// zweites Naming, sondern der Weg zum vorhandenen — ein zweites
+				// gleichen Namens spaltete seine Geschichte (Testlauf 09.11.).
+				const wanted = next.toLocaleLowerCase();
+				const same = namings.find(
+					(n) => !researcherIds.has(n.naming_id) && (n.current_inscription || n.inscription || '').trim().toLocaleLowerCase() === wanted
+				);
+				if (same) {
+					// Kein Fehler, sondern ein Hinweis: das vorhandene Naming wird gleich
+					// aufgeschlagen (Testlauf 14: rot wie ein Fehler, öffnen erst per Klick).
+					await openExisting(same.naming_id);
+					showInfo(`“${labelOf(same)}” already exists in this project, so nothing new was created. It is opened here with its stack.`);
+					continue;
+				}
+				// Eine alte Duplikat-Meldung gilt nach erfolgreichem Anlegen nicht mehr
+				// (Testlauf 11: sie blieb über 20 s stehen).
+				actionError = null;
+				actionErrorOpen = null;
+				await apiAction('create', { inscription: next });
+				// Damit der nächste Name in der Schlange das neue Naming schon kennt.
+				await invalidateAll();
+			}
+		} finally {
+			creatingNaming = false;
+		}
 	}
 
 	// ---- Stack ----
 	async function showStack(namingId: string) {
 		if (stackId === namingId) { stackId = null; stackData = null; return; }
 		stackId = namingId;
-		stackData = await apiAction('getStack', { namingId });
+		// Sonst stand kurz der Stack des zuvor offenen Namings unter diesem
+		// (Testlauf 17.11.).
+		stackData = null;
+		await refreshStack(namingId);
+	}
+	/** Den Stack neu laden — nur übernehmen, wenn noch dieses Naming offen ist. */
+	let stackRequest = 0;
+	async function refreshStack(namingId: string) {
+		const req = ++stackRequest;
+		const fresh = await apiAction('getStack', { namingId });
+		if (req === stackRequest && stackId === namingId) stackData = fresh;
 	}
 
 	// ---- Inline Rename ----
@@ -618,7 +659,7 @@
 		const module = await import('$app/navigation');
 		module.invalidateAll();
 		// Offener Stack desselben Namings zeigt den neuen Akt gleich.
-		if (stackId === touchedId) stackData = await apiAction('getStack', { namingId: touchedId });
+		if (stackId === touchedId) await refreshStack(touchedId);
 	}
 
 	async function skipAct() {
@@ -641,7 +682,7 @@
 		const module = await import('$app/navigation');
 		module.invalidateAll();
 		// Offener Stack desselben Namings zeigt den neuen Akt gleich.
-		if (stackId === touchedId) stackData = await apiAction('getStack', { namingId: touchedId });
+		if (stackId === touchedId) await refreshStack(touchedId);
 	}
 
 	function cancelAct() {
@@ -672,6 +713,21 @@
 		showInfo(`${what} discarded — nothing changed.`);
 	}
 
+	// ---- Eine Schicht des Stacks aktivieren ----
+	// Im Datenraum wird die Schicht wieder die oberste: ein neuer Akt im Stack,
+	// der sie aufnimmt (stackLayers.ts). Maps mit eigenem Index behalten ihn
+	// (S09). Gibt einen Fehlertext zurück oder null.
+	async function activateLayer(namingId: string, seq: string, note: { text: string }): Promise<string | null> {
+		const res = await apiAction('activateLayer', { namingId, seq, memoText: note.text });
+		if (res?.error) return String(res.error);
+		markTouched(namingId);
+		const module = await import('$app/navigation');
+		await module.invalidateAll();
+		if (stackId === namingId) await refreshStack(namingId);
+		showInfo(`Activated: ${res?.inscription ? `“${res.inscription}”` : 'the layer'} is the topmost layer again (${res?.designation}).${res?.liftedTo ? ' With your memo, the cue became a characterization.' : ''}`);
+		return null;
+	}
+
 	// ---- Memo Status ----
 	// Satz IV: ein KI-Memo gehört erst zu den Memos des Namings, wenn der
 	// Mensch es hereinholt (promote); „ack" ist ein Verdikt — wie im Map-Stack.
@@ -692,7 +748,7 @@
 		}
 		// Refresh the stack to show updated status
 		if (stackId) {
-			stackData = await apiAction('getStack', { namingId: stackId });
+			await refreshStack(stackId);
 		}
 	}
 
@@ -725,7 +781,7 @@
 			);
 			else showInfo(`Restored ${quoted(label)}.`);
 			// Ein offener Stack zeigt den neuen Akt gleich (Testlauf 09.11.).
-			if (stackId === namingId) stackData = await apiAction('getStack', { namingId });
+			if (stackId === namingId) await refreshStack(namingId);
 		}
 	}
 
@@ -947,7 +1003,7 @@
 					class="create-input"
 					placeholder="New naming..."
 					bind:value={newNamingValue}
-					disabled={creatingNaming}
+					aria-busy={creatingNaming}
 				/>
 			</form>
 		{/snippet}
@@ -1105,7 +1161,9 @@
 							from: `/projects/${data.projectId}/namings`
 						})}
 						class="map-link"
-					>{m.label}</a>
+						class:map-link-layer={!!m.layer}
+						title={m.layer ? `${m.label} shows an earlier layer: ${m.layer.inscription ? `“${m.layer.inscription}”` : 'without a name of its own'}, ${m.layer.designation}, of ${formatWhen(m.layer.at)}` : undefined}
+					>{m.label}{#if m.layer}<span class="map-link-held"> · {m.layer.inscription ? `“${m.layer.inscription}”` : 'earlier layer'} {m.layer.designation}</span>{/if}</a>
 				{/each}
 			</div>
 		{/if}
@@ -1130,11 +1188,14 @@
 					{#if stackData.relationEnds?.current}
 						<div class="rel-ends">Relation: {stackData.relationEnds.source} {stackData.relationEnds.directed ? '→' : '↔'} {stackData.relationEnds.target}</div>
 					{/if}
-					<StackActs acts={stackData.acts ?? []} ends={stackData.relationEnds ?? null} onlinked={(id) => showStack(id)} />
+					<StackActs acts={stackData.acts ?? []} ends={stackData.relationEnds ?? null} onlinked={(id) => showStack(id)}
+						currentLayerSeq={stackData.currentLayerSeq ?? null}
+						perspectives={stackData.perspectives ?? []}
+						onactivate={(seq, note) => activateLayer(n.naming_id, seq, note)} />
 					<NamingMemoForm projectId={data.projectId} namingId={n.naming_id}
 						candidates={memoCandidates}
 						oncreated={async () => {
-							stackData = await apiAction('getStack', { namingId: n.naming_id });
+							await refreshStack(n.naming_id);
 							markTouched(n.naming_id);
 							const module = await import('$app/navigation');
 							module.invalidateAll();
@@ -1372,9 +1433,17 @@
 			{:else}
 				{#each phaseMembers as member}
 					{@const memberNaming = findNaming(member.naming_id)}
+					<!-- Die Phase zeigt die Schicht, die sie hält (S03: Index der
+					     Zuweisung), nicht die oberste; weicht diese ab, steht sie daneben. -->
+					{@const held = member.is_collapsed}
+					{@const differs = held && (member.current_inscription !== member.inscription || member.current_designation !== member.designation)}
 					<div class="phase-member">
-						<span class="designation-dot" style="background: {designationColor(member.designation)}"></span>
-						<span class="phase-member-label">{memberNaming ? labelOf(memberNaming) : member.inscription}</span>
+						<span class="designation-dot" style="background: {designationColor(member.designation)}" title={member.designation}></span>
+						<span class="phase-member-label"
+							title={held ? `The phase holds the layer of ${formatWhen(member.collapse_layer_at)}${differs ? `; topmost: “${member.current_inscription}”, ${member.current_designation}` : ''}` : undefined}>
+							{held && member.inscription ? member.inscription : memberNaming ? labelOf(memberNaming) : member.inscription}
+							{#if differs}<span class="phase-member-now">now: {member.current_inscription !== member.inscription ? member.current_inscription : member.current_designation}</span>{/if}
+						</span>
 						<button class="btn-xs btn-remove" onclick={() => removeNamingFromPhase(selectedPhaseId!, member.naming_id)}>×</button>
 					</div>
 				{/each}
@@ -1496,6 +1565,7 @@
 		padding: 0.2rem 0; font-size: 0.8rem; color: #c9cdd5;
 	}
 	.phase-member-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.phase-member-now { font-size: 0.68rem; color: #b98a2e; font-style: italic; margin-left: 0.3rem; }
 	.btn-remove { color: #ef4444; border-color: transparent; padding: 0 0.3rem; }
 	.btn-remove:hover { background: rgba(239, 68, 68, 0.1); }
 	.passage-naming-group { margin-bottom: 0.5rem; }
@@ -1733,6 +1803,8 @@
 		text-decoration: none;
 	}
 	.map-link:hover { color: #8b9cf7; }
+	.map-link-layer { border: 1px solid rgba(245, 158, 11, 0.45); }
+	.map-link-held { color: #b98a2e; font-style: italic; }
 
 	/* Stack panel */
 	.stack-panel {

@@ -42,7 +42,7 @@ export const load: PageServerLoad = async ({ params }) => {
 
 	if (!doc) error(404, 'Document not found');
 
-	const [annotations, candidates, elementsResult, projectAnnotations, documentsResult, stackResult, phases, runRow] = await Promise.all([
+	const [annotations, candidates, elementsResult, projectAnnotations, documentsResult, phases, runRow] = await Promise.all([
 		getAnnotationsByDocument(params.projectId, params.docId),
 		getAnnotationCandidates(params.projectId),
 		query<DocumentElement>(
@@ -58,14 +58,6 @@ export const load: PageServerLoad = async ({ params }) => {
 			 JOIN document_content dc ON dc.naming_id = n.id
 			 WHERE n.project_id = $1 AND n.deleted_at IS NULL
 			 ORDER BY n.inscription`,
-			[params.projectId]
-		),
-		query<{ naming_id: string; designation: string | null; inscription: string | null; memo_text: string | null; seq: number; linked_naming_ids: string[] | null }>(
-			`SELECT na.naming_id, na.designation, na.inscription, na.memo_text, na.seq, na.linked_naming_ids
-			 FROM naming_acts na
-			 JOIN namings n ON n.id = na.naming_id AND n.deleted_at IS NULL
-			 WHERE n.project_id = $1
-			 ORDER BY na.naming_id, na.seq`,
 			[params.projectId]
 		),
 		getProjectPhases(params.projectId),
@@ -99,7 +91,6 @@ export const load: PageServerLoad = async ({ params }) => {
 		projectId: params.projectId,
 		projectAnnotations,
 		documents: documentsResult.rows,
-		namingStacks: stackResult.rows,
 		phases,
 		phaseMemberMap,
 		segments: (runRow?.segmentation_snapshot ?? []).map((s) => ({
